@@ -104,6 +104,38 @@ export interface TrackStatsResult {
   total_ai_laps: number;
 }
 
+/**
+ * Result from get_popular_tracks RPC function.
+ */
+export interface PopularTrackRpcResult {
+  composite_seed: number;
+  track_config: Record<string, unknown>;
+  lap_count: number;
+  unique_players: number;
+  best_lap_time: number;
+  best_player_initials: string;
+  best_is_ai: boolean;
+}
+
+/**
+ * Popular track entry for display in the UI.
+ */
+export interface PopularTrack {
+  compositeSeed: number;
+  trackConfig: {
+    baseSeed: number;
+    trackType: string;
+    sizeClass: string;
+    surfaceType: string;
+    ovalShape?: string;
+  };
+  lapCount: number;
+  uniquePlayers: number;
+  bestLapTime: number;
+  bestPlayerInitials: string;
+  bestIsAI: boolean;
+}
+
 // ============================================================================
 // Client-Side Types
 // ============================================================================

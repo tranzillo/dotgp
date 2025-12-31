@@ -14,7 +14,7 @@ import type {
 } from '../timetrials/types';
 import { encodeCompositeSeed } from '../timetrials/types';
 import { isSupabaseConfigured } from '../sync';
-import type { LeaderboardEntry } from '../sync';
+import type { LeaderboardEntry, PopularTrack } from '../sync';
 
 export type LeaderboardSource = 'local' | 'global';
 
@@ -41,7 +41,7 @@ export class HTMLTimeTrialPanel {
   private playerRankDiv!: HTMLDivElement;
 
   // State
-  private currentSource: LeaderboardSource = 'local';
+  private currentSource: LeaderboardSource = 'global';
   private cloudAvailable: boolean = false;
 
   constructor(containerId: string, callbacks: TimeTrialPanelCallbacks) {
@@ -52,8 +52,9 @@ export class HTMLTimeTrialPanel {
     this.container = container;
     this.callbacks = callbacks;
 
-    // Check if cloud is available
+    // Check if cloud is available and set default source accordingly
     this.cloudAvailable = isSupabaseConfigured();
+    this.currentSource = this.cloudAvailable ? 'global' : 'local';
 
     // Build DOM structure
     this.container.innerHTML = `
@@ -71,8 +72,8 @@ export class HTMLTimeTrialPanel {
         <div class="section-header">LEADERBOARD</div>
         <!-- Local/Global Source Toggle -->
         <div class="source-buttons" id="tt-source">
-          <button class="source-btn active" data-source="local">Local</button>
-          <button class="source-btn${this.cloudAvailable ? '' : ' disabled'}" data-source="global" ${this.cloudAvailable ? '' : 'disabled'}>Global</button>
+          <button class="source-btn${this.cloudAvailable ? '' : ' active'}" data-source="local">Local</button>
+          <button class="source-btn${this.cloudAvailable ? ' active' : ' disabled'}" data-source="global" ${this.cloudAvailable ? '' : 'disabled'}>Global</button>
         </div>
         <div class="filter-buttons" id="tt-filter">
           <button class="filter-btn active" data-filter="all">All</button>
@@ -80,7 +81,7 @@ export class HTMLTimeTrialPanel {
           <button class="filter-btn" data-filter="ai">AI</button>
         </div>
         <!-- Player rank display (for global) -->
-        <div id="tt-player-rank" class="player-rank" style="display: none;"></div>
+        <div id="tt-player-rank" class="player-rank" style="display: ${this.cloudAvailable ? 'block' : 'none'};"></div>
         <div id="tt-leaderboard" class="leaderboard"></div>
         <div id="tt-no-records" class="no-records">No records yet</div>
 
@@ -338,6 +339,51 @@ export class HTMLTimeTrialPanel {
         <span class="laps">${track.lapCount}</span>
       </div>
     `;
+  }
+
+  /**
+   * Update the popular tracks list with global tracks.
+   */
+  setGlobalPopularTracks(tracks: PopularTrack[]): void {
+    if (tracks.length === 0) {
+      this.popularTracksList.innerHTML = '<div class="no-tracks">No global tracks yet</div>';
+      return;
+    }
+
+    this.popularTracksList.innerHTML = tracks
+      .map((track) => this.renderGlobalPopularTrack(track))
+      .join('');
+
+    // Add click handlers
+    this.popularTracksList.querySelectorAll('.popular-track').forEach((el) => {
+      el.addEventListener('click', () => {
+        const compositeSeed = parseInt(el.getAttribute('data-composite') || '0', 10);
+        this.callbacks.onPopularTrackClick(compositeSeed);
+      });
+    });
+  }
+
+  private renderGlobalPopularTrack(track: PopularTrack): string {
+    const timeStr = track.bestLapTime ? this.formatTime(track.bestLapTime) : '--:--';
+    const typeLabel = track.trackConfig.trackType.toUpperCase();
+
+    return `
+      <div class="popular-track" data-composite="${track.compositeSeed}">
+        <span class="seed">${track.compositeSeed}</span>
+        <span class="type">${typeLabel}</span>
+        <span class="best">${timeStr}</span>
+        <span class="laps">${track.lapCount}</span>
+      </div>
+    `;
+  }
+
+  /**
+   * Show loading state for popular tracks.
+   */
+  setPopularTracksLoading(loading: boolean): void {
+    if (loading) {
+      this.popularTracksList.innerHTML = '<div class="loading">Loading...</div>';
+    }
   }
 
   private formatTime(seconds: number): string {

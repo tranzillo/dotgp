@@ -28,7 +28,7 @@ export class TimeTrialManager {
   private storage: TimeTrialStorage;
   private panel: HTMLTimeTrialPanel;
   private currentFilter: LeaderboardFilter = 'all';
-  private currentSource: LeaderboardSource = 'local';
+  private currentSource: LeaderboardSource;
   private currentAgentName: string | null = null;
   private currentAgentTrainer: string | null = null;
   private onInitialsChangeExternal: ((initials: string) => void) | null = null;
@@ -36,6 +36,9 @@ export class TimeTrialManager {
   constructor(game: Game, panelContainerId: string) {
     this.game = game;
     this.storage = new TimeTrialStorage();
+
+    // Default to global if cloud is available, otherwise local
+    this.currentSource = isSupabaseConfigured() ? 'global' : 'local';
 
     // Create UI panel with callbacks
     this.panel = new HTMLTimeTrialPanel(panelContainerId, {
@@ -57,6 +60,7 @@ export class TimeTrialManager {
       onSourceChange: (source) => {
         this.currentSource = source;
         this.updateLeaderboard();
+        this.updatePopularTracks();
       },
     });
 
@@ -254,11 +258,42 @@ export class TimeTrialManager {
   }
 
   /**
-   * Update the popular tracks list.
+   * Update the popular tracks list based on current source.
    */
   private updatePopularTracks(): void {
+    if (this.currentSource === 'global') {
+      this.updateGlobalPopularTracks();
+    } else {
+      this.updateLocalPopularTracks();
+    }
+  }
+
+  /**
+   * Update popular tracks with local data.
+   */
+  private updateLocalPopularTracks(): void {
     const popular = this.storage.getPopularTracks(5);
     this.panel.setPopularTracks(popular);
+  }
+
+  /**
+   * Update popular tracks with global data from cloud.
+   */
+  private async updateGlobalPopularTracks(): Promise<void> {
+    if (!isSupabaseConfigured()) {
+      this.panel.setGlobalPopularTracks([]);
+      return;
+    }
+
+    this.panel.setPopularTracksLoading(true);
+
+    try {
+      const tracks = await leaderboardService.getPopularTracks(5);
+      this.panel.setGlobalPopularTracks(tracks);
+    } catch (error) {
+      console.error('Failed to fetch global popular tracks:', error);
+      this.panel.setGlobalPopularTracks([]);
+    }
   }
 
   /**

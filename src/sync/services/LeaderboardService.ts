@@ -12,6 +12,8 @@ import type {
   LeaderboardRpcResult,
   DeviceRankResult,
   TrackStatsResult,
+  PopularTrackRpcResult,
+  PopularTrack,
 } from '../types';
 
 class LeaderboardServiceImpl {
@@ -220,6 +222,56 @@ class LeaderboardServiceImpl {
     }
 
     return (count ?? 0) > 0;
+  }
+
+  /**
+   * Get popular tracks globally (most played).
+   *
+   * @param limit - Maximum number of tracks to return
+   */
+  async getPopularTracks(limit: number = 5): Promise<PopularTrack[]> {
+    if (!isSupabaseConfigured()) {
+      return [];
+    }
+
+    const supabase = getSupabase();
+
+    const { data, error } = await supabase.rpc('get_popular_tracks', {
+      p_limit: limit,
+    });
+
+    if (error) {
+      console.error('Failed to fetch popular tracks:', error);
+      return [];
+    }
+
+    const results = data as PopularTrackRpcResult[];
+
+    return results.map((track) => {
+      const config = track.track_config as {
+        baseSeed?: number;
+        trackType?: string;
+        sizeClass?: string;
+        surfaceType?: string;
+        ovalShape?: string;
+      };
+
+      return {
+        compositeSeed: track.composite_seed,
+        trackConfig: {
+          baseSeed: config.baseSeed ?? 0,
+          trackType: config.trackType ?? 'circuit',
+          sizeClass: config.sizeClass ?? 'medium',
+          surfaceType: config.surfaceType ?? 'asphalt',
+          ovalShape: config.ovalShape,
+        },
+        lapCount: track.lap_count,
+        uniquePlayers: track.unique_players,
+        bestLapTime: track.best_lap_time,
+        bestPlayerInitials: track.best_player_initials,
+        bestIsAI: track.best_is_ai,
+      };
+    });
   }
 }
 

@@ -51,8 +51,8 @@ export interface TracksPanelCallbacks {
 
 // Dropdown option definitions
 const TYPE_OPTIONS = [
-  { value: 'gp', label: 'GP' },
   { value: 'oval', label: 'Oval' },
+  { value: 'gp', label: 'GP' },
 ];
 
 const CLASS_OPTIONS: Record<string, { value: string; label: string }[]> = {

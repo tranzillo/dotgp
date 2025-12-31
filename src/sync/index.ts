@@ -37,11 +37,13 @@ export type {
   LeaderboardRpcResult,
   DeviceRankResult,
   TrackStatsResult,
+  PopularTrackRpcResult,
   // Client-side types
   LeaderboardEntry,
   LeaderboardFilter,
   RemoteReplaySummary,
   SyncStatus,
+  PopularTrack,
   // Sync queue types
   SyncQueueItem,
   SyncQueueState,

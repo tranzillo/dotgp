@@ -59,7 +59,7 @@ export class Game {
   private replayController: ReplayController;
   private mode: GameMode = 'normal';
   private trainingManager: TrainingManager | null = null;
-  private trackMode: TrackType = 'grandprix';
+  private trackMode: TrackType = 'oval';
   private ovalShape: OvalShape = 'elliptical';
   private ovalSizeClass: OvalSizeClass = 'speedway';
   private ovalSurfaceType: SurfaceType = 'asphalt';

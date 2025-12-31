@@ -192,6 +192,62 @@ END;
 $$ LANGUAGE plpgsql STABLE;
 
 -- ============================================================================
+-- GET POPULAR TRACKS
+-- Returns tracks with the most activity (lap count) with best times
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION get_popular_tracks(
+  p_limit INTEGER DEFAULT 10
+)
+RETURNS TABLE (
+  composite_seed BIGINT,
+  track_config JSONB,
+  lap_count INTEGER,
+  unique_players INTEGER,
+  best_lap_time FLOAT,
+  best_player_initials VARCHAR(3),
+  best_is_ai BOOLEAN
+) AS $$
+BEGIN
+  RETURN QUERY
+  WITH track_stats AS (
+    SELECT
+      r.composite_seed,
+      r.track_config,
+      COUNT(*)::INTEGER as lap_count,
+      COUNT(DISTINCT r.device_id)::INTEGER as unique_players,
+      MIN(r.lap_time) as best_time
+    FROM replays r
+    WHERE r.is_leaderboard_eligible = true
+    GROUP BY r.composite_seed, r.track_config
+    ORDER BY lap_count DESC
+    LIMIT p_limit
+  ),
+  best_laps AS (
+    SELECT DISTINCT ON (r.composite_seed)
+      r.composite_seed,
+      r.player_initials,
+      r.is_ai,
+      r.lap_time
+    FROM replays r
+    WHERE r.is_leaderboard_eligible = true
+    ORDER BY r.composite_seed, r.lap_time ASC
+  )
+  SELECT
+    ts.composite_seed,
+    ts.track_config,
+    ts.lap_count,
+    ts.unique_players,
+    ts.best_time as best_lap_time,
+    bl.player_initials as best_player_initials,
+    bl.is_ai as best_is_ai
+  FROM track_stats ts
+  LEFT JOIN best_laps bl ON ts.composite_seed = bl.composite_seed
+  ORDER BY ts.lap_count DESC;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- ============================================================================
 -- UPDATE DEVICE LAST SEEN
 -- Updates the last_seen_at timestamp for a device
 -- ============================================================================
