@@ -1,0 +1,26 @@
+{
+  "name": "dotgp",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.89.0",
+    "@tensorflow/tfjs": "^4.22.0",
+    "matter-js": "^0.20.0"
+  },
+  "devDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.54.0",
+    "@types/matter-js": "^0.19.7",
+    "typescript": "^5.3.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.54.0"
+  }
+}

@@ -1,0 +1,1503 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DotGP</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #0a0a0a;
+        display: flex;
+        justify-content: center;
+        align-items: stretch;
+        height: 100vh;
+        overflow: hidden;
+      }
+      #app-container {
+        display: flex;
+        gap: 0;
+        align-items: stretch;
+        width: 100%;
+        height: 100%;
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         GAME WRAPPER (Center column with header/canvas/footer)
+         ═══════════════════════════════════════════════════════════════ */
+      #game-wrapper {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-width: 0;
+        height: 100%;
+      }
+      #game-header {
+        background: #111;
+        color: #ccc;
+        font-family: monospace;
+        font-size: 12px;
+        padding: 8px 12px;
+        flex-shrink: 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        border-bottom: 1px solid #333;
+        gap: 20px;
+      }
+      #game-header .hud-left {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      #game-header .hud-center {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+      }
+      #game-header .hud-right {
+        text-align: right;
+        font-size: 11px;
+      }
+      #game-header .resource-bars {
+        display: flex;
+        gap: 8px;
+      }
+      #game-header .resource-bar {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        font-size: 10px;
+      }
+      #game-header .resource-bar-label {
+        margin-bottom: 2px;
+        color: #888;
+      }
+      #game-header .resource-bar-track {
+        width: 60px;
+        height: 12px;
+        background: #333;
+        border: 1px solid #555;
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      #game-header .resource-bar-fill {
+        height: 100%;
+        transition: width 0.1s;
+      }
+      #game-header .sector-times {
+        display: flex;
+        gap: 12px;
+        font-size: 11px;
+      }
+      #game-header .sector-times span {
+        color: #666;
+      }
+      #game-header .lap-times-row {
+        display: flex;
+        gap: 20px;
+        font-size: 11px;
+      }
+      #game-header .lap-info {
+        font-size: 16px;
+        color: #fff;
+      }
+      #game-header .track-info-title {
+        color: #888;
+        margin-bottom: 4px;
+      }
+      #game-footer {
+        background: #111;
+        color: #ccc;
+        font-family: monospace;
+        font-size: 12px;
+        padding: 6px 12px;
+        flex-shrink: 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-top: 1px solid #333;
+        gap: 20px;
+      }
+      #game-footer .status-left {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      #game-footer .track-status {
+        font-weight: bold;
+      }
+      #game-footer .track-status.on-track {
+        color: #0f0;
+      }
+      #game-footer .track-status.off-track {
+        color: #f60;
+      }
+      #game-footer .pit-status {
+        color: #0f0;
+      }
+      #game-footer .controls {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      #game-footer .controls span {
+        color: #666;
+      }
+      #game-footer .controls .control-btn {
+        color: #888;
+        cursor: pointer;
+        text-decoration: underline;
+        padding: 2px 4px;
+      }
+      #game-footer .controls .control-btn:hover {
+        color: #fff;
+        background: #333;
+      }
+      #canvas-container {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+        background: #111;
+        /* Canvas size is set programmatically by Renderer */
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         LEFT PANELS CONTAINER (Time Trial + Tracks)
+         ═══════════════════════════════════════════════════════════════ */
+      #left-panels {
+        width: 260px;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        background: #1a1a1a;
+        border-right: 1px solid #333;
+        flex-shrink: 0;
+        overflow-y: auto;
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         TIME TRIAL PANEL (Left)
+         ═══════════════════════════════════════════════════════════════ */
+      #timetrial-panel {
+        background: #1a1a1a;
+        color: #ccc;
+        font-family: monospace;
+        font-size: 12px;
+        flex-shrink: 0;
+      }
+      #timetrial-panel .panel-header {
+        background: #252525;
+        padding: 10px;
+        font-weight: bold;
+        color: #fff;
+        border-bottom: 1px solid #333;
+      }
+      #timetrial-panel .panel-content {
+        padding: 10px;
+      }
+      #timetrial-panel .seed-display {
+        background: #222;
+        border: 1px solid #444;
+        border-radius: 4px;
+        padding: 10px;
+        margin-bottom: 12px;
+        text-align: center;
+      }
+      #timetrial-panel .seed-label {
+        display: block;
+        font-size: 10px;
+        color: #666;
+        margin-bottom: 6px;
+      }
+      #timetrial-panel .seed-value-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      #timetrial-panel .seed-value {
+        font-size: 18px;
+        font-weight: bold;
+        color: #8cf;
+        letter-spacing: 1px;
+      }
+      #timetrial-panel .copy-btn {
+        width: auto;
+        padding: 4px 8px;
+        font-size: 14px;
+        background: #333;
+        border: 1px solid #555;
+        border-radius: 3px;
+        cursor: pointer;
+        transition: background 0.15s, transform 0.1s;
+      }
+      #timetrial-panel .copy-btn:hover {
+        background: #444;
+        transform: scale(1.05);
+      }
+      #timetrial-panel .copy-btn.copied {
+        background: #2a5a2a;
+        border-color: #4a8a4a;
+      }
+      #timetrial-panel .section {
+        margin-bottom: 12px;
+      }
+      #timetrial-panel .section-header {
+        font-size: 10px;
+        color: #666;
+        margin-top: 12px;
+        margin-bottom: 6px;
+        padding-bottom: 4px;
+        border-bottom: 1px solid #333;
+      }
+      #timetrial-panel .input-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      #timetrial-panel .input-row label {
+        color: #888;
+        font-size: 11px;
+        min-width: 50px;
+      }
+      #timetrial-panel .input-row input {
+        flex: 1;
+        padding: 5px 8px;
+        font-family: monospace;
+        font-size: 11px;
+        background: #2a2a2a;
+        border: 1px solid #444;
+        border-radius: 3px;
+        color: #ccc;
+      }
+      #timetrial-panel .input-row input:focus {
+        outline: none;
+        border-color: #88f;
+      }
+      #timetrial-panel .load-row {
+        display: flex;
+        gap: 6px;
+      }
+      #timetrial-panel .load-row input {
+        flex: 1;
+        padding: 6px 8px;
+        font-family: monospace;
+        font-size: 11px;
+        background: #2a2a2a;
+        border: 1px solid #444;
+        border-radius: 3px;
+        color: #ccc;
+      }
+      #timetrial-panel .load-row input:focus {
+        outline: none;
+        border-color: #88f;
+      }
+      #timetrial-panel .load-row input::placeholder {
+        color: #666;
+      }
+      #timetrial-panel .load-btn {
+        padding: 6px 12px;
+        font-family: monospace;
+        font-size: 11px;
+        font-weight: bold;
+        background: #1a3a4a;
+        border: 1px solid #2a5a6a;
+        border-radius: 3px;
+        color: #8cf;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      #timetrial-panel .load-btn:hover {
+        background: #2a4a5a;
+      }
+      #timetrial-panel .track-info {
+        display: block;
+        font-size: 10px;
+        color: #666;
+        margin-top: 6px;
+      }
+      #timetrial-panel button {
+        width: 100%;
+        padding: 8px 12px;
+        font-family: monospace;
+        font-size: 11px;
+        cursor: pointer;
+        border: 1px solid #444;
+        border-radius: 3px;
+        background: #2a2a2a;
+        color: #ccc;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      #timetrial-panel button:hover {
+        background: #3a3a3a;
+        border-color: #666;
+      }
+      #timetrial-panel button.primary {
+        background: #1a3a4a;
+        border-color: #2a5a6a;
+        color: #8cf;
+      }
+      #timetrial-panel button.primary:hover {
+        background: #2a4a5a;
+      }
+      #timetrial-panel .current-track {
+        color: #888;
+        font-size: 11px;
+        margin-bottom: 12px;
+        padding: 6px 8px;
+        background: #222;
+        border-radius: 3px;
+      }
+      #timetrial-panel .leaderboard {
+        background: #151515;
+        border: 1px solid #333;
+        border-radius: 3px;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      #timetrial-panel .leaderboard-row {
+        display: flex;
+        padding: 6px 8px;
+        border-bottom: 1px solid #222;
+        gap: 8px;
+      }
+      #timetrial-panel .leaderboard-row:last-child {
+        border-bottom: none;
+      }
+      #timetrial-panel .leaderboard-row .position {
+        color: #666;
+        width: 20px;
+      }
+      #timetrial-panel .leaderboard-row .initials {
+        color: #aaa;
+        width: 35px;
+      }
+      #timetrial-panel .leaderboard-row .time {
+        flex: 1;
+        text-align: right;
+        color: #8f8;
+      }
+      #timetrial-panel .leaderboard-row.pos-1 .position { color: #fc0; }
+      #timetrial-panel .leaderboard-row.pos-2 .position { color: #ccc; }
+      #timetrial-panel .leaderboard-row.pos-3 .position { color: #c84; }
+      #timetrial-panel .leaderboard-row.new-record {
+        background: #1a3a1a;
+        animation: highlight-fade 2s ease-out;
+      }
+      @keyframes highlight-fade {
+        0% { background: #2a5a2a; }
+        100% { background: #1a3a1a; }
+      }
+      #timetrial-panel .no-records {
+        color: #555;
+        font-size: 11px;
+        padding: 10px;
+        text-align: center;
+      }
+      #timetrial-panel .track-list {
+        background: #151515;
+        border: 1px solid #333;
+        border-radius: 3px;
+      }
+      #timetrial-panel .popular-track {
+        display: flex;
+        padding: 6px 8px;
+        border-bottom: 1px solid #222;
+        gap: 6px;
+        cursor: pointer;
+        font-size: 11px;
+      }
+      #timetrial-panel .popular-track:last-child {
+        border-bottom: none;
+      }
+      #timetrial-panel .popular-track:hover {
+        background: #252525;
+      }
+      #timetrial-panel .popular-track .seed {
+        color: #8cf;
+        min-width: 65px;
+      }
+      #timetrial-panel .popular-track .type {
+        color: #666;
+        min-width: 30px;
+      }
+      #timetrial-panel .popular-track .best {
+        color: #8f8;
+        flex: 1;
+      }
+      #timetrial-panel .popular-track .laps {
+        color: #666;
+      }
+      #timetrial-panel .no-tracks {
+        color: #555;
+        font-size: 11px;
+        padding: 10px;
+        text-align: center;
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         TRACKS PANEL (Left, beneath Time Trial)
+         ═══════════════════════════════════════════════════════════════ */
+      #tracks-panel {
+        background: #1a1a1a;
+        border-top: 1px solid #333;
+        color: #ccc;
+        font-family: monospace;
+        font-size: 12px;
+        flex-shrink: 0;
+      }
+      #tracks-panel .panel-header {
+        background: #252525;
+        padding: 10px;
+        font-weight: bold;
+        color: #fff;
+        border-bottom: 1px solid #333;
+      }
+      #tracks-panel .panel-content {
+        padding: 10px;
+      }
+      #tracks-panel .seed-display {
+        background: #222;
+        border: 1px solid #444;
+        border-radius: 4px;
+        padding: 10px;
+        margin-bottom: 12px;
+        text-align: center;
+      }
+      #tracks-panel .seed-label {
+        display: block;
+        font-size: 10px;
+        color: #666;
+        margin-bottom: 6px;
+      }
+      #tracks-panel .seed-value-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      #tracks-panel .seed-value {
+        font-size: 18px;
+        font-weight: bold;
+        color: #8cf;
+        letter-spacing: 1px;
+      }
+      #tracks-panel .copy-btn {
+        width: auto;
+        padding: 4px 8px;
+        font-size: 14px;
+        background: #333;
+        border: 1px solid #555;
+        border-radius: 3px;
+        cursor: pointer;
+        transition: background 0.15s, transform 0.1s;
+      }
+      #tracks-panel .copy-btn:hover {
+        background: #444;
+        transform: scale(1.05);
+      }
+      #tracks-panel .copy-btn.copied {
+        background: #2a5a2a;
+        border-color: #4a8a4a;
+      }
+      #tracks-panel .track-info {
+        display: block;
+        font-size: 10px;
+        color: #666;
+        margin-top: 6px;
+      }
+      #tracks-panel .section {
+        margin-bottom: 12px;
+      }
+      #tracks-panel .section-header {
+        font-size: 10px;
+        color: #666;
+        margin-top: 12px;
+        margin-bottom: 6px;
+        padding-bottom: 4px;
+        border-bottom: 1px solid #333;
+      }
+      #tracks-panel .load-row {
+        display: flex;
+        gap: 6px;
+      }
+      #tracks-panel .load-row input {
+        flex: 1;
+        padding: 6px 8px;
+        font-family: monospace;
+        font-size: 11px;
+        background: #2a2a2a;
+        border: 1px solid #444;
+        border-radius: 3px;
+        color: #ccc;
+      }
+      #tracks-panel .load-row input:focus {
+        outline: none;
+        border-color: #88f;
+      }
+      #tracks-panel .load-row input::placeholder {
+        color: #666;
+      }
+      #tracks-panel .load-btn {
+        padding: 6px 12px;
+        font-family: monospace;
+        font-size: 11px;
+        font-weight: bold;
+        background: #1a3a4a;
+        border: 1px solid #2a5a6a;
+        border-radius: 3px;
+        color: #8cf;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      #tracks-panel .load-btn:hover {
+        background: #2a4a5a;
+      }
+      #tracks-panel .tracks-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 0;
+      }
+      #tracks-panel .tracks-row label {
+        color: #888;
+        font-size: 11px;
+      }
+      #tracks-panel .tracks-row select {
+        background: #2a2a2a;
+        border: 1px solid #444;
+        color: #ccc;
+        padding: 5px 8px;
+        border-radius: 3px;
+        width: 140px;
+        font-family: monospace;
+        font-size: 11px;
+      }
+      #tracks-panel .tracks-row select:focus {
+        outline: none;
+        border-color: #88f;
+      }
+      #tracks-panel .generate-btn {
+        width: 100%;
+        padding: 10px;
+        background: #2d5a27;
+        border: 1px solid #3d7a37;
+        border-radius: 3px;
+        color: #8f8;
+        font-family: monospace;
+        font-size: 12px;
+        font-weight: bold;
+        cursor: pointer;
+        margin-top: 4px;
+        transition: background 0.15s;
+      }
+      #tracks-panel .generate-btn:hover {
+        background: #3d7a37;
+      }
+      #tracks-panel .slider-container {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 140px;
+      }
+      #tracks-panel .slider-container input[type="range"] {
+        flex: 1;
+        height: 4px;
+        -webkit-appearance: none;
+        appearance: none;
+        background: #333;
+        border-radius: 2px;
+        outline: none;
+      }
+      #tracks-panel .slider-container input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 12px;
+        height: 12px;
+        background: #8cf;
+        border-radius: 50%;
+        cursor: pointer;
+      }
+      #tracks-panel .slider-container input[type="range"]::-moz-range-thumb {
+        width: 12px;
+        height: 12px;
+        background: #8cf;
+        border-radius: 50%;
+        cursor: pointer;
+        border: none;
+      }
+      #tracks-panel .slider-value {
+        color: #8cf;
+        font-weight: bold;
+        font-size: 11px;
+        min-width: 24px;
+        text-align: right;
+      }
+      #tracks-panel .slider-row label {
+        min-width: 70px;
+      }
+      #tracks-panel .advanced-section {
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+        max-height: 500px;
+      }
+      #tracks-panel .advanced-section.collapsed {
+        max-height: 0;
+      }
+      #tracks-panel .sliders-group {
+        padding: 4px 0;
+      }
+      #tracks-panel .section-header.clickable {
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 0;
+        user-select: none;
+      }
+      #tracks-panel .section-header.clickable:hover {
+        color: #aaa;
+      }
+      #tracks-panel .section-header .chevron {
+        font-size: 10px;
+        color: #666;
+      }
+
+      /* Filter buttons (shared style with Time Trial) */
+      .filter-buttons {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 8px;
+      }
+      .filter-btn {
+        flex: 1;
+        padding: 6px 8px;
+        background: #2a2a2a;
+        border: 1px solid #444;
+        border-radius: 3px;
+        color: #888;
+        cursor: pointer;
+        font-family: monospace;
+        font-size: 10px;
+        transition: all 0.15s;
+      }
+      .filter-btn:hover:not(.active) {
+        background: #333;
+        color: #aaa;
+      }
+      .filter-btn.active {
+        background: #1a3a4a;
+        border-color: #2a5a6a;
+        color: #8cf;
+      }
+
+      /* Source toggle (Local/Global) */
+      .source-buttons {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 6px;
+      }
+      .source-btn {
+        flex: 1;
+        padding: 6px 8px;
+        background: #2a2a2a;
+        border: 1px solid #444;
+        border-radius: 3px;
+        color: #888;
+        cursor: pointer;
+        font-family: monospace;
+        font-size: 10px;
+        transition: all 0.15s;
+      }
+      .source-btn:hover:not(.active):not(.disabled) {
+        background: #333;
+        color: #aaa;
+      }
+      .source-btn.active {
+        background: #2a3a2a;
+        border-color: #3a5a3a;
+        color: #8f8;
+      }
+      .source-btn.disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      /* Player rank display */
+      #timetrial-panel .player-rank {
+        background: #1a2a1a;
+        border: 1px solid #2a4a2a;
+        border-radius: 3px;
+        padding: 6px 8px;
+        margin-bottom: 8px;
+        font-size: 11px;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      #timetrial-panel .player-rank .rank-label {
+        color: #888;
+      }
+      #timetrial-panel .player-rank .rank-value {
+        color: #8f8;
+        font-weight: bold;
+      }
+      #timetrial-panel .player-rank .rank-total {
+        color: #666;
+      }
+      #timetrial-panel .player-rank .rank-time {
+        color: #8cf;
+        margin-left: auto;
+      }
+
+      /* Loading state */
+      #timetrial-panel .loading {
+        color: #666;
+        font-size: 11px;
+        padding: 10px;
+        text-align: center;
+        font-style: italic;
+      }
+
+      /* Current device highlight in global leaderboard */
+      #timetrial-panel .leaderboard-row.current-device {
+        background: #1a2a1a;
+        border-left: 2px solid #8f8;
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         TRAINING PANEL (Right) - Consolidated replays, agents, rewards
+         ═══════════════════════════════════════════════════════════════ */
+      #training-panel {
+        width: 300px;
+        height: 100%;
+        background: #1a1a1a;
+        border-left: 1px solid #333;
+        color: #ccc;
+        font-family: monospace;
+        font-size: 12px;
+        overflow-y: auto;
+        flex-shrink: 0;
+      }
+      #training-panel .panel-header {
+        background: #252535;
+        padding: 10px;
+        font-weight: bold;
+        color: #fff;
+        border-bottom: 1px solid #333;
+      }
+      #training-panel .panel-content {
+        padding: 10px;
+      }
+      #training-panel .section {
+        margin-bottom: 14px;
+      }
+      #training-panel .section-header {
+        color: #888;
+        font-size: 10px;
+        margin-bottom: 6px;
+        letter-spacing: 1px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      #training-panel .section-header.clickable {
+        cursor: pointer;
+        background: #252530;
+        padding: 6px 8px;
+        margin: 0 -10px 6px -10px;
+        border-radius: 3px;
+      }
+      #training-panel .section-header.clickable:hover {
+        background: #303040;
+        color: #ccc;
+      }
+      #training-panel .section-header .chevron {
+        font-size: 10px;
+        color: #888;
+        margin-left: auto;
+      }
+      #training-panel .count-badge {
+        color: #666;
+        font-weight: normal;
+      }
+
+      /* Playing indicator */
+      #training-panel .playing-indicator {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px;
+        background: #2a3540;
+        border: 1px solid #3a5060;
+        border-radius: 3px;
+        margin-bottom: 10px;
+        color: #8cf;
+      }
+      #training-panel .stop-btn {
+        padding: 4px 10px;
+        background: #4a3030;
+        border: 1px solid #6a4040;
+        border-radius: 3px;
+        color: #faa;
+        cursor: pointer;
+        font-family: monospace;
+        font-size: 11px;
+      }
+      #training-panel .stop-btn:hover {
+        background: #5a4040;
+      }
+
+      /* Lap list */
+      #training-panel .replay-list {
+        background: #151515;
+        border: 1px solid #333;
+        border-radius: 3px;
+        max-height: 180px;
+        overflow-y: auto;
+      }
+      #training-panel .replay-row {
+        display: flex;
+        align-items: center;
+        padding: 6px 8px;
+        border-bottom: 1px solid #222;
+        gap: 6px;
+        font-size: 11px;
+      }
+      #training-panel .replay-row:last-child {
+        border-bottom: none;
+      }
+      #training-panel .replay-row.playing {
+        background: #1a2a3a;
+      }
+      #training-panel .replay-pos {
+        color: #666;
+        width: 20px;
+      }
+      #training-panel .replay-time {
+        color: #8cf;
+        font-weight: bold;
+        min-width: 50px;
+      }
+      #training-panel .replay-driver {
+        color: #aaa;
+        flex: 1;
+        font-size: 10px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #training-panel .ai-driver {
+        color: #a8f;
+        background: #2a2040;
+        padding: 1px 4px;
+        border-radius: 2px;
+        font-size: 9px;
+      }
+      #training-panel .replay-play {
+        background: #2a3a2a;
+        border: 1px solid #3a5a3a;
+        border-radius: 3px;
+        color: #8f8;
+        cursor: pointer;
+        padding: 2px 6px;
+        font-size: 10px;
+      }
+      #training-panel .replay-play:hover {
+        background: #3a4a3a;
+      }
+      #training-panel .replay-train-label {
+        cursor: pointer;
+      }
+      #training-panel .replay-train {
+        cursor: pointer;
+        accent-color: #6c6;
+      }
+      #training-panel .replay-train:disabled {
+        cursor: not-allowed;
+        opacity: 0.4;
+      }
+      #training-panel .no-replays {
+        color: #666;
+        font-style: italic;
+        padding: 10px;
+        text-align: center;
+      }
+
+      /* Quality scores (0-100) */
+      #training-panel .quality-score {
+        font-size: 10px;
+        font-weight: bold;
+        min-width: 28px;
+        text-align: center;
+        padding: 1px 4px;
+        border-radius: 3px;
+      }
+      #training-panel .quality-score.quality-excellent {
+        color: #ffd700;
+        background: rgba(255, 215, 0, 0.15);
+      }
+      #training-panel .quality-score.quality-great {
+        color: #8f8;
+        background: rgba(136, 255, 136, 0.1);
+      }
+      #training-panel .quality-score.quality-good {
+        color: #cc8;
+        background: rgba(204, 204, 136, 0.1);
+      }
+      #training-panel .quality-score.quality-fair {
+        color: #c88;
+        background: rgba(204, 136, 136, 0.1);
+      }
+      #training-panel .quality-score.quality-poor {
+        color: #888;
+        background: rgba(136, 136, 136, 0.1);
+      }
+
+      /* Personal Best badge */
+      #training-panel .pb-badge {
+        background: linear-gradient(135deg, #ffd700, #ffb800);
+        color: #000;
+        font-weight: bold;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 9px;
+        min-width: 42px;
+        text-align: center;
+        text-shadow: none;
+      }
+
+      /* Incident badges (off-track, collision indicators) */
+      #training-panel .incident-badges {
+        font-size: 10px;
+        min-width: 28px;
+        text-align: center;
+      }
+      #training-panel .incident-badges.clean {
+        color: #6a6;
+      }
+      #training-panel .incident-badge {
+        margin: 0 1px;
+      }
+      #training-panel .incident-badge.off-track {
+        color: #f80;
+      }
+      #training-panel .incident-badge.collision {
+        color: #f44;
+      }
+
+      /* Agent select */
+      #training-panel .agent-select-row {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 6px;
+      }
+      #training-panel .agent-select {
+        flex: 1;
+        padding: 6px 8px;
+        font-family: monospace;
+        font-size: 11px;
+        background: #2a2a2a;
+        border: 1px solid #444;
+        border-radius: 3px;
+        color: #ccc;
+      }
+      #training-panel .agent-select:focus {
+        outline: none;
+        border-color: #a8f;
+      }
+      #training-panel .new-agent-row {
+        margin-bottom: 6px;
+      }
+      #training-panel .agent-name-input {
+        width: 100%;
+        padding: 6px 8px;
+        font-family: monospace;
+        font-size: 11px;
+        background: #2a2a2a;
+        border: 1px solid #444;
+        border-radius: 3px;
+        color: #ccc;
+      }
+      #training-panel .agent-name-input:focus {
+        outline: none;
+        border-color: #a8f;
+      }
+      #training-panel .agent-info {
+        display: flex;
+        gap: 12px;
+        font-size: 10px;
+        color: #888;
+        padding: 4px 0;
+      }
+      #training-panel .agent-stat {
+        color: #8f8;
+      }
+      #training-panel .icon-btn {
+        padding: 4px 8px;
+        background: #2a2a2a;
+        border: 1px solid #444;
+        border-radius: 3px;
+        color: #ccc;
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+      }
+      #training-panel .icon-btn:hover {
+        background: #3a3a3a;
+      }
+      #training-panel .icon-btn.danger {
+        color: #faa;
+        border-color: #5a3a3a;
+      }
+      #training-panel .icon-btn.danger:hover {
+        background: #4a3a3a;
+      }
+      #training-panel .icon-btn.small {
+        padding: 2px 6px;
+        font-size: 11px;
+      }
+      #training-panel .icon-btn:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+      }
+      #training-panel .laps-header {
+        justify-content: space-between;
+      }
+
+      /* Rewards section */
+      #training-panel .rewards-content {
+        padding-top: 6px;
+      }
+      #training-panel .preset-row {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 10px;
+      }
+      #training-panel .preset-select {
+        flex: 1;
+        padding: 5px 8px;
+        font-family: monospace;
+        font-size: 11px;
+        background: #2a2a2a;
+        border: 1px solid #444;
+        border-radius: 3px;
+        color: #ccc;
+      }
+      #training-panel .preset-select:focus {
+        outline: none;
+        border-color: #88f;
+      }
+      #training-panel .small-btn {
+        padding: 5px 10px;
+        background: #2a2a2a;
+        border: 1px solid #444;
+        border-radius: 3px;
+        color: #ccc;
+        cursor: pointer;
+        font-family: monospace;
+        font-size: 10px;
+      }
+      #training-panel .small-btn:hover {
+        background: #3a3a3a;
+      }
+      #training-panel .slider-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+      #training-panel .slider-label {
+        color: #aaa;
+        font-size: 10px;
+        min-width: 60px;
+      }
+      #training-panel .slider-input {
+        flex: 1;
+        height: 4px;
+        -webkit-appearance: none;
+        appearance: none;
+        background: #333;
+        border-radius: 2px;
+        outline: none;
+      }
+      #training-panel .slider-input::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 12px;
+        height: 12px;
+        background: #8cf;
+        border-radius: 50%;
+        cursor: pointer;
+      }
+      #training-panel .slider-input::-moz-range-thumb {
+        width: 12px;
+        height: 12px;
+        background: #8cf;
+        border-radius: 50%;
+        cursor: pointer;
+        border: none;
+      }
+      #training-panel .slider-value {
+        color: #8cf;
+        font-weight: bold;
+        font-size: 10px;
+        min-width: 30px;
+        text-align: right;
+      }
+
+      /* Training mode toggle */
+      #training-panel .mode-toggle {
+        display: flex;
+        gap: 0;
+        margin-bottom: 10px;
+        border-radius: 3px;
+        overflow: hidden;
+        border: 1px solid #444;
+      }
+      #training-panel .mode-btn {
+        flex: 1;
+        padding: 8px 10px;
+        background: #2a2a2a;
+        border: none;
+        color: #888;
+        cursor: pointer;
+        font-family: monospace;
+        font-size: 11px;
+        transition: background 0.15s, color 0.15s;
+      }
+      #training-panel .mode-btn:first-child {
+        border-right: 1px solid #444;
+      }
+      #training-panel .mode-btn:hover:not(.active) {
+        background: #333;
+        color: #aaa;
+      }
+      #training-panel .mode-btn.active {
+        background: #3a4a3a;
+        color: #8f8;
+      }
+      #training-panel .mode-hint {
+        font-size: 10px;
+        color: #666;
+        font-style: italic;
+        margin-bottom: 10px;
+        padding: 6px 8px;
+        background: #1a1a1a;
+        border-radius: 3px;
+      }
+      #training-panel .rewards-section {
+        margin: 10px 0;
+        padding: 8px;
+        background: #1a1a20;
+        border: 1px solid #333;
+        border-radius: 3px;
+      }
+
+      /* Episodes slider */
+      #training-panel .episodes-slider-row {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 10px;
+      }
+      #training-panel .episodes-slider-row label {
+        color: #888;
+        font-size: 11px;
+        display: flex;
+        justify-content: space-between;
+      }
+      #training-panel .episodes-slider-row label span {
+        color: #8cf;
+        font-weight: bold;
+      }
+      #training-panel .episodes-slider {
+        width: 100%;
+        height: 6px;
+        -webkit-appearance: none;
+        appearance: none;
+        background: #333;
+        border-radius: 3px;
+        outline: none;
+      }
+      #training-panel .episodes-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 14px;
+        height: 14px;
+        background: #8cf;
+        border-radius: 50%;
+        cursor: pointer;
+      }
+      #training-panel .episodes-slider::-moz-range-thumb {
+        width: 14px;
+        height: 14px;
+        background: #8cf;
+        border-radius: 50%;
+        cursor: pointer;
+        border: none;
+      }
+
+      /* Action buttons */
+      #training-panel .action-btn {
+        width: 100%;
+        padding: 8px 12px;
+        background: #2a3a2a;
+        border: 1px solid #3a5a3a;
+        color: #8f8;
+        cursor: pointer;
+        font-family: monospace;
+        font-size: 12px;
+        border-radius: 3px;
+        margin-bottom: 6px;
+      }
+      #training-panel .action-btn:hover:not(:disabled) {
+        background: #3a4a3a;
+      }
+      #training-panel .action-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      #training-panel .action-btn.primary {
+        background: #2a4a3a;
+        border-color: #3a6a4a;
+        color: #8f8;
+      }
+      #training-panel .action-btn.primary:hover:not(:disabled) {
+        background: #3a5a4a;
+      }
+      #training-panel .action-btn.secondary {
+        background: #303040;
+        border-color: #404060;
+        color: #aaf;
+      }
+      #training-panel .action-btn.secondary:hover:not(:disabled) {
+        background: #404050;
+      }
+      #training-panel .action-btn.sil {
+        background: #2a3a2a;
+        border-color: #3a5a3a;
+        color: #8f8;
+      }
+      #training-panel .action-btn.sil:hover:not(:disabled) {
+        background: #3a4a3a;
+      }
+      #training-panel .action-btn.danger {
+        background: #4a2a2a;
+        border-color: #6a3a3a;
+        color: #f88;
+      }
+      #training-panel .action-btn.danger:hover:not(:disabled) {
+        background: #5a3a3a;
+      }
+
+      /* SIL Section */
+      #training-panel .sil-section {
+        background: #1a2a1a;
+        margin: 0 -10px;
+        padding: 10px;
+        border-top: 1px solid #2a3a2a;
+        border-bottom: 1px solid #2a3a2a;
+      }
+      #training-panel .sil-info {
+        font-size: 10px;
+        color: #888;
+        margin-bottom: 8px;
+      }
+      #training-panel .sil-info p {
+        margin: 0;
+      }
+      #training-panel .sil-running {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: bold;
+        color: #8f8;
+        margin-bottom: 8px;
+      }
+      #training-panel .sil-indicator {
+        animation: pulse 1s infinite;
+        color: #8f8;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+      }
+      #training-panel .sil-stats-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 8px;
+        font-size: 11px;
+      }
+      #training-panel .sil-stat-group {
+        background: #1a2a1a;
+        padding: 6px 8px;
+        border-radius: 4px;
+        border: 1px solid #2a4a2a;
+      }
+      #training-panel .sil-stat-label {
+        font-size: 9px;
+        color: #6a8a6a;
+        letter-spacing: 0.5px;
+        margin-bottom: 4px;
+      }
+      #training-panel .sil-stat-row {
+        color: #aaa;
+        margin: 2px 0;
+      }
+      #training-panel .sil-stat-row span {
+        color: #8f8;
+        font-weight: bold;
+      }
+
+      /* Progress */
+      #training-panel .train-progress {
+        margin-top: 8px;
+      }
+      #training-panel .progress-bar {
+        height: 6px;
+        background: #333;
+        border-radius: 3px;
+        overflow: hidden;
+        margin-bottom: 4px;
+      }
+      #training-panel .progress-fill {
+        height: 100%;
+        background: #6c6;
+        width: 0%;
+        transition: width 0.2s;
+      }
+      #training-panel #tp-progress-text {
+        font-size: 10px;
+        color: #888;
+      }
+
+      /* Stats */
+      #training-panel .stats-section {
+        padding-top: 8px;
+        border-top: 1px solid #333;
+      }
+      #training-panel .stats-label {
+        color: #666;
+        font-size: 10px;
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         NOTIFICATIONS (Toast messages)
+         ═══════════════════════════════════════════════════════════════ */
+      .notification-container {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        pointer-events: none;
+      }
+      .notification {
+        padding: 12px 20px;
+        border-radius: 6px;
+        font-family: monospace;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        animation: notificationSlideIn 0.3s ease-out;
+        pointer-events: auto;
+      }
+      .notification-icon {
+        font-size: 16px;
+      }
+      .notification-message {
+        white-space: nowrap;
+      }
+      .notification-fade-out {
+        animation: notificationFadeOut 0.3s ease-in forwards;
+      }
+
+      /* Notification types */
+      .notification-success {
+        background: linear-gradient(135deg, #1a3a1a, #2a4a2a);
+        border: 1px solid #3a8a3a;
+        color: #8f8;
+      }
+      .notification-info {
+        background: linear-gradient(135deg, #1a2a3a, #2a3a4a);
+        border: 1px solid #3a6a8a;
+        color: #8cf;
+      }
+      .notification-warning {
+        background: linear-gradient(135deg, #3a3a1a, #4a4a2a);
+        border: 1px solid #8a8a3a;
+        color: #ff8;
+      }
+      .notification-improvement {
+        background: linear-gradient(135deg, #2a1a3a, #3a2a4a);
+        border: 1px solid #6a3a8a;
+        color: #c8f;
+      }
+      .notification-gold {
+        background: linear-gradient(135deg, #3a3a1a, #4a4a2a);
+        border: 1px solid #c9a227;
+        color: #ffd700;
+        text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+      }
+
+      @keyframes notificationSlideIn {
+        from {
+          opacity: 0;
+          transform: translateY(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      @keyframes notificationFadeOut {
+        from {
+          opacity: 1;
+          transform: translateY(0);
+        }
+        to {
+          opacity: 0;
+          transform: translateY(-10px);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app-container">
+      <div id="left-panels">
+        <div id="timetrial-panel"></div>
+        <div id="tracks-panel"></div>
+      </div>
+      <div id="game-wrapper">
+        <div id="game-header"></div>
+        <div id="canvas-container">
+          <canvas id="game"></canvas>
+        </div>
+        <div id="game-footer"></div>
+      </div>
+      <div id="training-panel"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
