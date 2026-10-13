@@ -1,10 +1,37 @@
-import type { Car } from '../sim/car';
-import type { Wrecker } from '../sim/raceControl';
+/**
+ * What the renderer needs from a car: a sim Car, or a snapshot of one
+ * streamed from an event worker.
+ */
+export interface RenderCar {
+  id: number;
+  x: number;
+  y: number;
+  dist: number;
+  color: string;
+  retired: boolean;
+  cleared: boolean;
+  towed: boolean;
+  parked: boolean;
+  inputX: number;
+  inputY: number;
+  frameX: number;
+  frameY: number;
+  trackIdx: number;
+  tireLon: number;
+  tireLat: number;
+  bankAcc: number;
+}
+
+/** Officials on track: the pace car, and wreckers (phase 'done' once parked). */
+export interface RenderOfficials {
+  paceCar: { x: number; y: number } | null;
+  wreckers: Array<{ x: number; y: number; phase: string }>;
+}
 import { G, PHYSICS as P } from '../sim/constants';
 import type { Decoration, Edge, LineStyle, Marking, SRange, Surface, SurfaceRegion, TrackRect } from '../sim/layout';
 import type { Track } from '../sim/track';
 import { numberColor, PACE_CAR_LIVERY, type Livery } from './livery';
-import { GROOVE_DISPLAY_ALPHA, GROOVE_STROKE_ALPHA, GROOVE_WIDTH, grooveChance, skidStroke } from './marks';
+import { GROOVE_DISPLAY_ALPHA, GROOVE_STROKE_ALPHA, GROOVE_WIDTH, grooveChance, skidStroke, STROKE_FIELDS } from './marks';
 
 const COLORS = {
   background: '#0d0d0f',
@@ -141,7 +168,6 @@ export class Renderer {
   private focusX = 0;
   private focusY = 0;
   private trackDirty = true;
-  private readonly lastPos = new Map<Car, [number, number]>();
   private debugLayers: DebugLayers = { inputs: true, forces: false, banking: false };
   dotMode: DotMode = 'legible';
 
@@ -551,50 +577,42 @@ export class Renderer {
 
   /** Erase all accumulated tire marks. */
   clearMarks(): void {
-    this.lastPos.clear();
     this.grooveCtx.clearRect(0, 0, this.groove.width, this.groove.height);
     this.marksCtx.clearRect(0, 0, this.marks.width, this.marks.height);
   }
 
-  /** Stamp this step's tire marks onto the permanent groove and skid layers. */
-  stampMarks(cars: Car[]): void {
+  /** Stamp mark strokes (from a StrokeCollector) onto the permanent groove and skid layers. */
+  stampStrokes(strokes: Float32Array): void {
     if (!this.track) return;
     const groove = this.grooveCtx, skids = this.marksCtx;
     groove.lineCap = 'round';
     skids.lineCap = 'round';
     groove.strokeStyle = `rgba(${COLORS.rubber},${GROOVE_STROKE_ALPHA})`;
-    for (const car of cars) {
-      const [x, y] = this.toMarks(car.x, car.y);
-      const prev = this.lastPos.get(car);
-      if (prev && Math.hypot(x - prev[0], y - prev[1]) < 1.5) continue; // batch tiny moves
-      this.lastPos.set(car, [x, y]);
-      if (!prev || Math.hypot(x - prev[0], y - prev[1]) > 30 * MARK_RES) continue; // first sight or respawn teleport
-      if (Math.random() < grooveChance(car)) {
-        groove.lineWidth = GROOVE_WIDTH * MARK_RES;
+    groove.lineWidth = GROOVE_WIDTH * MARK_RES;
+    for (let k = 0; k + STROKE_FIELDS <= strokes.length; k += STROKE_FIELDS) {
+      const [x0, y0] = this.toMarks(strokes[k], strokes[k + 1]);
+      const [x1, y1] = this.toMarks(strokes[k + 2], strokes[k + 3]);
+      if (Math.random() < grooveChance({ groove: strokes[k + 4] })) {
         groove.beginPath();
-        groove.moveTo(prev[0], prev[1]);
-        groove.lineTo(x, y);
+        groove.moveTo(x0, y0);
+        groove.lineTo(x1, y1);
         groove.stroke();
       }
-      const skid = skidStroke(car);
+      const skid = skidStroke({ skid: strokes[k + 5], surface: strokes[k + 6] ? 'grass' : 'track' });
       if (skid) {
         skids.strokeStyle = `rgba(${skid.turf ? COLORS.turf : COLORS.rubber},${skid.alpha.toFixed(3)})`;
         skids.lineWidth = skid.width * MARK_RES;
         skids.beginPath();
-        skids.moveTo(prev[0], prev[1]);
-        skids.lineTo(x, y);
+        skids.moveTo(x0, y0);
+        skids.lineTo(x1, y1);
         skids.stroke();
       }
     }
   }
 
-  forget(car: Car): void {
-    this.lastPos.delete(car);
-  }
-
   render(
-    cars: Car[], liveryOf: (car: Car) => Livery | undefined, highlight: Car | null = null,
-    officials: { paceCar: Car | null; wreckers: Wrecker[] } = { paceCar: null, wreckers: [] },
+    cars: RenderCar[], liveryOf: (car: RenderCar) => Livery | undefined, highlight: RenderCar | null = null,
+    officials: RenderOfficials = { paceCar: null, wreckers: [] },
   ): void {
     const ctx = this.ctx;
     const track = this.track;
@@ -709,7 +727,7 @@ export class Renderer {
   }
 
   /** Pace car (white, amber light bar) and wreckers (orange trucks), lights flashing. */
-  private drawOfficials(o: { paceCar: Car | null; wreckers: Wrecker[] }, r: number): void {
+  private drawOfficials(o: RenderOfficials, r: number): void {
     const ctx = this.ctx;
     const flash = Math.floor(performance.now() / 250) % 2 === 0;
     const light = (x: number, y: number, rr: number) => {

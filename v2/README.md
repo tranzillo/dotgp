@@ -43,6 +43,8 @@ npx tsx scripts/incidents.ts --tracks speedway,short --seeds 2 --field 24 --pace
 | `src/render/livery.ts` | Random contrasting fill/border pairs and unique numbers |
 | `src/ui/roster.ts` | Agent pools (drivers, spotters, crew chiefs), teams, mix and match, persistence and migration |
 | `src/ui/season.ts` | Seasons, points, careers, off-season (relegated seats go to rookies from the top) |
+| `src/events/session.ts` | One session (race, practice, ghost laps) as a DOM-free object: world, race control, respawns, radio, technique, standings; snapshots for the viewer, results for the records |
+| `src/events/event.worker.ts`, `host.ts`, `protocol.ts` | Events in workers: one per event, attached (on screen, real time × speed, streaming snapshots and tire-mark strokes) or in the background (races flat out, open sessions paused) |
 | `src/records/activity.ts` | The permanent activity log: one record per agent per thing that happened (joined, signed/released, practice round, license, strategy round, race result, season), with the agent's brain version; career summaries and learning curves derived from it |
 | `src/records/idbStore.ts` | Activity records in IndexedDB (in-memory store for tests and scripts) |
 | `src/records/occupancy.ts` | Who is busy where: an agent is in at most one running event at a time, claimed all-or-nothing |
@@ -84,6 +86,8 @@ Races start behind the pace car: the field forms up double file, runs a pace lap
 Garage lot behind pit road (wrecks are parked there), escape lane from the back-straight apron across the infield. Progress only counts distance driven, so neither is a shortcut.
 
 ## Roster, events and records
+
+Sessions run as **events**, each in its own worker. One event is on screen (attached): it runs in real time × the viewing speed and streams snapshots and tire-mark strokes to the renderer. The rest run in the background: races flat out (a 10-lap race finishes in a second or two), open sessions paused, since they exist to be watched and their learning happens in the trainer. The Events panel lists them with Watch / Background / Stop. When a race finishes in the background, the weekend loop carries on in the background (practice, then the next race), so a season can run unwatched.
 
 Every agent (driver, spotter, crew chief) belongs to the organisation: seated in a team's car, or in the **academy** with no seat (released drivers land there; *Recruit* signs new ones). Whatever is on screen is an **event** (a race, a practice session, ghost laps) that claims its participants: an agent takes part in one event at a time, and may learn during any of them. Practice training runs only inside the practice session, so the field never practises and races at once.
 

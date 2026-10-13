@@ -58,6 +58,10 @@
       .note { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
       #radio { font-family: var(--mono); font-size: 12px; min-height: 13em; }
       #rosterWrap { max-height: 260px; overflow-y: auto; }
+      #eventsWrap { max-height: 180px; overflow-y: auto; margin-bottom: 6px; }
+      table.events td { text-align: left; white-space: normal; font-family: system-ui, sans-serif; }
+      table.events td.act { text-align: right; white-space: nowrap; }
+      table.events td.act button { padding: 2px 7px; margin-left: 3px; }
       table.roster td { text-align: left; }
       a[data-agent] { color: var(--text); text-decoration: underline; text-decoration-color: #4a4a52; text-underline-offset: 2px; cursor: pointer; }
       a[data-agent]:hover { text-decoration-color: var(--text); }
@@ -110,6 +114,10 @@
         <div id="hud"></div>
       </div>
       <aside>
+        <h2>Events <span class="muted">(one on screen, the rest run in the background)</span></h2>
+        <div id="eventsWrap"><table class="events"><tbody id="events"></tbody></table></div>
+        <div class="row"><button id="clearEvents">Clear finished</button></div>
+
         <h2>Session</h2>
         <div class="row" id="trackButtons"></div>
         <div class="row"><button id="newTrack" title="Generate a random oval (drivers have only trained on the three presets)">New track</button></div>
