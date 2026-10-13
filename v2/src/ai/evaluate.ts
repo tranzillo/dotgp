@@ -24,7 +24,7 @@ export interface TrialOptions {
 }
 
 /** Worn-tire and fuel-load range drivers practise with, so stints don't surprise them. */
-const TIRE_RANGE: [number, number] = [0.35, 1];
+const TIRE_RANGE: [number, number] = [0.15, 1];
 const FUEL_RANGE: [number, number] = [8, P.FUEL_CAPACITY];
 
 export interface TrialResult {

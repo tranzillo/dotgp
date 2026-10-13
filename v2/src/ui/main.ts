@@ -6,16 +6,21 @@ import type { PracticeRequest, PracticeRound } from '../ai/practice.worker';
 import { Rng } from '../ai/rng';
 import { describeRadio, RADIO_SIZE, TowerSpotter } from '../ai/spotter';
 import type { Livery } from '../render/livery';
-import { Renderer, type DotMode } from '../render/renderer';
+import { Renderer, type DebugLayers, type DotMode } from '../render/renderer';
 import { Car, SIGNATURE_BINS } from '../sim/car';
-import { PHYSICS as P } from '../sim/constants';
+import { G, PHYSICS as P } from '../sim/constants';
 import { placeOnGrid, ROLLING_START_SPEED } from '../sim/grid';
 import { Race } from '../sim/race';
-import { FLAT_TRACK, SHORT_TRACK, SPEEDWAY, Track, type OvalSpec } from '../sim/track';
+import type { Track } from '../sim/track';
+import { generateTrack, PRESETS, presetTrack } from '../trackgen';
 import { World } from '../sim/world';
+import { ActivityLog, MemoryActivityStore, type AgentRole, type EventRef } from '../records/activity';
+import { IndexedDbActivityStore } from '../records/idbStore';
+import { Occupancy } from '../records/occupancy';
+import { AgentPage } from './agentPage';
 import { Roster, type ChiefAgent, type Role, type TeamEntry } from './roster';
 import {
-  driverStandings, newSeason, nextTrack, offSeason, recordRace, seasonComplete, type SeasonState,
+  driverStandings, newSeason, nextTrack, offSeason, pointsFor, recordRace, seasonComplete, type SeasonState,
 } from './season';
 
 // ---------- Roster ----------
@@ -27,6 +32,28 @@ const rng = new Rng((Math.random() * 2 ** 32) >>> 0);
 let roster = new Roster(rng);
 let fieldSize = 8;
 const field = () => roster.teams.slice(0, fieldSize);
+
+// ---------- Records: who is where, and everything they do ----------
+
+/** The permanent activity log (IndexedDB; in memory where that's unavailable). */
+const activity = new ActivityLog(typeof indexedDB !== 'undefined' ? new IndexedDbActivityStore() : new MemoryActivityStore());
+/** Which event each agent is in: an agent is in at most one at a time. */
+const occupancy = new Occupancy();
+/** The session on screen, as an event. */
+let sessionEvent: EventRef | null = null;
+let eventCounter = 0;
+
+/** Log every arrival and seat change on the roster. */
+function watchRoster(r: Roster): void {
+  r.onChange = (c) => {
+    if (c.type === 'joined') {
+      activity.record({ kind: 'joined', agent: c.agent, role: c.role, data: { name: c.name, origin: c.origin, mentor: c.mentor } });
+    } else {
+      activity.record({ kind: 'seat', agent: c.agent, role: c.role, event: sessionEvent ?? undefined, data: { action: c.action, team: c.team, car: c.car } });
+    }
+  };
+}
+watchRoster(roster);
 
 function persist(): void {
   try {
@@ -62,13 +89,25 @@ function makeChief(agent: ChiefAgent): CrewChief {
 
 // ---------- Session state ----------
 
-const TRACKS: Record<string, OvalSpec> = { Speedway: SPEEDWAY, 'Short track': SHORT_TRACK, 'Flat track': FLAT_TRACK };
+/** Tracks by name: the presets (the season's calendar), plus any generated this session. */
+const TRACKS = new Map<string, Track>(Object.keys(PRESETS).map((id) => [presetTrack(id).name, presetTrack(id)]));
+const SEASON_TRACKS = [...TRACKS.keys()];
 /** Each track appears this many times per season. */
 const ROUNDS_PER_TRACK = 2;
-let season: SeasonState = newSeason(Object.keys(TRACKS), ROUNDS_PER_TRACK);
+let season: SeasonState = newSeason(SEASON_TRACKS, ROUNDS_PER_TRACK);
 let raceRecorded = false;
-let trackName = 'Speedway';
-let track = new Track(TRACKS[trackName]);
+let trackName = SEASON_TRACKS[0];
+let track = TRACKS.get(trackName)!;
+
+/** Generate an oval and add it to the track list (seed and variant random unless given). */
+function addGeneratedTrack(seed = Math.floor(Math.random() * 1e9), variant?: string): Track {
+  const t = generateTrack({ type: 'oval', seed, variant });
+  const label = `${t.name} (${t.layout.params.variant})`;
+  TRACKS.set(label, t);
+  trackOptions.push([label, label]);
+  return t;
+}
+const trackOptions: Array<[string, string]> = SEASON_TRACKS.map((k) => [k, k]);
 /** race: laps, pits, DNFs. practice: open session, wrecks respawn. ghost: no contact. */
 type Mode = 'race' | 'practice' | 'ghost';
 let mode: Mode = 'race';
@@ -110,7 +149,25 @@ function rollingRestart(car: Car): void {
   car.vy = track.ty[car.trackIdx] * ROLLING_START_SPEED;
 }
 
+/** The on-screen session as an event: it claims every agent in the field for as long as it runs. */
+function startSessionEvent(): void {
+  if (sessionEvent) occupancy.release(sessionEvent.id);
+  const type = mode === 'ghost' ? 'ghost' : mode;
+  const label = mode === 'race'
+    ? `Season ${season.number} round ${Math.min(season.races.length + 1, season.schedule.length)} · ${trackName}`
+    : mode === 'practice' ? `Practice · ${trackName}` : `Ghost laps · ${trackName}`;
+  sessionEvent = {
+    id: `${type}-${Date.now().toString(36)}-${++eventCounter}`, type, label, track: trackName,
+    parent: mode === 'race' ? `season-${season.number}` : undefined,
+  };
+  const conflicts = occupancy.claim(sessionEvent, field().flatMap((t) => [t.driver, t.spotter, t.chief]));
+  if (conflicts.length) {
+    $('teamsNote').textContent = `${conflicts.length} agents are busy elsewhere (${conflicts[0].event.label}).`;
+  }
+}
+
 function buildWorld(): void {
+  startSessionEvent();
   const contact = mode !== 'ghost';
   world = new World(track, { collisions: contact, drafting: contact, wearScale: mode === 'ghost' ? 1 : pace });
   race = null;
@@ -140,6 +197,7 @@ function buildWorld(): void {
   prevRadio.clear();
   focus = null;
   renderer.clearMarks();
+  renderRoster();
 }
 
 /** Practice/ghosts: a wrecked car returns after a pause. Ghosts get instant top-ups (no crew chief). */
@@ -240,7 +298,7 @@ function updateCamera(): void {
     return;
   }
   if (fixedFocusS !== null && !selected) {
-    const [x, y] = track.toWorld(Number(fixedFocusS), track.halfWidth + 6);
+    const [x, y] = track.toWorld(Number(fixedFocusS), track.innerEdgeAt(Number(fixedFocusS)) + 6);
     renderer.setView(zoom, x, y);
     return;
   }
@@ -357,7 +415,26 @@ function updateTower(): void {
   } else if (weekendPractice) {
     status = `<b>Practice</b> · ${weekendPractice.roundsLeft} practice rounds until the race · drivers and crew chiefs learning`;
   }
-  $('hud').innerHTML = `<b>${trackName}</b> · ${track.length.toFixed(0)} m · ${world.cars.length} cars · ${session} · ${speed}×${following}<br>${status}`;
+  $('hud').innerHTML = `<b>${trackName}</b> · ${track.length.toFixed(0)} m · ${world.cars.length} cars · ${session} · ${speed}×${following}<br>${status}`
+    + (renderer.debug.banking || renderer.debug.forces ? `<br>${bankReadout(carOf(followed))}` : '');
+}
+
+/**
+ * How the banking is working for one car: the angle under it, how much of the
+ * turn the banking carries (its push toward the infield) against what the
+ * tires add, and the neutral speed where the banking alone would do it.
+ */
+function bankReadout(car: Car | null): string {
+  if (!car || car.retired) return '';
+  const g = (a: number) => `${(a / G).toFixed(2)} g`;
+  const bankDeg = (car.bank * 180) / Math.PI;
+  const kappa = track.curvatureAt(car.s) / Math.max(0.2, 1 - track.curvatureAt(car.s) * car.d);
+  const neutral = kappa > 1e-5 ? Math.sqrt((G * Math.tan(car.bank)) / kappa) : NaN;
+  const turning = car.speed * car.speed * kappa;
+  return `#${carEntry.get(car)?.livery.number ?? ''} · banking <b>${bankDeg.toFixed(1)}°</b> · load ${g(car.normalAcc)}`
+    + ` · <span style="color:#f5c518">banking pushes ${g(car.bankAcc)}</span>`
+    + ` · <span style="color:#4fd1ff">tires ${g(Math.hypot(car.tireLat, car.tireLon))} (${Math.round(car.tireUse * 100)}% of grip)</span>`
+    + (Number.isFinite(neutral) ? ` · turn needs ${g(turning)} · neutral ${neutral.toFixed(0)} m/s at ${car.speed.toFixed(0)} m/s` : ' · straight');
 }
 
 // ---------- Teams panel (mix and match) ----------
@@ -496,12 +573,19 @@ function buttonGroup<T>(hostId: string, options: Array<[string, T]>, current: ()
   return render;
 }
 
-buttonGroup('trackButtons', Object.keys(TRACKS).map((k) => [k, k] as [string, string]), () => trackName, (name) => {
+function selectTrack(name: string): void {
   trackName = name;
-  track = new Track(TRACKS[name]);
+  track = TRACKS.get(name)!;
   renderer.setTrack(track);
   buildWorld();
-});
+}
+const renderTrackButtons = buttonGroup('trackButtons', trackOptions, () => trackName, selectTrack);
+$('newTrack').onclick = () => {
+  const t = addGeneratedTrack();
+  selectTrack(trackOptions[trackOptions.length - 1][0]);
+  renderTrackButtons();
+  radioFeed.unshift({ time: 0, team: null, text: `New track: ${t.name}, ${t.length.toFixed(0)} m (oval, seed ${t.layout.seed}). Open it again with ?track=oval:${t.layout.seed}` });
+};
 buttonGroup('fieldButtons', FIELD_SIZES.map((n) => [String(n), n] as [string, number]), () => fieldSize, (n) => {
   fieldSize = n;
   roster.ensureTeams(n);
@@ -516,7 +600,13 @@ buttonGroup('zoomButtons', [['Full', 1], ['2×', 2], ['4×', 4], ['8×', 8]], ()
 buttonGroup('dotButtons', [['Real size', 'real'], ['Legible', 'legible']] as Array<[string, DotMode]>,
   () => renderer.dotMode, (m) => { renderer.dotMode = m; });
 buttonGroup('modeButtons', [['Race', 'race'], ['Practice', 'practice'], ['Ghosts', 'ghost']] as Array<[string, Mode]>,
-  () => mode, (m) => { mode = m; weekendPractice = null; buildWorld(); });
+  () => mode, (m) => {
+    mode = m;
+    weekendPractice = null;
+    // Practice training belongs to the practice session: leaving it ends the training.
+    if (m !== 'practice' && worker) stopPractice();
+    buildWorld();
+  });
 buttonGroup('lapButtons', [['20', 20], ['50', 50], ['100', 100], ['200', 200]], () => raceLaps, (n) => {
   raceLaps = n;
   if (mode === 'race') buildWorld();
@@ -524,10 +614,29 @@ buttonGroup('lapButtons', [['20', 20], ['50', 50], ['100', 100], ['200', 200]], 
 buttonGroup('paceButtons', [['Real', 1], ['4×', 4], ['8×', 8]], () => pace, (p) => { pace = p; buildWorld(); });
 buttonGroup('autoButtons', [['Weekends', 'weekend'], ['Race after race', 'races'], ['Stop', 'stop']] as Array<[string, Loop]>,
   () => loop, (l) => { loop = l; });
-$('toggleInputs').onclick = (e) => {
-  renderer.showInputs = !renderer.showInputs;
-  (e.target as HTMLElement).className = renderer.showInputs ? 'on' : '';
-};
+// Debug overlays: independent toggles.
+{
+  const host = $('debugButtons');
+  const layers: Array<[string, keyof DebugLayers, string]> = [
+    ['Inputs', 'inputs', 'Each driver\'s acceleration request'],
+    ['Forces', 'forces', 'Banking push toward the infield (amber) and tire force (cyan), 1 g = 26 px'],
+    ['Banking', 'banking', 'Banking heatmap, inside → outside angles, and a readout for the followed car'],
+  ];
+  // ?debug=banking,forces switches layers on from the URL.
+  const fromUrl = new URLSearchParams(location.search).get('debug')?.split(',');
+  for (const [label, layer, title] of layers) {
+    if (fromUrl) renderer.setDebug(layer, fromUrl.includes(layer));
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.title = title;
+    b.className = renderer.debug[layer] ? 'on' : '';
+    b.onclick = () => {
+      renderer.setDebug(layer, !renderer.debug[layer]);
+      b.className = renderer.debug[layer] ? 'on' : '';
+    };
+    host.appendChild(b);
+  }
+}
 $('clearMarks').onclick = () => renderer.clearMarks();
 $('restart').onclick = () => { $('teamsNote').textContent = ''; buildWorld(); };
 $('tower').onclick = (e) => {
@@ -552,14 +661,48 @@ function finishRaceForSeason(): void {
     return { team: t.id, driver: t.driver, chief: t.chief, spotter: t.spotter, position: st.position, status: st.status, laps: st.laps };
   });
   recordRace(season, trackName, race.laps, results);
+  recordRaceActivity();
   if (seasonComplete(season)) {
+    recordSeasonActivity();
     const news = offSeason(season, roster, field());
     radioFeed.unshift(...news.reverse().map((text) => ({ time: world.time, team: null, text })));
-    season = newSeason(Object.keys(TRACKS), ROUNDS_PER_TRACK, season);
+    season = newSeason(SEASON_TRACKS, ROUNDS_PER_TRACK, season);
     renderTeams();
   }
   persist();
   renderSeason();
+}
+
+/** Every agent in the race gets its result in the log: drivers, crew chiefs and spotters alike. */
+function recordRaceActivity(): void {
+  if (!race) return;
+  const standings = race.standings();
+  for (const st of standings) {
+    const car = st.car;
+    const t = carEntry.get(car)!;
+    const laps = car.lapTimes;
+    const data = {
+      track: trackName, raceLaps: race.laps, starters: standings.length, position: st.position, status: st.status, laps: st.laps,
+      bestLap: laps.length ? Math.min(...laps) : null, avgLap: laps.length ? laps.reduce((a, b) => a + b, 0) / laps.length : null,
+      stops: car.pit.stops, wallHits: car.wallHits, health: car.health,
+      points: pointsFor(st.position, standings.length, st.status), season: season.number, round: season.races.length,
+    };
+    const event = sessionEvent ?? undefined;
+    activity.record({ kind: 'race', agent: t.driver, role: 'driver', event, brain: roster.drivers.get(t.driver)?.rounds, data });
+    activity.record({ kind: 'race', agent: t.chief, role: 'chief', event, brain: roster.chiefs.get(t.chief)?.rounds, data });
+    activity.record({ kind: 'race', agent: t.spotter, role: 'spotter', event, data });
+  }
+}
+
+/** Final championship positions for drivers and crew chiefs. */
+function recordSeasonActivity(): void {
+  const drivers = driverStandings(season);
+  drivers.forEach((e, i) => activity.record({
+    kind: 'season', agent: e.driver, role: 'driver', data: { season: season.number, position: i + 1, points: e.points, champion: i === 0 },
+  }));
+  Object.entries(season.chiefPoints).sort((a, b) => b[1] - a[1]).forEach(([chief, points], i) => activity.record({
+    kind: 'season', agent: chief, role: 'chief', data: { season: season.number, position: i + 1, points, champion: i === 0 },
+  }));
 }
 
 function renderSeason(): void {
@@ -581,7 +724,7 @@ function renderSeason(): void {
 /** Race weekend: practice on the season's next track, then race there. */
 function startWeekendPractice(): void {
   trackName = nextTrack(season);
-  track = new Track(TRACKS[trackName]);
+  track = TRACKS.get(trackName) ?? TRACKS.get(SEASON_TRACKS[0])!;
   renderer.setTrack(track);
   mode = 'practice';
   buildWorld();
@@ -603,13 +746,23 @@ function startPractice(): void {
   const teams = field();
   const chiefs = teams.map((t) => roster.chiefOf(t));
   worker = new Worker(new URL('../ai/practice.worker.ts', import.meta.url), { type: 'module' });
+  const trackNames = Object.keys(PRESETS).map((id) => presetTrack(id).name);
   worker.onmessage = (e: MessageEvent<PracticeRound>) => {
     const r = e.data;
+    const event = sessionEvent ?? undefined;
     const lines = r.drivers.map((d) => {
       const driver = drivers[d.index];
       driver.weights.set(d.weights);
       driver.rounds = d.rounds;
       driver.licensed = d.licensed;
+      activity.record({
+        kind: 'practice', agent: driver.id, role: 'driver', event, brain: d.rounds,
+        data: {
+          tracks: trackNames, bestLaps: d.bestLaps.map((t) => (Number.isFinite(t) ? t : null)), fitness: d.fitness,
+          rookie: d.rookie, walls: d.rookie ? r.damageScale : 1,
+        },
+      });
+      if (d.graduated) activity.record({ kind: 'licensed', agent: driver.id, role: 'driver', event, brain: d.rounds, data: { lessons: d.rounds } });
       if (d.graduated) {
         radioFeed.unshift({ time: world.time, team: null, text: `${driver.name} (#${teams[d.index].livery.number}) earned a license after ${d.rounds} lessons` });
       }
@@ -621,11 +774,17 @@ function startPractice(): void {
       if (chief.brain.kind !== 'neural') continue;
       chief.brain.weights.set(c.weights);
       chief.rounds = c.rounds;
+      activity.record({ kind: 'strategy', agent: chief.id, role: 'chief', event: sessionEvent ?? undefined, brain: c.rounds, data: { relativeTime: c.relativeTime } });
       lines.push(`${carLabel(teams[c.index])} crew chief ${chief.name}: strategy race ${((c.relativeTime - 1) * 100).toFixed(1)}% off the best`);
     }
     $('practiceStatus').innerHTML = `round ${r.round} · walls ×${r.damageScale.toFixed(2)} · ${(r.elapsedMs / 1000).toFixed(1)}s/round<br>`
       + `practising now (best laps speedway / short / flat):<br>${lines.join('<br>')}`;
-    if (performance.now() - lastPersist > 5000) { persist(); lastPersist = performance.now(); }
+    if (performance.now() - lastPersist > 5000) {
+      persist();
+      lastPersist = performance.now();
+      renderRoster();
+      agentPage.refresh();
+    }
     if (weekendPractice && --weekendPractice.roundsLeft <= 0) finishWeekendPractice();
   };
   const msg: PracticeRequest = {
@@ -650,7 +809,14 @@ function stopPractice(): void {
 
 $('practice').onclick = () => {
   weekendPractice = null; // manual control takes over from the weekend loop
-  if (worker) stopPractice(); else startPractice();
+  if (worker) { stopPractice(); return; }
+  // Training happens in a practice session (the field can't practise and race at once).
+  if (mode !== 'practice') {
+    mode = 'practice';
+    buildWorld();
+    buttonGroups.forEach((render) => render());
+  }
+  startPractice();
 };
 $('newDrivers').onclick = () => {
   stopPractice();
@@ -677,6 +843,7 @@ $<HTMLInputElement>('loadFile').onchange = async (e) => {
   const wasPracticing = !!worker;
   stopPractice();
   roster = loaded;
+  watchRoster(roster);
   roster.ensureTeams(fieldSize);
   selected = null;
   technique.clear();
@@ -684,6 +851,55 @@ $<HTMLInputElement>('loadFile').onchange = async (e) => {
   renderTeams();
   buildWorld();
   if (wasPracticing) startPractice();
+};
+
+// ---------- Roster: everyone in the organisation, seated or in the academy ----------
+
+const agentPage = new AgentPage({ roster: () => roster, occupancy, log: activity });
+let rosterRole: AgentRole = 'driver';
+
+function renderRoster(): void {
+  const host = document.getElementById('roster');
+  if (!host) return;
+  const pool = rosterRole === 'driver' ? roster.drivers : rosterRole === 'spotter' ? roster.spotters : roster.chiefs;
+  const rows = [...pool.values()].map((a) => {
+    const team = roster.teamOf(rosterRole, a.id);
+    const busy = occupancy.of(a.id);
+    let detail = '';
+    if (rosterRole === 'driver') {
+      const d = roster.drivers.get(a.id)!;
+      detail = `${d.licensed ? '' : 'school · '}${d.rounds}r`;
+    } else if (rosterRole === 'chief') {
+      const c = roster.chiefs.get(a.id)!;
+      detail = c.brain.kind === 'neural' ? `${c.rounds}r` : 'scripted';
+    }
+    return { a, team, busy, detail };
+  }).sort((x, y) => (x.team ? x.team.livery.number : 1e4) - (y.team ? y.team.livery.number : 1e4));
+  host.innerHTML = rows.map(({ a, team, busy, detail }) => `<tr>
+    <td>${team ? carLabel(team) : '<span class="muted">academy</span>'}</td>
+    <td class="name"><a data-agent="${a.id}" data-role="${rosterRole}">${a.name}</a></td>
+    <td class="muted">${busy ? busy.type : 'free'}</td>
+    <td class="muted">${detail}</td></tr>`).join('');
+}
+
+buttonGroup('rosterTabs', [['Drivers', 'driver'], ['Chiefs', 'chief'], ['Spotters', 'spotter']] as Array<[string, AgentRole]>,
+  () => rosterRole, (r) => { rosterRole = r; renderRoster(); });
+$('roster').onclick = (e) => {
+  const link = (e.target as HTMLElement).closest<HTMLElement>('[data-agent]');
+  if (link) void agentPage.open(link.dataset.agent!, link.dataset.role as AgentRole);
+};
+$('recruit').onclick = () => {
+  const a = rosterRole === 'driver' ? roster.recruitDriver() : rosterRole === 'chief' ? roster.newChief() : roster.newSpotter();
+  persist();
+  renderRoster();
+  renderTeams();
+  radioFeed.unshift({ time: world.time, team: null, text: `${a.name} joins the academy` });
+};
+// Double-click a driver in the timing tower for their history.
+$('tower').ondblclick = (e) => {
+  const row = (e.target as HTMLElement).closest('tr');
+  const t = row ? roster.teams.find((x) => x.id === Number(row.dataset.team)) : undefined;
+  if (t) void agentPage.open(t.driver, 'driver');
 };
 
 // ---------- Boot ----------
@@ -705,6 +921,14 @@ async function boot(): Promise<void> {
   if (params.has('zoom')) zoom = Number(params.get('zoom'));
   if (params.has('laps')) raceLaps = Number(params.get('laps'));
   if (params.has('pace')) pace = Number(params.get('pace'));
+  // ?track=oval:<seed>[:<variant>] opens a generated track.
+  const [kind, seedText, variant] = (params.get('track') ?? '').split(':');
+  if (kind === 'oval' && seedText) {
+    addGeneratedTrack(Number(seedText), variant || undefined);
+    trackName = trackOptions[trackOptions.length - 1][0];
+    track = TRACKS.get(trackName)!;
+  }
+  watchRoster(roster);
   roster.ensureTeams(fieldSize);
   persist();
   renderer.setTrack(track);
@@ -724,6 +948,10 @@ async function boot(): Promise<void> {
   drawRadio();
   window.addEventListener('resize', () => renderer.resize());
   setInterval(updateTower, 200);
+  // The log buffers records; write them out every couple of seconds and when the page is hidden or closed.
+  setInterval(() => void activity.flush(), 2000);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) void activity.flush(); });
+  window.addEventListener('pagehide', () => void activity.flush());
   setInterval(drawTechniques, 500);
   setInterval(drawRadio, 250);
   requestAnimationFrame(frame);

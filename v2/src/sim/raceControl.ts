@@ -1,6 +1,6 @@
 import { Car } from './car';
 import { G, PHYSICS as P, PIT_SERVICE } from './constants';
-import { PIT, type Track } from './track';
+import type { Track } from './track';
 import type { World } from './world';
 
 /**
@@ -45,6 +45,8 @@ export interface Wrecker {
   /** Track s where it leaves the oval with the tow, and direction of travel (+1/-1). */
   exitS: number;
   dir: number;
+  /** Escape lane it tows along (index into the infield's lanes), or -1 for pit road. */
+  via: number;
 }
 
 export interface FormationSlot {
@@ -127,18 +129,18 @@ export class RaceControl {
     }
     if (this.flag === 'caution') {
       const laps = leader ? leader.lapsCompleted - this.cautionLap : 0;
-      const clear = this.wreckers.every((w) => w.phase === 'done' || (w.phase === 'tow' && w.wreck.d > t.halfWidth + 3));
+      const clear = this.wreckers.every((w) => w.phase === 'done' || (w.phase === 'tow' && w.wreck.d > t.innerEdge(w.wreck.trackIdx) + 3));
       if (clear && laps >= MIN_CAUTION_LAPS) this.oneToGo = true;
       this.releasePaceCar(leader);
     }
     // The pace car pulls off onto pit road; the leader takes the field to the green.
     if ((this.flag === 'pace' || this.flag === 'caution') && this.paceCarOut && this.oneToGo
-      && this.paceCar.d > t.halfWidth + 0.5 && this.paceCarHeadingIn()) {
+      && this.paceCar.d > t.innerEdge(this.paceCar.trackIdx) + 0.5 && this.paceCarHeadingIn()) {
       this.flag = 'restart';
       this.world.announce(leader ?? this.paceCar, 'flag', 'Pace car is off: leader to the line for the green');
     }
-    if (this.paceCarOut && this.oneToGo && this.paceCar.surface === 'pit' && t.signedS(this.paceCar.s) > t.pitWallStart + 15
-      && t.signedS(this.paceCar.s) < t.pitWallEnd - 20) {
+    if (this.paceCarOut && this.oneToGo && this.paceCar.surface === 'pit' && t.signedS(this.paceCar.s) > t.pit.wallStart + 15
+      && t.signedS(this.paceCar.s) < t.pit.wallEnd - 20) {
       this.paceCarOut = false; // pulled in and parked
     }
     if (this.flag === 'restart' && leader && this.crossedLine(leader)) {
@@ -155,7 +157,7 @@ export class RaceControl {
     for (const car of this.world.cars) {
       if (this.handled.has(car) || car.cleared) continue;
       // A car stopped on the racing surface (out of fuel, spun) is a wreck too.
-      if (!car.retired && car.pit.phase === 'none' && car.speed < 3 && car.d < t.halfWidth + 1) {
+      if (!car.retired && car.pit.phase === 'none' && car.speed < 3 && car.d < t.innerEdge(car.trackIdx) + 1) {
         const since = (this.stoppedSince.get(car) ?? 0) + dt;
         this.stoppedSince.set(car, since);
         if (since > STALL_TIME) {
@@ -167,7 +169,7 @@ export class RaceControl {
       }
       if (!car.retired) continue;
       // Caution as soon as a car is out on or near the racing surface; the wrecker goes once it stops.
-      if (this.flag === 'green' && car.d < t.apronD + 5 && !this.cautioned.has(car)) {
+      if (this.flag === 'green' && car.d < t.apronEdgeAt(car.s) + 5 && !this.cautioned.has(car)) {
         this.cautioned.add(car);
         this.throwCaution(car);
       }
@@ -190,9 +192,9 @@ export class RaceControl {
   private releasePaceCar(leader: Car | null): void {
     if (this.paceCarOut || !leader || this.oneToGo) return;
     const t = this.track;
-    const toExit = t.distanceFrom(leader.s, t.pitWallEnd);
+    const toExit = t.distanceFrom(leader.s, t.pit.wallEnd);
     if (toExit > 150 && toExit < 700) {
-      this.paceCar.placeOnTrack(t, t.pitWallEnd - 5, t.pitWallD + PIT.WALL_THICKNESS / 2 + 3);
+      this.paceCar.placeOnTrack(t, t.pit.wallEnd - 5, t.pit.wallD + t.pit.wallThickness / 2 + 3);
       setSpeed(this.paceCar, t, 5);
       this.paceCar.retired = false;
       this.paceCarOut = true;
@@ -201,7 +203,7 @@ export class RaceControl {
 
   private paceCarHeadingIn(): boolean {
     const r = this.track.signedS(this.paceCar.s);
-    return r > pullOffS(this.track) - 10 && r < this.track.pitWallEnd;
+    return r > pullOffS(this.track) - 10 && r < this.track.pit.wallEnd;
   }
 
   private crossedLine(car: Car): boolean {
@@ -222,7 +224,7 @@ export class RaceControl {
     const pc = this.paceCar;
     const head = this.order[0];
     // The pace car leads if it's on track ahead of the leader; otherwise the leader sets the pace.
-    const paceCarLeads = this.paceCarOut && !this.paceCarHeadingInAndOff() && pc.d < t.halfWidth + 1
+    const paceCarLeads = this.paceCarOut && !this.paceCarHeadingInAndOff() && pc.d < t.innerEdge(pc.trackIdx) + 1
       && t.distanceFrom(head.s, pc.s) < 400;
     const refS = paceCarLeads ? pc.s : head.s;
     const refSpeed = paceCarLeads ? Math.max(pc.speed, this.paceSpeed * 0.6) : this.paceSpeed * (this.flag === 'caution' ? 1.15 : 1);
@@ -242,7 +244,7 @@ export class RaceControl {
   wreckAhead(car: Car, range = 250): Car | null {
     const t = this.track;
     for (const other of this.world.cars) {
-      if (!other.retired || other.cleared || other.d > t.halfWidth + 1) continue;
+      if (!other.retired || other.cleared || other.d > t.innerEdge(other.trackIdx) + 1) continue;
       const gap = t.distanceFrom(car.s, other.s);
       if (gap > 0 && gap < range) return other;
     }
@@ -250,7 +252,7 @@ export class RaceControl {
   }
 
   private paceCarHeadingInAndOff(): boolean {
-    return this.oneToGo && this.paceCar.d > this.track.halfWidth + 0.5;
+    return this.oneToGo && this.paceCar.d > this.track.innerEdge(this.paceCar.trackIdx) + 0.5;
   }
 
   /**
@@ -273,12 +275,12 @@ export class RaceControl {
 
   private dispatchWrecker(wreck: Car): void {
     const t = this.track;
-    const start = t.toWorld(t.pitWallEnd, t.apronD - 2);
+    const start = t.toWorld(t.pit.wallEnd, t.apronEdgeAt(t.pit.wallEnd) - 2);
     // Drive the shorter way round along the apron (against traffic is fine for a wrecker).
-    const fwd = t.distanceFrom(t.pitWallEnd, wreck.s);
+    const fwd = t.distanceFrom(t.pit.wallEnd, wreck.s);
     this.wreckers.push({
-      wreck, x: start[0], y: start[1], s: t.pitWallEnd, d: t.apronD - 2,
-      phase: 'drive', timer: 0, route: [], exitS: 0, dir: fwd < t.length / 2 ? 1 : -1,
+      wreck, x: start[0], y: start[1], s: t.pit.wallEnd, d: t.apronEdgeAt(t.pit.wallEnd) - 2,
+      phase: 'drive', timer: 0, route: [], exitS: 0, dir: fwd < t.length / 2 ? 1 : -1, via: -1,
     });
   }
 
@@ -290,7 +292,7 @@ export class RaceControl {
         const stepS = Math.min(remaining, WRECKER_SPEED * dt);
         w.s = t.wrapS(w.s + w.dir * stepS);
         // Swing over to the wreck's lane as it gets close.
-        const targetD = remaining < 60 ? w.wreck.d : t.apronD - 2;
+        const targetD = remaining < 60 ? w.wreck.d : t.apronEdgeAt(w.s) - 2;
         w.d += Math.sign(targetD - w.d) * Math.min(Math.abs(targetD - w.d), 6 * dt);
         [w.x, w.y] = t.toWorld(w.s, w.d);
         if (remaining < 1 && Math.abs(w.d - w.wreck.d) < 1) {
@@ -307,10 +309,10 @@ export class RaceControl {
           // On the oval: back to the apron, then along it to the exit point.
           const remaining = w.dir > 0 ? t.distanceFrom(w.s, w.exitS) : t.distanceFrom(w.exitS, w.s);
           w.s = t.wrapS(w.s + w.dir * Math.min(remaining, TOW_SPEED * dt));
-          const targetD = t.apronD - 2;
+          const targetD = t.apronEdgeAt(w.s) - 2;
           w.d += Math.sign(targetD - w.d) * Math.min(Math.abs(targetD - w.d), 4 * dt);
           [w.x, w.y] = t.toWorld(w.s, w.d);
-          if (remaining < 1) w.route = this.routeToGarage(w.exitS);
+          if (remaining < 1) w.route = this.routeToGarage(w);
         } else {
           const [tx, ty] = w.route[0];
           const dx = tx - w.x, dy = ty - w.y;
@@ -338,35 +340,34 @@ export class RaceControl {
     }
   }
 
-  /** Pick the nearer infield access: the escape lane, or pit entry and pit road. */
+  /** Pick the nearest infield access: an escape lane, or pit entry and pit road. */
   private planTow(w: Wrecker): void {
     const t = this.track;
-    const escapeStart = t.project(...t.infield.escape[0]).s;
-    const pitEntry = t.wrapS(t.pitWallStart - PIT.ENTRY_LENGTH);
-    const options = [escapeStart, pitEntry].map((exitS) => {
+    const accesses = [
+      ...t.infield.escapeLanes.map((lane, via) => ({ via, exitS: t.project(...lane.points[0]).s })),
+      { via: -1, exitS: t.wrapS(t.pit.entryStart) },
+    ];
+    const options = accesses.map(({ via, exitS }) => {
       const fwd = t.distanceFrom(w.s, exitS);
-      return fwd < t.length / 2 ? { exitS, dir: 1, dist: fwd } : { exitS, dir: -1, dist: t.length - fwd };
+      return fwd < t.length / 2 ? { via, exitS, dir: 1, dist: fwd } : { via, exitS, dir: -1, dist: t.length - fwd };
     }).sort((a, b) => a.dist - b.dist);
     w.exitS = options[0].exitS;
     w.dir = options[0].dir;
+    w.via = options[0].via;
     w.phase = 'tow';
     w.route = [];
   }
 
-  private routeToGarage(exitS: number): Array<[number, number]> {
+  private routeToGarage(w: Wrecker): Array<[number, number]> {
     const t = this.track;
     const g = t.infield.garage;
-    const slot = this.garageSlots++;
-    const park = t.toWorld(g.s0 + 8 + (slot % 12) * 6, g.d1 - 3 - Math.floor(slot / 12) * 4);
-    const escapeStart = t.project(...t.infield.escape[0]).s;
-    if (Math.abs(t.signedS(exitS) - t.signedS(escapeStart)) < 1) {
-      return [...t.infield.escape.slice(1), park];
-    }
+    const park = g.parking[this.garageSlots++ % g.parking.length];
+    if (w.via >= 0) return [...t.infield.escapeLanes[w.via].points.slice(1), park];
     // Pit road: in at the entry, along the inner side of pit road, into the garage.
-    const lane = t.pitRoadD - 2;
+    const lane = t.pit.roadD - 2;
     return [
-      t.toWorld(t.pitWallStart - 10, lane),
-      t.toWorld(g.s0 + 4, lane),
+      t.toWorld(t.pit.wallStart - 10, lane),
+      t.toWorld(g.lot.s0 + 4, lane),
       park,
     ];
   }
@@ -380,18 +381,20 @@ export class RaceControl {
   }
 }
 
-/** Pace-car speed: comfortably below the corner limit on the low line. */
+/** Pace-car speed: comfortably below the corner limit on the low line of the tightest corner. */
 export function paceSpeedFor(track: Track): number {
-  const R = track.spec.turnRadius;
-  const b = track.spec.bankInner;
+  let tightest = 0;
+  for (let i = 0; i < track.n; i++) if (track.kappa[i] > track.kappa[tightest]) tightest = i;
+  const R = 1 / track.maxKappa;
+  const b = track.bankAt(tightest, track.innerEdge(tightest));
   const mu = P.TIRE_MU * 0.8;
   const vCorner = Math.sqrt((G * (Math.sin(b) + mu * Math.cos(b))) / (Math.cos(b) - mu * Math.sin(b)) * R);
   return Math.min(PIT_SERVICE.SPEED_LIMIT * 2, vCorner * 0.6);
 }
 
-/** Where the pace car turns off for pit road: the pit entry at turn 4 exit. */
+/** Where the pace car turns off for pit road: the start of the pit entry. */
 export function pullOffS(track: Track): number {
-  return track.pitWallStart - PIT.ENTRY_LENGTH;
+  return track.pit.entryStart;
 }
 
 function setSpeed(car: Car, track: Track, speed: number): void {

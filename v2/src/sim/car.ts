@@ -29,6 +29,18 @@ export interface PitState {
 const RETIRED_DECEL = 8;
 
 /**
+ * Cornering grip of a tire at a given life: a gentle fade from new to the
+ * cliff, then a fast fall to the cords.
+ */
+export function tireGrip(life: number): number {
+  if (life >= P.TIRE_CLIFF) {
+    return P.GRIP_AT_CLIFF + (1 - P.GRIP_AT_CLIFF) * (life - P.TIRE_CLIFF) / (1 - P.TIRE_CLIFF);
+  }
+  const x = 1 - Math.max(0, life) / P.TIRE_CLIFF; // 0 at the cliff, 1 corded
+  return P.GRIP_AT_CLIFF - (P.GRIP_AT_CLIFF - P.GRIP_CORDED) * x * x;
+}
+
+/**
  * A car is a featureless dot. It has no heading: the driver requests an
  * acceleration vector in the car's travel frame (x = along velocity,
  * y = toward the left of travel) and the tires deliver what they can.
@@ -50,7 +62,7 @@ export class Car {
   /** Signed distance travelled along the track since the start line (negative before it). */
   dist = 0;
 
-  // Driver input, travel frame, magnitude <= 1 (1 = demand OVERDRIVE_MAX x capacity)
+  // Driver input, travel frame, magnitude <= 1 (1 = demand OVERDRIVE_MAX x capacity on each axis)
   inputX = 0;
   inputY = 0;
 
@@ -76,12 +88,24 @@ export class Car {
   // Per-step telemetry
   frameX = 1;
   frameY = 0;
+  /** Tire capacity (m/s^2) across the direction of travel, and along it (braking/drive). */
   capacity = 0;
+  capacityLon = 0;
+  /** Banking under the car (rad), the normal load (m/s^2), and the push toward the infield it gives. */
+  bank = 0;
+  normalAcc = 0;
   bankAcc = 0;
+  /** Horizontal tire force across the track (toward the infield) last step: how hard the car is really cornering. */
+  tireNormal = 0;
+  /** How hard the tires are worked relative to their grip (0..1+), as wear sees it. */
+  tireUse = 0;
   tireLon = 0;
   tireLat = 0;
   sliding = 0;
-  markIntensity = 0;
+  /** Rubber laid down by tire work this step (0..1): builds the groove slowly. */
+  groove = 0;
+  /** Skid mark strength this step (0..1): sliding, spinning, tearing up turf. */
+  skid = 0;
   draftFactor = 1;
   wallContact = false;
   surface: Surface = 'track';
@@ -106,8 +130,14 @@ export class Car {
     return P.DRY_MASS + this.fuel;
   }
 
+  /** Cornering grip of the current tires (1 = new). */
   get grip(): number {
-    return P.MIN_GRIP + (1 - P.MIN_GRIP) * this.tireLife;
+    return tireGrip(this.tireLife);
+  }
+
+  /** Braking and drive grip: worn tires lose less of it than cornering grip. */
+  get gripLon(): number {
+    return 1 - P.LON_WEAR_SHARE * (1 - this.grip);
   }
 
   get speed(): number {
@@ -147,7 +177,8 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1): void
     car.vy *= k;
     car.x += car.vx * dt;
     car.y += car.vy * dt;
-    car.markIntensity = sp > 1 ? 0.6 : 0;
+    car.groove = 0;
+    car.skid = sp > 1 ? 0.8 : 0;
     return;
   }
   const i = car.trackIdx;
@@ -167,33 +198,46 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1): void
   car.frameY = fy;
 
   // --- Banking ---
-  // Normal load per unit mass on a banked surface rises with cornering speed.
-  // Its horizontal component pushes toward the infield regardless of input,
-  // so at the "neutral speed" v^2 = g tan(bank) / kappa the banking alone carries
-  // the car around the turn without any tire work.
+  // The sim is the top-down projection of a car on a banked surface. The
+  // surface pushes back along its normal, and the horizontal part of that push,
+  // N sin(bank), points toward the infield regardless of input. The load N
+  // comes from how hard the car is actually cornering: with a_h its horizontal
+  // acceleration across the track, N = g cos(bank) + a_h sin(bank), and
+  // a_h = N sin(bank) + (tire force across the track), so
+  //   N = (g cos(bank) + tires sin(bank)) / cos^2(bank)
+  // using last step's tire force (1/120 s ago). Holding a lane round the turn
+  // that is g cos(bank) + v^2 kappa sin(bank); a car diving down the banking
+  // loads its tires more, one drifting up the track less. At the "neutral
+  // speed" v^2 = g tan(bank) / kappa the banking alone carries the car round the
+  // turn; faster, the tires make up the rest; slower, they hold it up the slope.
   const bank = track.bankAt(i, car.d);
   const cosB = Math.cos(bank), sinB = Math.sin(bank);
-  const kappa = track.kappa[i];
-  const kappaLane = kappa / Math.max(0.2, 1 - kappa * car.d);
-  const vt = vx * tx + vy * ty;
-  const normalAcc = Math.min(4 * G, Math.max(0.3 * G, G * cosB + vt * vt * kappaLane * sinB));
+  const normalAcc = Math.min(4 * G, Math.max(0.3 * G, (G * cosB + car.tireNormal * sinB) / (cosB * cosB)));
   const bankAcc = normalAcc * sinB;
+  car.bank = bank;
+  car.normalAcc = normalAcc;
   car.bankAcc = bankAcc;
 
   // --- Friction circle ---
   const surfaceKind = track.surfaceAt(car.s, car.d, car.x, car.y);
   car.surface = surfaceKind;
   const surface = SURFACES[surfaceKind];
-  const capacity = P.TIRE_MU * car.grip * surface.grip
-    * (1 - P.HANDLING_DAMAGE_GRIP * car.damageHandling) * normalAcc;
+  // Tires grip in the plane of the surface: up to mu N there. Braking and drive
+  // run along the track, which is level, so all of it counts; cornering force
+  // lies across the slope, and only cos(bank) of it is horizontal. An ellipse,
+  // then, narrower across the track the steeper the banking (and narrower still
+  // as the tires wear: cornering grip goes first).
+  const base = P.TIRE_MU * surface.grip * (1 - P.HANDLING_DAMAGE_GRIP * car.damageHandling) * normalAcc;
+  const capacity = base * car.grip * cosB;
+  const capacityLon = base * car.gripLon;
   car.capacity = capacity;
+  car.capacityLon = capacityLon;
 
   let ix = car.inputX, iy = car.inputY;
   const im = Math.hypot(ix, iy);
   if (im > 1) { ix /= im; iy /= im; }
-  const demandScale = P.OVERDRIVE_MAX * capacity;
-  let aLon = ix * demandScale;
-  let aLat = iy * demandScale;
+  let aLon = ix * P.OVERDRIVE_MAX * capacityLon;
+  let aLat = iy * P.OVERDRIVE_MAX * capacity;
 
   if (aLon > 0) {
     const power = car.fuel > 0
@@ -205,17 +249,19 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1): void
     if (aLon > engineMax) aLon = engineMax;
   }
 
+  // Demand as a fraction of the ellipse: above 1 the tires slide.
   let over = 0;
-  const req = Math.hypot(aLon, aLat);
-  if (req > capacity && req > 1e-9) {
-    over = Math.min(1, (req - capacity) / (capacity * (P.OVERDRIVE_MAX - 1)));
-    const delivered = capacity * (1 - P.SLIDE_GRIP_LOSS * over);
-    aLon *= delivered / req;
-    aLat *= delivered / req;
+  const req = Math.hypot(aLon / Math.max(capacityLon, 1e-9), aLat / Math.max(capacity, 1e-9));
+  if (req > 1) {
+    over = Math.min(1, (req - 1) / (P.OVERDRIVE_MAX - 1));
+    const delivered = (1 - P.SLIDE_GRIP_LOSS * over) / req;
+    aLon *= delivered;
+    aLat *= delivered;
   }
   car.sliding = over;
   car.tireLon = aLon;
   car.tireLat = aLat;
+  car.tireNormal = (aLon * fx + aLat * lx) * nx + (aLon * fy + aLat * ly) * ny;
 
   // --- Resistance ---
   const cda = P.CDA * (1 + P.AERO_DAMAGE_DRAG * car.damageAero) * car.draftFactor;
@@ -243,15 +289,27 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1): void
   car.x += car.vx * dt;
   car.y += car.vy * dt;
 
-  // --- Tire wear & marks ---
-  const muG = P.TIRE_MU * G;
+  // --- Tire wear & rubber ---
+  // Wear is the energy lost to tire slip: force x slip, where the slip needed
+  // for a force shrinks as the load on the tire grows. Per unit of load,
+  // that is utilisation^2 x load, utilisation = force / (mu N), with the
+  // cornering force taken in the banked plane. On a flat track at normal load
+  // this is just (force / mu g)^2; banking that loads the tires up lets them
+  // make the same force with less slip, so the right line saves tires.
   const lonWeight = aLon > 0 ? P.WEAR_DRIVE : P.WEAR_BRAKE;
-  const load2 = (P.WEAR_LATERAL * aLat * aLat + lonWeight * aLon * aLon) / (muG * muG);
+  const latPlane = aLat / cosB;
+  const muN = P.TIRE_MU * normalAcc;
+  const use2 = (P.WEAR_LATERAL * latPlane * latPlane + lonWeight * aLon * aLon) / (muN * muN);
+  car.tireUse = Math.sqrt(use2);
+  const load2 = use2 * (normalAcc / G);
   const slideMult = 1 + P.SLIDE_WEAR * over;
   car.tireLife = Math.max(0, car.tireLife - P.WEAR_RATE * wearScale * (speed + P.WEAR_SLIP_FLOOR) * load2 * slideMult * dt);
-  car.markIntensity = surfaceKind === 'grass'
+  // Every car working its tires adds a little to the groove; only a real slide leaves a skid.
+  const onGrass = surfaceKind === 'grass';
+  car.groove = onGrass ? 0 : Math.min(1, (Math.sqrt(load2) * (speed + P.WEAR_SLIP_FLOOR) * slideMult) / P.MARK_NORM);
+  car.skid = onGrass
     ? Math.min(1, speed / 40) // torn turf
-    : Math.min(1, (Math.sqrt(load2) * (speed + P.WEAR_SLIP_FLOOR) * slideMult) / P.MARK_NORM);
+    : speed > 3 && over > P.SKID_THRESHOLD ? (over - P.SKID_THRESHOLD) / (1 - P.SKID_THRESHOLD) : 0;
 
   // --- Fuel ---
   const powerUsed = Math.max(0, aLon) * car.mass * speed;

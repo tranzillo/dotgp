@@ -1,8 +1,10 @@
 import type { Car } from '../sim/car';
 import type { Wrecker } from '../sim/raceControl';
-import { PHYSICS as P } from '../sim/constants';
-import { PIT, type Track, type TrackRect } from '../sim/track';
+import { G, PHYSICS as P } from '../sim/constants';
+import type { Decoration, Edge, LineStyle, Marking, SRange, Surface, SurfaceRegion, TrackRect } from '../sim/layout';
+import type { Track } from '../sim/track';
 import { numberColor, PACE_CAR_LIVERY, type Livery } from './livery';
+import { GROOVE_DISPLAY_ALPHA, GROOVE_STROKE_ALPHA, GROOVE_WIDTH, grooveChance, skidStroke } from './marks';
 
 const COLORS = {
   background: '#0d0d0f',
@@ -28,6 +30,85 @@ const COLORS = {
   turf: '78,58,32',
 };
 
+const SURFACE_COLORS: Record<Surface, string> = {
+  track: COLORS.surface,
+  apron: COLORS.apron,
+  pit: COLORS.pitRoad,
+  garage: COLORS.garageLot,
+  road: COLORS.road,
+  grass: COLORS.grass,
+};
+
+/** Painted lines: colour, width in CSS pixels, dash pattern in CSS pixels. */
+const LINE_STYLES: Record<LineStyle, { color: string; width: number; dash?: number[] }> = {
+  edge: { color: COLORS.edge, width: 1 },
+  blend: { color: COLORS.blendLine, width: 1.5 },
+  entry: { color: COLORS.blendLine, width: 1.5, dash: [8, 6] },
+  lane: { color: COLORS.paint, width: 1, dash: [6, 6] },
+  stall: { color: COLORS.paint, width: 1 },
+  start: { color: COLORS.startLine, width: 2 },
+};
+
+/** What a decoration painter gets to draw with. */
+interface DecorView {
+  ctx: CanvasRenderingContext2D;
+  /** Canvas pixels per metre. */
+  scale: number;
+  toScreen(s: number, d: number): [number, number];
+  rectPath(r: TrackRect): void;
+}
+
+/** One painter per decoration kind: a new kind in the layout needs its painter here (the compiler insists). */
+const DECOR_PAINTERS: { [K in Decoration['kind']]: (v: DecorView, deco: Extract<Decoration, { kind: K }>) => void } = {
+  building(v, { rect }) {
+    v.rectPath(rect);
+    v.ctx.fillStyle = COLORS.building;
+    v.ctx.fill();
+    // Roof ridge along the building's length.
+    const mid = (rect.d0 + rect.d1) / 2;
+    const [ax, ay] = v.toScreen(rect.s0 + 1, mid);
+    const [bx, by] = v.toScreen(rect.s1 - 1, mid);
+    v.ctx.beginPath();
+    v.ctx.moveTo(ax, ay);
+    v.ctx.lineTo(bx, by);
+    v.ctx.strokeStyle = COLORS.buildingRoof;
+    v.ctx.lineWidth = Math.max(1, 1.5 * v.scale);
+    v.ctx.stroke();
+  },
+};
+
+function paintDecoration(v: DecorView, deco: Decoration): void {
+  (DECOR_PAINTERS[deco.kind] as (v: DecorView, deco: Decoration) => void)(v, deco);
+}
+
+/** Debug overlays the viewer can switch on. */
+export interface DebugLayers {
+  /** Each driver's acceleration request. */
+  inputs: boolean;
+  /** Forces on each car: the banking's push toward the infield, and the tires' force. */
+  forces: boolean;
+  /** Banking heatmap, inside-to-outside angle labels, legend. */
+  banking: boolean;
+}
+
+const deg = (rad: number) => (rad * 180) / Math.PI;
+/** Top of the banking colour scale (deg). */
+const BANK_SCALE_MAX = 32;
+const BANK_RAMP: Array<[number, [number, number, number]]> = [
+  [0, [43, 74, 107]], [8, [47, 143, 131]], [16, [201, 176, 58]], [24, [217, 130, 43]], [32, [192, 57, 43]],
+];
+
+/** Heatmap colour for a banking angle (deg). */
+export function bankColor(degrees: number, alpha = 1): string {
+  const x = Math.min(BANK_SCALE_MAX, Math.max(0, degrees));
+  let k = 0;
+  while (k + 2 < BANK_RAMP.length && x > BANK_RAMP[k + 1][0]) k++;
+  const [x0, c0] = BANK_RAMP[k], [x1, c1] = BANK_RAMP[k + 1];
+  const t = Math.min(1, Math.max(0, (x - x0) / (x1 - x0)));
+  const c = c0.map((v, i) => Math.round(v + (c1[i] - v) * t));
+  return `rgba(${c[0]},${c[1]},${c[2]},${alpha})`;
+}
+
 /** Resolution of the tire-mark layer, in pixels per metre of track. */
 const MARK_RES = 3;
 
@@ -36,15 +117,18 @@ export type DotMode = 'real' | 'legible';
 
 /**
  * Three layers: track fill and track lines (screen resolution, redrawn when
- * the camera moves) with tire marks between them. Marks live at a fixed world
- * resolution, so they survive resizes and zooms; they are stamped and never
- * redrawn, so the track accumulates a live record of the lines being raced.
+ * the camera moves) with tire marks between them. Marks (groove and skids,
+ * see marks.ts) live at a fixed world resolution, so they survive resizes and
+ * zooms; they are stamped and never redrawn, so the track accumulates a live
+ * record of the lines being raced.
  */
 export class Renderer {
   readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly base = document.createElement('canvas');
   private readonly lines = document.createElement('canvas');
+  private readonly groove = document.createElement('canvas');
+  private readonly grooveCtx: CanvasRenderingContext2D;
   private readonly marks = document.createElement('canvas');
   private readonly marksCtx: CanvasRenderingContext2D;
   private track: Track | null = null;
@@ -58,20 +142,32 @@ export class Renderer {
   private focusY = 0;
   private trackDirty = true;
   private readonly lastPos = new Map<Car, [number, number]>();
-  showInputs = true;
+  private debugLayers: DebugLayers = { inputs: true, forces: false, banking: false };
   dotMode: DotMode = 'legible';
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
+    this.grooveCtx = this.groove.getContext('2d')!;
     this.marksCtx = this.marks.getContext('2d')!;
+  }
+
+  get debug(): Readonly<DebugLayers> {
+    return this.debugLayers;
+  }
+
+  setDebug(layer: keyof DebugLayers, on: boolean): void {
+    this.debugLayers[layer] = on;
+    if (layer === 'banking') this.trackDirty = true;
   }
 
   setTrack(track: Track): void {
     this.track = track;
     const b = track.bounds;
-    this.marks.width = Math.ceil((b.maxX - b.minX) * MARK_RES);
-    this.marks.height = Math.ceil((b.maxY - b.minY) * MARK_RES);
+    for (const c of [this.groove, this.marks]) {
+      c.width = Math.ceil((b.maxX - b.minX) * MARK_RES);
+      c.height = Math.ceil((b.maxY - b.minY) * MARK_RES);
+    }
     this.clearMarks();
     this.resize();
   }
@@ -132,15 +228,15 @@ export class Renderer {
     return [(x - b.minX) * MARK_RES, (b.maxY - y) * MARK_RES];
   }
 
-  /** Trace d = dAt(s) for s in [s0, s1] (signed metres from the line). */
-  private trace(ctx: CanvasRenderingContext2D, s0: number, s1: number, dAt: (s: number) => number, move = true): void {
+  /** Trace d = dAt(s) for s in [s0, s1] (signed metres from the line), backwards if reverse. */
+  private trace(ctx: CanvasRenderingContext2D, s0: number, s1: number, dAt: (s: number) => number, move = true, reverse = false): void {
     const track = this.track!;
     const step = (this.zoom > 2 ? 1 : 2) * track.ds * 2;
-    for (let sv = s0; ; sv += step) {
-      const sc = Math.min(sv, s1);
+    const n = Math.max(1, Math.ceil((s1 - s0) / step));
+    for (let k = 0; k <= n; k++) {
+      const sc = reverse ? Math.max(s0, s1 - k * step) : Math.min(s1, s0 + k * step);
       const [x, y] = this.toScreen(...track.toWorld(sc, dAt(sc)));
-      if (move && sv === s0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      if (sc >= s1) break;
+      if (move && k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
   }
 
@@ -149,205 +245,346 @@ export class Renderer {
     ctx.closePath();
   }
 
+  /** Trace an edge along a range (or round the whole lap). */
+  private along(ctx: CanvasRenderingContext2D, range: SRange, d: Edge): void {
+    const at = this.edgeFn(d);
+    if (range) this.trace(ctx, range[0], range[1], at);
+    else this.ring(ctx, at);
+  }
+
+  private edgeFn(d: Edge): (s: number) => number {
+    const track = this.track!;
+    return typeof d === 'number' ? () => d : (s) => track.edgeAt(d, s);
+  }
+
+  private rectPath(ctx: CanvasRenderingContext2D, r: TrackRect): void {
+    const track = this.track!;
+    ctx.beginPath();
+    [[r.s0, r.d0], [r.s1, r.d0], [r.s1, r.d1], [r.s0, r.d1]].forEach(([sv, dv], i) => {
+      const [x, y] = this.toScreen(...track.toWorld(sv, dv));
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+  }
+
+  private polyline(ctx: CanvasRenderingContext2D, pts: Array<[number, number]>): void {
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => {
+      const [sx, sy] = this.toScreen(x, y);
+      if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+    });
+  }
+
+  /** Fill a surface region (and its pattern) on the base layer. */
+  private paintRegion(ctx: CanvasRenderingContext2D, region: SurfaceRegion): void {
+    const shape = region.shape;
+    const color = SURFACE_COLORS[region.surface];
+    let rule: CanvasFillRule = 'nonzero';
+    ctx.beginPath();
+    if (shape.kind === 'band') {
+      if (shape.openIn) {
+        // Everything inside the band's outer edge (the infield).
+        this.along(ctx, null, shape.d0);
+      } else if (!shape.range) {
+        this.ring(ctx, this.edgeFn(shape.d0));
+        this.ring(ctx, this.edgeFn(shape.d1));
+        rule = 'evenodd';
+      } else {
+        this.trace(ctx, shape.range[0], shape.range[1], this.edgeFn(shape.d0));
+        this.trace(ctx, shape.range[0], shape.range[1], this.edgeFn(shape.d1), false, true);
+        ctx.closePath();
+      }
+    } else if (shape.kind === 'rect') {
+      this.rectPath(ctx, shape.rect);
+    } else {
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      this.polyline(ctx, shape.points);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(3 * this.dpr, shape.width * this.scale);
+      ctx.stroke();
+      return;
+    }
+    ctx.fillStyle = color;
+    ctx.fill(rule);
+    if (region.pattern === 'mowing') {
+      ctx.save();
+      ctx.clip(rule);
+      ctx.fillStyle = COLORS.grassStripe;
+      const stripe = 24 * this.scale;
+      const [ox] = this.toScreen(0, 0);
+      for (let x = ox % (2 * stripe) - 2 * stripe; x < this.base.width + stripe; x += 2 * stripe) {
+        ctx.fillRect(x, 0, stripe, this.base.height);
+      }
+      ctx.restore();
+    }
+  }
+
+  /** Quiet edge line round a region (lots, roads). */
+  private outlineRegion(ctx: CanvasRenderingContext2D, region: SurfaceRegion): void {
+    const shape = region.shape;
+    if (shape.kind === 'rect') {
+      this.rectPath(ctx, shape.rect);
+    } else if (shape.kind === 'path') {
+      ctx.beginPath();
+      const pts = shape.points;
+      for (const side of [-1, 1]) {
+        pts.forEach(([x, y], i) => {
+          // Offset each vertex sideways by half the width (along the local normal).
+          const [px0, py0] = pts[Math.max(0, i - 1)];
+          const [px1, py1] = pts[Math.min(pts.length - 1, i + 1)];
+          const len = Math.hypot(px1 - px0, py1 - py0) || 1;
+          const ox = (-(py1 - py0) / len) * (shape.width / 2) * side;
+          const oy = ((px1 - px0) / len) * (shape.width / 2) * side;
+          const [sx, sy] = this.toScreen(x + ox, y + oy);
+          if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+        });
+      }
+    } else {
+      ctx.beginPath();
+      this.along(ctx, shape.range, shape.d0);
+      if (!shape.openIn) this.along(ctx, shape.range, shape.d1);
+    }
+  }
+
+  /**
+   * Draw the track from its layout: surfaces bottom to top and decoration on
+   * the base layer; outlines, paint, barriers and the start line on the lines
+   * layer. Knows nothing about what kind of track it is.
+   */
   private drawTrack(): void {
     const track = this.track!;
+    const layout = track.layout;
     const px = this.dpr;
-    const L = track.length;
-    const paved = (sv: number) => track.pavedInnerD(sv);
-    const at = (d: number) => () => d;
 
     const base = this.base.getContext('2d')!;
     base.fillStyle = COLORS.background;
     base.fillRect(0, 0, this.base.width, this.base.height);
-
-    // Infield grass with mowing stripes.
-    base.save();
-    base.beginPath();
-    this.ring(base, paved);
-    base.fillStyle = COLORS.grass;
-    base.fill();
-    base.clip();
-    base.fillStyle = COLORS.grassStripe;
-    const stripe = 24 * this.scale;
-    const [ox] = this.toScreen(0, 0);
-    for (let x = ox % (2 * stripe) - 2 * stripe; x < this.base.width + stripe; x += 2 * stripe) {
-      base.fillRect(x, 0, stripe, this.base.height);
-    }
-    base.restore();
-
-    // Paved surfaces: racing surface, then apron / pit road out to the grass.
-    const band = (dOuter: (s: number) => number, dInner: (s: number) => number, color: string) => {
-      base.beginPath();
-      this.ring(base, dOuter);
-      this.ring(base, dInner);
-      base.fillStyle = color;
-      base.fill('evenodd');
-    };
-    band(at(track.outerWallD), at(track.halfWidth), COLORS.surface);
-    band(at(track.halfWidth), paved, COLORS.apron);
-    // Infield: escape lane (under everything else infield), garage lot, buildings.
-    const inf = track.infield;
-    base.lineCap = 'round';
-    base.lineJoin = 'round';
-    base.beginPath();
-    inf.escape.forEach(([x, y], i) => {
-      const [sx, sy] = this.toScreen(x, y);
-      if (i === 0) base.moveTo(sx, sy); else base.lineTo(sx, sy);
-    });
-    base.strokeStyle = COLORS.road;
-    base.lineWidth = Math.max(3 * px, inf.escapeWidth * this.scale);
-    base.stroke();
-    const rect = (ctx: CanvasRenderingContext2D, r: TrackRect) => {
-      ctx.beginPath();
-      [[r.s0, r.d0], [r.s1, r.d0], [r.s1, r.d1], [r.s0, r.d1]].forEach(([sv, dv], i) => {
-        const [x, y] = this.toScreen(...track.toWorld(sv, dv));
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      });
-      ctx.closePath();
-    };
-    rect(base, inf.garage);
-    base.fillStyle = COLORS.garageLot;
-    base.fill();
-    for (const b of inf.buildings) {
-      rect(base, b);
-      base.fillStyle = COLORS.building;
-      base.fill();
-      // Roof ridge along the building's length.
-      const mid = (b.d0 + b.d1) / 2;
-      const [ax, ay] = this.toScreen(...track.toWorld(b.s0 + 1, mid));
-      const [bx, by] = this.toScreen(...track.toWorld(b.s1 - 1, mid));
-      base.beginPath();
-      base.moveTo(ax, ay);
-      base.lineTo(bx, by);
-      base.strokeStyle = COLORS.buildingRoof;
-      base.lineWidth = Math.max(1, 1.5 * this.scale);
-      base.stroke();
-    }
-
-    // Pit road (behind the wall) a shade darker.
-    base.beginPath();
-    this.trace(base, track.pitWallStart, track.pitWallEnd, at(track.pitWallD));
-    this.trace(base, track.pitWallStart, track.pitWallEnd, at(track.pitRoadD), false);
-    base.closePath();
-    base.fillStyle = COLORS.pitRoad;
-    base.fill();
+    for (const region of layout.surfaces) this.paintRegion(base, region);
+    // Banking: a heatmap in the debug view, otherwise a light sheen that rises with the slope.
+    this.paintBanking(base, this.debugLayers.banking
+      ? (b) => bankColor(deg(b), 0.62)
+      : (b) => `rgba(255,255,255,${Math.min(0.3, 0.3 * deg(b) / 30).toFixed(3)})`);
+    const view = this.decorView(base);
+    for (const deco of layout.decor) paintDecoration(view, deco);
 
     const lines = this.lines.getContext('2d')!;
     lines.clearRect(0, 0, this.lines.width, this.lines.height);
     lines.lineJoin = 'round';
     lines.lineCap = 'butt';
-    const stroke = (color: string, width: number, dash: number[] = []) => {
-      lines.strokeStyle = color;
-      lines.lineWidth = width;
-      lines.setLineDash(dash);
+    const stroke = (style: { color: string; width: number; dash?: number[] }) => {
+      lines.strokeStyle = style.color;
+      lines.lineWidth = style.width * px;
+      lines.setLineDash((style.dash ?? []).map((v) => v * px));
       lines.stroke();
       lines.setLineDash([]);
     };
 
-    // Surface edges: quiet lines.
-    lines.beginPath();
-    this.ring(lines, paved);
-    stroke(COLORS.edge, px);
-    lines.beginPath();
-    this.trace(lines, track.blendEnd, L + track.pitWallEnd, at(track.halfWidth));
-    stroke(COLORS.edge, px);
-    // Infield edges: garage lot outline and escape-lane edges, quiet like other surface edges.
-    rect(lines, inf.garage);
-    stroke(COLORS.edge, px);
-    for (const side of [-1, 1]) {
-      lines.beginPath();
-      inf.escape.forEach(([x, y], i) => {
-        // Offset each vertex sideways by half the lane width (along the local normal).
-        const [px0, py0] = inf.escape[Math.max(0, i - 1)];
-        const [px1, py1] = inf.escape[Math.min(inf.escape.length - 1, i + 1)];
-        const len = Math.hypot(px1 - px0, py1 - py0) || 1;
-        const ox = (-(py1 - py0) / len) * (inf.escapeWidth / 2) * side;
-        const oy = ((px1 - px0) / len) * (inf.escapeWidth / 2) * side;
-        const [sx, sy] = this.toScreen(x + ox, y + oy);
-        if (i === 0) lines.moveTo(sx, sy); else lines.lineTo(sx, sy);
-      });
-      stroke(COLORS.edge, px);
+    for (const region of layout.surfaces) {
+      if (!region.outline) continue;
+      this.outlineRegion(lines, region);
+      stroke(LINE_STYLES.edge);
     }
 
-    // Pit exit blend line: from the end of the pit wall through turns 1-2 onto the back straight.
-    lines.beginPath();
-    this.trace(lines, track.pitWallEnd, track.blendEnd, at(track.halfWidth));
-    stroke(COLORS.blendLine, 1.5 * px);
-    // Pit entry: dashed lane line where cars peel off the apron at turn 4 exit.
-    lines.beginPath();
-    this.trace(lines, track.pitWallStart - PIT.ENTRY_LENGTH, track.pitWallStart, at(track.halfWidth));
-    stroke(COLORS.blendLine, 1.5 * px, [8 * px, 6 * px]);
-    // Pit road: fast-lane line and stall boxes.
-    const laneD = track.pitWallD + PIT.WALL_THICKNESS / 2 + 6;
-    lines.beginPath();
-    this.trace(lines, track.pitWallStart, track.pitWallEnd, at(laneD));
-    stroke(COLORS.paint, px, [6 * px, 6 * px]);
-    lines.beginPath();
-    for (let sv = track.pitWallStart + 19; sv < track.pitWallEnd - 10; sv += 12) {
-      const [ax, ay] = this.toScreen(...track.toWorld(sv, laneD));
-      const [bx, by] = this.toScreen(...track.toWorld(sv, track.pitRoadD - 1));
-      lines.moveTo(ax, ay);
-      lines.lineTo(bx, by);
-    }
-    stroke(COLORS.paint, px);
-
-    // Barriers: thick and bright with a dark outline.
-    const barrier = (pathFn: () => void, thicknessM: number) => {
-      const w = Math.max(3 * px, thicknessM * this.scale);
+    const paint = (m: Marking) => {
       lines.beginPath();
-      pathFn();
-      stroke(COLORS.barrierShadow, w + 2 * px);
-      lines.beginPath();
-      pathFn();
-      stroke(COLORS.barrier, w);
+      if (m.kind === 'line') {
+        this.along(lines, m.range, m.d);
+      } else {
+        for (const sv of m.s) {
+          const [ax, ay] = this.toScreen(...track.toWorld(sv, m.d0));
+          const [bx, by] = this.toScreen(...track.toWorld(sv, m.d1));
+          lines.moveTo(ax, ay);
+          lines.lineTo(bx, by);
+        }
+      }
+      stroke(LINE_STYLES[m.style]);
     };
-    barrier(() => { this.ring(lines, at(track.outerWallD - 0.4)); }, 0.8);
-    barrier(() => { this.trace(lines, track.pitWallStart, track.pitWallEnd, at(track.pitWallD)); }, PIT.WALL_THICKNESS);
-    // Attenuators on the pit wall ends.
-    for (const [ex, ey] of track.pitWallEnds) {
-      const [x, y] = this.toScreen(ex, ey);
-      lines.beginPath();
-      lines.arc(x, y, Math.max(3 * px, PIT.WALL_THICKNESS * this.scale), 0, Math.PI * 2);
-      lines.fillStyle = COLORS.attenuator;
-      lines.fill();
-    }
+    // The start/finish line goes over the barriers; everything else under them.
+    for (const m of layout.markings) if (m.style !== 'start') paint(m);
 
-    // Start/finish line across the racing surface.
-    const [ax, ay] = this.toScreen(...track.toWorld(0, track.outerWallD));
-    const [bx, by] = this.toScreen(...track.toWorld(0, track.halfWidth));
-    lines.beginPath();
-    lines.moveTo(ax, ay);
-    lines.lineTo(bx, by);
-    stroke(COLORS.startLine, 2 * px);
+    // Barriers: thick and bright with a dark outline, attenuators on padded ends.
+    for (const wall of layout.walls) {
+      const w = Math.max(3 * px, wall.thickness * this.scale);
+      for (const [color, width] of [[COLORS.barrierShadow, w + 2 * px], [COLORS.barrier, w]] as const) {
+        lines.beginPath();
+        this.along(lines, wall.range, wall.d);
+        lines.strokeStyle = color;
+        lines.lineWidth = width;
+        lines.stroke();
+      }
+      if (wall.attenuators && wall.range) {
+        for (const sv of wall.range) {
+          const [x, y] = this.toScreen(...track.toWorld(sv, track.edgeAt(wall.d, sv)));
+          lines.beginPath();
+          lines.arc(x, y, Math.max(3 * px, wall.thickness * this.scale), 0, Math.PI * 2);
+          lines.fillStyle = COLORS.attenuator;
+          lines.fill();
+        }
+      }
+    }
+    for (const m of layout.markings) if (m.style === 'start') paint(m);
+    if (this.debugLayers.banking) this.drawBankLabels(lines);
     this.trackDirty = false;
+  }
+
+  /**
+   * Shade the paved surface by its banking: the racing surface in lateral
+   * slices (banking changes across it), the apron and pit road as one. Runs of
+   * the same shade along the lap are drawn as one band, so straights and
+   * constant-radius arcs cost a single polygon per slice.
+   */
+  private paintBanking(ctx: CanvasRenderingContext2D, colorFor: (bank: number) => string): void {
+    const track = this.track!;
+    const SLICES = 6;
+    // Fractions across the racing surface, from the outside edge in (the edges can vary along the lap).
+    const across = (s: number, f: number) => track.outerEdgeAt(s) + (track.innerEdgeAt(s) - track.outerEdgeAt(s)) * f;
+    const slices: Array<{ d0: (s: number) => number; d1: (s: number) => number; at: (s: number) => number }> = [];
+    for (let k = 0; k < SLICES; k++) {
+      slices.push({ d0: (s) => across(s, k / SLICES), d1: (s) => across(s, (k + 1) / SLICES), at: (s) => across(s, (k + 0.5) / SLICES) });
+    }
+    slices.push({ d0: (s) => track.innerEdgeAt(s), d1: (s) => track.pavedInnerD(s), at: (s) => track.innerEdgeAt(s) + 0.5 });
+    const step = Math.max(2, 3 * this.dpr / this.scale);
+    for (const slice of slices) {
+      let runStart = 0;
+      let runColor = colorFor(track.bankAt(0, slice.at(0)));
+      const flush = (end: number) => {
+        ctx.beginPath();
+        this.trace(ctx, runStart, end, slice.d0);
+        this.trace(ctx, runStart, end, slice.d1, false, true);
+        ctx.closePath();
+        ctx.fillStyle = runColor;
+        ctx.fill();
+      };
+      for (let s = step; s < track.length + step; s += step) {
+        const sc = Math.min(s, track.length);
+        const color = colorFor(track.bankAt(track.indexAt(sc), slice.at(sc)));
+        if (color !== runColor || sc >= track.length) {
+          flush(sc);
+          runStart = sc;
+          runColor = color;
+        }
+      }
+    }
+  }
+
+  /**
+   * Banking labels on the infield side: inside -> outside edge of the racing
+   * surface, at the middle of each straight, transition and turn (found from
+   * the curvature, so it works on any layout).
+   */
+  private drawBankLabels(ctx: CanvasRenderingContext2D): void {
+    const track = this.track!;
+    const n = track.n;
+    const kind = (i: number) => (track.turn[i] < 0.02 ? 0 : track.turn[i] > 0.98 ? 2 : 1);
+    // Runs of straight / transition / arc, starting at a boundary so none wraps.
+    let start = 0;
+    while (start < n && kind(start) === kind((start - 1 + n) % n)) start++;
+    if (start === n) start = 0;
+    const mids: number[] = [];
+    let runFrom = start;
+    for (let k = 1; k <= n; k++) {
+      const i = (start + k) % n;
+      if (k === n || kind(i) !== kind((i - 1 + n) % n)) {
+        const len = (k - (runFrom - start + n) % n);
+        if (len * track.ds > 20) mids.push(((runFrom + len / 2) % n) * track.ds);
+        runFrom = i;
+      }
+    }
+    const px = this.dpr;
+    ctx.font = `${Math.round(10.5 * px)}px ui-monospace, monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const s of mids) {
+      const i = track.indexAt(s);
+      const inner = deg(track.bankAt(i, track.innerEdge(i)));
+      const outer = deg(track.bankAt(i, track.outerEdge(i)));
+      const apron = deg(track.bankAt(i, track.innerEdge(i) + 0.5));
+      const width = track.innerEdge(i) - track.outerEdge(i);
+      const text = `${inner.toFixed(1)}° → ${outer.toFixed(1)}°`;
+      const sub = `${width.toFixed(0)} m wide · apron ${apron.toFixed(1)}°`;
+      // Just inside the pavement's inner edge (always on screen when the track is), pushed in along the screen-space normal.
+      const [wx, wy] = this.toScreen(...track.toWorld(s, track.pavedInnerD(s)));
+      const [ix, iy] = this.toScreen(...track.toWorld(s, track.outerEdge(i)));
+      const len = Math.hypot(wx - ix, wy - iy) || 1;
+      const ox = (wx - ix) / len, oy = (wy - iy) / len;
+      const w = Math.max(ctx.measureText(text).width, ctx.measureText(sub).width) + 8 * px;
+      const off = 14 * px + Math.abs(ox) * w / 2 + Math.abs(oy) * 13 * px;
+      const x = wx + ox * off, y = wy + oy * off;
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillRect(x - w / 2, y - 13 * px, w, 26 * px);
+      ctx.fillStyle = bankColor(outer);
+      ctx.fillText(text, x, y - 5 * px);
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.fillText(sub, x, y + 7 * px);
+    }
+  }
+
+  /** Colour scale for the banking heatmap, bottom-left of the view. */
+  private drawBankLegend(): void {
+    const ctx = this.ctx, px = this.dpr;
+    const x = 16 * px, y = this.canvas.height - 40 * px, w = 180 * px, h = 8 * px;
+    for (let k = 0; k < w; k++) {
+      ctx.fillStyle = bankColor((k / w) * BANK_SCALE_MAX);
+      ctx.fillRect(x + k, y, 1, h);
+    }
+    ctx.font = `${Math.round(10 * px)}px ui-monospace, monospace`;
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.textBaseline = 'top';
+    for (const v of [0, 8, 16, 24, 32]) {
+      ctx.textAlign = v === 0 ? 'left' : v === 32 ? 'right' : 'center';
+      ctx.fillText(`${v}°`, x + (v / BANK_SCALE_MAX) * w, y + h + 3 * px);
+    }
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('banking', x, y - 3 * px);
+  }
+
+  private decorView(ctx: CanvasRenderingContext2D): DecorView {
+    return {
+      ctx,
+      scale: this.scale,
+      toScreen: (s, d) => this.toScreen(...this.track!.toWorld(s, d)),
+      rectPath: (r) => this.rectPath(ctx, r),
+    };
   }
 
   /** Erase all accumulated tire marks. */
   clearMarks(): void {
     this.lastPos.clear();
+    this.grooveCtx.clearRect(0, 0, this.groove.width, this.groove.height);
     this.marksCtx.clearRect(0, 0, this.marks.width, this.marks.height);
   }
 
-  /** Stamp this step's tire marks onto the permanent mark layer. */
+  /** Stamp this step's tire marks onto the permanent groove and skid layers. */
   stampMarks(cars: Car[]): void {
     if (!this.track) return;
-    const ctx = this.marksCtx;
-    ctx.lineCap = 'round';
+    const groove = this.grooveCtx, skids = this.marksCtx;
+    groove.lineCap = 'round';
+    skids.lineCap = 'round';
+    groove.strokeStyle = `rgba(${COLORS.rubber},${GROOVE_STROKE_ALPHA})`;
     for (const car of cars) {
       const [x, y] = this.toMarks(car.x, car.y);
       const prev = this.lastPos.get(car);
       if (prev && Math.hypot(x - prev[0], y - prev[1]) < 1.5) continue; // batch tiny moves
       this.lastPos.set(car, [x, y]);
-      if (!prev) continue;
-      const jump = Math.hypot(x - prev[0], y - prev[1]);
-      if (jump > 30 * MARK_RES || car.markIntensity < 0.03) continue; // respawn teleport or no mark
-      const a = Math.pow(car.markIntensity, 0.8) * 0.3;
-      ctx.strokeStyle = `rgba(${car.surface === 'grass' ? COLORS.turf : COLORS.rubber},${a.toFixed(3)})`;
-      ctx.lineWidth = P.CAR_RADIUS * MARK_RES * (0.5 + 0.6 * car.markIntensity);
-      ctx.beginPath();
-      ctx.moveTo(prev[0], prev[1]);
-      ctx.lineTo(x, y);
-      ctx.stroke();
+      if (!prev || Math.hypot(x - prev[0], y - prev[1]) > 30 * MARK_RES) continue; // first sight or respawn teleport
+      if (Math.random() < grooveChance(car)) {
+        groove.lineWidth = GROOVE_WIDTH * MARK_RES;
+        groove.beginPath();
+        groove.moveTo(prev[0], prev[1]);
+        groove.lineTo(x, y);
+        groove.stroke();
+      }
+      const skid = skidStroke(car);
+      if (skid) {
+        skids.strokeStyle = `rgba(${skid.turf ? COLORS.turf : COLORS.rubber},${skid.alpha.toFixed(3)})`;
+        skids.lineWidth = skid.width * MARK_RES;
+        skids.beginPath();
+        skids.moveTo(prev[0], prev[1]);
+        skids.lineTo(x, y);
+        skids.stroke();
+      }
     }
   }
 
@@ -366,7 +603,11 @@ export class Renderer {
     ctx.drawImage(this.base, 0, 0);
     const b = track.bounds;
     const [mx, my] = this.toScreen(b.minX, b.maxY);
-    ctx.drawImage(this.marks, mx, my, (b.maxX - b.minX) * this.scale, (b.maxY - b.minY) * this.scale);
+    const mw = (b.maxX - b.minX) * this.scale, mh = (b.maxY - b.minY) * this.scale;
+    ctx.globalAlpha = GROOVE_DISPLAY_ALPHA;
+    ctx.drawImage(this.groove, mx, my, mw, mh);
+    ctx.globalAlpha = 1;
+    ctx.drawImage(this.marks, mx, my, mw, mh);
     ctx.drawImage(this.lines, 0, 0);
 
     const minR = (this.dotMode === 'legible' ? 8 : 2.5) * this.dpr;
@@ -383,7 +624,40 @@ export class Renderer {
       const fill = livery?.fill ?? car.color;
       const border = livery?.border ?? '#000';
 
-      if (this.showInputs && !car.retired) {
+      if (this.debugLayers.forces && !car.retired) {
+        // Horizontal forces per unit mass, 1 g = FORCE_PX: the banking's push toward the
+        // infield (amber) and what the tires are doing (cyan). Their sum turns the car.
+        const FORCE_PX = 26 * this.dpr;
+        const i = car.trackIdx;
+        const nx = -track.ty[i], ny = track.tx[i];
+        const tx = car.tireLon * car.frameX - car.tireLat * car.frameY;
+        const ty = car.tireLon * car.frameY + car.tireLat * car.frameX;
+        const arrow = (ax: number, ay: number, color: string) => {
+          const m = Math.hypot(ax, ay);
+          if (m < 0.05 * G) return;
+          const ux = ax / m, uy = ay / m;
+          const len = r + FORCE_PX * (m / G);
+          const ex = x + ux * len, ey = y - uy * len;
+          ctx.strokeStyle = color;
+          ctx.fillStyle = color;
+          ctx.lineWidth = 2 * this.dpr;
+          ctx.beginPath();
+          ctx.moveTo(x + ux * r, y - uy * r);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+          const hd = 5 * this.dpr;
+          ctx.beginPath();
+          ctx.moveTo(ex, ey);
+          ctx.lineTo(ex - ux * hd - uy * hd * 0.6, ey + uy * hd - ux * hd * 0.6);
+          ctx.lineTo(ex - ux * hd + uy * hd * 0.6, ey + uy * hd + ux * hd * 0.6);
+          ctx.closePath();
+          ctx.fill();
+        };
+        arrow(nx * car.bankAcc, ny * car.bankAcc, '#f5c518');
+        arrow(tx, ty, '#4fd1ff');
+      }
+
+      if (this.debugLayers.inputs && !car.retired) {
         // The driver's acceleration request in world space; length = input magnitude.
         const mag = Math.hypot(car.inputX, car.inputY);
         const m = Math.min(1, mag);
@@ -431,6 +705,7 @@ export class Renderer {
       }
     }
     this.drawOfficials(officials, r);
+    if (this.debugLayers.banking) this.drawBankLegend();
   }
 
   /** Pace car (white, amber light bar) and wreckers (orange trucks), lights flashing. */

@@ -57,6 +57,37 @@
       .tech div { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 4px; }
       .note { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
       #radio { font-family: var(--mono); font-size: 12px; min-height: 13em; }
+      #rosterWrap { max-height: 260px; overflow-y: auto; }
+      table.roster td { text-align: left; }
+      a[data-agent] { color: var(--text); text-decoration: underline; text-decoration-color: #4a4a52; text-underline-offset: 2px; cursor: pointer; }
+      a[data-agent]:hover { text-decoration-color: var(--text); }
+      /* Agent history page, over the track view */
+      #agentPage { position: absolute; inset: 0; background: rgba(13,13,15,0.97); overflow-y: auto; padding: 22px 28px 40px; z-index: 5; }
+      #agentPage[hidden] { display: none; }
+      #agentPage h1 { font-size: 22px; margin: 2px 0 6px; font-weight: 600; }
+      #agentPage h2 { margin-top: 22px; }
+      .ap-head { position: relative; }
+      .ap-head [data-close] { position: absolute; right: 0; top: 0; }
+      .ap-head .role { color: var(--muted); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
+      .facts { color: var(--muted); }
+      .facts b { color: var(--text); font-weight: 500; }
+      .ap-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-top: 16px; }
+      .ap-tile { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; }
+      .ap-tile .v { font: 600 20px var(--mono); }
+      .ap-tile .l { color: var(--muted); font-size: 11px; }
+      .ap-charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+      .ap-chart { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px 4px; }
+      .ap-chart figcaption { font-size: 12px; margin-bottom: 2px; }
+      .ap-chart svg { width: 100%; display: block; touch-action: none; }
+      .ap-chart .axis { stroke: #2c2c32; stroke-width: 1; }
+      .ap-chart .tick { fill: var(--muted); font: 9px var(--mono); }
+      .ap-chart .hair { stroke: #8a8a93; stroke-width: 1; }
+      table.ap-races { max-width: 760px; }
+      .ap-timeline { font-family: var(--mono); font-size: 12px; max-width: 900px; }
+      .ap-timeline div { padding: 3px 0; border-bottom: 1px solid #1c1c20; }
+      .ap-timeline .when { display: inline-block; width: 92px; color: var(--muted); }
+      .ap-tip { position: absolute; pointer-events: none; background: #1d1d22; border: 1px solid var(--line); border-radius: 4px;
+        padding: 6px 8px; font: 11px var(--mono); color: var(--text); z-index: 6; }
       #radio div { padding: 1px 0; }
       .flagtag { display: inline-block; padding: 0 6px; border-radius: 3px; font-weight: 700; color: #111; margin-right: 4px; }
       .flagtag.green { background: #3fdc8a; }
@@ -75,11 +106,13 @@
     <div id="app">
       <div id="stage">
         <canvas id="track"></canvas>
+        <div id="agentPage" hidden></div>
         <div id="hud"></div>
       </div>
       <aside>
         <h2>Session</h2>
         <div class="row" id="trackButtons"></div>
+        <div class="row"><button id="newTrack" title="Generate a random oval (drivers have only trained on the three presets)">New track</button></div>
         <div class="row"><span class="label">Session</span><span id="modeButtons" class="row inline"></span></div>
         <div class="row"><span class="label">Laps</span><span id="lapButtons" class="row inline"></span></div>
         <div class="row"><span class="label">Pace</span><span id="paceButtons" class="row inline"></span></div>
@@ -88,8 +121,8 @@
         <div class="row"><span class="label">Speed</span><span id="speedButtons" class="row inline"></span></div>
         <div class="row"><span class="label">Camera</span><span id="zoomButtons" class="row inline"></span></div>
         <div class="row"><span class="label">Cars</span><span id="dotButtons" class="row inline"></span></div>
+        <div class="row"><span class="label">Debug</span><span id="debugButtons" class="row inline"></span></div>
         <div class="row">
-          <button id="toggleInputs" class="on">Input vectors</button>
           <button id="clearMarks">Clear marks</button>
           <button id="restart">Restart</button>
         </div>
@@ -106,6 +139,10 @@
         <h2>Teams <span class="muted">(driver · spotter · crew chief)</span></h2>
         <div id="teamsWrap"><table class="teams"><tbody id="teams"></tbody></table></div>
         <div id="teamsNote" class="note"></div>
+
+        <h2>Roster <span class="muted">(click a name for their history)</span></h2>
+        <div class="row"><span id="rosterTabs" class="row inline"></span><button id="recruit" title="Sign a new agent to the academy (no seat): drivers descend from a licensed driver">Recruit</button></div>
+        <div id="rosterWrap"><table class="roster"><tbody id="roster"></tbody></table></div>
 
         <h2>Team radio <span class="muted">(click a driver to filter)</span></h2>
         <div id="radio"></div>

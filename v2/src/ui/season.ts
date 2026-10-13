@@ -135,7 +135,7 @@ export function offSeason(s: SeasonState, roster: Roster, field: TeamEntry[]): s
     const out = roster.driverOf(t);
     const mentor = roster.pick(mentors);
     const rookie = roster.descendantDriver(mentor);
-    t.driver = rookie.id;
+    roster.seat(t, 'driver', rookie.id);
     news.push(`#${t.livery.number} releases ${out.name}; signs rookie ${rookie.name} (trained in ${mentor.name}'s style)`);
   }
 
@@ -146,7 +146,7 @@ export function offSeason(s: SeasonState, roster: Roster, field: TeamEntry[]): s
     const worstTeam = chiefsRanked[chiefsRanked.length - 1].t;
     const outgoing = roster.chiefOf(worstTeam);
     const protege = roster.protegeChief(best);
-    worstTeam.chief = protege.id;
+    roster.seat(worstTeam, 'chief', protege.id);
     news.push(`#${worstTeam.livery.number} replaces crew chief ${outgoing.name} with ${protege.name}, a protégé of ${best.name}`);
   }
 

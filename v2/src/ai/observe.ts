@@ -22,8 +22,8 @@ export function observe(car: Car, track: Track, out: Float32Array): Float32Array
   // Angle from travel direction to the track direction.
   out[k++] = fx * ty - fy * tx;
   out[k++] = fx * tx + fy * ty;
-  // Lateral position: -1 at the outer wall, +1 at the inside edge, >1 on the apron.
-  out[k++] = Math.min(3, car.d / track.halfWidth);
+  // Lateral position: -1 at the outside edge, +1 at the inside edge, >1 on the apron (wherever the edges are here).
+  out[k++] = Math.min(3, track.lanePosition(i, car.d));
   // Velocity across and along the track.
   out[k++] = (car.vx * -ty + car.vy * tx) / 20;
   out[k++] = (car.vx * tx + car.vy * ty) / 80;

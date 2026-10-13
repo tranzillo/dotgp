@@ -4,7 +4,7 @@ import { adaptWeights, neuralTeam } from '../src/ai/drivers';
 import { PaceCarDriver } from '../src/ai/formation';
 import { Car } from '../src/sim/car';
 import { Race } from '../src/sim/race';
-import { SPEEDWAY, Track } from '../src/sim/track';
+import { ovalTrack, SPEEDWAY } from '../src/trackgen';
 import { World } from '../src/sim/world';
 
 const drivers = JSON.parse(readFileSync('public/drivers/default.json', 'utf8')).drivers
@@ -12,7 +12,7 @@ const drivers = JSON.parse(readFileSync('public/drivers/default.json', 'utf8')).
 
 describe('race control', () => {
   it('runs pace laps, a caution with the wrecker, a restart, and a finish', () => {
-    const track = new Track(SPEEDWAY);
+    const track = ovalTrack(SPEEDWAY);
     const world = new World(track, { wearScale: 4 });
     for (let k = 0; k < 6; k++) world.addCar(new Car(k), neuralTeam(drivers[k % drivers.length]));
     const race = new Race(world, 6, new PaceCarDriver());

@@ -1,16 +1,16 @@
 import { PHYSICS as P } from './constants';
 import { applyImpact, type Car } from './car';
-import { PIT, type Track } from './track';
+import type { Track } from './track';
 
 /**
- * Walls are analytic lines in track space (constant d), so there are no
- * segment seams. The response keeps tangential speed apart from Coulomb
- * friction proportional to the normal impulse: a shallow hit becomes a
- * scrape along the wall, a steep one bounces off and hurts.
+ * Walls are analytic lines in track space (constant d over an s range), so
+ * there are no segment seams. The response keeps tangential speed apart from
+ * Coulomb friction proportional to the normal impulse: a shallow hit becomes
+ * a scrape along the wall, a steep one bounces off and hurts.
  *
- * Two barriers exist: the outer wall all the way round, and the pit wall
- * along the front straight (two-sided, with solid ends that can be hit
- * nose-first). The infield has no wall; it is grass.
+ * The track's layout says where the walls are (on ovals: the outer wall all
+ * the way round, and the pit wall along the front straight, two-sided with
+ * solid ends that can be hit nose-first).
  */
 export function resolveWalls(car: Car, track: Track, damageScale = 1): void {
   const r = P.CAR_RADIUS;
@@ -19,23 +19,31 @@ export function resolveWalls(car: Car, track: Track, damageScale = 1): void {
   const wasInContact = car.wallContact;
   car.wallContact = false;
 
-  const outerPen = track.outerWallD - (car.d - r);
-  if (outerPen > 0) wallImpact(car, nx, ny, outerPen, 1, wasInContact, damageScale);
-
-  const half = PIT.WALL_THICKNESS / 2;
-  if (track.inPitWallZone(car.s)) {
-    const gap = car.d - track.pitWallD;
-    const pen = r + half - Math.abs(gap);
-    if (pen > 0) {
-      const side = gap >= 0 ? 1 : -1; // push back to whichever side the car is on
-      wallImpact(car, nx * side, ny * side, pen, side, wasInContact, damageScale);
+  for (const wall of track.walls) {
+    if (!track.inRange(car.s, wall.range)) continue;
+    const mid = typeof wall.d === 'number' ? wall.d : track.edgeAt(wall.d, car.s);
+    const half = wall.thickness / 2;
+    if (wall.faces === 'in') {
+      // Keeps cars on its +d side.
+      const pen = mid + half - (car.d - r);
+      if (pen > 0) wallImpact(car, nx, ny, pen, 1, wasInContact, damageScale);
+    } else if (wall.faces === 'out') {
+      const pen = car.d + r - (mid - half);
+      if (pen > 0) wallImpact(car, -nx, -ny, pen, -1, wasInContact, damageScale);
+    } else {
+      const gap = car.d - mid;
+      const pen = r + half - Math.abs(gap);
+      if (pen > 0) {
+        const side = gap >= 0 ? 1 : -1; // push back to whichever side the car is on
+        wallImpact(car, nx * side, ny * side, pen, side, wasInContact, damageScale);
+      }
     }
   }
-  // The wall ends: a car arriving head-on hits the end, not the face.
-  for (const [ex, ey] of track.pitWallEnds) {
-    const dx = car.x - ex, dy = car.y - ey;
+  // Wall ends: a car arriving head-on hits the end, not the face.
+  for (const cap of track.wallCaps) {
+    const dx = car.x - cap.x, dy = car.y - cap.y;
     const dist = Math.hypot(dx, dy);
-    const pen = r + half - dist;
+    const pen = r + cap.radius - dist;
     if (pen > 0 && dist > 1e-9) {
       const Nx = dx / dist, Ny = dy / dist;
       wallImpact(car, Nx, Ny, pen, Nx * nx + Ny * ny, wasInContact, damageScale);

@@ -48,6 +48,11 @@ export interface TeamEntry {
   chief: string;
 }
 
+/** Something that happened to the roster, for the activity log. */
+export type RosterChange =
+  | { type: 'joined'; role: Role; agent: string; name: string; origin: 'rookie' | 'descendant' | 'protege' | 'recruit'; mentor: string | null }
+  | { type: 'seat'; role: Role; agent: string; action: 'signed' | 'released'; team: number; car: number };
+
 /** How far a descendant's weights stray from its mentor's. */
 const DESCENT_NOISE = { driver: 0.02, chief: 0.05 };
 
@@ -64,6 +69,8 @@ export class Roster {
   readonly chiefs = new Map<string, ChiefAgent>();
   /** Trained crew chiefs that new teams' chiefs can descend from. */
   chiefTemplates: Float32Array[] = [];
+  /** Told about every arrival and seat change (the activity log listens). */
+  onChange: ((change: RosterChange) => void) | null = null;
   private counter = 0;
 
   constructor(private readonly rng: Rng) {}
@@ -85,9 +92,14 @@ export class Roster {
 
   // ---------- creating agents ----------
 
+  private joined(role: Role, agent: { id: string; name: string }, origin: 'rookie' | 'descendant' | 'protege' | 'recruit', mentor: string | null): void {
+    this.onChange?.({ type: 'joined', role, agent: agent.id, name: agent.name, origin, mentor });
+  }
+
   freshDriver(): DriverAgent {
     const d = { id: this.uid('D'), name: this.uniqueName(), weights: initialWeights(this.rng), rounds: 0, mentor: null, licensed: false };
     this.drivers.set(d.id, d);
+    this.joined('driver', d, 'rookie', null);
     return d;
   }
 
@@ -98,12 +110,23 @@ export class Roster {
     // Inherits a working driving style, so no rookie school needed.
     const d = { id: this.uid('D'), name: this.uniqueName(), weights, rounds: 0, mentor: mentor.name, licensed: true };
     this.drivers.set(d.id, d);
+    this.joined('driver', d, 'descendant', mentor.name);
     return d;
+  }
+
+  /**
+   * A new driver for the academy (no seat): descended from a licensed driver
+   * if there is one, otherwise a raw rookie for driving school.
+   */
+  recruitDriver(): DriverAgent {
+    const experienced = [...this.drivers.values()].filter((d) => d.licensed);
+    return experienced.length ? this.descendantDriver(experienced[this.rng.int(experienced.length)]) : this.freshDriver();
   }
 
   newSpotter(): SpotterAgent {
     const s = { id: this.uid('S'), name: this.uniqueName(), skill: randomSpotterSkill(this.random) };
     this.spotters.set(s.id, s);
+    this.joined('spotter', s, 'recruit', null);
     return s;
   }
 
@@ -124,6 +147,7 @@ export class Roster {
     }
     const c = { id: this.uid('C'), name: this.uniqueName(), rounds: 0, mentor, brain };
     this.chiefs.set(c.id, c);
+    this.joined('chief', c, 'recruit', mentor);
     return c;
   }
 
@@ -148,6 +172,7 @@ export class Roster {
     }
     const c = { id: this.uid('C'), name: this.uniqueName(), rounds: 0, mentor: mentor.name, brain };
     this.chiefs.set(c.id, c);
+    this.joined('chief', c, 'protege', mentor.name);
     return c;
   }
 
@@ -187,16 +212,34 @@ export class Roster {
   /** Grow to n teams. New drivers descend from drivers who can already drive. */
   ensureTeams(n: number): void {
     while (this.teams.length < n) {
-      const experienced = [...this.drivers.values()].filter((d) => d.licensed);
-      const driver = experienced.length ? this.descendantDriver(experienced[this.rng.int(experienced.length)]) : this.freshDriver();
-      this.teams.push({
+      const driver = this.recruitDriver();
+      const team: TeamEntry = {
         id: this.teams.reduce((m, t) => Math.max(m, t.id), -1) + 1,
         livery: randomLivery(this.teams.map((t) => t.livery.number), this.random),
         driver: driver.id,
         spotter: this.newSpotter().id,
         chief: this.newChief().id,
-      });
+      };
+      this.teams.push(team);
+      for (const role of ['driver', 'spotter', 'chief'] as const) this.seatChange(team, role, team[role], 'signed');
     }
+  }
+
+  /** The team an agent has a seat with, or null: in the academy (or between seats). */
+  teamOf(role: Role, agentId: string): TeamEntry | null {
+    return this.teams.find((t) => t[role] === agentId) ?? null;
+  }
+
+  private seatChange(team: TeamEntry, role: Role, agent: string, action: 'signed' | 'released'): void {
+    this.onChange?.({ type: 'seat', role, agent, action, team: team.id, car: team.livery.number });
+  }
+
+  /** Give a team's seat to an agent; whoever had it goes to the academy. */
+  seat(team: TeamEntry, role: Role, agentId: string): void {
+    if (team[role] === agentId) return;
+    this.seatChange(team, role, team[role], 'released');
+    team[role] = agentId;
+    this.seatChange(team, role, agentId, 'signed');
   }
 
   driverOf(t: TeamEntry): DriverAgent { return this.drivers.get(t.driver)!; }
@@ -206,15 +249,21 @@ export class Roster {
   /** Put an agent in a team's seat; if another team had them, the two teams swap. */
   assign(team: TeamEntry, role: Role, agentId: string): void {
     const other = this.teams.find((t) => t !== team && t[role] === agentId);
-    if (other) other[role] = team[role];
-    team[role] = agentId;
+    const previous = team[role];
+    this.seat(team, role, agentId);
+    if (other) {
+      this.seatChange(other, role, agentId, 'released');
+      other[role] = previous;
+      this.seatChange(other, role, previous, 'signed');
+    }
   }
 
   /** Replace every team's driver with a brand-new rookie who has never driven. */
   freshDriversForAll(): void {
     for (const t of this.teams) {
-      this.drivers.delete(t.driver);
-      t.driver = this.freshDriver().id;
+      const old = t.driver;
+      this.seat(t, 'driver', this.freshDriver().id);
+      this.drivers.delete(old);
     }
   }
 

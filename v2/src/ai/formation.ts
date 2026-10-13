@@ -1,7 +1,6 @@
 import { PIT_SERVICE, PHYSICS as P } from '../sim/constants';
 import type { Car } from '../sim/car';
 import { pullOffS } from '../sim/raceControl';
-import { PIT } from '../sim/track';
 import type { Controller, World } from '../sim/world';
 import { followLine } from './lineFollower';
 
@@ -63,30 +62,31 @@ export class PaceCarDriver implements Controller {
     }
     const t = world.track;
     const r = t.signedS(car.s);
-    const wallClear = t.pitWallD + PIT.WALL_THICKNESS / 2 + P.CAR_RADIUS + 1.2;
-    const fastLane = Math.max(t.pitWallD + PIT.WALL_THICKNESS / 2 + 3, wallClear);
+    const wallClear = t.pit.wallD + t.pit.wallThickness / 2 + P.CAR_RADIUS + 1.2;
+    const fastLane = Math.max(t.pit.wallD + t.pit.wallThickness / 2 + 3, wallClear);
     const ramp = (x: number, x0: number, x1: number, a: number, b: number) =>
       x <= x0 ? a : x >= x1 ? b : a + (b - a) * (x - x0) / (x1 - x0);
     const pull = pullOffS(t);
 
-    if (ctl.oneToGo && (car.d > t.halfWidth + 0.5 || (r > pull - 180 && r < t.pitWallStart))) {
+    const inner = t.innerEdge(car.trackIdx);
+    if (ctl.oneToGo && (car.d > inner + 0.5 || (r > pull - 180 && r < t.pit.wallStart))) {
       // Heading in: down to the apron at turn 4 exit, onto pit road, stop at its start.
       const lane = (s: number) => {
         const x = t.signedS(s);
         if (x < pull) return ramp(x, pull - 180, pull, 0, wallClear);
-        return ramp(x, pull, t.pitWallStart - 50, wallClear, fastLane);
+        return ramp(x, pull, t.pit.wallStart - 50, wallClear, fastLane);
       };
       const cap = (s: number) => {
         const x = t.signedS(s);
-        if (x < t.pitWallStart - 5) return ctl.paceSpeed;
-        return Math.min(PIT_SERVICE.SPEED_LIMIT - 1, Math.sqrt(2 * 3 * Math.max(0, t.pitWallStart + 25 - x)));
+        if (x < t.pit.wallStart - 5) return ctl.paceSpeed;
+        return Math.min(PIT_SERVICE.SPEED_LIMIT - 1, Math.sqrt(2 * 3 * Math.max(0, t.pit.wallStart + 25 - x)));
       };
       followLine(car, world, lane, cap, 0.75);
       return;
     }
-    if (car.d > t.halfWidth) {
+    if (car.d > inner) {
       // Just released from pit road: out through the exit taper and onto the track.
-      const lane = (s: number) => ramp(t.signedS(s), t.pitWallEnd + 15, t.pitWallEnd + PIT.EXIT_TAPER, fastLane, 0);
+      const lane = (s: number) => ramp(t.signedS(s), t.pit.wallEnd + 15, t.pit.exitEnd, fastLane, 0);
       followLine(car, world, lane, () => ctl.paceSpeed * 1.2, 0.8);
       return;
     }

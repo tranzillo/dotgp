@@ -4,7 +4,7 @@ import { genomeSize, Network } from '../src/ai/network';
 import { Rng } from '../src/ai/rng';
 import { RADIO, RADIO_SIZE, TowerSpotter } from '../src/ai/spotter';
 import { Car } from '../src/sim/car';
-import { SPEEDWAY, Track } from '../src/sim/track';
+import { ovalTrack, SPEEDWAY } from '../src/trackgen';
 import { World } from '../src/sim/world';
 
 describe('network widening', () => {
@@ -30,7 +30,7 @@ describe('network widening', () => {
 });
 
 describe('tower spotter', () => {
-  const track = new Track(SPEEDWAY);
+  const track = ovalTrack(SPEEDWAY);
   const setup = (others: Array<[number, number, number]>) => {
     const world = new World(track);
     const me = new Car(0);
