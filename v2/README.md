@@ -45,6 +45,7 @@ npx tsx scripts/incidents.ts --tracks speedway,short --seeds 2 --field 24 --pace
 | `src/ui/season.ts` | Seasons, points, careers, off-season (relegated seats go to rookies from the top) |
 | `src/events/session.ts` | One session (race, practice, ghost laps) as a DOM-free object: world, race control, respawns, radio, technique, standings; snapshots for the viewer, results for the records |
 | `src/events/event.worker.ts`, `host.ts`, `protocol.ts` | Events in workers: one per event, attached (on screen, real time × speed, streaming snapshots and tire-mark strokes) or in the background (races flat out, open sessions paused) |
+| `src/school/classroom.ts` | Driving school: a class of drivers taking a lesson round by round on a watchable track (rookie school, track variety), each student with its ES variations as ghosts |
 | `src/records/activity.ts` | The permanent activity log: one record per agent per thing that happened (joined, signed/released, practice round, license, strategy round, race result, season), with the agent's brain version; career summaries and learning curves derived from it |
 | `src/records/idbStore.ts` | Activity records in IndexedDB (in-memory store for tests and scripts) |
 | `src/records/occupancy.ts` | Who is busy where: an agent is in at most one running event at a time, claimed all-or-nothing |
@@ -92,6 +93,10 @@ Sessions run as **events**, each in its own worker. One event is on screen (atta
 Every agent (driver, spotter, crew chief) belongs to the organisation: seated in a team's car, or in the **academy** with no seat (released drivers land there; *Recruit* signs new ones). Whatever is on screen is an **event** (a race, a practice session, ghost laps) that claims its participants: an agent takes part in one event at a time, and may learn during any of them. Practice training runs only inside the practice session, so the field never practises and races at once.
 
 Everything agents do goes into a permanent **activity log** (IndexedDB): arrivals, signings and releases, every practice round with best laps per track, licenses, crew chiefs' strategy rounds, race results (position, laps, best/average lap, stops, wall hits, points) and season standings, each tagged with the event and the agent's brain version. Click a name in the Roster panel (or double-click a driver in the timing tower) for their history page.
+
+## Driving school
+
+Pick a lesson and free drivers (academy or anyone not in a running session) in the Driving school panel and start a class: it's an event like any other, on screen or in the background. Each round every student drives as a ghost alongside its 32 slightly varied copies (faint dots in its colour; *Variants: Hide* to declutter) and then moves toward the copies that did better: the same evolution-strategies training as practice, one visible track per round. **Rookie school** rotates the three presets with soft walls hardening over the first 60 lessons; a student earns a license with a clean lap at full walls on each preset, and the class ends when everyone has one. **Track variety** puts licensed drivers on a new generated oval every round. Every round goes into each student's history (lesson, track, laps, best lap, how many variations beat them, wall softness). *Raw rookie* in the Roster panel signs an unlicensed driver for the academy.
 
 ## Rookie school
 

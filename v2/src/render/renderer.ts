@@ -20,6 +20,8 @@ export interface RenderCar {
   tireLon: number;
   tireLat: number;
   bankAcc: number;
+  /** Driving school: one of a student's practice variations, drawn small and faint. */
+  variant?: boolean;
 }
 
 /** Officials on track: the pace car, and wreckers (phase 'done' once parked). */
@@ -634,13 +636,24 @@ export class Renderer {
     const w = this.canvas.width, h = this.canvas.height;
 
     // Draw back-to-front by track position so leaders sit on top in a pack.
-    const order = [...cars].sort((a, c) => a.dist - c.dist);
+    const order = [...cars].sort((a, c) => Number(!!c.variant) - Number(!!a.variant) || a.dist - c.dist);
     for (const car of order) {
       const [x, y] = this.toScreen(car.x, car.y);
       if (x < -50 || y < -50 || x > w + 50 || y > h + 50) continue;
       const livery = liveryOf(car);
       const fill = livery?.fill ?? car.color;
       const border = livery?.border ?? '#000';
+      if (car.variant) {
+        // A practice variation: a faint dot in the student's colour, under the students.
+        if (car.retired) continue;
+        ctx.globalAlpha = 0.28;
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.5, 0, Math.PI * 2);
+        ctx.fillStyle = fill;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        continue;
+      }
 
       if (this.debugLayers.forces && !car.retired) {
         // Horizontal forces per unit mass, 1 g = FORCE_PX: the banking's push toward the

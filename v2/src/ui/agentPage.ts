@@ -219,6 +219,12 @@ function describe(r: ActivityRecord): string {
       const laps = r.data.tracks.map((t, i) => `${t} ${lap(r.data.bestLaps[i])}`).join(', ');
       return `${r.data.rookie ? 'Rookie school' : 'Practice'} round ${r.brain ?? ''}: ${laps}${r.data.rookie ? `, walls ×${r.data.walls.toFixed(2)}` : ''}${ev}`;
     }
+    case 'lesson': {
+      const d = r.data;
+      const name = d.lesson === 'rookie' ? 'Rookie school' : d.lesson === 'variety' ? 'Track variety' : d.lesson;
+      return `${name} round ${r.brain ?? ''} at ${esc(d.track)}: ${d.laps} laps, best ${lap(d.bestLap)}, `
+        + `${d.beaten} of ${d.variations} variations did better${d.walls < 1 ? `, walls ×${d.walls.toFixed(2)}` : ''}`;
+    }
     case 'licensed': return `<b>Earned a license</b> after ${r.data.lessons} lessons`;
     case 'strategy': return `Strategy race: ${((r.data.relativeTime - 1) * 100).toFixed(1)}% off the best${ev}`;
     case 'race': {

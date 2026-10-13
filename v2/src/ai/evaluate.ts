@@ -44,23 +44,75 @@ const STALL_WINDOW = 8; // seconds
 const STALL_DISTANCE = 10; // metres
 
 /**
- * Run every genome as a ghost car on the same track at once. Ghost trials are
- * independent, so one world amortises the loop for the whole population.
+ * A ghost trial you can step: every genome as a ghost car on the same track
+ * at once (ghost trials are independent, so one world amortises the loop for
+ * the whole population). A car that stalls has its trial ended. Watchable
+ * (driving school steps it in front of the viewer) or run to the end.
  */
-export function runTrial(track: Track, genomes: Float32Array[], opts: TrialOptions): TrialResult[] {
-  const world = new World(track, { collisions: false, drafting: false, damageScale: opts.damageScale ?? 1 });
-  const startS = opts.startS ?? track.length - 20;
-  for (let k = 0; k < genomes.length; k++) {
-    const car = new Car(k);
-    car.placeOnTrack(track, startS, 0);
-    // Rolling start, as in races: pulling away from a standstill is the pit crew's job, not a racing skill.
-    car.vx = track.tx[car.trackIdx] * ROLLING_START_SPEED;
-    car.vy = track.ty[car.trackIdx] * ROLLING_START_SPEED;
-    world.addCar(car, neuralTeam(genomes[k]));
+export class Trial {
+  readonly world: World;
+  readonly track: Track;
+  private readonly steps: number;
+  private readonly checkEvery: number;
+  private readonly lastDist: number[];
+  private readonly damagePenaltyLaps: number | undefined;
+  private stepIndex = 0;
+  private allStalled = false;
+
+  constructor(track: Track, genomes: Float32Array[], opts: TrialOptions) {
+    this.track = track;
+    this.world = new World(track, { collisions: false, drafting: false, damageScale: opts.damageScale ?? 1 });
+    const startS = opts.startS ?? track.length - 20;
+    for (let k = 0; k < genomes.length; k++) {
+      const car = new Car(k);
+      car.placeOnTrack(track, startS, 0);
+      // Rolling start, as in races: pulling away from a standstill is the pit crew's job, not a racing skill.
+      car.vx = track.tx[car.trackIdx] * ROLLING_START_SPEED;
+      car.vy = track.ty[car.trackIdx] * ROLLING_START_SPEED;
+      this.world.addCar(car, neuralTeam(genomes[k]));
+    }
+    this.steps = Math.round(opts.seconds / P.DT);
+    this.checkEvery = Math.round(STALL_WINDOW / P.DT);
+    this.lastDist = this.world.cars.map((c) => c.dist);
+    this.damagePenaltyLaps = opts.damagePenaltyLaps;
   }
 
-  simulate(world, opts.seconds);
-  return world.cars.map((car) => scoreCar(car, track, 0, opts.damagePenaltyLaps));
+  get done(): boolean {
+    return this.allStalled || this.stepIndex >= this.steps;
+  }
+
+  /** Seconds of the trial left to run. */
+  get remaining(): number {
+    return Math.max(0, (this.steps - this.stepIndex) * P.DT);
+  }
+
+  step(): void {
+    if (this.done) return;
+    this.world.step();
+    this.stepIndex++;
+    if (this.stepIndex % this.checkEvery === 0) {
+      let anyAlive = false;
+      this.world.cars.forEach((c, k) => {
+        if (!c.retired && c.dist - this.lastDist[k] < STALL_DISTANCE) {
+          c.retired = true; // stalled or going nowhere: end its trial
+        }
+        this.lastDist[k] = c.dist;
+        anyAlive ||= !c.retired;
+      });
+      if (!anyAlive) this.allStalled = true;
+    }
+  }
+
+  results(): TrialResult[] {
+    return this.world.cars.map((car) => scoreCar(car, this.track, 0, this.damagePenaltyLaps));
+  }
+}
+
+/** Run every genome as a ghost car on the same track at once, to the end. */
+export function runTrial(track: Track, genomes: Float32Array[], opts: TrialOptions): TrialResult[] {
+  const trial = new Trial(track, genomes, opts);
+  while (!trial.done) trial.step();
+  return trial.results();
 }
 
 /**

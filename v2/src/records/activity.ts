@@ -57,6 +57,22 @@ export interface PracticeData {
   walls: number;
 }
 
+/** A driving-school round. */
+export interface LessonData {
+  lesson: string;
+  track: string;
+  /** Lesson score this round (laps of progress, less damage). */
+  fitness: number;
+  laps: number;
+  bestLap: number | null;
+  health: number;
+  /** Wall damage scale (1 = full). */
+  walls: number;
+  /** Of the student's practice variations this round, how many beat it. */
+  beaten: number;
+  variations: number;
+}
+
 interface RecordBase {
   /** Store key, assigned when stored. */
   id?: number;
@@ -73,6 +89,7 @@ export type ActivityRecord = RecordBase & (
   | { kind: 'joined'; data: { name: string; origin: 'rookie' | 'descendant' | 'protege' | 'recruit'; mentor: string | null } }
   | { kind: 'seat'; data: { action: 'signed' | 'released'; team: number; car: number } }
   | { kind: 'practice'; data: PracticeData }
+  | { kind: 'lesson'; data: LessonData }
   | { kind: 'licensed'; data: { lessons: number } }
   | { kind: 'strategy'; data: { relativeTime: number } }
   | { kind: 'race'; data: RaceData }
@@ -185,6 +202,11 @@ export function summarize(records: ActivityRecord[]): AgentSummary {
         if (r.data.rookie) s.practice.rookieRounds++;
         r.data.tracks.forEach((t, i) => best(t, r.data.bestLaps[i], r.time, 'practice'));
         break;
+      case 'lesson':
+        s.practice.rounds++;
+        if (r.data.lesson === 'rookie') s.practice.rookieRounds++;
+        best(r.data.track, r.data.bestLap, r.time, 'practice');
+        break;
       case 'strategy': s.strategy.rounds++; break;
       case 'race': {
         const d = r.data;
@@ -217,6 +239,7 @@ export function lapProgression(records: ActivityRecord[], track: string): Array<
     let lap: number | null = null;
     if (r.kind === 'practice') { const i = r.data.tracks.indexOf(track); lap = i >= 0 ? r.data.bestLaps[i] : null; }
     else if (r.kind === 'race' && r.data.track === track) lap = r.data.bestLap;
+    else if (r.kind === 'lesson' && r.data.track === track) lap = r.data.bestLap;
     if (lap === null || !Number.isFinite(lap)) continue;
     best = Math.min(best, lap);
     out.push({ x: r.brain ?? r.time, lap, best });

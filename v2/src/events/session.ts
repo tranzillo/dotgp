@@ -12,6 +12,7 @@ import type { Surface, TrackLayout } from '../sim/layout';
 import { Race } from '../sim/race';
 import { Track } from '../sim/track';
 import { World } from '../sim/world';
+import type { SchoolView } from '../school/classroom';
 
 /**
  * One session on track (a race, an open practice session, ghost laps), run
@@ -48,6 +49,8 @@ export interface SessionSpec {
 export interface CarView {
   id: number;
   key: number;
+  /** Driving school: one of a student's practice variations (drawn faint), not the student. */
+  variant?: boolean;
   x: number; y: number; s: number; d: number; dist: number; speed: number;
   color: string;
   retired: boolean; cleared: boolean; towed: boolean; parked: boolean; finished: boolean;
@@ -95,6 +98,8 @@ export interface SessionSnapshot {
   race: RaceView | null;
   /** Technique histogram per entrant key: where the tire force points relative to travel. */
   technique: Array<[number, number[]]>;
+  /** Driving school classes: the lesson's state. */
+  school?: SchoolView;
 }
 
 /** How a session went for one entrant (races: the classification). */

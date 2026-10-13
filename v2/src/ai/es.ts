@@ -152,17 +152,12 @@ export class EsTrainer {
     });
   }
 
-  /** Rookie damage penalty: gentle while walls are soft, ramping to full over the next curriculum span. */
   rookieDamagePenalty(lessons: number): number {
-    const n = this.config.curriculumRounds;
-    const t = n > 0 ? Math.min(1, Math.max(0, (lessons - n) / n)) : 1;
-    return ROOKIE_DAMAGE_PENALTY + (FULL_DAMAGE_PENALTY - ROOKIE_DAMAGE_PENALTY) * t;
+    return rookieDamagePenalty(lessons, this.config.curriculumRounds);
   }
 
-  /** Soft walls for a rookie, hardening over its own first lessons. */
   rookieDamageScale(lessons: number): number {
-    const n = this.config.curriculumRounds;
-    return n > 0 ? Math.min(1, MIN_DAMAGE_SCALE + (1 - MIN_DAMAGE_SCALE) * (lessons / n)) : 1;
+    return rookieDamageScale(lessons, this.config.curriculumRounds);
   }
 
   step(): EsRoundReport {
@@ -311,6 +306,22 @@ export class EsTrainer {
     return out;
   }
 }
+
+/** Rookie damage penalty (laps per wrecked car): gentle while walls are soft, ramping to full over the next curriculum span. */
+export function rookieDamagePenalty(lessons: number, curriculumRounds: number): number {
+  const n = curriculumRounds;
+  const t = n > 0 ? Math.min(1, Math.max(0, (lessons - n) / n)) : 1;
+  return ROOKIE_DAMAGE_PENALTY + (FULL_DAMAGE_PENALTY - ROOKIE_DAMAGE_PENALTY) * t;
+}
+
+/** Soft walls for a rookie, hardening over its own first lessons. */
+export function rookieDamageScale(lessons: number, curriculumRounds: number): number {
+  const n = curriculumRounds;
+  return n > 0 ? Math.min(1, MIN_DAMAGE_SCALE + (1 - MIN_DAMAGE_SCALE) * (lessons / n)) : 1;
+}
+
+/** The license test: health a rookie must keep while lapping at full damage. */
+export { LICENSE_HEALTH, FULL_DAMAGE_PENALTY };
 
 /** Weights plus Adam state: anything ES can improve. */
 export interface AdamState {

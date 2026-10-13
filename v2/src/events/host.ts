@@ -1,6 +1,8 @@
 import type { EventRef } from '../records/activity';
-import type { EventProgress, FromEvent, ToEvent } from './protocol';
-import type { EntrantResult, RadioLine, SessionSnapshot, SessionSpec } from './session';
+import type { RoundReport } from '../school/classroom';
+import type { TrackLayout } from '../sim/layout';
+import type { EventProgress, EventSpec, FromEvent, ToEvent } from './protocol';
+import type { EntrantResult, RadioLine, SessionSnapshot } from './session';
 
 /**
  * The page's side of events. Each event runs in its own worker; at most one
@@ -10,8 +12,8 @@ import type { EntrantResult, RadioLine, SessionSnapshot, SessionSpec } from './s
  */
 export interface EventHandle {
   ref: EventRef;
-  spec: SessionSpec;
-  /** Whatever the starter wants to keep with the event (e.g. team ids by entrant key). */
+  event: EventSpec;
+  /** On screen. */
   attachedTo: boolean;
   state: 'running' | 'finished' | 'stopped';
   snapshot: SessionSnapshot | null;
@@ -19,6 +21,8 @@ export interface EventHandle {
   results: EntrantResult[] | null;
   /** Races keep running when nobody watches; open sessions pause. */
   runDetached: boolean;
+  /** Why the event stopped, if its worker failed. */
+  error?: string;
   worker: Worker;
 }
 
@@ -28,6 +32,10 @@ export interface HostListener {
   /** Progress (and radio) from a background event. */
   progress(handle: EventHandle, radio: RadioLine[]): void;
   finished(handle: EventHandle): void;
+  /** The event moved to another track. */
+  track(handle: EventHandle, layout: TrackLayout): void;
+  /** Driving-school rounds ended. */
+  rounds(handle: EventHandle, reports: RoundReport[]): void;
 }
 
 export class EventHost {
@@ -44,16 +52,23 @@ export class EventHost {
     return this.events.filter((h) => h.state === 'running');
   }
 
-  start(ref: EventRef, spec: SessionSpec, opts: { attach: boolean; runDetached: boolean; warm?: number }): EventHandle {
+  start(ref: EventRef, event: EventSpec, opts: { attach: boolean; runDetached: boolean; warm?: number }): EventHandle {
     if (opts.attach) this.detachAll();
     const worker = new Worker(new URL('./event.worker.ts', import.meta.url), { type: 'module' });
     const handle: EventHandle = {
-      ref, spec, attachedTo: opts.attach, state: 'running', snapshot: null, progress: null, results: null,
+      ref, event, attachedTo: opts.attach, state: 'running', snapshot: null, progress: null, results: null,
       runDetached: opts.runDetached, worker,
     };
     worker.onmessage = (e: MessageEvent<FromEvent>) => this.receive(handle, e.data);
+    worker.onerror = (e) => {
+      // A crashed event stops (and says why) rather than sitting there looking busy.
+      handle.error = e.message || 'worker error';
+      handle.state = 'stopped';
+      handle.attachedTo = false;
+      console.error(`event ${handle.ref.label} failed:`, e.message);
+    };
     this.events.push(handle);
-    this.send(handle, { type: 'start', spec, attached: opts.attach, speed: this.speed, runDetached: opts.runDetached, warm: opts.warm ?? 0 });
+    this.send(handle, { type: 'start', event, attached: opts.attach, speed: this.speed, runDetached: opts.runDetached, warm: opts.warm ?? 0 });
     return handle;
   }
 
@@ -124,6 +139,12 @@ export class EventHost {
         this.listener.finished(handle);
         // A watched race keeps circulating for the cool-down lap; otherwise the worker can go.
         if (!handle.attachedTo) handle.worker.terminate();
+        break;
+      case 'track':
+        this.listener.track(handle, msg.layout);
+        break;
+      case 'rounds':
+        this.listener.rounds(handle, msg.reports);
         break;
     }
   }
