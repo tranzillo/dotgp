@@ -522,7 +522,8 @@ export class HTMLTracksPanel {
 
   private updateVisibility(trackType: string): void {
     const isOval = trackType === 'oval';
-    this.surfaceRow.style.display = isOval ? 'flex' : 'none';
+    const isGpOrOval = trackType === 'gp' || trackType === 'oval';
+    this.surfaceRow.style.display = isGpOrOval ? 'flex' : 'none';
     this.shapeRow.style.display = isOval ? 'flex' : 'none';
 
     // Show/hide slider groups based on track type
@@ -608,6 +609,7 @@ export class HTMLTracksPanel {
     // Only include advanced params if section is expanded (user wants custom values)
     if (this.advancedExpanded) {
       if (trackType === 'gp') {
+        config.surfaceType = this.surfaceSelect.value as SurfaceType;
         config.roughness = parseInt(this.gpRoughnessSlider.value);
         config.maxBankingAngle = parseInt(this.gpBankingSlider.value) * (Math.PI / 180); // Convert to radians
         config.numControlPoints = parseInt(this.gpCornersSlider.value);
@@ -629,9 +631,12 @@ export class HTMLTracksPanel {
         }
       }
     } else {
-      // Not expanded - just set oval-specific dropdowns
-      if (trackType === 'oval') {
+      // Not expanded - set surface type for both GP and oval
+      if (trackType === 'gp' || trackType === 'oval') {
         config.surfaceType = this.surfaceSelect.value as SurfaceType;
+      }
+      // Also set oval-specific dropdowns
+      if (trackType === 'oval') {
         config.ovalShape = this.shapeSelect.value as OvalShape;
       }
     }

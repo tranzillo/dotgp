@@ -74,6 +74,7 @@ export class Game {
   private gpMaxBankingAngle: number | undefined = undefined;
   private gpNumControlPoints: number | undefined = undefined;
   private gpSizeClass: GPSizeClass = 'circuit';
+  private gpSurfaceType: SurfaceType = 'asphalt';
   private realTrackId: string = 'monaco';
   private outerWalls: Matter.Body[] = [];
   private lastInput: Vector2 = Vector2.zero();
@@ -195,9 +196,12 @@ export class Game {
     });
 
     this.inputManager.onKeyDown('v', () => {
-      // Toggle oval surface type: asphalt ↔ dirt
+      // Toggle surface type: asphalt ↔ dirt (works for GP and oval)
       if (this.trackMode === 'oval') {
         this.ovalSurfaceType = this.ovalSurfaceType === 'asphalt' ? 'dirt' : 'asphalt';
+        this.generateNewTrack();
+      } else if (this.trackMode === 'grandprix') {
+        this.gpSurfaceType = this.gpSurfaceType === 'asphalt' ? 'dirt' : 'asphalt';
         this.generateNewTrack();
       }
     });
@@ -240,9 +244,12 @@ export class Game {
         }
         this.generateNewTrack();
       },
-      onDirt: () => {
+      onSurface: () => {
         if (this.trackMode === 'oval') {
           this.ovalSurfaceType = this.ovalSurfaceType === 'asphalt' ? 'dirt' : 'asphalt';
+          this.generateNewTrack();
+        } else if (this.trackMode === 'grandprix') {
+          this.gpSurfaceType = this.gpSurfaceType === 'asphalt' ? 'dirt' : 'asphalt';
           this.generateNewTrack();
         }
       },
@@ -328,6 +335,7 @@ export class Game {
       track = TrackGenerator.generateRandom({
         seed,
         sizeClass: this.gpSizeClass,
+        surfaceType: this.gpSurfaceType,
         roughness: this.gpRoughness,
         maxBankingAngle: this.gpMaxBankingAngle,
         numControlPoints: this.gpNumControlPoints,
@@ -904,6 +912,7 @@ export class Game {
     if (trackType === 'gp') {
       this.trackMode = 'grandprix';
       this.gpSizeClass = sizeClass as GPSizeClass;
+      this.gpSurfaceType = (surfaceType as SurfaceType) || 'asphalt';
     } else if (trackType === 'oval') {
       this.trackMode = 'oval';
       this.ovalSizeClass = sizeClass as OvalSizeClass;
@@ -977,11 +986,14 @@ export class Game {
    * Get full track configuration for composite seed encoding.
    */
   getFullTrackConfig(): FullTrackConfig {
+    const surfaceType = this.trackMode === 'oval'
+      ? this.ovalSurfaceType
+      : this.gpSurfaceType;
     return {
       baseSeed: this.trackSeed,
       trackType: this.getCurrentTrackType(),
       sizeClass: this.getCurrentSizeClass(),
-      surfaceType: this.ovalSurfaceType as TTSurfaceType,
+      surfaceType: surfaceType as TTSurfaceType,
       ovalShape: this.ovalShape as TTOvalShape,
     };
   }
@@ -1010,10 +1022,11 @@ export class Game {
   }
 
   /**
-   * Set the surface type (asphalt, dirt) for oval tracks.
+   * Set the surface type (asphalt, dirt) for tracks.
    */
   setSurfaceType(surface: SurfaceType): void {
     this.ovalSurfaceType = surface;
+    this.gpSurfaceType = surface;
   }
 
   /**

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DotGP Practice</title>
+    <style>
+      :root {
+        --bg: #0d0d0f;
+        --panel: #141417;
+        --line: #26262b;
+        --text: #e9e9ec;
+        --muted: #8a8a93;
+        --accent: #ffffff;
+        --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, sans-serif; }
+      #app { display: grid; grid-template-columns: 1fr 360px; height: 100vh; }
+      #stage { position: relative; min-width: 0; }
+      #track { width: 100%; height: 100%; display: block; }
+      #hud { position: absolute; left: 16px; top: 12px; font-family: var(--mono); color: var(--muted); font-size: 12px; pointer-events: none; }
+      #hud b { color: var(--text); font-weight: 600; }
+      aside { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 14px 14px 24px; }
+      h2 { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; font-weight: 600; }
+      h2:first-child { margin-top: 0; }
+      .row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+      button, select, label.btn {
+        background: #1d1d21; color: var(--text); border: 1px solid var(--line); border-radius: 4px;
+        padding: 5px 9px; font: inherit; cursor: pointer;
+      }
+      button:hover, label.btn:hover { border-color: #44444c; }
+      button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+      input[type=file] { display: none; }
+      table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
+      th { color: var(--muted); font-weight: 500; text-align: right; padding: 3px 4px; border-bottom: 1px solid var(--line); }
+      td { text-align: right; padding: 4px 3px; border-bottom: 1px solid #1c1c20; white-space: nowrap; }
+      th:nth-child(2), td:nth-child(2) { text-align: left; }
+      tr.sel td { background: #1d1d22; }
+      tr.out td { color: #6a6a72; }
+      .flag { display: inline-block; width: 12px; height: 9px; margin-left: 5px; vertical-align: -1px;
+        background: repeating-conic-gradient(#f2f2f2 0 25%, #111 0 50%) 0 0 / 6px 6px; border: 1px solid #f2f2f2; }
+      tr { cursor: pointer; }
+      .chip { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+      .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 3px solid; box-sizing: border-box; margin-right: 6px; vertical-align: -1px; }
+      .label { color: var(--muted); font-size: 11px; width: 52px; align-self: center; }
+      .row.inline { margin: 0; }
+      #towerWrap { max-height: 360px; overflow-y: auto; }
+      #teamsWrap { max-height: 300px; overflow-y: auto; }
+      table.teams td { text-align: left; padding: 3px 2px; }
+      table.teams select { width: 100%; max-width: 104px; background: #1d1d21; color: var(--text); border: 1px solid var(--line); border-radius: 3px; font: 11px system-ui, sans-serif; padding: 2px; }
+      .muted { color: var(--muted); }
+      #practiceStatus { font-family: var(--mono); font-size: 12px; color: var(--muted); min-height: 1.4em; }
+      #techniques { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .tech { background: #18181c; border: 1px solid var(--line); border-radius: 4px; padding: 6px; }
+      .tech canvas { width: 100%; aspect-ratio: 1; display: block; }
+      .tech div { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 4px; }
+      .note { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
+      #radio { font-family: var(--mono); font-size: 12px; min-height: 13em; }
+      #radio div { padding: 1px 0; }
+      .flagtag { display: inline-block; padding: 0 6px; border-radius: 3px; font-weight: 700; color: #111; margin-right: 4px; }
+      .flagtag.green { background: #3fdc8a; }
+      .flagtag.caution { background: #f5c518; }
+      .flagtag.pace { background: #e8e8e8; }
+      #radio .news { color: #f5c518; font-family: system-ui, sans-serif; padding: 3px 0; }
+      table.standings td.name, table.standings th:nth-child(3) { text-align: left; }
+      table.standings td:nth-child(2) { text-align: left; }
+      @media (max-width: 860px) {
+        #app { grid-template-columns: 1fr; grid-template-rows: 55vh auto; height: auto; }
+        aside { border-left: 0; border-top: 1px solid var(--line); }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="stage">
+        <canvas id="track"></canvas>
+        <div id="hud"></div>
+      </div>
+      <aside>
+        <h2>Session</h2>
+        <div class="row" id="trackButtons"></div>
+        <div class="row"><span class="label">Session</span><span id="modeButtons" class="row inline"></span></div>
+        <div class="row"><span class="label">Laps</span><span id="lapButtons" class="row inline"></span></div>
+        <div class="row"><span class="label">Pace</span><span id="paceButtons" class="row inline"></span></div>
+        <div class="row"><span class="label"></span><span id="autoButtons" class="row inline"></span></div>
+        <div class="row"><span class="label">Field</span><span id="fieldButtons" class="row inline"></span></div>
+        <div class="row"><span class="label">Speed</span><span id="speedButtons" class="row inline"></span></div>
+        <div class="row"><span class="label">Camera</span><span id="zoomButtons" class="row inline"></span></div>
+        <div class="row"><span class="label">Cars</span><span id="dotButtons" class="row inline"></span></div>
+        <div class="row">
+          <button id="toggleInputs" class="on">Input vectors</button>
+          <button id="clearMarks">Clear marks</button>
+          <button id="restart">Restart</button>
+        </div>
+
+        <h2>Timing</h2>
+        <div id="towerWrap"><table>
+          <thead><tr><th>P</th><th>Driver</th><th>Gap</th><th>Best</th><th>Tire</th><th>Fuel</th><th>Pit</th><th>Hlth</th></tr></thead>
+          <tbody id="tower"></tbody>
+        </table></div>
+
+        <h2>Championship</h2>
+        <div id="season"></div>
+
+        <h2>Teams <span class="muted">(driver · spotter · crew chief)</span></h2>
+        <div id="teamsWrap"><table class="teams"><tbody id="teams"></tbody></table></div>
+        <div id="teamsNote" class="note"></div>
+
+        <h2>Team radio <span class="muted">(click a driver to filter)</span></h2>
+        <div id="radio"></div>
+
+        <h2>Practice (live learning)</h2>
+        <div class="row">
+          <button id="practice">Start practice</button>
+          <label class="btn">Load drivers<input type="file" id="loadFile" accept=".json" /></label>
+          <button id="saveFile">Download</button>
+          <button id="newDrivers">New rookies</button>
+        </div>
+        <div id="practiceStatus"></div>
+        <p class="note">Practice runs offscreen in a worker: 8-car race heats with contact on all three ovals. Each round, the cars on track get the improved weights.</p>
+
+        <h2>Technique <span class="muted">(where tire force points vs. travel)</span></h2>
+        <div id="techniques"></div>
+      </aside>
+    </div>
+    <script type="module" src="/src/ui/main.ts"></script>
+  </body>
+</html>

@@ -1,11 +1,12 @@
 import { Vector2 } from '../utils/Vector2';
 import { Spline } from '../utils/Spline';
-import { Track, TrackPoint, PitLane, GPSizeClass, GPTrackShape, OverlapZone } from './Track';
+import { Track, TrackPoint, PitLane, GPSizeClass, GPTrackShape, OverlapZone, SurfaceType } from './Track';
 
 export interface TrackGeneratorConfig {
   seed: number;
   sizeClass: GPSizeClass;
   shape: GPTrackShape;
+  surfaceType: SurfaceType;
   numControlPoints: number;
   displacementIterations: number; // How many times to apply midpoint displacement (more = more complex)
   minRadius: number;
@@ -44,6 +45,11 @@ interface GPSizeClassConstraints {
   allowedShapes: GPTrackShape[]; // Which shapes can appear for this size class
   maxBankingAngle: { min: number; max: number }; // Banking angle range in radians
   maxDoglegAngle: { min: number; max: number }; // Dogleg angle range in radians for front straight
+  // Peninsula configuration (organic track bulges that can form hairpins)
+  peninsulaCount: { min: number; max: number }; // How many peninsula formations
+  peninsulaStrength: { min: number; max: number }; // Pull strength (0-1)
+  peninsulaExtent: { min: number; max: number }; // How far out (as fraction of track radius)
+  peninsulaWidth: { min: number; max: number }; // Angular width in radians
 }
 
 const GP_SIZE_CLASS_CONSTRAINTS: Record<GPSizeClass, GPSizeClassConstraints> = {
@@ -59,6 +65,10 @@ const GP_SIZE_CLASS_CONSTRAINTS: Record<GPSizeClass, GPSizeClassConstraints> = {
     allowedShapes: ['circular', 'elongated'],
     maxBankingAngle: { min: 0.05, max: 0.15 }, // ~3-6 degrees - minimal banking for tight tracks
     maxDoglegAngle: { min: -0.16, max: 0.16 }, // ~1-2 degrees - subtle kink for tight tracks
+    peninsulaCount: { min: 1, max: 2 },
+    peninsulaStrength: { min: 0.6, max: 1.0 },
+    peninsulaExtent: { min: 0.3, max: 0.5 },
+    peninsulaWidth: { min: 0.4, max: 0.7 },
   },
   circuit: {
     minRadius: { min: 420, max: 500 },
@@ -67,24 +77,32 @@ const GP_SIZE_CLASS_CONSTRAINTS: Record<GPSizeClass, GPSizeClassConstraints> = {
     maxWidth: { min: 80, max: 120 },
     roughness: { min: 30, max: 60 },
     straightLength: { min: 100, max: 140 },
-    numControlPoints: { min: 8, max: 9 }, // Medium corner count
-    displacementIterations: { min: 1.05, max: 1.125 }, // Moderate complexity
+    numControlPoints: { min: 9, max: 10 }, // Medium corner count
+    displacementIterations: { min: 1.05, max: 1.12 }, // Moderate complexity
     allowedShapes: ['circular', 'elongated'],
     maxBankingAngle: { min: 0.12, max: 0.32 }, // ~7-10 degrees - moderate banking
     maxDoglegAngle: { min: -0.24, max: 0.24 }, // ~2-3 degrees - moderate kink
+    peninsulaCount: { min: 1, max: 3 },
+    peninsulaStrength: { min: 0.7, max: 1.2 },
+    peninsulaExtent: { min: 0.35, max: 0.6 },
+    peninsulaWidth: { min: 0.35, max: 0.6 },
   },
   autodrome: {
     minRadius: { min: 620, max: 760 },
     maxRadius: { min: 900, max: 1680 },
     minWidth: { min: 48, max: 72 },
     maxWidth: { min: 110, max: 128 },
-    roughness: { min: 40, max: 60 },
+    roughness: { min: 40, max: 70 },
     straightLength: { min: 120, max: 180 },
     numControlPoints: { min: 12, max: 14 }, // Many corners for large tracks
     displacementIterations: { min: 1.2, max: 1.4 }, // More complex layouts
     allowedShapes: ['circular', 'elongated'],
     maxBankingAngle: { min: 0.25, max: 0.5 }, // ~9-14 degrees - more banking for wide sweepers
     maxDoglegAngle: { min: -0.32, max: 0.32 }, // ~2-4 degrees - more noticeable kink for long straights
+    peninsulaCount: { min: 1, max: 4 },
+    peninsulaStrength: { min: 0.8, max: 1.5 },
+    peninsulaExtent: { min: 0.4, max: 0.7 },
+    peninsulaWidth: { min: 0.3, max: 0.5 },
   },
 };
 
@@ -95,6 +113,7 @@ const DEFAULT_CONFIG: TrackGeneratorConfig = {
   seed: Date.now(),
   sizeClass: 'circuit',
   shape: 'circular',
+  surfaceType: 'asphalt',
   numControlPoints: 10,
   displacementIterations: 2,
   minRadius: 420,
@@ -111,6 +130,16 @@ const DEFAULT_CONFIG: TrackGeneratorConfig = {
   maxBankingAngle: 0.15, // ~9 degrees - subtle banking for GP tracks
   maxDoglegAngle: 0.04, // ~2.3 degrees - subtle kink in front straight
 };
+
+/**
+ * A peninsula attractor that pulls track control points outward
+ */
+interface PeninsulaAttractor {
+  position: Vector2;        // Where the attractor is placed
+  strength: number;         // How strongly it pulls (0-1)
+  angularPosition: number;  // Where on the track (0-2π)
+  angularWidth: number;     // How wide its influence is (radians)
+}
 
 export class TrackGenerator {
   private config: TrackGeneratorConfig;
@@ -164,13 +193,23 @@ export class TrackGenerator {
     // Step 1: Generate control points in a rough circle
     const controlPoints = this.generateControlPoints();
 
-    // Step 2: Apply displacement iterations for variation
+    // Step 2: Apply displacement iterations for variation with peninsula attractors
+    // Peninsula attractors pull control points outward to create organic bulges/hairpins
+    const centroid = this.calculateCentroid(controlPoints);
+    const baseRadius = this.estimateTrackRadius(controlPoints, centroid);
+    const peninsulaAttractors = this.placePeninsulaAttractors(centroid, baseRadius);
+
     // Each iteration adds midpoints and displaces them, increasing complexity
     let displacedPoints = controlPoints;
     for (let i = 0; i < this.config.displacementIterations; i++) {
       // Reduce roughness for each iteration to avoid over-displacement
       const iterationRoughness = this.config.roughness / (i + 1);
-      displacedPoints = this.displaceMidpoints(displacedPoints, iterationRoughness);
+      displacedPoints = this.displaceMidpointsWithAttractors(
+        displacedPoints,
+        iterationRoughness,
+        peninsulaAttractors,
+        centroid
+      );
     }
 
     // Step 3: Generate smooth centerline with Catmull-Rom spline
@@ -219,7 +258,7 @@ export class TrackGenerator {
     // Step 15: Update centerline from final track points
     const centerline = trackPoints.map((p) => p.position);
 
-    return new Track(centerline, trackPoints, inner, outer, this.config.seed, undefined, { type: 'grandprix', gpSizeClass: this.config.sizeClass, gpTrackShape: this.config.shape }, pitLane, undefined, undefined, overlapZones);
+    return new Track(centerline, trackPoints, inner, outer, this.config.seed, undefined, { type: 'grandprix', gpSizeClass: this.config.sizeClass, gpTrackShape: this.config.shape, surfaceType: this.config.surfaceType }, pitLane, undefined, undefined, overlapZones);
   }
 
   /**
@@ -582,35 +621,48 @@ export class TrackGenerator {
   private smoothTransitions(points: TrackPoint[]): TrackPoint[] {
     if (points.length < 5) return points;
 
-    const windowSize = Math.min(8, Math.floor(points.length / 10));
+    // Use a larger window and multiple passes for smoother width transitions
+    const windowSize = Math.min(15, Math.floor(points.length / 8));
     if (windowSize < 2) return points;
 
-    const smoothed: TrackPoint[] = [];
+    // Helper function to do one smoothing pass with Gaussian-weighted average
+    const smoothPass = (input: TrackPoint[]): TrackPoint[] => {
+      const result: TrackPoint[] = [];
 
-    for (let i = 0; i < points.length; i++) {
-      const point = points[i];
+      for (let i = 0; i < input.length; i++) {
+        const point = input[i];
 
-      // Calculate average width over the window
-      let widthSum = 0;
-      let count = 0;
+        // Gaussian-weighted average for smoother blending
+        let widthSum = 0;
+        let weightSum = 0;
 
-      for (let j = -windowSize; j <= windowSize; j++) {
-        // Wrap around for closed loop
-        const idx = (i + j + points.length) % points.length;
-        widthSum += points[idx].width;
-        count++;
+        for (let j = -windowSize; j <= windowSize; j++) {
+          // Wrap around for closed loop
+          const idx = (i + j + input.length) % input.length;
+          // Gaussian weight: higher weight for closer points
+          const weight = Math.exp(-(j * j) / (2 * (windowSize / 2) * (windowSize / 2)));
+          widthSum += input[idx].width * weight;
+          weightSum += weight;
+        }
+
+        const avgWidth = widthSum / weightSum;
+
+        result.push({
+          position: point.position,
+          tangent: point.tangent,
+          normal: point.normal,
+          width: avgWidth,
+          banking: point.banking,
+        });
       }
 
-      const avgWidth = widthSum / count;
+      return result;
+    };
 
-      smoothed.push({
-        position: point.position,
-        tangent: point.tangent,
-        normal: point.normal,
-        width: avgWidth,
-        banking: point.banking,
-      });
-    }
+    // Run multiple smoothing passes for very smooth transitions
+    let smoothed = smoothPass(points);
+    smoothed = smoothPass(smoothed);
+    smoothed = smoothPass(smoothed);
 
     return smoothed;
   }
@@ -753,33 +805,6 @@ export class TrackGenerator {
     return points;
   }
 
-  /**
-   * Add displaced midpoints between control points for more variation
-   */
-  private displaceMidpoints(points: Vector2[], roughness?: number): Vector2[] {
-    const result: Vector2[] = [];
-    const maxDisplacement = roughness ?? this.config.roughness;
-
-    for (let i = 0; i < points.length; i++) {
-      const curr = points[i];
-      const next = points[(i + 1) % points.length];
-
-      result.push(curr);
-
-      // Calculate midpoint
-      const mid = curr.add(next).scale(0.5);
-
-      // Calculate perpendicular direction
-      const direction = next.subtract(curr);
-      const perpendicular = direction.perpendicular().normalize();
-
-      // Apply random displacement
-      const offset = (this.rng() - 0.5) * 2 * maxDisplacement;
-      result.push(mid.add(perpendicular.scale(offset)));
-    }
-
-    return result;
-  }
 
   /**
    * Generate varying track widths along the centerline
@@ -991,6 +1016,237 @@ export class TrackGenerator {
     return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
   }
 
+  // ============================================
+  // Peninsula Attractor Methods (Organic Track Bulges)
+  // ============================================
+
+  /**
+   * Calculate the centroid of a set of control points
+   */
+  private calculateCentroid(points: Vector2[]): Vector2 {
+    let sumX = 0, sumY = 0;
+    for (const p of points) {
+      sumX += p.x;
+      sumY += p.y;
+    }
+    return new Vector2(sumX / points.length, sumY / points.length);
+  }
+
+  /**
+   * Estimate the average radius of the track from centroid
+   */
+  private estimateTrackRadius(controlPoints: Vector2[], centroid: Vector2): number {
+    let sumRadius = 0;
+    for (const p of controlPoints) {
+      sumRadius += p.distanceTo(centroid);
+    }
+    return sumRadius / controlPoints.length;
+  }
+
+  /**
+   * Normalize an angle to the range [-π, π]
+   */
+  private normalizeAngle(angle: number): number {
+    while (angle > Math.PI) angle -= 2 * Math.PI;
+    while (angle < -Math.PI) angle += 2 * Math.PI;
+    return angle;
+  }
+
+  /**
+   * Check if an angle is near any of the avoid angles (within tolerance)
+   */
+  private isNearAvoidAngle(angle: number, avoidAngles: number[], tolerance: number = 0.5): boolean {
+    for (const avoid of avoidAngles) {
+      const diff = Math.abs(this.normalizeAngle(angle - avoid));
+      if (diff < tolerance) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Check if an angle is too close to any existing attractor
+   */
+  private isNearExistingAttractor(angle: number, attractors: PeninsulaAttractor[], minSeparation: number = 0.8): boolean {
+    for (const attractor of attractors) {
+      const diff = Math.abs(this.normalizeAngle(angle - attractor.angularPosition));
+      if (diff < minSeparation) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Place peninsula attractors around the track to create organic bulges.
+   * Attractors pull nearby control points outward during displacement.
+   */
+  private placePeninsulaAttractors(centroid: Vector2, baseRadius: number): PeninsulaAttractor[] {
+    const constraints = GP_SIZE_CLASS_CONSTRAINTS[this.config.sizeClass];
+    const attractors: PeninsulaAttractor[] = [];
+
+    // Determine number of peninsulas for this track
+    const count = Math.floor(
+      constraints.peninsulaCount.min +
+      this.rng() * (constraints.peninsulaCount.max - constraints.peninsulaCount.min + 1)
+    );
+
+    if (count === 0) return attractors;
+
+    // Avoid front straight area (around angle -π/2, which points upward in screen coords)
+    // and the back straight (around π/2)
+    const avoidAngles = [-Math.PI / 2, Math.PI / 2];
+
+    for (let i = 0; i < count; i++) {
+      // Find a valid angle position
+      let angle: number = 0;
+      let attempts = 0;
+      do {
+        angle = (this.rng() - 0.5) * 2 * Math.PI; // Random angle in [-π, π]
+        attempts++;
+      } while (
+        attempts < 30 &&
+        (this.isNearAvoidAngle(angle, avoidAngles) ||
+         this.isNearExistingAttractor(angle, attractors))
+      );
+
+      // Randomize attractor parameters within constraints
+      const strength = constraints.peninsulaStrength.min +
+        this.rng() * (constraints.peninsulaStrength.max - constraints.peninsulaStrength.min);
+      const extent = constraints.peninsulaExtent.min +
+        this.rng() * (constraints.peninsulaExtent.max - constraints.peninsulaExtent.min);
+      const width = constraints.peninsulaWidth.min +
+        this.rng() * (constraints.peninsulaWidth.max - constraints.peninsulaWidth.min);
+
+      // Calculate attractor position outside the track
+      const distance = baseRadius * (1 + extent);
+      const position = centroid.add(Vector2.fromAngle(angle, distance));
+
+      attractors.push({
+        position,
+        strength,
+        angularPosition: angle,
+        angularWidth: width,
+      });
+
+      // Add this angle to avoid list for spacing
+      avoidAngles.push(angle);
+    }
+
+    return attractors;
+  }
+
+  /**
+   * Generate correlated displacement values for smoother, more organic variation.
+   * Uses a random walk with correlation to create flowing curves.
+   */
+  private generateCorrelatedDisplacements(count: number, correlation: number = 0.7): number[] {
+    const displacements: number[] = [];
+    let current = (this.rng() - 0.5) * 2; // Start with random value in [-1, 1]
+
+    for (let i = 0; i < count; i++) {
+      // Mix previous value with new random (creates smooth correlation)
+      const newRandom = (this.rng() - 0.5) * 2;
+      current = correlation * current + (1 - correlation) * newRandom;
+      // Normalize to prevent drift
+      current = Math.max(-1, Math.min(1, current));
+      displacements.push(current);
+    }
+
+    return displacements;
+  }
+
+  /**
+   * Apply attractor pull to a single point.
+   * Returns the pulled point position.
+   * Uses a very smooth falloff to avoid sharp angles.
+   */
+  private applyAttractorPull(
+    point: Vector2,
+    attractors: PeninsulaAttractor[],
+    centroid: Vector2,
+    baseRadius: number
+  ): Vector2 {
+    let result = point.clone();
+
+    for (const attractor of attractors) {
+      // Calculate angular position of this point relative to centroid
+      const toPoint = result.subtract(centroid);
+      const pointAngle = Math.atan2(toPoint.y, toPoint.x);
+
+      // Calculate angular distance from attractor center
+      const angularDist = Math.abs(this.normalizeAngle(pointAngle - attractor.angularPosition));
+
+      // Use a wider influence zone for smoother falloff
+      const effectiveWidth = attractor.angularWidth * 1.5;
+
+      // Only influence points within the extended angular width
+      if (angularDist < effectiveWidth) {
+        // Use smooth cubic falloff (smoother than cosine squared)
+        // This creates gentler transitions at the edges
+        const t = angularDist / effectiveWidth;
+        const angularFactor = 1 - (3 * t * t - 2 * t * t * t); // Smoothstep
+
+        // Reduce overall strength to prevent sharp kinks
+        const pullStrength = attractor.strength * angularFactor * 0.3;
+
+        // Pull point outward from centroid (not toward attractor directly)
+        // This creates a more natural bulge shape
+        const outwardDir = toPoint.normalize();
+        const pullMagnitude = pullStrength * baseRadius;
+        const pull = outwardDir.scale(pullMagnitude);
+        result = result.add(pull);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Add displaced midpoints with attractor influence for organic track shapes.
+   * Points near attractors are pulled outward, creating peninsula-like bulges.
+   */
+  private displaceMidpointsWithAttractors(
+    points: Vector2[],
+    roughness: number,
+    attractors: PeninsulaAttractor[],
+    centroid: Vector2
+  ): Vector2[] {
+    const result: Vector2[] = [];
+    const maxDisplacement = roughness;
+
+    // Calculate base radius for proportional pull strength
+    const baseRadius = this.estimateTrackRadius(points, centroid);
+
+    // Pre-generate correlated displacements for smoother curves
+    const correlatedOffsets = this.generateCorrelatedDisplacements(points.length * 2);
+    let offsetIndex = 0;
+
+    for (let i = 0; i < points.length; i++) {
+      const curr = points[i];
+      const next = points[(i + 1) % points.length];
+
+      // Apply attractor pull to the existing control point too
+      const pulledCurr = this.applyAttractorPull(curr, attractors, centroid, baseRadius);
+      result.push(pulledCurr);
+
+      // Calculate midpoint
+      const mid = curr.add(next).scale(0.5);
+
+      // Calculate perpendicular direction for base displacement
+      const direction = next.subtract(curr);
+      const perpendicular = direction.perpendicular().normalize();
+
+      // Use correlated offset for smoother base displacement
+      const baseOffset = correlatedOffsets[offsetIndex++] * maxDisplacement;
+      let newPoint = mid.add(perpendicular.scale(baseOffset));
+
+      // Apply attractor influence to the midpoint as well
+      newPoint = this.applyAttractorPull(newPoint, attractors, centroid, baseRadius);
+
+      result.push(newPoint);
+    }
+
+    return result;
+  }
+
   /**
    * Generate inner and outer track boundaries from track points
    */
@@ -1064,10 +1320,14 @@ export class TrackGenerator {
     const allowedShapes = constraints.allowedShapes;
     const shape = config.shape ?? allowedShapes[Math.floor(rng() * allowedShapes.length)];
 
+    // Surface type - use provided or default to asphalt
+    const surfaceType = config.surfaceType ?? 'asphalt';
+
     const generator = new TrackGenerator({
       ...config,
       sizeClass: selectedSizeClass,
       shape,
+      surfaceType,
       seed, // Use the same seed for internal generation
       numControlPoints,
       displacementIterations,

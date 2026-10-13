@@ -16,7 +16,7 @@ export interface GameHUDCallbacks {
   onNewTrack: () => void;
   onGP: () => void;
   onOval: () => void;
-  onDirt: () => void;
+  onSurface: () => void;
   onToggleMode: () => void;
 }
 
@@ -145,7 +145,7 @@ export class HTMLGameHUD {
         <span>|</span>
         <span class="control-btn" data-action="oval">O: oval</span>
         <span>|</span>
-        <span class="control-btn" data-action="dirt">V: dirt</span>
+        <span class="control-btn" data-action="surface">V: surface</span>
         <span>|</span>
         <span class="control-btn" id="hud-mode" data-action="toggle_mode">[KEYBOARD] Tab: toggle</span>
       </div>
@@ -174,8 +174,8 @@ export class HTMLGameHUD {
           case 'oval':
             this.callbacks.onOval();
             break;
-          case 'dirt':
-            this.callbacks.onDirt();
+          case 'surface':
+            this.callbacks.onSurface();
             break;
           case 'toggle_mode':
             this.callbacks.onToggleMode();
@@ -334,6 +334,15 @@ export class HTMLGameHUD {
       const sizeColor = meta.gpSizeClass === 'autodrome' ? '#f80' :
                         meta.gpSizeClass === 'circuit' ? '#8f8' : '#88f';
       html += `<div style="color: ${sizeColor}">Class: ${sizeDisplay} (${shapeDisplay})</div>`;
+
+      const surfaceDisplay = meta.surfaceType === 'dirt' ? 'DIRT' : 'ASPHALT';
+      const surfaceColor = meta.surfaceType === 'dirt' ? CONFIG.COLORS.RALLYCROSS_INFO : '#aaa';
+      html += `<div style="color: ${surfaceColor}">Surface: ${surfaceDisplay}</div>`;
+
+      if (meta.surfaceType === 'dirt') {
+        const gripPercent = Math.round(CONFIG.DIRT_GRIP_MULTIPLIER * 100);
+        html += `<div style="color: #f60">Grip: ${gripPercent}%</div>`;
+      }
 
       const trackLength = this.calculateTrackLength(track);
       html += `<div style="color: #aaa">Length: ${(trackLength / 1000).toFixed(2)} km</div>`;
