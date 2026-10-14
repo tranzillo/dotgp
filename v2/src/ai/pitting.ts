@@ -190,7 +190,9 @@ const PIT_GAP = 3;
 /** How long a car waits in its box for the fast lane to clear before going anyway (s). */
 const BOX_WAIT_LIMIT = 10;
 /** Abort the pit entry if not lined up this far before the wall's nose (m). */
-const ABORT_DISTANCE = 90;
+const ABORT_DISTANCE = 140;
+/** ... but not before the car has had this far past the pit entry (m) to move over. */
+const ABORT_GRACE = 40;
 
 export class PitAutopilot {
   /** The lane the car was in when the crew chief called it in (the route starts from there). */
@@ -265,8 +267,10 @@ export class PitAutopilot {
     }
     if (pit.phase === 'in') {
       const r0 = track.signedS(car.s);
-      // Not lined up for pit road with room to spare before the wall's nose: abort and stay out.
-      if (r0 > track.pit.wallStart - ABORT_DISTANCE && r0 < track.pit.wallStart && car.d < wallClear - 1.2) {
+      // Still on the track side of the wall's line close to its nose: abort and stay out. A car already
+      // past the line commits to pit road (turning back across the nose from there is what hits it).
+      const decideFrom = Math.max(track.pit.wallStart - ABORT_DISTANCE, entryStart + ABORT_GRACE);
+      if (r0 > decideFrom && r0 < track.pit.wallStart && car.d < track.pit.wallD) {
         pit.phase = 'none';
         pit.call = null;
         this.aborting = true;

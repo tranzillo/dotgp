@@ -24,6 +24,8 @@ export interface DriverAgent {
   licensed: boolean;
   /** Has passed the pit stop lesson: drives its own pit stops instead of the scripted maneuver. */
   pitLicensed?: boolean;
+  /** Has also passed pit road in traffic: with both, drives its own stops in races. */
+  pitTrafficLicensed?: boolean;
   /** Has passed the caution lesson: drives its own cautions and restarts instead of the formation script. */
   cautionLicensed?: boolean;
 }

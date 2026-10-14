@@ -23,7 +23,7 @@ import { World, type Controller } from '../sim/world';
  * (the pit route, like the crew chief's call, works in that frame).
  */
 const START_BEFORE_ENTRY = 450;
-const START_SPEED = 45;
+export const START_SPEED = 45;
 /**
  * Laps a skipped stop costs (more than any time a stop could take), less
  * credit for how far through the stop the car got, so practice has a slope
@@ -59,18 +59,51 @@ export interface PitTrialResult {
   reachedBox: boolean;
 }
 
-/** Start a car on its in-lap with the stop called. */
-function inLapStart(track: Track): number {
+/** Where a car starts its in-lap with the stop called. */
+export function inLapStart(track: Track): number {
   return Math.max(track.pit.entryStart - START_BEFORE_ENTRY, -track.length / 2 + 20);
 }
 
-function startInLap(car: Car, team: Team, track: Track): void {
-  car.placeOnTrack(track, inLapStart(track), 0);
+/** Start a car on its in-lap with the stop called (offset along the track and lane, for a field). */
+export function startInLap(car: Car, team: Team, track: Track, ahead = 0, lane = 0): void {
+  car.placeOnTrack(track, inLapStart(track) + ahead, lane);
   car.vx = track.tx[car.trackIdx] * START_SPEED;
   car.vy = track.ty[car.trackIdx] * START_SPEED;
   car.pit.phase = 'in';
   car.pit.call = { ...CALL };
   team.autopilot.begin(car);
+}
+
+/** How far one car got through its called stop, and what that's worth (laps of score). */
+export class StopTracker {
+  speeding = 0;
+  serviced = false;
+  completed = false;
+  reachedPitRoad = false;
+  reachedBox = false;
+
+  update(car: Car, track: Track): void {
+    if (car.surface === 'pit' && car.speed > PIT_SERVICE.SPEED_LIMIT + 0.5) this.speeding += P.DT;
+    if (car.pit.stops > 0) this.serviced = true;
+    if (car.pit.phase === 'in' && car.surface === 'pit') {
+      this.reachedPitRoad = true;
+      if (Math.abs(track.signedS(car.s) - car.pit.boxS) < 20 && car.speed < 6) this.reachedBox = true;
+    }
+    if (this.serviced && car.pit.phase === 'none') this.completed = true;
+  }
+
+  /** Skipping the stop (less credit for progress through it), not merging back, speeding. */
+  penalty(): number {
+    const stop = this.serviced ? SKIP_PENALTY
+      : (this.reachedPitRoad ? CREDIT_PIT_ROAD : 0) + (this.reachedBox ? CREDIT_AT_BOX : 0);
+    return (SKIP_PENALTY - stop) + (this.serviced && !this.completed ? NO_MERGE_PENALTY : 0)
+      + SPEEDING_PENALTY * this.speeding + (this.speeding > SPEEDING_GRACE ? DRIVE_THROUGH : 0);
+  }
+
+  marks(): Pick<PitTrialResult, 'serviced' | 'completed' | 'speeding' | 'reachedPitRoad' | 'reachedBox'> {
+    const { serviced, completed, speeding, reachedPitRoad, reachedBox } = this;
+    return { serviced, completed, speeding, reachedPitRoad, reachedBox };
+  }
 }
 
 /** One round of the lesson: every candidate does a pit stop at once, as ghosts. */
@@ -80,11 +113,7 @@ export class PitTrial {
   private readonly steps: number;
   private stepIndex = 0;
   private readonly startDist: number[] = [];
-  private readonly speeding: number[] = [];
-  private readonly serviced: boolean[] = [];
-  private readonly completed: boolean[] = [];
-  private readonly reachedPitRoad: boolean[] = [];
-  private readonly reachedBox: boolean[] = [];
+  private readonly stops: StopTracker[] = [];
 
   constructor(track: Track, genomes: Float32Array[], seconds: number) {
     this.track = track;
@@ -95,11 +124,7 @@ export class PitTrial {
       this.world.addCar(car, team);
       startInLap(car, team, track);
       this.startDist.push(car.dist);
-      this.speeding.push(0);
-      this.serviced.push(false);
-      this.completed.push(false);
-      this.reachedPitRoad.push(false);
-      this.reachedBox.push(false);
+      this.stops.push(new StopTracker());
     });
     this.steps = Math.round(seconds / P.DT);
   }
@@ -116,34 +141,18 @@ export class PitTrial {
     if (this.done) return;
     this.world.step();
     this.stepIndex++;
-    this.world.cars.forEach((car, k) => {
-      if (car.surface === 'pit' && car.speed > PIT_SERVICE.SPEED_LIMIT + 0.5) this.speeding[k] += P.DT;
-      if (car.pit.stops > 0) this.serviced[k] = true;
-      if (car.pit.phase === 'in' && car.surface === 'pit') {
-        this.reachedPitRoad[k] = true;
-        if (Math.abs(this.track.signedS(car.s) - car.pit.boxS) < 20 && car.speed < 6) this.reachedBox[k] = true;
-      }
-      if (this.serviced[k] && car.pit.phase === 'none') this.completed[k] = true;
-    });
+    this.world.cars.forEach((car, k) => this.stops[k].update(car, this.track));
   }
 
   results(): PitTrialResult[] {
     return this.world.cars.map((car, k) => {
       const laps = (car.dist - this.startDist[k]) / this.track.length;
-      const stop = this.serviced[k] ? SKIP_PENALTY
-        : (this.reachedPitRoad[k] ? CREDIT_PIT_ROAD : 0) + (this.reachedBox[k] ? CREDIT_AT_BOX : 0);
       return {
-        fitness: laps - FULL_DAMAGE_PENALTY * (1 - car.health) - (SKIP_PENALTY - stop)
-          - (this.serviced[k] && !this.completed[k] ? NO_MERGE_PENALTY : 0) - SPEEDING_PENALTY * this.speeding[k]
-          - (this.speeding[k] > SPEEDING_GRACE ? DRIVE_THROUGH : 0),
+        fitness: laps - FULL_DAMAGE_PENALTY * (1 - car.health) - this.stops[k].penalty(),
         laps,
         bestLap: car.lapTimes.length ? Math.min(...car.lapTimes) : Infinity,
         health: car.health,
-        serviced: this.serviced[k],
-        completed: this.completed[k],
-        speeding: this.speeding[k],
-        reachedPitRoad: this.reachedPitRoad[k],
-        reachedBox: this.reachedBox[k],
+        ...this.stops[k].marks(),
       };
     });
   }
@@ -164,7 +173,7 @@ export function cleanStop(r: PitTrialResult): boolean {
  * too (as it drove before the lesson), so learning to pit doesn't overwrite
  * how it races.
  */
-class Apprentice implements Controller {
+export class Apprentice implements Controller {
   constructor(
     private readonly team: Team,
     private readonly student: NeuralDriver,

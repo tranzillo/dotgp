@@ -58,6 +58,9 @@ export interface FormationSlot {
   speed: number;
 }
 
+/** Under pacing, how far one car must be ahead of the car before it in line to take its place (m). */
+const SWAP_MARGIN = 8;
+
 export class RaceControl {
   readonly world: World;
   readonly track: Track;
@@ -241,13 +244,19 @@ export class RaceControl {
     if (!this.pacing || !this.order.length) {
       this.order = this.world.cars.filter(inLine).sort(byDistance);
     } else {
-      // Under pacing the line keeps its order: re-sorting every step would swap two cars side by side
-      // in a row, and with them their files. Cars drop out (pitting, wrecked) and rejoin where they are.
+      // Under pacing two cars only swap places in line once one is clearly ahead: re-sorting every step
+      // swapped cars side by side in a row, and with them their files. Cars drop out (pitting, wrecked)
+      // and rejoin where they are.
       const order = this.order.filter(inLine);
       for (const car of this.world.cars) {
         if (!inLine(car) || order.includes(car)) continue;
         const at = order.findIndex((c) => c.dist < car.dist);
         order.splice(at < 0 ? order.length : at, 0, car);
+      }
+      for (let i = 1; i < order.length; i++) {
+        for (let j = i; j > 0 && order[j].dist > order[j - 1].dist + SWAP_MARGIN; j--) {
+          [order[j - 1], order[j]] = [order[j], order[j - 1]];
+        }
       }
       this.order = order;
     }

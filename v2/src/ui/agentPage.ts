@@ -83,7 +83,8 @@ export class AgentPage {
     if (role === 'driver') {
       const d = roster.drivers.get(id)!;
       facts.push(d.licensed ? `licensed${s.licensedAfter !== null ? ` after ${s.licensedAfter} lessons` : ''}` : 'in driving school');
-      facts.push(d.pitLicensed ? 'does their own pit stops' : 'pit stops: the veteran maneuver');
+      facts.push(d.pitLicensed && d.pitTrafficLicensed ? 'does their own pit stops'
+        : d.pitLicensed ? 'pit stops: the veteran maneuver until they pass pit road in traffic' : 'pit stops: the veteran maneuver');
       facts.push(d.cautionLicensed ? 'drives their own cautions' : 'cautions: the formation script');
       facts.push(`${d.rounds} training rounds`);
     } else if (role === 'chief') {
@@ -224,13 +225,15 @@ function describe(r: ActivityRecord): string {
     }
     case 'lesson': {
       const d = r.data;
-      const name = d.lesson === 'rookie' ? 'Rookie school' : d.lesson === 'variety' ? 'Track variety' : d.lesson === 'pits' ? 'Pit stops' : d.lesson === 'cautions' ? 'Cautions' : d.lesson;
+      const name = d.lesson === 'rookie' ? 'Rookie school' : d.lesson === 'variety' ? 'Track variety' : d.lesson === 'pits' ? 'Pit stops' : d.lesson === 'pitTraffic' ? 'Pit road in traffic' : d.lesson === 'cautions' ? 'Cautions' : d.lesson;
       return `${name} round ${r.brain ?? ''} at ${esc(d.track)}: ${d.laps} laps, best ${lap(d.bestLap)}, `
         + `${d.beaten} of ${d.variations} variations did better${d.walls < 1 ? `, walls ×${d.walls.toFixed(2)}` : ''}`;
     }
     case 'learning': return `Learned while racing at ${esc(r.data.track)} (step ${r.data.step} this race)${ev}`;
     case 'licensed': return r.data.license === 'pit'
-      ? `<b>Passed the pit stop lesson</b>: does their own stops from now on`
+      ? `<b>Passed the pit stop lesson</b>: next, pit road in traffic`
+      : r.data.license === 'pitTraffic'
+        ? `<b>Passed pit road in traffic</b>: does their own stops in races from now on`
       : r.data.license === 'caution'
         ? `<b>Passed the caution lesson</b>: drives their own cautions and restarts from now on`
         : `<b>Earned a license</b> after ${r.data.lessons} lessons`;

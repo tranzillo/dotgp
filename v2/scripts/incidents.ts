@@ -54,6 +54,8 @@ interface Retirement {
   mode: string;
   /** What finished it: a wall, or a car (and that car's driver mode). */
   hit: string;
+  /** For cars in a pit cycle: which part of pit road, in or out, and the lane. */
+  where: string | null;
 }
 interface RaceStats {
   track: string;
@@ -145,6 +147,17 @@ class MarkGrid {
   }
 }
 
+/** Where on pit road a car in a pit cycle is: the section, in or out, and the lane. */
+function pitWhere(car: Car, track: Track): string | null {
+  if (car.pit.phase === 'none') return null;
+  const p = track.pit;
+  const r = track.signedS(car.s);
+  const section = r < p.entryStart ? 'before entry' : r < p.wallStart ? 'entry' : r < p.wallEnd ? 'along the wall'
+    : r < p.exitEnd ? 'exit' : r < p.blendEnd ? 'blend' : 'past the blend';
+  const lane = r >= p.wallStart && r < p.wallEnd ? (car.d > p.laneD ? ' (box lane)' : car.d > p.wallD ? ' (fast lane)' : ' (track side)') : '';
+  return `${car.pit.phase} ${section}${lane}`;
+}
+
 function runRace(trackName: keyof typeof specs, seed: number): RaceStats {
   const track = ovalTrack(specs[trackName]);
   const laps = lapsArg ? Number(lapsArg) : Math.round(150_000 / track.length);
@@ -192,7 +205,7 @@ function runRace(trackName: keyof typeof specs, seed: number): RaceStats {
         const imp = car.lastImpact;
         const otherTeam = imp?.kind === 'car' && imp.other !== null ? world.controllers[imp.other] as unknown as { mode?: string } | null : null;
         const hit = !imp ? 'stalled' : imp.kind === 'wall' ? 'wall' : `car (${otherTeam?.mode ?? 'official'})`;
-        stats.retirements.push({ time: world.time, context, speed: speedBefore[k], mode: team?.mode ?? '?', hit });
+        stats.retirements.push({ time: world.time, context, speed: speedBefore[k], mode: team?.mode ?? '?', hit, where: pitWhere(car, track) });
         return;
       }
       stats.steps++;
@@ -289,6 +302,9 @@ for (const name of trackNames) {
   const byWho = new Map<string, number>();
   for (const e of ret) { const key = `${e.mode} hit ${e.hit}`; byWho.set(key, (byWho.get(key) ?? 0) + 1); }
   console.log(`          who / what: ${[...byWho].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ')}`);
+  const byWhere = new Map<string, number>();
+  for (const e of ret) if (e.where) byWhere.set(e.where, (byWhere.get(e.where) ?? 0) + 1);
+  if (byWhere.size) console.log(`          in a pit cycle: ${[...byWhere].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ')}`);
   console.log(`  TIRES   wear ${f(wear, 4)}/green lap -> cliff (${P.TIRE_CLIFF}) after ${f((1 - P.TIRE_CLIFF) / wear, 0)} laps; `
     + `sliding >0.05 ${pct(slide[0])}, >0.35 ${pct(slide[1])}, >0.6 ${pct(slide[2])} of car-steps`);
   console.log(`  FUEL    burn ${f(burn, 2)} kg/green lap -> ${f(P.FUEL_CAPACITY / burn, 0)} laps per tank`);

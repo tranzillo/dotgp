@@ -90,7 +90,7 @@ export type ActivityRecord = RecordBase & (
   | { kind: 'seat'; data: { action: 'signed' | 'released'; team: number; car: number } }
   | { kind: 'practice'; data: PracticeData }
   | { kind: 'lesson'; data: LessonData }
-  | { kind: 'licensed'; data: { lessons: number; license?: 'driving' | 'pit' | 'caution' } }
+  | { kind: 'licensed'; data: { lessons: number; license?: 'driving' | 'pit' | 'pitTraffic' | 'caution' } }
   | { kind: 'strategy'; data: { relativeTime: number } }
   /** Learned while racing: one step (several compared lap pairs). */
   | { kind: 'learning'; data: { source: 'race'; track: string; step: number } }

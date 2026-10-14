@@ -11,6 +11,7 @@ import { Race } from '../sim/race';
 import type { RaceControl } from '../sim/raceControl';
 import type { Track } from '../sim/track';
 import { World, type Controller } from '../sim/world';
+import { DrillTrial, type Drill } from './drill';
 
 /**
  * The caution lesson. A drill is a short race in a small field: form up
@@ -58,7 +59,7 @@ export function cleanCaution(r: CautionResult): boolean {
 }
 
 /** One drill: a world with race control, the student's car in a given grid slot. */
-export class CautionDrill {
+export class CautionDrill implements Drill<CautionResult> {
   readonly world: World;
   readonly race: Race;
   readonly control: RaceControl;
@@ -175,47 +176,14 @@ export const packCar = (slot: number) => {
 
 /**
  * One round of the lesson: every candidate (each student and its variations)
- * drives its own drill, from the same grid slot, against a pack of the
- * student's own current driving. Drills step together. The viewer is shown
- * one student's own drill.
+ * drives its own drill from the same grid slot. One student's drill is shown.
  */
-export class CautionTrial {
-  readonly drills: CautionDrill[];
-  private readonly shown: number;
-
+export class CautionTrial extends DrillTrial<CautionResult> {
   /** candidates: per student, [own, +e1, -e1, ...]. */
   constructor(track: Track, candidates: Float32Array[], perStudent: number, slot: number, show: number) {
-    this.drills = candidates.map((g) => {
-      return new CautionDrill(track, slot, (k) => (k === slot
-        ? new Team(new NeuralDriver(g), new TowerSpotter(), null, false, true) // the candidate drives its own caution
-        : packCar(k)));
-    });
-    this.shown = show * perStudent;
-  }
-
-  get world(): World {
-    return this.drills[this.shown].world;
-  }
-
-  /** In the shown drill, which car is the student (the rest are the pack). */
-  get shownStudent(): Car {
-    return this.drills[this.shown].student;
-  }
-
-  get done(): boolean {
-    return this.drills.every((d) => d.done);
-  }
-
-  get remaining(): number {
-    return this.drills[this.shown].done ? 0 : 1;
-  }
-
-  step(): void {
-    for (const d of this.drills) d.step();
-  }
-
-  results(): CautionResult[] {
-    return this.drills.map((d) => d.result());
+    super(candidates.map((g) => new CautionDrill(track, slot, (k) => (k === slot
+      ? new Team(new NeuralDriver(g), new TowerSpotter(), null, false, true) // the candidate drives its own caution
+      : packCar(k)))), perStudent, show);
   }
 }
 
