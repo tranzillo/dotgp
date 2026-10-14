@@ -226,7 +226,7 @@ function entrantSpec(t: TeamEntry): EntrantSpec {
   return {
     key: t.id,
     fill: t.livery.fill,
-    driver: { id: driver.id, weights: driver.weights, pits: (driver.pitLicensed && driver.pitTrafficLicensed) ?? false, cautions: driver.cautionLicensed ?? false },
+    driver: { id: driver.id, weights: driver.weights, nerve: driver.nerve, pits: (driver.pitLicensed && driver.pitTrafficLicensed) ?? false, cautions: driver.cautionLicensed ?? false },
     spotter: { id: spotter.id, skill: spotter.skill },
     chief: { id: chief.id, brain: chief.brain },
   };

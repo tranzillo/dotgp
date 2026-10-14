@@ -28,6 +28,12 @@ export interface DriverAgent {
   pitTrafficLicensed?: boolean;
   /** Has passed the caution lesson: drives its own cautions and restarts instead of the formation script. */
   cautionLicensed?: boolean;
+  /**
+   * Nerve: appetite for risk, 0 timid to 1 fearless (unset: middling). It
+   * sets what the driver learns to care about: how much fear of an imminent
+   * collision and big hits cost it, next to lap time.
+   */
+  nerve?: number;
 }
 
 export interface SpotterAgent {
@@ -103,7 +109,10 @@ export class Roster {
   }
 
   freshDriver(): DriverAgent {
-    const d = { id: this.uid('D'), name: this.uniqueName(), weights: initialWeights(this.rng), rounds: 0, mentor: null, licensed: false };
+    const d = {
+      id: this.uid('D'), name: this.uniqueName(), weights: initialWeights(this.rng), rounds: 0, mentor: null, licensed: false,
+      nerve: 0.15 + 0.7 * this.rng.next(),
+    };
     this.drivers.set(d.id, d);
     this.joined('driver', d, 'rookie', null);
     return d;
@@ -114,7 +123,9 @@ export class Roster {
     const weights = mentor.weights.slice();
     for (let i = 0; i < weights.length; i++) weights[i] += this.rng.gaussian() * DESCENT_NOISE.driver;
     // Inherits a working driving style, so no rookie school needed.
-    const d = { id: this.uid('D'), name: this.uniqueName(), weights, rounds: 0, mentor: mentor.name, licensed: true };
+    // Something of the mentor's nerve too.
+    const nerve = Math.max(0, Math.min(1, (mentor.nerve ?? 0.5) + 0.15 * this.rng.gaussian()));
+    const d = { id: this.uid('D'), name: this.uniqueName(), weights, rounds: 0, mentor: mentor.name, licensed: true, nerve };
     this.drivers.set(d.id, d);
     this.joined('driver', d, 'descendant', mentor.name);
     return d;

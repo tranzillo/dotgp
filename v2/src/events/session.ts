@@ -1,4 +1,5 @@
 import { NeuralDriver, Team } from '../ai/drivers';
+import { danger, fearScale } from '../ai/fear';
 import { PaceCarDriver } from '../ai/formation';
 import { NeuralCrewChief } from '../ai/neuralChief';
 import { OnlineLearner, RACE_LEARNING } from '../ai/online';
@@ -30,7 +31,7 @@ export interface EntrantSpec {
   key: number;
   fill: string;
   /** pits / cautions: drives its own pit stops / cautions (it has learned to); otherwise the scripts do. */
-  driver: { id: string; weights: Float32Array; pits?: boolean; cautions?: boolean };
+  driver: { id: string; weights: Float32Array; pits?: boolean; cautions?: boolean; nerve?: number };
   spotter: { id: string; skill: SpotterSkill };
   chief: { id: string; brain: { kind: 'neural'; weights: Float32Array } | { kind: 'scripted'; traits: CrewChiefTraits } };
 }
@@ -137,6 +138,13 @@ const RADIO_REPEAT = 4; // seconds before the same call from the same team is re
 const DAMAGE_SECONDS = 120;
 /** ... and per unit of damage done to others (by its share of the fault). */
 const HARM_SECONDS = 120;
+/**
+ * Fear and trauma, for a driver of middling nerve (scaled by fearScale): seconds
+ * a lap is charged per second spent in danger (a collision imminent, of its
+ * own making), and per unit of trauma beyond the damage itself (big hits).
+ */
+const FEAR_SECONDS = 1;
+const TRAUMA_SECONDS = 120;
 /** A lap on which a driver did itself or others this much harm counts, even if spoiled (caution, wreck). */
 const FAULT_COUNTS = 0.02;
 const RESPAWN_DELAY = 3; // s a wreck sits before an open session puts the car back out
@@ -159,8 +167,10 @@ export class Session {
   /** Learning while racing: per car, its learner and the lap in progress. */
   private readonly learners = new Map<number, {
     learner: OnlineLearner; driverId: string; laps: number; clean: boolean; done: boolean;
-    /** At the start of the lap in progress: health, harm done, self-inflicted damage. */
-    health: number; harm: number; self: number;
+    /** At the start of the lap in progress: health, harm done, self-inflicted damage and trauma. */
+    health: number; harm: number; self: number; trauma: number;
+    /** Seconds in danger on the lap in progress; how much fear and trauma cost this driver. */
+    fear: number; fearScale: number;
     /** Last clean lap time: what a spoiled lap is scored against. */
     ref: number;
   }>();
@@ -190,7 +200,10 @@ export class Session {
       this.drivers.set(entrant.driver.id, driver);
       if (spec.learn && spec.kind === 'race') {
         const learner = new OnlineLearner(driver.net.weights, RACE_LEARNING, new Rng(spec.seed ^ ((k + 1) * 0x9e3779b1)));
-        this.learners.set(car.id, { learner, driverId: entrant.driver.id, laps: 0, clean: true, done: false, health: 1, harm: 0, self: 0, ref: NaN });
+        this.learners.set(car.id, {
+          learner, driverId: entrant.driver.id, laps: 0, clean: true, done: false, health: 1, harm: 0, self: 0, trauma: 0, ref: NaN,
+          fear: 0, fearScale: fearScale(entrant.driver.nerve),
+        });
       }
     });
     // Races run under race control: pace laps, green at the line, cautions with the wrecker crew.
@@ -256,6 +269,7 @@ export class Session {
       }
       if (!race.started) continue;
       if (race.control?.flag !== 'green' || car.pit.phase !== 'none') l.clean = false;
+      else if (this.world.tick % P.CONTROL_EVERY === 0) l.fear += danger(car, this.world) * P.CONTROL_EVERY * P.DT;
       const laps = car.lapTimes.length;
       if (laps < l.laps) l.laps = laps; // the green flag reset lap counts
       if (laps === l.laps) continue;
@@ -266,17 +280,22 @@ export class Session {
       l.health = car.health;
       l.harm = car.harmDone;
       l.self = car.selfInflicted;
+      l.trauma = car.selfTrauma;
+      l.fear = 0;
     }
   }
 
   private scoreLap(l: NonNullable<ReturnType<typeof this.learners.get>>, car: Car, counts: boolean): void {
     const harm = car.harmDone - l.harm;
-    const atFault = harm + (car.selfInflicted - l.self) >= FAULT_COUNTS;
+    const self = car.selfInflicted - l.self;
+    const atFault = harm + self >= FAULT_COUNTS;
     if (Number.isNaN(l.ref) || !(counts || atFault)) {
       l.learner.lapDone(null);
       return;
     }
-    const score = -l.ref - DAMAGE_SECONDS * Math.max(0, l.health - car.health) - HARM_SECONDS * harm;
+    const extraTrauma = Math.max(0, car.selfTrauma - l.trauma - self);
+    const score = -l.ref - DAMAGE_SECONDS * Math.max(0, l.health - car.health) - HARM_SECONDS * harm
+      - l.fearScale * (FEAR_SECONDS * l.fear + TRAUMA_SECONDS * extraTrauma);
     if (l.learner.lapDone(score)) {
       this.learned.push({ driverId: l.driverId, weights: l.learner.weights.slice(), steps: l.learner.updates });
     }

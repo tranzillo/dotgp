@@ -1,5 +1,5 @@
 import { PHYSICS as P } from './constants';
-import { applyImpact, type Car } from './car';
+import { applyImpact, trauma, type Car } from './car';
 import type { Track } from './track';
 
 /**
@@ -150,6 +150,8 @@ export function resolveCarCollisions(cars: Car[], track?: Track): void {
       B.harmDone += (hA - A.health) * (1 - fault);
       A.selfInflicted += (hA - A.health) * fault;
       B.selfInflicted += (hB - B.health) * (1 - fault);
+      A.selfTrauma += trauma(hA - A.health) * fault;
+      B.selfTrauma += trauma(hB - B.health) * (1 - fault);
       if (A.lastImpact?.other === B.id && hA !== A.health) A.lastImpact.fault = fault;
       if (B.lastImpact?.other === A.id && hB !== B.health) B.lastImpact.fault = 1 - fault;
     }

@@ -94,6 +94,8 @@ export class Car {
   harmDone = 0;
   /** Damage it did to itself: walls, and its own share of the fault in contact. */
   selfInflicted = 0;
+  /** The same impacts weighed as the driver feels them (trauma: big hits far worse than their size). */
+  selfTrauma = 0;
 
   // Per-step telemetry
   frameX = 1;
@@ -367,11 +369,24 @@ export function applyImpact(
   }
   car.health -= effective;
   car.lastImpact = { kind: source.kind, other: source.other, severity: effective, speed: impactSpeed };
-  if (source.kind === 'wall') car.selfInflicted += effective;
+  if (source.kind === 'wall') {
+    car.selfInflicted += effective;
+    car.selfTrauma += trauma(effective);
+  }
   if (car.health <= 0) {
     car.health = 0;
     car.retired = true;
   }
+}
+
+/**
+ * Trauma: how bad one impact was for the person in the car, not just the car.
+ * Small knocks are nothing; big hits are far worse than their size, as a
+ * real driver feels them (a hard enough one ends a career, or a life).
+ */
+export const TRAUMA_CURVE = 6;
+export function trauma(damage: number): number {
+  return damage + TRAUMA_CURVE * damage * damage;
 }
 
 /** Seconds the crew needs for a pit call. Tires and fuel happen in parallel. */
