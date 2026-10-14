@@ -1,5 +1,6 @@
 import { NeuralDriver, Team } from '../ai/drivers';
 import { FULL_DAMAGE_PENALTY } from '../ai/es';
+import { danger, fearScale } from '../ai/fear';
 import { Trial } from '../ai/evaluate';
 import type { Rng } from '../ai/rng';
 import { TowerSpotter } from '../ai/spotter';
@@ -72,6 +73,15 @@ export function randomLayout(track: Track, rng: Rng): PackLayout {
  */
 const DAMAGE_PENALTY = 8;
 const HARM_PENALTY = 8;
+/**
+ * Fear and trauma, for a driver of middling nerve (scaled by fearScale):
+ * laps of score per second spent in danger of its own making (about a
+ * second of lap time per second, as in race learning), and per unit of
+ * trauma beyond the damage itself. Crashes are rare enough in a 40 s drill
+ * that scoring them alone is mostly luck; danger is there every drill.
+ */
+const FEAR_LAPS = 0.03;
+const TRAUMA_LAPS = 8;
 
 export interface RacecraftResult {
   fitness: number;
@@ -84,6 +94,8 @@ export interface RacecraftResult {
   gained: number;
   /** Laps driven solo in the same round (the anchor). */
   soloLaps?: number;
+  /** Seconds spent in danger of its own making. */
+  danger: number;
 }
 
 /** A clean drill: no damage done to anyone, hardly any taken. */
@@ -98,9 +110,16 @@ export class RacecraftDrill implements Drill<RacecraftResult> {
   private readonly startDist: number;
   private readonly startPlace: number;
   private steps = 0;
+  private dangerSeconds = 0;
 
-  /** pack(k): the weights the car in slot k drives with (the student's slot is ignored). */
-  constructor(track: Track, slot: number, student: Float32Array, pack: (k: number) => Float32Array, layout = restartLayout(track)) {
+  /**
+   * pack(k): the weights the car in slot k drives with (the student's slot is ignored);
+   * fear: how much fear and trauma cost this student (fearScale of its nerve).
+   */
+  constructor(
+    track: Track, slot: number, student: Float32Array, pack: (k: number) => Float32Array, layout = restartLayout(track),
+    private readonly fear = fearScale(),
+  ) {
     this.world = new World(track, { collisions: true, drafting: true });
     for (let k = 0; k < PACK_SIZE; k++) {
       const car = new Car(k);
@@ -129,24 +148,29 @@ export class RacecraftDrill implements Drill<RacecraftResult> {
     if (this.done) return;
     this.world.step();
     this.steps++;
+    if (this.steps % P.CONTROL_EVERY === 0) this.dangerSeconds += danger(this.student, this.world) * P.CONTROL_EVERY * P.DT;
   }
 
   result(): RacecraftResult {
     const car = this.student;
     const laps = (car.dist - this.startDist) / this.world.track.length;
     return {
-      fitness: laps - DAMAGE_PENALTY * (1 - car.health) - HARM_PENALTY * car.harmDone,
+      fitness: laps - DAMAGE_PENALTY * (1 - car.health) - HARM_PENALTY * car.harmDone
+        - this.fear * (FEAR_LAPS * this.dangerSeconds + TRAUMA_LAPS * Math.max(0, car.selfTrauma - car.selfInflicted)),
       laps,
       bestLap: car.lapTimes.length ? Math.min(...car.lapTimes) : Infinity,
       health: car.health,
       harm: car.harmDone,
       gained: this.startPlace - this.place(),
+      danger: this.dangerSeconds,
     };
   }
 }
 
 /** Seconds of solo laps every candidate also drives, as in practice. */
 const SOLO_SECONDS = 60;
+/** Laps of score per solo lap lost against the student's own (losing pace costs double). */
+const SOLO_PACE = 2;
 
 /**
  * One round: every candidate races its own drill from the same slot, in the
@@ -162,20 +186,28 @@ const SOLO_SECONDS = 60;
 export class RacecraftTrial extends DrillTrial<RacecraftResult> {
   private readonly solo: Trial;
   private readonly perStudent: number;
+  private readonly candidates: number;
 
-  /** candidates: per student, [own, +e1, -e1, ...]; classmates: each student's current weights. */
+  /**
+   * candidates: per student, [own, +e1, -e1, ...]; classmates: each student's current weights;
+   * nerves: each student's nerve (what fear costs it); references: each student as it drove
+   * when the class began (its solo pace is held to that; default: its current self).
+   */
   constructor(
     track: Track, candidates: Float32Array[], perStudent: number, slot: number, classmates: Float32Array[], show: number,
-    layout = restartLayout(track),
+    layout = restartLayout(track), nerves: Array<number | undefined> = [], references: Float32Array[] = [],
   ) {
     const pack = classmates.map((w) => w.slice());
     super(candidates.map((g, i) => {
       const own = Math.floor(i / perStudent);
       // Slots around the student: the student's own racing and its classmates', in turn.
-      return new RacecraftDrill(track, slot, g, (k) => pack[(own + k) % pack.length], layout);
+      return new RacecraftDrill(track, slot, g, (k) => pack[(own + k) % pack.length], layout, fearScale(nerves[own]));
     }), perStudent, show);
     this.perStudent = perStudent;
-    this.solo = new Trial(track, candidates, { seconds: SOLO_SECONDS, damagePenaltyLaps: FULL_DAMAGE_PENALTY });
+    this.candidates = candidates.length;
+    // The references drive the same solo laps, after the candidates.
+    const refs = classmates.map((w, l) => references[l] ?? w);
+    this.solo = new Trial(track, [...candidates, ...refs], { seconds: SOLO_SECONDS, damagePenaltyLaps: FULL_DAMAGE_PENALTY });
   }
 
   override get done(): boolean {
@@ -187,12 +219,21 @@ export class RacecraftTrial extends DrillTrial<RacecraftResult> {
     this.solo.step();
   }
 
-  /** The drill's result, less any solo driving lost against the student's own. */
+  /**
+   * The drill's result, less any solo driving lost against the student as it
+   * drove when the class began: pace (laps) and cleanliness (damage) each on
+   * their own. Compared as one score, a much slower variation that avoided a
+   * scrape looked no worse; compared with the student's current self, small
+   * losses slipped through round after round. Either way drivers drifted
+   * slow, and one slow car in a 24-car field gets rear-ended all race.
+   */
   override results(): RacecraftResult[] {
     const solo = this.solo.results();
     return super.results().map((r, i) => {
-      const own = solo[i - (i % this.perStudent)].fitness;
-      return { ...r, fitness: r.fitness + Math.min(0, solo[i].fitness - own), soloLaps: solo[i].laps };
+      const own = solo[this.candidates + Math.floor(i / this.perStudent)], mine = solo[i];
+      const lostPace = Math.max(0, own.laps - mine.laps);
+      const extraDamage = Math.max(0, own.health - mine.health);
+      return { ...r, fitness: r.fitness - SOLO_PACE * lostPace - FULL_DAMAGE_PENALTY * extraDamage, soloLaps: mine.laps };
     });
   }
 }

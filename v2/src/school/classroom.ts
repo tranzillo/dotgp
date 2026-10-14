@@ -55,7 +55,7 @@ export const LESSONS: Record<LessonId, Lesson> = {
   racecraft: {
     id: 'racecraft', name: 'Racecraft', seconds: 0, pairs: 8, learningRate: 0.01,
     eligible: (d) => d.licensed, audience: 'licensed drivers',
-    description: "Race in a pack without wrecking anyone. Every round is a restart: a tight two-wide pack at speed into turn 1, raced for 40 s against the class's own driving. Distance counts, and so does damage, taken or done: closing on someone from behind or moving across into them is on you, being hit isn't. Runs until stopped.",
+    description: "Race in a pack without wrecking anyone. Every round drops the class into a pack somewhere on a preset: a restart, or a pack strung out mid-run, against the class's own driving, for 40 s. Distance counts; so does damage, taken or done (closing on someone from behind or moving across into them is on you, being hit isn't), and fear: time spent with a collision of your own making about to happen. How much fear costs depends on the driver's nerve. Solo driving is checked too, so drivers don't lose their way round the track. Runs until stopped. Experimental: so far it makes drivers cleaner on the speedway but not yet on the short track.",
   },
   pits: {
     id: 'pits', name: 'Pit stops', seconds: 100, pairs: 8, learningRate: 0.02,
@@ -99,6 +99,8 @@ export interface StudentSpec {
   pitTrafficLicensed?: boolean;
   /** Drives its own cautions and restarts. */
   cautionLicensed?: boolean;
+  /** Appetite for risk (0 timid .. 1 fearless): what fear costs it in lessons that score it. */
+  nerve?: number;
 }
 
 export interface ClassSpec {
@@ -162,6 +164,8 @@ interface Student extends StudentSpec {
   cautionLicensed: boolean;
   /** Pit stop lesson: rounds in a row the student hasn't stopped. */
   noStop: number;
+  /** How it drove when the class began (racecraft holds its solo pace to this). */
+  reference: Float32Array;
   m: Float32Array;
   v: Float32Array;
   adamSteps: number;
@@ -199,7 +203,7 @@ export class Classroom {
     this.students = spec.students.map((s) => ({
       ...s, weights: adaptWeights(s.weights).slice(), m: new Float32Array(size), v: new Float32Array(size), adamSteps: 0,
       passed: new Set<string>(), last: null, pitLicensed: s.pitLicensed ?? false, pitTrafficLicensed: s.pitTrafficLicensed ?? false,
-      cautionLicensed: s.cautionLicensed ?? false, noStop: 0,
+      cautionLicensed: s.cautionLicensed ?? false, noStop: 0, reference: adaptWeights(s.weights).slice(),
     }));
     if (this.lesson.id === 'pits') {
       // First, each student watches the veteran crews' pit maneuver and learns to copy it.
@@ -305,7 +309,8 @@ export class Classroom {
       ? new CautionTrial(this.track, candidates, 1 + 2 * lesson.pairs, this.drillSlot, this.round % this.students.length)
       : lesson.id === 'racecraft'
         ? new RacecraftTrial(this.track, candidates, 1 + 2 * lesson.pairs, this.round % PACK_SIZE,
-          this.students.map((s) => s.weights), this.round % this.students.length, randomLayout(this.track, this.rng))
+          this.students.map((s) => s.weights), this.round % this.students.length, randomLayout(this.track, this.rng),
+          this.students.map((s) => s.nerve), this.students.map((s) => s.reference))
       : lesson.id === 'pitTraffic' ? new PitTrafficTrial(this.track, candidates, 1 + 2 * lesson.pairs, this.round % this.students.length)
       : lesson.id === 'pits' ? new PitTrial(this.track, candidates, lesson.seconds) : new Trial(this.track, candidates, {
       seconds: lesson.seconds,
