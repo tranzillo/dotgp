@@ -229,7 +229,7 @@ function describe(r: ActivityRecord): string {
     }
     case 'lesson': {
       const d = r.data;
-      const name = d.lesson === 'rookie' ? 'Rookie school' : d.lesson === 'variety' ? 'Track variety' : d.lesson === 'pits' ? 'Pit stops' : d.lesson === 'pitTraffic' ? 'Pit road in traffic' : d.lesson === 'cautions' ? 'Cautions' : d.lesson;
+      const name = d.lesson === 'rookie' ? 'Rookie school' : d.lesson === 'variety' ? 'Track variety' : d.lesson === 'racecraft' ? 'Racecraft' : d.lesson === 'pits' ? 'Pit stops' : d.lesson === 'pitTraffic' ? 'Pit road in traffic' : d.lesson === 'cautions' ? 'Cautions' : d.lesson;
       return `${name} round ${r.brain ?? ''} at ${esc(d.track)}: ${d.laps} laps, best ${lap(d.bestLap)}, `
         + `${d.beaten} of ${d.variations} variations did better${d.walls < 1 ? `, walls ×${d.walls.toFixed(2)}` : ''}`;
     }

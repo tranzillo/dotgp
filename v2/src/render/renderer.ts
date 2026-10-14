@@ -12,6 +12,8 @@ export interface RenderCar {
   cleared: boolean;
   towed: boolean;
   parked: boolean;
+  speed: number;
+  fuel: number;
   inputX: number;
   inputY: number;
   frameX: number;
@@ -32,12 +34,13 @@ export interface RenderOfficials {
 import { G, PHYSICS as P } from '../sim/constants';
 import type { Decoration, Edge, LineStyle, Marking, SRange, Surface, SurfaceRegion, TrackRect } from '../sim/layout';
 import type { Track } from '../sim/track';
-import { numberColor, PACE_CAR_LIVERY, type Livery } from './livery';
+import { Exhaust } from './exhaust';
+import { numberColor, PACE_CAR_LIVERY, RACING_SURFACE, type Livery } from './livery';
 import { GROOVE_DISPLAY_ALPHA, GROOVE_STROKE_ALPHA, GROOVE_WIDTH, grooveChance, skidStroke, STROKE_FIELDS } from './marks';
 
 const COLORS = {
   background: '#0d0d0f',
-  surface: '#4a4a50',
+  surface: RACING_SURFACE,
   apron: '#3a3a3f',
   pitRoad: '#35353a',
   grass: '#1d3322',
@@ -138,6 +141,9 @@ export function bankColor(degrees: number, alpha = 1): string {
   return `rgba(${c[0]},${c[1]},${c[2]},${alpha})`;
 }
 
+/** Border for a car with no livery: light, so it reads on the asphalt. */
+const FALLBACK_BORDER = '#f8f9fa';
+
 /** Resolution of the tire-mark layer, in pixels per metre of track. */
 const MARK_RES = 3;
 
@@ -172,6 +178,9 @@ export class Renderer {
   private trackDirty = true;
   private debugLayers: DebugLayers = { inputs: true, forces: false, banking: false };
   dotMode: DotMode = 'legible';
+  /** Speed trails and exhaust puffs behind the cars. */
+  effects = true;
+  private readonly exhaust = new Exhaust();
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -197,6 +206,7 @@ export class Renderer {
       c.height = Math.ceil((b.maxY - b.minY) * MARK_RES);
     }
     this.clearMarks();
+    this.exhaust.reset();
     this.resize();
   }
 
@@ -635,6 +645,14 @@ export class Renderer {
     const showNumbers = r >= 6 * this.dpr;
     const w = this.canvas.width, h = this.canvas.height;
 
+    if (this.effects) {
+      // Only cars under their own power smoke; the rest drop their trails.
+      const running = cars
+        .filter((c) => !c.variant && !c.retired && !c.cleared && !c.towed && !c.parked)
+        .map((car) => ({ car, color: liveryOf(car)?.border ?? FALLBACK_BORDER }));
+      this.exhaust.draw(ctx, running, (x, y) => this.toScreen(x, y), this.scale, r, this.dpr);
+    }
+
     // Draw back-to-front by track position so leaders sit on top in a pack.
     const order = [...cars].sort((a, c) => Number(!!c.variant) - Number(!!a.variant) || a.dist - c.dist);
     for (const car of order) {
@@ -642,7 +660,7 @@ export class Renderer {
       if (x < -50 || y < -50 || x > w + 50 || y > h + 50) continue;
       const livery = liveryOf(car);
       const fill = livery?.fill ?? car.color;
-      const border = livery?.border ?? '#000';
+      const border = livery?.border ?? FALLBACK_BORDER;
       if (car.variant) {
         // A practice variation: a faint dot in the student's colour, under the students.
         if (car.retired) continue;

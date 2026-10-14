@@ -686,6 +686,8 @@ buttonGroup('speedButtons', [['1×', 1], ['4×', 4], ['16×', 16], ['64×', 64]]
 buttonGroup('zoomButtons', [['Full', 1], ['2×', 2], ['4×', 4], ['8×', 8]], () => zoom, (z) => { zoom = z; focus = null; });
 buttonGroup('dotButtons', [['Real size', 'real'], ['Legible', 'legible']] as Array<[string, DotMode]>,
   () => renderer.dotMode, (m) => { renderer.dotMode = m; });
+buttonGroup('effectButtons', [['Show', true], ['Hide', false]] as Array<[string, boolean]>,
+  () => renderer.effects, (v) => { renderer.effects = v; });
 buttonGroup('variationButtons', [['Show', true], ['Hide', false]] as Array<[string, boolean]>,
   () => showVariations, (v) => { showVariations = v; });
 buttonGroup('modeButtons', [['Race', 'race'], ['Practice', 'practice'], ['Ghosts', 'ghost']] as Array<[string, Mode]>,
@@ -1143,6 +1145,10 @@ const stopText = (st: { serviced: boolean; completed: boolean; speeding: number;
   !st.serviced ? 'no stop' : !st.completed ? "stopped, didn't merge" : st.speeding >= 1 ? 'speeding'
     : (st.harm ?? 0) >= 0.05 ? 'stopped, with contact' : 'clean stop';
 
+/** How a student's own racecraft drill went, for the class table. */
+const packText = (p: { harm: number; gained: number }) =>
+  `${p.gained > 0 ? `+${p.gained}` : p.gained} place${Math.abs(p.gained) === 1 ? '' : 's'}${p.harm >= 0.02 ? ', caused contact' : ''}`;
+
 /** How a student's own caution drill went, for the class table. */
 const cautionText = (c: { placeError: number; passes: number; harm: number }) =>
   `${c.placeError.toFixed(0)} m off${c.passes ? `, ${c.passes} pass${c.passes > 1 ? 'es' : ''}` : ''}${c.harm >= 0.05 ? ', contact' : ''}`;
@@ -1161,7 +1167,7 @@ function schoolTower(s: SessionSnapshot, meta: EventMeta): void {
     const lv = meta.liveries?.get(st.key);
     const last = st.last;
     return `<tr><td>${p + 1}</td><td><span class="dot" style="background:${lv?.fill};border-color:${lv?.fill}"></span><a data-agent="${st.id}" data-role="driver">${st.name}</a></td>
-      <td>${st.rounds}</td><td>${!last ? '–' : last.stop ? stopText(last.stop) : last.caution ? cautionText(last.caution) : `${last.laps} laps`}</td><td>${fmt(last?.bestLap ?? null)}</td>
+      <td>${st.rounds}</td><td>${!last ? '–' : last.stop ? stopText(last.stop) : last.caution ? cautionText(last.caution) : last.pack ? packText(last.pack) : `${last.laps} laps`}</td><td>${fmt(last?.bestLap ?? null)}</td>
       <td>${last ? `${last.beaten}/${variations}` : '–'}</td><td>${sc.lesson === 'variety' ? '–' : `${st.passed.length}/3`}</td>
       <td>${sc.lesson === 'pits' ? (st.pitLicensed ? 'pits' : '') : sc.lesson === 'pitTraffic' ? (st.pitTrafficLicensed ? 'pit road' : '') : sc.lesson === 'cautions' ? (st.cautionLicensed ? 'cautions' : '') : st.licensed ? 'licensed' : ''}</td></tr>`;
   }).join('');

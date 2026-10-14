@@ -5,6 +5,7 @@ import {
 import { Trial } from '../ai/evaluate';
 import { apprenticePitStops, cleanStop, PitTrial, REFRESHER_ROUNDS, type PitTrialResult } from './pitLesson';
 import { DrillTrial } from './drill';
+import { PACK_SIZE, RacecraftTrial, randomLayout, type RacecraftResult } from './racecraftLesson';
 import { apprenticePitTraffic, cleanTrafficStop, PitTrafficTrial, TRAFFIC_BASELINE_MARGIN, trafficBaseline, type PitTrafficResult } from './pitTrafficLesson';
 import { apprenticeCautions, BASELINE_MARGIN, CautionTrial, DRILL_FIELD, scriptBaseline, type CautionResult } from './cautionLesson';
 import { genomeSize } from '../ai/network';
@@ -24,7 +25,7 @@ import type { CarView, RadioLine, SessionSnapshot } from '../events/session';
  * training as headless practice, one visible track per round.
  */
 
-export type LessonId = 'rookie' | 'variety' | 'pits' | 'pitTraffic' | 'cautions';
+export type LessonId = 'rookie' | 'variety' | 'racecraft' | 'pits' | 'pitTraffic' | 'cautions';
 
 export interface Lesson {
   id: LessonId;
@@ -50,6 +51,11 @@ export const LESSONS: Record<LessonId, Lesson> = {
     id: 'variety', name: 'Track variety', seconds: 60, pairs: 8, learningRate: 0.01,
     eligible: (d) => d.licensed, audience: 'licensed drivers',
     description: 'A new generated oval every round, so drivers learn to handle tracks they have never seen.',
+  },
+  racecraft: {
+    id: 'racecraft', name: 'Racecraft', seconds: 0, pairs: 8, learningRate: 0.01,
+    eligible: (d) => d.licensed, audience: 'licensed drivers',
+    description: "Race in a pack without wrecking anyone. Every round is a restart: a tight two-wide pack at speed into turn 1, raced for 40 s against the class's own driving. Distance counts, and so does damage, taken or done: closing on someone from behind or moving across into them is on you, being hit isn't. Runs until stopped.",
   },
   pits: {
     id: 'pits', name: 'Pit stops', seconds: 100, pairs: 8, learningRate: 0.02,
@@ -129,6 +135,8 @@ export interface RoundReport {
   passed: string[];
   /** Pit stop lesson: how the student's own stop went. */
   stop?: { serviced: boolean; completed: boolean; speeding: number; harm?: number };
+  /** Racecraft lesson: how the student's own drill went. */
+  pack?: { harm: number; gained: number };
   /** Caution lesson: how the student's own drill went. */
   caution?: { placeError: number; passes: number; harm: number };
 }
@@ -260,7 +268,7 @@ export class Classroom {
   private startRound(): void {
     const lesson = this.lesson;
     const prevTrack = this.track;
-    if (lesson.id === 'rookie' || lesson.id === 'pits' || lesson.id === 'pitTraffic' || lesson.id === 'cautions') {
+    if (lesson.id !== 'variety') {
       this.track = this.presets[this.round % this.presets.length];
       // One world, so one wall softness: the class's average experience sets it.
       const lessons = this.students.reduce((a, s) => a + s.rounds, 0) / this.students.length;
@@ -295,6 +303,9 @@ export class Classroom {
     this.drillSlot = 2 + (this.round % (DRILL_FIELD - 3));
     this.trial = lesson.id === 'cautions'
       ? new CautionTrial(this.track, candidates, 1 + 2 * lesson.pairs, this.drillSlot, this.round % this.students.length)
+      : lesson.id === 'racecraft'
+        ? new RacecraftTrial(this.track, candidates, 1 + 2 * lesson.pairs, this.round % PACK_SIZE,
+          this.students.map((s) => s.weights), this.round % this.students.length, randomLayout(this.track, this.rng))
       : lesson.id === 'pitTraffic' ? new PitTrafficTrial(this.track, candidates, 1 + 2 * lesson.pairs, this.round % this.students.length)
       : lesson.id === 'pits' ? new PitTrial(this.track, candidates, lesson.seconds) : new Trial(this.track, candidates, {
       seconds: lesson.seconds,
@@ -389,6 +400,10 @@ export class Classroom {
       if (this.lesson.id === 'cautions') {
         const c = own as CautionResult;
         report.caution = { placeError: c.placeError, passes: c.passes, harm: c.harm };
+      }
+      if (this.lesson.id === 'racecraft') {
+        const r = own as RacecraftResult;
+        report.pack = { harm: r.harm, gained: r.gained };
       }
       if (this.lesson.id === 'pitTraffic') {
         const p = own as PitTrafficResult;

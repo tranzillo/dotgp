@@ -4,7 +4,7 @@ import { initialChiefWeights } from '../ai/neuralChief';
 import { randomTraits, type CrewChiefTraits } from '../ai/pitting';
 import type { Rng } from '../ai/rng';
 import { PERFECT_SPOTTER, randomSpotterSkill, type SpotterSkill } from '../ai/spotter';
-import { randomLivery, type Livery } from '../render/livery';
+import { randomLivery, withLegibleBorder, type Livery } from '../render/livery';
 
 /**
  * The people behind the cars. Drivers, spotters and crew chiefs are separate
@@ -374,7 +374,7 @@ export class Roster {
           : { kind: 'scripted', traits: x.brain.traits! };
         r.chiefs.set(x.id, { ...x, brain });
       }
-      r.teams = d.teams as TeamEntry[];
+      r.teams = (d.teams as TeamEntry[]).map((t) => ({ ...t, livery: withLegibleBorder(t.livery) }));
       return r.teams.length ? r : null;
     }
     // Older formats: one team per listed driver.
@@ -395,7 +395,7 @@ export class Roster {
       r.teams.push({
         id: r.teams.length,
         livery: x.number && x.fill && x.border
-          ? { number: x.number, fill: x.fill, border: x.border }
+          ? withLegibleBorder({ number: x.number, fill: x.fill, border: x.border })
           : randomLivery(r.teams.map((t) => t.livery.number), r.random),
         driver: driver.id,
         spotter: r.newSpotter().id,
