@@ -1,6 +1,7 @@
-import { G } from '../sim/constants';
+import { G, PHYSICS as P } from '../sim/constants';
 import type { Car } from '../sim/car';
 import type { Track } from '../sim/track';
+import type { World } from '../sim/world';
 
 /** Distances ahead (m) at which the driver samples track curvature. */
 export const LOOKAHEAD = [0, 30, 60, 100, 160, 250, 400] as const;
@@ -68,5 +69,41 @@ export function observePit(
   out[k++] = inZone ? 0 : Math.min(1, toZone / 300);
   out[k++] = inZone || toZone < 300 ? Math.max(-1, Math.min(1, (car.speed - limit) / limit)) : 0;
   out[k++] = mergeClear && !inLap ? 1 : 0;
+  return out;
+}
+
+export const CAUTION_SIZE = 7;
+
+/**
+ * What a driver perceives under caution (pace laps, caution laps, the run to
+ * a restart): that the field is pacing and whether the restart is coming,
+ * where its place in line is (how far ahead or behind, which lane), the speed
+ * the line is moving at, and the car ahead in its file. All zero under green,
+ * so racing is untouched.
+ */
+export function observeCaution(car: Car, world: World, out: Float32Array): Float32Array {
+  out.fill(0);
+  const ctl = world.control;
+  if (!ctl || !ctl.pacing || car.pit.phase !== 'none' || car.finished) return out;
+  const track = world.track;
+  out[0] = 1;
+  out[1] = ctl.oneToGo || ctl.flag === 'restart' ? 1 : 0;
+  const slot = ctl.slotFor(car);
+  if (!slot) return out;
+  // Metres the slot is ahead of us (a slot far behind is reached by going round, as the formation script does).
+  let err = track.distanceFrom(car.s, slot.s);
+  if (err > track.length / 2) err -= track.length;
+  if (err < -150) err += track.length;
+  out[2] = Math.max(-3, Math.min(3, err / 40));
+  out[3] = Math.max(-2, Math.min(2, (slot.d - car.d) / track.halfWidth));
+  out[4] = Math.max(-2, Math.min(2, (slot.speed - car.speed) / 20));
+  const ahead = ctl.carAheadInFile(car, slot.d);
+  if (ahead) {
+    const gap = track.distanceFrom(car.s, ahead.s) - 2 * P.CAR_RADIUS;
+    out[5] = Math.max(0, Math.min(1, gap / 50));
+    out[6] = Math.max(-2, Math.min(2, (car.speed - ahead.speed) / 20));
+  } else {
+    out[5] = 1;
+  }
   return out;
 }

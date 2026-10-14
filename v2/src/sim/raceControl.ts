@@ -72,6 +72,8 @@ export class RaceControl {
   cautions = 0;
   /** Laps the leader had completed when the current caution came out. */
   private cautionLap = 0;
+  /** Laps this caution runs at least. */
+  private cautionMinLaps = MIN_CAUTION_LAPS;
   private readonly handled = new Set<Car>();
   private readonly cautioned = new Set<Car>();
   private readonly stoppedSince = new Map<Car, number>();
@@ -130,7 +132,7 @@ export class RaceControl {
     if (this.flag === 'caution') {
       const laps = leader ? leader.lapsCompleted - this.cautionLap : 0;
       const clear = this.wreckers.every((w) => w.phase === 'done' || (w.phase === 'tow' && w.wreck.d > t.innerEdge(w.wreck.trackIdx) + 3));
-      if (clear && laps >= MIN_CAUTION_LAPS) this.oneToGo = true;
+      if (clear && laps >= this.cautionMinLaps) this.oneToGo = true;
       this.releasePaceCar(leader);
     }
     // The pace car pulls off onto pit road; the leader takes the field to the green.
@@ -184,9 +186,25 @@ export class RaceControl {
     this.flag = 'caution';
     this.cautions++;
     this.oneToGo = false;
+    this.cautionMinLaps = MIN_CAUTION_LAPS;
     const leader = this.order[0];
     this.cautionLap = leader ? leader.lapsCompleted : 0;
     this.world.announce(cause, 'flag', 'Caution! Field slows, pace car coming out');
+  }
+
+  /**
+   * A caution with nothing to clear (debris on track): the field forms up
+   * behind the pace car for the minimum caution laps, then restarts. Used by
+   * caution drills; real races could call it too.
+   */
+  debrisCaution(minLaps = MIN_CAUTION_LAPS): void {
+    if (this.flag !== 'green' || !this.order.length) return;
+    this.flag = 'caution';
+    this.cautions++;
+    this.oneToGo = false;
+    this.cautionMinLaps = minLaps;
+    this.cautionLap = this.order[0].lapsCompleted;
+    this.world.announce(this.order[0], 'flag', 'Caution for debris: field slows, pace car coming out');
   }
 
   /** Release the pace car from the end of pit road so it enters ahead of the leader. */
@@ -218,9 +236,21 @@ export class RaceControl {
   private updateFormation(leader: Car | null): void {
     const t = this.track;
     this.slots.clear();
-    this.order = this.world.cars
-      .filter((c) => !c.retired && !c.cleared && c.pit.phase === 'none')
-      .sort((a, b) => b.dist - a.dist);
+    const inLine = (c: Car) => !c.retired && !c.cleared && c.pit.phase === 'none';
+    const byDistance = (a: Car, b: Car) => b.dist - a.dist;
+    if (!this.pacing || !this.order.length) {
+      this.order = this.world.cars.filter(inLine).sort(byDistance);
+    } else {
+      // Under pacing the line keeps its order: re-sorting every step would swap two cars side by side
+      // in a row, and with them their files. Cars drop out (pitting, wrecked) and rejoin where they are.
+      const order = this.order.filter(inLine);
+      for (const car of this.world.cars) {
+        if (!inLine(car) || order.includes(car)) continue;
+        const at = order.findIndex((c) => c.dist < car.dist);
+        order.splice(at < 0 ? order.length : at, 0, car);
+      }
+      this.order = order;
+    }
     if (!this.pacing || !this.order.length) return;
     void leader;
     const pc = this.paceCar;

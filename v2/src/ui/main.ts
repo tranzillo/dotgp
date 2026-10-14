@@ -226,7 +226,7 @@ function entrantSpec(t: TeamEntry): EntrantSpec {
   return {
     key: t.id,
     fill: t.livery.fill,
-    driver: { id: driver.id, weights: driver.weights, pits: driver.pitLicensed ?? false },
+    driver: { id: driver.id, weights: driver.weights, pits: driver.pitLicensed ?? false, cautions: driver.cautionLicensed ?? false },
     spotter: { id: spotter.id, skill: spotter.skill },
     chief: { id: chief.id, brain: chief.brain },
   };
@@ -1053,7 +1053,7 @@ function startClass(): void {
   if (conflicts.length) { news(`Can't start the class: ${conflicts.length} students are busy in ${conflicts[0].event.label}`); return; }
   const spec: ClassSpec = {
     lesson,
-    students: students.map((d, i) => ({ key: STUDENT_KEY + i, id: d.id, name: d.name, weights: d.weights, rounds: d.rounds, licensed: d.licensed, pitLicensed: d.pitLicensed })),
+    students: students.map((d, i) => ({ key: STUDENT_KEY + i, id: d.id, name: d.name, weights: d.weights, rounds: d.rounds, licensed: d.licensed, pitLicensed: d.pitLicensed, cautionLicensed: d.cautionLicensed })),
     presets: Object.keys(PRESETS).map(presetLayout),
     seed: (rng.next() * 2 ** 32) >>> 0,
   };
@@ -1081,15 +1081,18 @@ function lessonRounds(handle: EventHandle, reports: RoundReport[]): void {
     d.rounds = r.rounds;
     d.licensed = r.licensed;
     d.pitLicensed = r.pitLicensed;
+    d.cautionLicensed = r.cautionLicensed;
     const variations = 2 * LESSONS[meta?.lesson ?? 'rookie'].pairs;
     activity.record({
       kind: 'lesson', agent: d.id, role: 'driver', event: handle.ref, brain: r.rounds,
       data: { lesson: meta?.lesson ?? 'rookie', track: r.track, fitness: r.fitness, laps: r.laps, bestLap: r.bestLap, health: r.health, walls: r.walls, beaten: r.beaten, variations },
     });
     if (r.graduated) {
-      const license = meta?.lesson === 'pits' ? 'pit' : 'driving';
+      const license = meta?.lesson === 'pits' ? 'pit' : meta?.lesson === 'cautions' ? 'caution' : 'driving';
       activity.record({ kind: 'licensed', agent: d.id, role: 'driver', event: handle.ref, brain: r.rounds, data: { lessons: r.rounds, license } });
-      news(license === 'pit' ? `${d.name} passed the pit stop lesson: does their own stops from now on` : `${d.name} earned a license after ${r.rounds} lessons`);
+      news(license === 'pit' ? `${d.name} passed the pit stop lesson: does their own stops from now on`
+        : license === 'caution' ? `${d.name} passed the caution lesson: drives their own cautions and restarts from now on`
+        : `${d.name} earned a license after ${r.rounds} lessons`);
     }
   }
   if (performance.now() - lastSchoolPersist > 5000) {
@@ -1103,6 +1106,10 @@ function lessonRounds(handle: EventHandle, reports: RoundReport[]): void {
 /** How a student's own pit stop went, for the class table. */
 const stopText = (st: { serviced: boolean; completed: boolean; speeding: number }) =>
   !st.serviced ? 'no stop' : !st.completed ? "stopped, didn't merge" : st.speeding >= 1 ? 'speeding' : 'clean stop';
+
+/** How a student's own caution drill went, for the class table. */
+const cautionText = (c: { placeError: number; passes: number; harm: number }) =>
+  `${c.placeError.toFixed(0)} m off${c.passes ? `, ${c.passes} pass${c.passes > 1 ? 'es' : ''}` : ''}${c.harm >= 0.05 ? ', contact' : ''}`;
 
 const TOWER_HEAD = '<tr><th>P</th><th>Driver</th><th>Gap</th><th>Best</th><th>Tire</th><th>Fuel</th><th>Pit</th><th>Hlth</th></tr>';
 const SCHOOL_HEAD = '<tr><th>P</th><th>Student</th><th>Lessons</th><th>Last round</th><th>Best</th><th>Beaten by</th><th>Tests</th><th></th></tr>';
@@ -1118,9 +1125,9 @@ function schoolTower(s: SessionSnapshot, meta: EventMeta): void {
     const lv = meta.liveries?.get(st.key);
     const last = st.last;
     return `<tr><td>${p + 1}</td><td><span class="dot" style="background:${lv?.fill};border-color:${lv?.fill}"></span><a data-agent="${st.id}" data-role="driver">${st.name}</a></td>
-      <td>${st.rounds}</td><td>${!last ? '–' : last.stop ? stopText(last.stop) : `${last.laps} laps`}</td><td>${fmt(last?.bestLap ?? null)}</td>
+      <td>${st.rounds}</td><td>${!last ? '–' : last.stop ? stopText(last.stop) : last.caution ? cautionText(last.caution) : `${last.laps} laps`}</td><td>${fmt(last?.bestLap ?? null)}</td>
       <td>${last ? `${last.beaten}/${variations}` : '–'}</td><td>${sc.lesson === 'variety' ? '–' : `${st.passed.length}/3`}</td>
-      <td>${sc.lesson === 'pits' ? (st.pitLicensed ? 'pits' : '') : st.licensed ? 'licensed' : ''}</td></tr>`;
+      <td>${sc.lesson === 'pits' ? (st.pitLicensed ? 'pits' : '') : sc.lesson === 'cautions' ? (st.cautionLicensed ? 'cautions' : '') : st.licensed ? 'licensed' : ''}</td></tr>`;
   }).join('');
   const students = sc.students.length;
   $('hud').innerHTML = `<b>Driving school</b> · ${L.name} · ${students} student${students > 1 ? 's' : ''} · ${speed}×<br>`

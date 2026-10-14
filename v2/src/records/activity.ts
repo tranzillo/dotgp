@@ -90,7 +90,7 @@ export type ActivityRecord = RecordBase & (
   | { kind: 'seat'; data: { action: 'signed' | 'released'; team: number; car: number } }
   | { kind: 'practice'; data: PracticeData }
   | { kind: 'lesson'; data: LessonData }
-  | { kind: 'licensed'; data: { lessons: number; license?: 'driving' | 'pit' } }
+  | { kind: 'licensed'; data: { lessons: number; license?: 'driving' | 'pit' | 'caution' } }
   | { kind: 'strategy'; data: { relativeTime: number } }
   /** Learned while racing: one step (several compared lap pairs). */
   | { kind: 'learning'; data: { source: 'race'; track: string; step: number } }
@@ -201,7 +201,7 @@ export function summarize(records: ActivityRecord[]): AgentSummary {
   for (const r of records) {
     switch (r.kind) {
       case 'joined': s.joined = r; break;
-      case 'licensed': if (r.data.license !== 'pit') s.licensedAfter = r.data.lessons; break;
+      case 'licensed': if (!r.data.license || r.data.license === 'driving') s.licensedAfter = r.data.lessons; break;
       case 'practice':
         s.practice.rounds++;
         if (r.data.rookie) s.practice.rookieRounds++;

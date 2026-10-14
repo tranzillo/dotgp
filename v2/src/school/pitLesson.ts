@@ -194,7 +194,7 @@ class Apprentice implements Controller {
     // What the student saw at this moment (its last command included).
     car.inputX = px;
     car.inputY = py;
-    const x = this.student.inputs(car, world, this.team.radio, this.team.pitInputs).slice();
+    const x = this.student.inputs(car, world, this.team.radio, this.team.pitInputs, this.team.cautionInputs).slice();
     if (Number.isNaN(label[0])) {
       const out = this.original.net.forward(x);
       label = [out[0], out[1]];

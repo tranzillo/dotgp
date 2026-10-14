@@ -18,7 +18,7 @@ describe('drivers doing their own pit stops', () => {
     expect(wide.length).toBe(genomeSize(DRIVER_LAYERS));
     const x = Float32Array.from({ length: OBS_SIZE + RADIO_SIZE }, () => rng.gaussian());
     const before = new Network(RADIO_DRIVER_LAYERS, old).forward(x);
-    const xWide = new Float32Array(OBS_SIZE + RADIO_SIZE + PIT_SIZE);
+    const xWide = new Float32Array(DRIVER_LAYERS[0]);
     xWide.set(x);
     const after = new Network(DRIVER_LAYERS, wide).forward(xWide);
     expect(after[0]).toBeCloseTo(before[0], 6);

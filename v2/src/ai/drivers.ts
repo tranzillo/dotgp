@@ -5,20 +5,21 @@ import { followLine } from './lineFollower';
 import { genomeSize, Network, widenNetwork } from './network';
 import { PIT_SERVICE } from '../sim/constants';
 import { PitAutopilot, pitDecisionS, pitRoute, type CrewChief } from './pitting';
-import { OBS_SIZE, observe, observePit, PIT_SIZE } from './observe';
+import { CAUTION_SIZE, OBS_SIZE, observe, observeCaution, observePit, PIT_SIZE } from './observe';
 import { Rng } from './rng';
 import { RADIO_SIZE, TowerSpotter, type Spotter } from './spotter';
 
-/** Driver network: own-car observations + the spotter's radio + the pit stop in progress -> acceleration request. */
-export const DRIVER_LAYERS = [OBS_SIZE + RADIO_SIZE + PIT_SIZE, 32, 24, 2] as const;
-/** Earlier drivers, still loadable via adaptWeights: before pit inputs, and solo-era (no radio). */
+/** Driver network: own-car observations + the spotter's radio + a pit stop in progress + a caution -> acceleration request. */
+export const DRIVER_LAYERS = [OBS_SIZE + RADIO_SIZE + PIT_SIZE + CAUTION_SIZE, 32, 24, 2] as const;
+/** Earlier drivers, still loadable via adaptWeights: before caution inputs, before pit inputs, and solo-era (no radio). */
+export const PIT_DRIVER_LAYERS = [OBS_SIZE + RADIO_SIZE + PIT_SIZE, 32, 24, 2] as const;
 export const RADIO_DRIVER_LAYERS = [OBS_SIZE + RADIO_SIZE, 24, 16, 2] as const;
 export const LEGACY_DRIVER_LAYERS = [OBS_SIZE, 16, 12, 2] as const;
 
 /** Upgrade saved weights to the current driver network, preserving behaviour (new inputs start ignored). */
 export function adaptWeights(w: Float32Array): Float32Array {
   if (w.length === genomeSize(DRIVER_LAYERS)) return w;
-  for (const old of [RADIO_DRIVER_LAYERS, LEGACY_DRIVER_LAYERS]) {
+  for (const old of [PIT_DRIVER_LAYERS, RADIO_DRIVER_LAYERS, LEGACY_DRIVER_LAYERS]) {
     if (w.length === genomeSize(old)) {
       const rng = new Rng(w.length);
       return widenNetwork(old, w, DRIVER_LAYERS, () => rng.next());
@@ -27,9 +28,9 @@ export function adaptWeights(w: Float32Array): Float32Array {
   throw new Error(`unrecognised driver genome (${w.length} weights)`);
 }
 
-/** The driver's seat of a team: reads its own car, the radio, and the pit stop in progress. */
+/** The driver's seat of a team: reads its own car, the radio, a pit stop in progress, and a caution. */
 export interface DriverBrain {
-  decide(car: Car, world: World, radio: Float32Array, pit: Float32Array): void;
+  decide(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array): void;
 }
 
 /**
@@ -40,6 +41,7 @@ export interface DriverBrain {
 export class Team implements Controller {
   readonly radio = new Float32Array(RADIO_SIZE);
   readonly pitInputs = new Float32Array(PIT_SIZE);
+  readonly cautionInputs = new Float32Array(CAUTION_SIZE);
   readonly autopilot = new PitAutopilot();
   private readonly formation = new FormationDriver();
   private lastS = NaN;
@@ -52,6 +54,8 @@ export class Team implements Controller {
     readonly crewChief: CrewChief | null = null,
     /** The driver drives its own pit stops (it has learned to); otherwise the scripted maneuver does. */
     readonly driverPits = false,
+    /** The driver drives its own cautions and restarts (it has learned to); otherwise the formation script does. */
+    readonly driverCautions = false,
   ) {}
 
   decide(car: Car, world: World): void {
@@ -72,9 +76,10 @@ export class Team implements Controller {
     this.lastS = r;
     this.spotter.call(car, world, this.radio);
     this.observePit(car, world);
+    observeCaution(car, world, this.cautionInputs);
     if (!this.driverPits && (car.pit.phase !== 'none' || this.autopilot.aborting)) { this.mode = 'pit'; this.autopilot.decide(car, world, this.spotter); }
-    else if (world.control?.pacing && !car.finished && car.pit.phase === 'none') { this.mode = 'formation'; this.formation.decide(car, world); }
-    else { this.mode = car.pit.phase === 'none' ? 'driver' : 'pit'; this.driver.decide(car, world, this.radio, this.pitInputs); }
+    else if (!this.driverCautions && world.control?.pacing && !car.finished && car.pit.phase === 'none') { this.mode = 'formation'; this.formation.decide(car, world); }
+    else { this.mode = car.pit.phase === 'none' ? 'driver' : 'pit'; this.driver.decide(car, world, this.radio, this.pitInputs, this.cautionInputs); }
   }
 
   /** The pit stop as the driver sees it (zeros when not pitting). */
@@ -93,7 +98,7 @@ export class Team implements Controller {
 /** Raw-control driver: network outputs the acceleration request in the travel frame. */
 export class NeuralDriver implements DriverBrain {
   readonly net: Network;
-  private readonly input = new Float32Array(OBS_SIZE + RADIO_SIZE + PIT_SIZE);
+  private readonly input = new Float32Array(OBS_SIZE + RADIO_SIZE + PIT_SIZE + CAUTION_SIZE);
   private readonly obs = new Float32Array(OBS_SIZE);
 
   constructor(weights: Float32Array) {
@@ -101,22 +106,23 @@ export class NeuralDriver implements DriverBrain {
   }
 
   /** The network's input for this moment (also what an apprentice is shown). */
-  inputs(car: Car, world: World, radio: Float32Array, pit: Float32Array): Float32Array {
+  inputs(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array): Float32Array {
     this.input.set(observe(car, world.track, this.obs), 0);
     this.input.set(radio, OBS_SIZE);
     this.input.set(pit, OBS_SIZE + RADIO_SIZE);
+    this.input.set(caution, OBS_SIZE + RADIO_SIZE + PIT_SIZE);
     return this.input;
   }
 
-  decide(car: Car, world: World, radio: Float32Array, pit: Float32Array): void {
-    const out = this.net.forward(this.inputs(car, world, radio, pit));
+  decide(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array): void {
+    const out = this.net.forward(this.inputs(car, world, radio, pit, caution));
     car.inputX = out[0];
     car.inputY = out[1];
   }
 }
 
-export function neuralTeam(weights: Float32Array, crewChief: CrewChief | null = null, driverPits = false): Team {
-  return new Team(new NeuralDriver(weights), new TowerSpotter(), crewChief, driverPits);
+export function neuralTeam(weights: Float32Array, crewChief: CrewChief | null = null, driverPits = false, driverCautions = false): Team {
+  return new Team(new NeuralDriver(weights), new TowerSpotter(), crewChief, driverPits, driverCautions);
 }
 
 /**
