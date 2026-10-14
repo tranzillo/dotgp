@@ -131,6 +131,9 @@ export interface EntrantResult {
   stops: number;
   wallHits: number;
   health: number;
+  /** The hardest single hit the car took (health lost; 0 if none), and how fast (m/s): what injures drivers. */
+  worstHit: number;
+  worstHitSpeed: number;
 }
 
 const RADIO_REPEAT = 4; // seconds before the same call from the same team is repeated
@@ -348,6 +351,7 @@ export class Session {
         bestLap: laps.length ? Math.min(...laps) : null,
         avgLap: laps.length ? laps.reduce((a, b) => a + b, 0) / laps.length : null,
         stops: car.pit.stops, wallHits: car.wallHits, health: car.health,
+        worstHit: car.worstHit?.severity ?? 0, worstHitSpeed: car.worstHit?.speed ?? 0,
       };
     });
   }

@@ -96,6 +96,8 @@ export class Car {
   selfInflicted = 0;
   /** The same impacts weighed as the driver feels them (trauma: big hits far worse than their size). */
   selfTrauma = 0;
+  /** The hardest single hit the car took (health lost, impact speed): what injures a driver. */
+  worstHit: { severity: number; speed: number; kind: 'wall' | 'car' } | null = null;
 
   // Per-step telemetry
   frameX = 1;
@@ -369,6 +371,7 @@ export function applyImpact(
   }
   car.health -= effective;
   car.lastImpact = { kind: source.kind, other: source.other, severity: effective, speed: impactSpeed };
+  if (!car.worstHit || effective > car.worstHit.severity) car.worstHit = { severity: effective, speed: impactSpeed, kind: source.kind };
   if (source.kind === 'wall') {
     car.selfInflicted += effective;
     car.selfTrauma += trauma(effective);

@@ -1,7 +1,8 @@
 import type { PracticeRequest, PracticeRound } from '../ai/practice.worker';
 import { Rng } from '../ai/rng';
 import { EventHost, type EventHandle } from '../events/host';
-import type { CarView, EntrantSpec, RadioLine as SessionRadio, SessionSnapshot, SessionSpec } from '../events/session';
+import type { CarView, EntrantResult, EntrantSpec, RadioLine as SessionRadio, SessionSnapshot, SessionSpec } from '../events/session';
+import { injuryFrom } from '../events/injury';
 import { LESSONS, type ClassSpec, type LessonId, type RoundReport } from '../school/classroom';
 import { ActivityLog, MemoryActivityStore, type AgentRole, type EventRef } from '../records/activity';
 import { IndexedDbActivityStore } from '../records/idbStore';
@@ -240,6 +241,8 @@ function entrantSpec(t: TeamEntry): EntrantSpec {
 function startSession(attach = true, warm = 0): EventHandle | null {
   if (fieldEvent) endEvent(fieldEvent);
   const ref = newEventRef();
+  // Injured or retired drivers' seats go to stand-ins; recovered regulars get theirs back.
+  for (const line of roster.fillSeats(field(), (id) => occupancy.isFree(id))) news(line);
   const teams = field();
   const conflicts = occupancy.claim(ref, teams.flatMap((t) => [t.driver, t.spotter, t.chief]));
   if (conflicts.length) {
@@ -754,6 +757,7 @@ function finishRace(handle: EventHandle): void {
     activity.record({ kind: 'race', agent: r.chief, role: 'chief', event: handle.ref, brain: roster.chiefs.get(r.chief)?.rounds, data });
     activity.record({ kind: 'race', agent: r.spotter, role: 'spotter', event: handle.ref, data });
   }
+  recordInjuries(handle, meta.trackName, results);
   if (seasonComplete(season)) {
     recordSeasonActivity();
     const lines = offSeason(season, roster, field());
@@ -765,6 +769,34 @@ function finishRace(handle: EventHandle): void {
   persist();
   renderSeason();
   renderRoster();
+}
+
+/**
+ * After a race: injured drivers are a race nearer recovery, then everyone's
+ * hardest hit in this one is rolled for an injury (injury.ts).
+ */
+function recordInjuries(handle: EventHandle, trackName: string, results: EntrantResult[]): void {
+  for (const d of roster.raceRun()) {
+    activity.record({ kind: 'recovered', agent: d.id, role: 'driver', data: {} });
+    news(`${d.name} has recovered from injury and is fit to race`);
+  }
+  for (const r of results) {
+    const d = roster.drivers.get(r.driver);
+    const injury = d ? injuryFrom(r.worstHit, () => rng.next()) : null;
+    if (!d || !injury) continue;
+    const kmh = Math.round(r.worstHitSpeed * 3.6);
+    activity.record({
+      kind: 'injury', agent: d.id, role: 'driver', event: handle.ref,
+      data: { severity: injury.severity, races: injury.races, track: trackName, hit: r.worstHit, speed: r.worstHitSpeed },
+    });
+    if (injury.severity === 'career') {
+      d.careerOver = { season: season.number, track: trackName };
+      news(`${d.name}'s career is over after a ${kmh} km/h crash at ${trackName}`);
+    } else {
+      d.injury = { severity: injury.severity, racesLeft: injury.races };
+      news(`${d.name} is hurt (${injury.severity}) after a ${kmh} km/h crash at ${trackName}: out for ${injury.races} race${injury.races === 1 ? '' : 's'}`);
+    }
+  }
 }
 
 /** Final championship positions for drivers and crew chiefs. */
@@ -952,7 +984,7 @@ function renderRoster(): void {
     let detail = '';
     if (rosterRole === 'driver') {
       const d = roster.drivers.get(a.id)!;
-      detail = `${d.licensed ? '' : 'school · '}${d.rounds}r`;
+      detail = `${d.careerOver ? 'retired · ' : d.injury ? `injured (${d.injury.racesLeft}) · ` : ''}${d.licensed ? '' : 'school · '}${d.rounds}r`;
     } else if (rosterRole === 'chief') {
       const c = roster.chiefs.get(a.id)!;
       detail = c.brain.kind === 'neural' ? `${c.rounds}r` : 'scripted';
@@ -1011,7 +1043,8 @@ const initials = (name: string) => name.split(' ').map((w) => w[0]).join('').sli
 
 /** Free drivers the lesson is for. */
 function eligible(id: string): boolean {
-  return occupancy.isFree(id) && LESSONS[lesson].eligible(roster.drivers.get(id)!);
+  const d = roster.drivers.get(id)!;
+  return occupancy.isFree(id) && !d.careerOver && LESSONS[lesson].eligible(d);
 }
 
 function renderSchool(): void {

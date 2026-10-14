@@ -96,6 +96,9 @@ export type ActivityRecord = RecordBase & (
   | { kind: 'learning'; data: { source: 'race'; track: string; step: number } }
   | { kind: 'race'; data: RaceData }
   | { kind: 'season'; data: { season: number; position: number; points: number; champion: boolean } }
+  /** Hurt in a race crash (the hardest hit: health lost, km/h); career: it ended their career. */
+  | { kind: 'injury'; data: { severity: 'minor' | 'serious' | 'career'; races: number; track: string; hit: number; speed: number } }
+  | { kind: 'recovered'; data: Record<string, never> }
 );
 
 export type ActivityKind = ActivityRecord['kind'];

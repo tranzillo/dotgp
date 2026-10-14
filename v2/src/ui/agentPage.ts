@@ -82,6 +82,8 @@ export class AgentPage {
     ];
     if (role === 'driver') {
       const d = roster.drivers.get(id)!;
+      if (d.careerOver) facts.push(`<b>Career over</b>: a crash at ${esc(d.careerOver.track)} in season ${d.careerOver.season}`);
+      else if (d.injury) facts.push(`<b>Injured</b> (${d.injury.severity}): back in ${d.injury.racesLeft} race${d.injury.racesLeft === 1 ? '' : 's'}`);
       facts.push(d.licensed ? `licensed${s.licensedAfter !== null ? ` after ${s.licensedAfter} lessons` : ''}` : 'in driving school');
       const nerve = d.nerve ?? 0.5;
       facts.push(`nerve ${(nerve * 100).toFixed(0)}: ${nerve < 0.3 ? 'cautious, keeps out of trouble' : nerve < 0.7 ? 'takes a gap when there is one' : 'fearless, goes for gaps that might not be there'}`);
@@ -245,6 +247,14 @@ function describe(r: ActivityRecord): string {
       return `${d.position === 1 ? '<b>Won</b>' : `P${d.position} of ${d.starters}`} at ${esc(d.track)}${d.status === 'out' ? ' (DNF)' : ''}, best ${lap(d.bestLap)}${d.points ? `, ${d.points} pts` : ''}${ev}`;
     }
     case 'season': return `${r.data.champion ? '<b>Champion</b>' : `P${r.data.position}`} in season ${r.data.season} (${r.data.points} pts)`;
+    case 'injury': {
+      const d = r.data;
+      const hit = `a ${Math.round(d.speed * 3.6)} km/h hit at ${esc(d.track)}`;
+      return d.severity === 'career'
+        ? `<b>Career over</b> after ${hit}`
+        : `<b>Injured</b> (${d.severity}) in ${hit}: out for ${d.races} race${d.races === 1 ? '' : 's'}`;
+    }
+    case 'recovered': return 'Recovered from injury: fit to race again';
   }
 }
 

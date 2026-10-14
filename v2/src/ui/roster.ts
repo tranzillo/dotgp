@@ -34,7 +34,14 @@ export interface DriverAgent {
    * collision and big hits cost it, next to lap time.
    */
   nerve?: number;
+  /** Hurt in a crash: sits out this many more races (a stand-in has the seat). */
+  injury?: { severity: 'minor' | 'serious'; racesLeft: number };
+  /** A crash ended this driver's career: retired from racing, history kept. */
+  careerOver?: { season: number; track: string };
 }
+
+/** Fit to race: not injured, career not over. */
+export const fitToRace = (d: DriverAgent) => !d.injury && !d.careerOver;
 
 export interface SpotterAgent {
   id: string;
@@ -58,6 +65,8 @@ export interface TeamEntry {
   driver: string;
   spotter: string;
   chief: string;
+  /** The team's own driver while a stand-in has the seat (they're injured). */
+  regular?: string;
 }
 
 /** Something that happened to the roster, for the activity log. */
@@ -257,6 +266,49 @@ export class Roster {
     this.seatChange(team, role, team[role], 'released');
     team[role] = agentId;
     this.seatChange(team, role, agentId, 'signed');
+  }
+
+  /**
+   * Before a session: a recovered regular gets their seat back; an injured or
+   * retired driver's seat goes to a stand-in from the academy (a licensed,
+   * fit driver who's free; a new recruit if there's none). Returns news lines.
+   */
+  fillSeats(teams: TeamEntry[], isFree: (id: string) => boolean): string[] {
+    const lines: string[] = [];
+    for (const t of teams) {
+      const regular = t.regular ? this.drivers.get(t.regular) : undefined;
+      if (t.regular && (!regular || regular.careerOver || (this.teamOf('driver', regular.id) && t.driver !== regular.id))) {
+        t.regular = undefined; // gone, retired, or seated elsewhere since
+      } else if (regular && fitToRace(regular) && t.driver !== regular.id && isFree(regular.id)) {
+        const standIn = this.driverOf(t);
+        this.seat(t, 'driver', regular.id);
+        t.regular = undefined;
+        lines.push(`${regular.name} is back in the #${t.livery.number} (${standIn.name} returns to the academy)`);
+      }
+      const d = this.driverOf(t);
+      if (fitToRace(d)) continue;
+      const standIn = [...this.drivers.values()].find((x) => x.licensed && fitToRace(x) && !this.teamOf('driver', x.id) && isFree(x.id))
+        ?? this.recruitDriver();
+      if (d.injury) t.regular ??= d.id;
+      this.seat(t, 'driver', standIn.id);
+      lines.push(d.injury
+        ? `${standIn.name} stands in for the injured ${d.name} in the #${t.livery.number}`
+        : `${standIn.name} takes over the #${t.livery.number} from ${d.name}, whose career is over`);
+    }
+    return lines;
+  }
+
+  /** A race was run: injured drivers are a race nearer recovery. Returns the drivers who recovered. */
+  raceRun(): DriverAgent[] {
+    const recovered: DriverAgent[] = [];
+    for (const d of this.drivers.values()) {
+      if (!d.injury) continue;
+      if (--d.injury.racesLeft <= 0) {
+        d.injury = undefined;
+        recovered.push(d);
+      }
+    }
+    return recovered;
   }
 
   driverOf(t: TeamEntry): DriverAgent { return this.drivers.get(t.driver)!; }
