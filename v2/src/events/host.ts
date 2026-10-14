@@ -2,7 +2,7 @@ import type { EventRef } from '../records/activity';
 import type { RoundReport } from '../school/classroom';
 import type { TrackLayout } from '../sim/layout';
 import type { EventProgress, EventSpec, FromEvent, ToEvent } from './protocol';
-import type { EntrantResult, RadioLine, SessionSnapshot } from './session';
+import type { EntrantResult, LearnedStep, RadioLine, SessionSnapshot } from './session';
 
 /**
  * The page's side of events. Each event runs in its own worker; at most one
@@ -36,6 +36,8 @@ export interface HostListener {
   track(handle: EventHandle, layout: TrackLayout): void;
   /** Driving-school rounds ended. */
   rounds(handle: EventHandle, reports: RoundReport[]): void;
+  /** Drivers learned while racing. */
+  learned(handle: EventHandle, steps: LearnedStep[]): void;
 }
 
 export class EventHost {
@@ -145,6 +147,9 @@ export class EventHost {
         break;
       case 'rounds':
         this.listener.rounds(handle, msg.reports);
+        break;
+      case 'learned':
+        this.listener.learned(handle, msg.steps);
         break;
     }
   }

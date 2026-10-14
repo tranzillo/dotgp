@@ -36,6 +36,7 @@ npx tsx scripts/incidents.ts --tracks speedway,short --seeds 2 --field 24 --pace
 | `src/ai/formation.ts` | Formation driver (double file, stopping-distance following, wreck avoidance) and pace car driver |
 | `src/ai/lineFollower.ts` | Hand-written path follower used by the scripted baseline and the pit maneuver |
 | `src/ai/spotter.ts` | The radio contract (16 channels) and `TowerSpotter`: global view, calls traffic alongside/ahead/behind and wrecks anywhere ahead |
+| `src/ai/online.ts` | Learning while racing: lap-against-lap evolution strategies (a small variation one lap, its opposite on another, coin-toss order), stepping toward the faster, cleaner direction |
 | `src/ai/es.ts` | Evolution strategies: each lineage is one persistent driver improving through practice |
 | `src/ai/practice.worker.ts` | Live practice in a Web Worker for the viewer |
 | `src/render/renderer.ts` | Track layers, permanent groove and skid layers, follow camera, numbered livery dots |
@@ -93,6 +94,10 @@ Sessions run as **events**, each in its own worker. One event is on screen (atta
 Every agent (driver, spotter, crew chief) belongs to the organisation: seated in a team's car, or in the **academy** with no seat (released drivers land there; *Recruit* signs new ones). Whatever is on screen is an **event** (a race, a practice session, ghost laps) that claims its participants: an agent takes part in one event at a time, and may learn during any of them. Practice training runs only inside the practice session, so the field never practises and races at once.
 
 Everything agents do goes into a permanent **activity log** (IndexedDB): arrivals, signings and releases, every practice round with best laps per track, licenses, crew chiefs' strategy rounds, race results (position, laps, best/average lap, stops, wall hits, points) and season standings, each tagged with the event and the agent's brain version. Click a name in the Roster panel (or double-click a driver in the timing tower) for their history page.
+
+## Learning in races
+
+On by default (*Learn* in the Session panel). In a race each driver drives a small variation of itself for a lap and its opposite for another (which goes first is a coin toss, so tire wear and fuel burn can't fake a signal), and every three pairs steps toward the better direction. Only clean green-flag laps count: a lap with a caution, a pit stop or a wreck is run again with the same variation, and damage taken on a lap is charged 120 s per unit of health, so contact never pays. Learning is slow and steady (a few steps per driver per race; drivers improve their solo lap times ~0.5-1.5% over a dozen races in testing) and races stay as clean as without it. Each step reaches the roster as it happens and is logged in the driver's history; the HUD counts the steps taken this race.
 
 ## Driving school
 

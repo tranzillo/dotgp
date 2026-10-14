@@ -103,6 +103,7 @@ export class AgentPage {
       tile('avg finish', s.races.avgFinish === null ? '–' : s.races.avgFinish.toFixed(1)),
       tile('titles', String(s.titles)),
       role === 'chief' ? tile('strategy rounds', String(s.strategy.rounds)) : tile('practice rounds', String(s.practice.rounds)),
+      role === 'driver' ? tile('learned racing', String(s.raceLearning)) : '',
     ].join('');
 
     // Best lap as the agent learned, one small chart per track (tracks differ in scale), most-driven first.
@@ -225,6 +226,7 @@ function describe(r: ActivityRecord): string {
       return `${name} round ${r.brain ?? ''} at ${esc(d.track)}: ${d.laps} laps, best ${lap(d.bestLap)}, `
         + `${d.beaten} of ${d.variations} variations did better${d.walls < 1 ? `, walls ×${d.walls.toFixed(2)}` : ''}`;
     }
+    case 'learning': return `Learned while racing at ${esc(r.data.track)} (step ${r.data.step} this race)${ev}`;
     case 'licensed': return `<b>Earned a license</b> after ${r.data.lessons} lessons`;
     case 'strategy': return `Strategy race: ${((r.data.relativeTime - 1) * 100).toFixed(1)}% off the best${ev}`;
     case 'race': {

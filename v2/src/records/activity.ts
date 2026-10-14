@@ -92,6 +92,8 @@ export type ActivityRecord = RecordBase & (
   | { kind: 'lesson'; data: LessonData }
   | { kind: 'licensed'; data: { lessons: number } }
   | { kind: 'strategy'; data: { relativeTime: number } }
+  /** Learned while racing: one step (several compared lap pairs). */
+  | { kind: 'learning'; data: { source: 'race'; track: string; step: number } }
   | { kind: 'race'; data: RaceData }
   | { kind: 'season'; data: { season: number; position: number; points: number; champion: boolean } }
 );
@@ -168,6 +170,8 @@ export interface AgentSummary {
   races: { starts: number; wins: number; top5: number; dnfs: number; avgFinish: number | null; bestFinish: number | null; points: number };
   practice: { rounds: number; rookieRounds: number };
   strategy: { rounds: number };
+  /** Learning steps taken while racing. */
+  raceLearning: number;
   titles: number;
   /** Best lap ever recorded on each track (practice or race), and when. */
   bestLaps: Record<string, { time: number; at: number; source: 'practice' | 'race' }>;
@@ -182,6 +186,7 @@ export function summarize(records: ActivityRecord[]): AgentSummary {
     races: { starts: 0, wins: 0, top5: 0, dnfs: 0, avgFinish: null, bestFinish: null, points: 0 },
     practice: { rounds: 0, rookieRounds: 0 },
     strategy: { rounds: 0 },
+    raceLearning: 0,
     titles: 0,
     bestLaps: {},
     first: records.length ? records[0].time : null,
@@ -208,6 +213,7 @@ export function summarize(records: ActivityRecord[]): AgentSummary {
         best(r.data.track, r.data.bestLap, r.time, 'practice');
         break;
       case 'strategy': s.strategy.rounds++; break;
+      case 'learning': s.raceLearning++; break;
       case 'race': {
         const d = r.data;
         s.races.starts++;

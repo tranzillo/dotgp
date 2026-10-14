@@ -1,6 +1,6 @@
 import type { ClassSpec, RoundReport } from '../school/classroom';
 import type { TrackLayout } from '../sim/layout';
-import type { EntrantResult, RadioLine, SessionSnapshot, SessionSpec } from './session';
+import type { EntrantResult, LearnedStep, RadioLine, SessionSnapshot, SessionSpec } from './session';
 
 /** What an event runs: a session on track, or a driving-school class. */
 export type EventSpec = { what: 'session'; spec: SessionSpec } | { what: 'class'; spec: ClassSpec };
@@ -40,4 +40,6 @@ export type FromEvent =
   /** The event moved to another track (driving school rotates tracks between rounds). */
   | { type: 'track'; layout: TrackLayout }
   /** A driving-school round ended: each student's result and improved weights. */
-  | { type: 'rounds'; reports: RoundReport[] };
+  | { type: 'rounds'; reports: RoundReport[] }
+  /** Drivers learned while racing. */
+  | { type: 'learned'; steps: LearnedStep[] };

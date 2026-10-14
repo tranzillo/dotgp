@@ -90,11 +90,19 @@ function classNews(): void {
   if (reports.length) post({ type: 'rounds', reports }, reports.map((r) => r.weights.buffer));
 }
 
+/** Races: learning steps drivers took go to the page as they happen. */
+function learnedNews(): void {
+  if (!(session instanceof Session)) return;
+  const steps = session.takeLearned();
+  if (steps.length) post({ type: 'learned', steps }, steps.map((st) => st.weights.buffer));
+}
+
 function loop(): void {
   const s = session;
   if (!s) return;
   const now = performance.now();
   classNews();
+  learnedNews();
   if (attached) {
     // Real time x speed, at most a frame's budget of steps.
     simDebt += Math.min(0.1, (now - lastReal) / 1000) * speed;
@@ -130,6 +138,7 @@ function reportFinish(s: Hosted): void {
   if (!s.finished || finishedSent) return;
   finishedSent = true;
   classNews();
+  learnedNews();
   post({ type: 'finished', results: s instanceof Session ? s.results() : [], snapshot: s.snapshot() });
 }
 

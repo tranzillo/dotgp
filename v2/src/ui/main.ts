@@ -109,6 +109,8 @@ let mode: Mode = 'race';
 let raceLaps = 50;
 /** Race pace: tire wear and fuel burn multiplier. */
 let pace = 4;
+/** Drivers learn as they race (lap against lap). */
+let learnInRaces = true;
 /**
  * What happens after a race: another race straight away, a race weekend
  * (practice where drivers and crew chiefs learn, then the next race on the
@@ -141,6 +143,8 @@ interface EventMeta {
   /** Teams by entrant key (the team id). Empty for classes. */
   teams: Map<number, TeamEntry>;
   recorded: boolean;
+  /** Learning steps drivers have taken during this race. */
+  learnedSteps?: number;
   /** Driving school: each student's colours and initials, by student key. */
   liveries?: Map<number, Livery>;
   lesson?: LessonId;
@@ -181,6 +185,18 @@ const host = new EventHost({
   },
   rounds(handle, reports) {
     lessonRounds(handle, reports);
+  },
+  learned(handle, steps) {
+    // Drivers learned mid-race: the roster gets their new driving, the log a line each.
+    const meta = metas.get(handle);
+    if (meta) meta.learnedSteps = (meta.learnedSteps ?? 0) + steps.length;
+    for (const st of steps) {
+      const d = roster.drivers.get(st.driverId);
+      if (!d) continue;
+      d.weights.set(st.weights);
+      d.rounds++;
+      activity.record({ kind: 'learning', agent: d.id, role: 'driver', event: handle.ref, brain: d.rounds, data: { source: 'race', track: meta?.trackName ?? '', step: st.steps } });
+    }
   },
 });
 
@@ -232,7 +248,7 @@ function startSession(attach = true, warm = 0): EventHandle | null {
   }
   const spec: SessionSpec = {
     kind: mode, layout: track.layout, entrants: teams.map(entrantSpec), laps: raceLaps, pace,
-    seed: (rng.next() * 2 ** 32) >>> 0,
+    seed: (rng.next() * 2 ** 32) >>> 0, learn: learnInRaces,
   };
   const handle = host.start(ref, { what: 'session', spec }, { attach, runDetached: mode === 'race', warm });
   metas.set(handle, { mode, trackName, track, teams: new Map(teams.map((t) => [t.id, t])), recorded: false });
@@ -420,7 +436,11 @@ function updateTower(): void {
       : '<span class="flagtag green">GREEN</span>';
     const next = Number.isNaN(raceDoneAt) || loop === 'stop' ? ''
       : ` · ${loop === 'weekend' ? 'practice' : 'next race'} in ${Math.max(0, Math.ceil(NEXT_RACE_DELAY - (performance.now() / 1000 - raceDoneAt)))} s`;
-    status = r.state === 'green' ? `${flagText} <b>Lap ${lap} / ${r.laps}</b> · ${status}`
+    const learning = (handle: EventHandle | null) => {
+      const spec = handle?.event.what === 'session' ? handle.event.spec : null;
+      return spec?.learn ? ` · drivers learning (${meta.learnedSteps ?? 0} steps)` : '';
+    };
+    status = r.state === 'green' ? `${flagText} <b>Lap ${lap} / ${r.laps}</b> · ${status}${learning(shown())}`
       : r.state === 'checkered' ? `${FLAG} <b>Checkered flag</b> · ${who} wins · others finishing`
       : `${FLAG} <b>Final</b> · ${who} wins${next}`;
   } else if (weekendPractice && shown() === fieldEvent) {
@@ -676,6 +696,7 @@ buttonGroup('lapButtons', [['20', 20], ['50', 50], ['100', 100], ['200', 200]], 
   if (mode === 'race') startSession();
 });
 buttonGroup('paceButtons', [['Real', 1], ['4×', 4], ['8×', 8]], () => pace, (p) => { pace = p; startSession(); });
+buttonGroup('learnButtons', [['On', true], ['Off', false]] as Array<[string, boolean]>, () => learnInRaces, (v) => { learnInRaces = v; });
 buttonGroup('autoButtons', [['Weekends', 'weekend'], ['Race after race', 'races'], ['Stop', 'stop']] as Array<[string, Loop]>,
   () => loop, (l) => { loop = l; });
 // Debug overlays: independent toggles.
