@@ -149,4 +149,27 @@ describe('pit exit merge', () => {
     expect(a.health).toBe(1);
     expect(b.health).toBe(1);
   });
+
+  it('does not call for repairs lap after lap as a damaged car keeps scraping', () => {
+    const track = ovalTrack(SPEEDWAY);
+    const world = new World(track, { collisions: false });
+    world.raceLaps = 60;
+    const car = new Car(0);
+    placeOnGrid(car, track, 0, true);
+    const chief = new StrategistCrewChief({ fuelMarginLaps: 1, tireLimit: 0.3, repairBelow: 0.85, minLapsForTires: 5 });
+    let repairs = 0;
+    // Thirty laps of a car losing a little health every lap (and getting a repair whenever asked).
+    for (let lap = 0; lap < 30; lap++) {
+      car.lapTimes.push(35);
+      car.health = Math.max(0.2, car.health - 0.04);
+      const call = chief.decide(car, world);
+      if (call?.repair) {
+        repairs++;
+        car.pit.stops++;
+        car.health = 1 - (1 - car.health) * (1 - PIT_SERVICE.REPAIR_FRACTION) - 0.03; // a scrape on the way in
+      }
+    }
+    expect(repairs).toBeGreaterThan(0);
+    expect(repairs).toBeLessThanOrEqual(7); // about one per 5 laps of steady damage (the old rule called nearly every other lap)
+  });
 });

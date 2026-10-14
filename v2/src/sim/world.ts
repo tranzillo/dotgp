@@ -21,6 +21,9 @@ export interface WorldOptions {
   autoClearWrecks: boolean;
 }
 
+/** A car stopped within this far of its box's centre is in the box (boxes are 12 m long). */
+const BOX_HALF_LENGTH = 5;
+
 /** Seconds a stopped wreck stays on track before the safety crew clears it. */
 export const WRECK_CLEAR_TIME = 4;
 
@@ -129,7 +132,7 @@ export class World {
         pit.phase = 'none';
         pit.call = null;
         this.announce(car, 'missed-pit', 'Missed the pit entry');
-      } else if (inPitLane && Math.abs(r - pit.boxS) < 3 && car.speed < 1.5) {
+      } else if (inPitLane && Math.abs(r - pit.boxS) < BOX_HALF_LENGTH && car.speed < 1.5) {
         pit.phase = 'service';
         pit.timer = serviceTime(car, pit.call!);
         pit.stops++;

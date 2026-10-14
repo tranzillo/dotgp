@@ -29,7 +29,8 @@ export interface EntrantSpec {
   /** The team's id: identifies the car across snapshots and results. */
   key: number;
   fill: string;
-  driver: { id: string; weights: Float32Array };
+  /** pits: drives its own pit stops (it has learned to); otherwise the scripted maneuver does. */
+  driver: { id: string; weights: Float32Array; pits?: boolean };
   spotter: { id: string; skill: SpotterSkill };
   chief: { id: string; brain: { kind: 'neural'; weights: Float32Array } | { kind: 'scripted'; traits: CrewChiefTraits } };
 }
@@ -171,7 +172,7 @@ export class Session {
       if (contact) placeOnGrid(car, this.track, k, true);
       else this.rollingStart(car); // ghosts share one spot
       const driver = new NeuralDriver(entrant.driver.weights);
-      const team = new Team(driver, new TowerSpotter(entrant.spotter.skill), contact ? makeChief(entrant.chief.brain) : null);
+      const team = new Team(driver, new TowerSpotter(entrant.spotter.skill), contact ? makeChief(entrant.chief.brain) : null, entrant.driver.pits ?? false);
       this.world.addCar(car, team);
       this.entrants.set(car.id, entrant);
       this.teams.set(car.id, team);

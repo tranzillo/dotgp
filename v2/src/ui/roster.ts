@@ -22,6 +22,8 @@ export interface DriverAgent {
   mentor: string | null;
   /** Has passed rookie school (can complete clean laps). */
   licensed: boolean;
+  /** Has passed the pit stop lesson: drives its own pit stops instead of the scripted maneuver. */
+  pitLicensed?: boolean;
 }
 
 export interface SpotterAgent {

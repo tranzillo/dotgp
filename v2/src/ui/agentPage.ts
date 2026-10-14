@@ -83,6 +83,7 @@ export class AgentPage {
     if (role === 'driver') {
       const d = roster.drivers.get(id)!;
       facts.push(d.licensed ? `licensed${s.licensedAfter !== null ? ` after ${s.licensedAfter} lessons` : ''}` : 'in driving school');
+      facts.push(d.pitLicensed ? 'does their own pit stops' : 'pit stops: the veteran maneuver');
       facts.push(`${d.rounds} training rounds`);
     } else if (role === 'chief') {
       const c = roster.chiefs.get(id)!;
@@ -222,12 +223,14 @@ function describe(r: ActivityRecord): string {
     }
     case 'lesson': {
       const d = r.data;
-      const name = d.lesson === 'rookie' ? 'Rookie school' : d.lesson === 'variety' ? 'Track variety' : d.lesson;
+      const name = d.lesson === 'rookie' ? 'Rookie school' : d.lesson === 'variety' ? 'Track variety' : d.lesson === 'pits' ? 'Pit stops' : d.lesson;
       return `${name} round ${r.brain ?? ''} at ${esc(d.track)}: ${d.laps} laps, best ${lap(d.bestLap)}, `
         + `${d.beaten} of ${d.variations} variations did better${d.walls < 1 ? `, walls ×${d.walls.toFixed(2)}` : ''}`;
     }
     case 'learning': return `Learned while racing at ${esc(r.data.track)} (step ${r.data.step} this race)${ev}`;
-    case 'licensed': return `<b>Earned a license</b> after ${r.data.lessons} lessons`;
+    case 'licensed': return r.data.license === 'pit'
+      ? `<b>Passed the pit stop lesson</b>: does their own stops from now on`
+      : `<b>Earned a license</b> after ${r.data.lessons} lessons`;
     case 'strategy': return `Strategy race: ${((r.data.relativeTime - 1) * 100).toFixed(1)}% off the best${ev}`;
     case 'race': {
       const d = r.data;

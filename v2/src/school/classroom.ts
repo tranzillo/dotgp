@@ -2,7 +2,8 @@ import { adaptWeights } from '../ai/drivers';
 import {
   adamStep, centeredRanks, DEFAULT_ES, FULL_DAMAGE_PENALTY, LICENSE_HEALTH, rookieDamagePenalty, rookieDamageScale,
 } from '../ai/es';
-import { Trial, type TrialResult } from '../ai/evaluate';
+import { Trial } from '../ai/evaluate';
+import { apprenticePitStops, cleanStop, PitTrial, type PitTrialResult } from './pitLesson';
 import { genomeSize } from '../ai/network';
 import { Rng } from '../ai/rng';
 import { DRIVER_LAYERS } from '../ai/drivers';
@@ -20,14 +21,16 @@ import type { CarView, RadioLine, SessionSnapshot } from '../events/session';
  * training as headless practice, one visible track per round.
  */
 
-export type LessonId = 'rookie' | 'variety';
+export type LessonId = 'rookie' | 'variety' | 'pits';
 
 export interface Lesson {
   id: LessonId;
   name: string;
   description: string;
   /** Who it's for. */
-  forLicensed: boolean;
+  eligible: (driver: { licensed: boolean; pitLicensed?: boolean }) => boolean;
+  /** Who's eligible, in words. */
+  audience: string;
   /** Seconds per round, antithetic pairs per student, learning rate. */
   seconds: number;
   pairs: number;
@@ -36,14 +39,30 @@ export interface Lesson {
 
 export const LESSONS: Record<LessonId, Lesson> = {
   rookie: {
-    id: 'rookie', name: 'Rookie school', forLicensed: false, seconds: 80, pairs: 16, learningRate: 0.03,
+    id: 'rookie', name: 'Rookie school', seconds: 80, pairs: 16, learningRate: 0.03,
+    eligible: (d) => !d.licensed, audience: 'rookies (no license yet)',
     description: 'Learn to drive: solo laps with soft walls that harden over the first lessons. A license comes with clean laps on every preset track at full walls.',
   },
   variety: {
-    id: 'variety', name: 'Track variety', forLicensed: true, seconds: 60, pairs: 8, learningRate: 0.01,
+    id: 'variety', name: 'Track variety', seconds: 60, pairs: 8, learningRate: 0.01,
+    eligible: (d) => d.licensed, audience: 'licensed drivers',
     description: 'A new generated oval every round, so drivers learn to handle tracks they have never seen.',
   },
+  pits: {
+    id: 'pits', name: 'Pit stops', seconds: 100, pairs: 8, learningRate: 0.01,
+    eligible: (d) => d.licensed && !d.pitLicensed, audience: 'licensed drivers who don\'t do their own stops yet',
+    description: 'Do your own pit stop: down to the apron, onto pit road under the limit, stop on the box, back out and merge. Students first copy the veteran crews\' pit maneuver, then practise; a pit license comes with a clean stop on every preset track, and from then on they drive their own stops in races.',
+  },
 };
+
+/** One round's trial: ghost laps, or ghost pit stops. */
+interface LessonTrial {
+  readonly world: Trial['world'];
+  readonly done: boolean;
+  readonly remaining: number;
+  step(): void;
+  results(): Array<{ fitness: number; laps: number; bestLap: number; health: number }>;
+}
 
 export interface StudentSpec {
   /** Identifies the student's cars in snapshots (index in the class). */
@@ -53,6 +72,8 @@ export interface StudentSpec {
   weights: Float32Array;
   rounds: number;
   licensed: boolean;
+  /** Drives its own pit stops. */
+  pitLicensed?: boolean;
 }
 
 export interface ClassSpec {
@@ -70,6 +91,8 @@ export interface RoundReport {
   weights: Float32Array;
   rounds: number;
   licensed: boolean;
+  pitLicensed: boolean;
+  /** Earned a license this round (which one: the lesson's). */
   graduated: boolean;
   track: string;
   /** The student's own drive this round (not a variation). */
@@ -81,8 +104,10 @@ export interface RoundReport {
   walls: number;
   /** Variations that beat the student this round. */
   beaten: number;
-  /** Tracks passed toward the license (rookie school). */
+  /** Tracks passed toward the license (rookie school, pit stops). */
   passed: string[];
+  /** Pit stop lesson: how the student's own stop went. */
+  stop?: { serviced: boolean; completed: boolean; speeding: number };
 }
 
 export interface SchoolView {
@@ -91,13 +116,14 @@ export interface SchoolView {
   track: string;
   remaining: number;
   walls: number;
-  students: Array<{ key: number; id: string; name: string; rounds: number; licensed: boolean; passed: string[]; last: RoundSummary | null }>;
+  students: Array<{ key: number; id: string; name: string; rounds: number; licensed: boolean; pitLicensed: boolean; passed: string[]; last: RoundSummary | null }>;
 }
 
 /** A round's result without the weights (what the viewer shows). */
 export type RoundSummary = Omit<RoundReport, 'weights'>;
 
 interface Student extends StudentSpec {
+  pitLicensed: boolean;
   m: Float32Array;
   v: Float32Array;
   adamSteps: number;
@@ -110,7 +136,7 @@ export class Classroom {
   readonly students: Student[];
   round = 0;
   track!: Track;
-  trial!: Trial;
+  trial!: LessonTrial;
   walls = 1;
   private readonly presets: Track[];
   private readonly rng: Rng;
@@ -132,19 +158,28 @@ export class Classroom {
     const size = genomeSize(DRIVER_LAYERS);
     this.students = spec.students.map((s) => ({
       ...s, weights: adaptWeights(s.weights).slice(), m: new Float32Array(size), v: new Float32Array(size), adamSteps: 0,
-      passed: new Set<string>(), last: null,
+      passed: new Set<string>(), last: null, pitLicensed: s.pitLicensed ?? false,
     }));
+    if (this.lesson.id === 'pits') {
+      // First, each student watches the veteran crews' pit maneuver and learns to copy it.
+      for (const s of this.students) {
+        const { examples } = apprenticePitStops(s.weights, this.presets, this.rng);
+        this.say(`${s.name} studied the veteran's pit stops (${examples} moments)`);
+      }
+    }
     this.startRound();
   }
 
   /** Rookie school ends when everyone holds a license; other lessons run until stopped. */
   get finished(): boolean {
-    return this.lesson.id === 'rookie' && this.students.every((s) => s.licensed);
+    if (this.lesson.id === 'rookie') return this.students.every((s) => s.licensed);
+    if (this.lesson.id === 'pits') return this.students.every((s) => s.pitLicensed);
+    return false;
   }
 
   /** Total simulated time across rounds. */
   get time(): number {
-    return this.timeOffset + this.trial.world.time;
+    return this.timeOffset + (this.trial?.world.time ?? 0);
   }
 
   step(): void {
@@ -176,11 +211,11 @@ export class Classroom {
   private startRound(): void {
     const lesson = this.lesson;
     const prevTrack = this.track;
-    if (lesson.id === 'rookie') {
+    if (lesson.id === 'rookie' || lesson.id === 'pits') {
       this.track = this.presets[this.round % this.presets.length];
       // One world, so one wall softness: the class's average experience sets it.
       const lessons = this.students.reduce((a, s) => a + s.rounds, 0) / this.students.length;
-      this.walls = rookieDamageScale(lessons, DEFAULT_ES.curriculumRounds);
+      this.walls = lesson.id === 'rookie' ? rookieDamageScale(lessons, DEFAULT_ES.curriculumRounds) : 1;
     } else {
       this.track = new Track(generateLayout({ type: 'oval', seed: hashSeed(this.seed, `round${this.round}`) }));
       this.walls = 1;
@@ -207,7 +242,7 @@ export class Classroom {
       this.noise.push(eps);
     }
     const lessons = this.students.reduce((a, s) => a + s.rounds, 0) / this.students.length;
-    this.trial = new Trial(this.track, candidates, {
+    this.trial = lesson.id === 'pits' ? new PitTrial(this.track, candidates, lesson.seconds) : new Trial(this.track, candidates, {
       seconds: lesson.seconds,
       damageScale: this.walls,
       damagePenaltyLaps: lesson.id === 'rookie' ? rookieDamagePenalty(lessons, DEFAULT_ES.curriculumRounds) : FULL_DAMAGE_PENALTY,
@@ -222,7 +257,7 @@ export class Classroom {
     const size = genomeSize(DRIVER_LAYERS);
     this.students.forEach((s, l) => {
       const base = l * per;
-      const own: TrialResult = results[base];
+      const own = results[base];
       const fits = Array.from({ length: 2 * this.lesson.pairs }, (_, k) => results[base + 1 + k].fitness);
       const ranks = centeredRanks(fits);
       const grad = new Float32Array(size);
@@ -247,12 +282,28 @@ export class Classroom {
           this.say(`${s.name} earned a license after ${s.rounds} lessons`);
         }
       }
+      // The pit license: a clean stop of its own on each preset track.
+      if (!s.pitLicensed && this.lesson.id === 'pits' && cleanStop(own as PitTrialResult)) {
+        if (!s.passed.has(this.track.name)) {
+          s.passed.add(this.track.name);
+          this.say(`${s.name} made a clean stop at ${this.track.name} (${s.passed.size} of ${this.presets.length})`);
+        }
+        if (s.passed.size === this.presets.length) {
+          s.pitLicensed = true;
+          graduated = true;
+          this.say(`${s.name} does their own pit stops now`);
+        }
+      }
       const report: RoundReport = {
-        key: s.key, id: s.id, weights: s.weights.slice(), rounds: s.rounds, licensed: s.licensed, graduated,
+        key: s.key, id: s.id, weights: s.weights.slice(), rounds: s.rounds, licensed: s.licensed, pitLicensed: s.pitLicensed, graduated,
         track: this.track.name, fitness: own.fitness, laps: own.laps,
         bestLap: Number.isFinite(own.bestLap) ? own.bestLap : null, health: own.health, walls: this.walls,
         beaten: fits.filter((f) => f > own.fitness).length, passed: [...s.passed],
       };
+      if (this.lesson.id === 'pits') {
+        const p = own as PitTrialResult;
+        report.stop = { serviced: p.serviced, completed: p.completed, speeding: p.speeding };
+      }
       // The report's weights are handed to the page (transferred, not copied), so the view keeps a copy without them.
       const { weights: _w, ...summary } = report;
       s.last = summary;
@@ -291,7 +342,7 @@ export class Classroom {
       school: {
         lesson: this.lesson.id, round: this.round, track: this.track.name, remaining: this.trial.remaining, walls: this.walls,
         students: this.students.map((s) => ({
-          key: s.key, id: s.id, name: s.name, rounds: s.rounds, licensed: s.licensed, passed: [...s.passed], last: s.last,
+          key: s.key, id: s.id, name: s.name, rounds: s.rounds, licensed: s.licensed, pitLicensed: s.pitLicensed, passed: [...s.passed], last: s.last,
         })),
       },
     };

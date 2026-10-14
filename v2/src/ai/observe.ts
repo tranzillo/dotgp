@@ -36,3 +36,37 @@ export function observe(car: Car, track: Track, out: Float32Array): Float32Array
   for (const ahead of LOOKAHEAD) out[k++] = track.curvatureAt(car.s + ahead) * CURVATURE_SCALE;
   return out;
 }
+
+/** Distances ahead (m) at which the driver sees where the pit route runs. */
+export const PIT_LOOKAHEAD = [0, 25, 50, 100] as const;
+export const PIT_SIZE = 8 + PIT_LOOKAHEAD.length;
+
+/**
+ * What a driver perceives about a pit stop in progress: the crew chief's
+ * call (in-lap / out-lap), where the painted route runs relative to the car,
+ * how far to the box, the pit road speed limit, and the spotter's "clear" to
+ * merge. All zero when not pitting, so racing is untouched.
+ */
+export function observePit(
+  car: Car, track: Track, route: ((s: number) => number) | null, mergeClear: boolean, limit: number, out: Float32Array,
+): Float32Array {
+  out.fill(0);
+  if (!route || car.pit.phase === 'none') return out;
+  const r = track.signedS(car.s);
+  const inLap = car.pit.phase === 'in';
+  let k = 0;
+  out[k++] = inLap ? 1 : 0;
+  out[k++] = inLap ? 0 : 1;
+  for (const ahead of PIT_LOOKAHEAD) out[k++] = Math.max(-3, Math.min(3, (route(car.s + ahead) - car.d) / track.halfWidth));
+  // Distance to the box (in-lap): +1 = 200 m or more to go, 0 at the box, negative past it.
+  out[k++] = inLap ? Math.max(-1, Math.min(1, (car.pit.boxS - r) / 200)) : 0;
+  // ...and close up, where stopping on the box takes precision: +1 = 20 m or more.
+  out[k++] = inLap ? Math.max(-1, Math.min(1, (car.pit.boxS - r) / 20)) : 0;
+  // The speed limit: how far to the limit zone, and over/under it once there.
+  const toZone = track.distanceFrom(car.s, track.pit.wallStart);
+  const inZone = track.inPitWallZone(car.s);
+  out[k++] = inZone ? 0 : Math.min(1, toZone / 300);
+  out[k++] = inZone || toZone < 300 ? Math.max(-1, Math.min(1, (car.speed - limit) / limit)) : 0;
+  out[k++] = mergeClear && !inLap ? 1 : 0;
+  return out;
+}

@@ -226,7 +226,7 @@ function entrantSpec(t: TeamEntry): EntrantSpec {
   return {
     key: t.id,
     fill: t.livery.fill,
-    driver: { id: driver.id, weights: driver.weights },
+    driver: { id: driver.id, weights: driver.weights, pits: driver.pitLicensed ?? false },
     spotter: { id: spotter.id, skill: spotter.skill },
     chief: { id: chief.id, brain: chief.brain },
   };
@@ -1009,10 +1009,9 @@ let lastSchoolPersist = 0;
 
 const initials = (name: string) => name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 
-/** Free drivers suited to the lesson (rookies for rookie school, licensed drivers otherwise). */
+/** Free drivers the lesson is for. */
 function eligible(id: string): boolean {
-  const d = roster.drivers.get(id)!;
-  return occupancy.isFree(id) && d.licensed === LESSONS[lesson].forLicensed;
+  return occupancy.isFree(id) && LESSONS[lesson].eligible(roster.drivers.get(id)!);
 }
 
 function renderSchool(): void {
@@ -1022,7 +1021,7 @@ function renderSchool(): void {
   for (const id of [...picked]) if (!eligible(id)) picked.delete(id);
   $('studentPicker').innerHTML = free.length
     ? free.map((d) => `<label class="pick"><input type="checkbox" data-student="${d.id}"${picked.has(d.id) ? ' checked' : ''}> ${d.name} <span class="muted">${d.rounds}r${roster.teamOf('driver', d.id) ? '' : ' · academy'}</span></label>`).join('')
-    : `<div class="muted">No free ${L.forLicensed ? 'licensed drivers' : 'rookies'}. ${L.forLicensed ? 'Drivers in a running session are busy.' : 'Recruit a raw rookie in the Roster panel.'}</div>`;
+    : `<div class="muted">No free ${L.audience}. ${L.id === 'rookie' ? 'Recruit a raw rookie in the Roster panel.' : 'Drivers in a running session are busy: stop it, or recruit to the academy.'}</div>`;
   ($('startClass') as HTMLButtonElement).disabled = picked.size === 0;
 }
 
@@ -1054,7 +1053,7 @@ function startClass(): void {
   if (conflicts.length) { news(`Can't start the class: ${conflicts.length} students are busy in ${conflicts[0].event.label}`); return; }
   const spec: ClassSpec = {
     lesson,
-    students: students.map((d, i) => ({ key: STUDENT_KEY + i, id: d.id, name: d.name, weights: d.weights, rounds: d.rounds, licensed: d.licensed })),
+    students: students.map((d, i) => ({ key: STUDENT_KEY + i, id: d.id, name: d.name, weights: d.weights, rounds: d.rounds, licensed: d.licensed, pitLicensed: d.pitLicensed })),
     presets: Object.keys(PRESETS).map(presetLayout),
     seed: (rng.next() * 2 ** 32) >>> 0,
   };
@@ -1062,7 +1061,7 @@ function startClass(): void {
   const first = presetTrack(Object.keys(PRESETS)[0]);
   metas.set(handle, {
     mode: 'class', trackName: first.name, track: first, teams: new Map(), recorded: false, lesson,
-    liveries: new Map(students.map((d, i) => [STUDENT_KEY + i, { number: i + 1, fill: STUDENT_COLORS[i], border: '#0d0d0f', label: initials(d.name) }])),
+    liveries: new Map(students.map((d, i) => [STUDENT_KEY + i, { number: i + 1, fill: STUDENT_COLORS[i], border: '#f8f9fa', label: initials(d.name) }])),
   });
   showEvent(handle);
   picked.clear();
@@ -1081,14 +1080,16 @@ function lessonRounds(handle: EventHandle, reports: RoundReport[]): void {
     d.weights.set(r.weights);
     d.rounds = r.rounds;
     d.licensed = r.licensed;
+    d.pitLicensed = r.pitLicensed;
     const variations = 2 * LESSONS[meta?.lesson ?? 'rookie'].pairs;
     activity.record({
       kind: 'lesson', agent: d.id, role: 'driver', event: handle.ref, brain: r.rounds,
       data: { lesson: meta?.lesson ?? 'rookie', track: r.track, fitness: r.fitness, laps: r.laps, bestLap: r.bestLap, health: r.health, walls: r.walls, beaten: r.beaten, variations },
     });
     if (r.graduated) {
-      activity.record({ kind: 'licensed', agent: d.id, role: 'driver', event: handle.ref, brain: r.rounds, data: { lessons: r.rounds } });
-      news(`${d.name} earned a license after ${r.rounds} lessons`);
+      const license = meta?.lesson === 'pits' ? 'pit' : 'driving';
+      activity.record({ kind: 'licensed', agent: d.id, role: 'driver', event: handle.ref, brain: r.rounds, data: { lessons: r.rounds, license } });
+      news(license === 'pit' ? `${d.name} passed the pit stop lesson: does their own stops from now on` : `${d.name} earned a license after ${r.rounds} lessons`);
     }
   }
   if (performance.now() - lastSchoolPersist > 5000) {
@@ -1098,6 +1099,10 @@ function lessonRounds(handle: EventHandle, reports: RoundReport[]): void {
     agentPage.refresh();
   }
 }
+
+/** How a student's own pit stop went, for the class table. */
+const stopText = (st: { serviced: boolean; completed: boolean; speeding: number }) =>
+  !st.serviced ? 'no stop' : !st.completed ? "stopped, didn't merge" : st.speeding >= 1 ? 'speeding' : 'clean stop';
 
 const TOWER_HEAD = '<tr><th>P</th><th>Driver</th><th>Gap</th><th>Best</th><th>Tire</th><th>Fuel</th><th>Pit</th><th>Hlth</th></tr>';
 const SCHOOL_HEAD = '<tr><th>P</th><th>Student</th><th>Lessons</th><th>Last round</th><th>Best</th><th>Beaten by</th><th>Tests</th><th></th></tr>';
@@ -1113,9 +1118,9 @@ function schoolTower(s: SessionSnapshot, meta: EventMeta): void {
     const lv = meta.liveries?.get(st.key);
     const last = st.last;
     return `<tr><td>${p + 1}</td><td><span class="dot" style="background:${lv?.fill};border-color:${lv?.fill}"></span><a data-agent="${st.id}" data-role="driver">${st.name}</a></td>
-      <td>${st.rounds}</td><td>${last ? `${last.laps} laps` : '–'}</td><td>${fmt(last?.bestLap ?? null)}</td>
-      <td>${last ? `${last.beaten}/${variations}` : '–'}</td><td>${sc.lesson === 'rookie' ? `${st.passed.length}/3` : '–'}</td>
-      <td>${st.licensed ? 'licensed' : ''}</td></tr>`;
+      <td>${st.rounds}</td><td>${!last ? '–' : last.stop ? stopText(last.stop) : `${last.laps} laps`}</td><td>${fmt(last?.bestLap ?? null)}</td>
+      <td>${last ? `${last.beaten}/${variations}` : '–'}</td><td>${sc.lesson === 'variety' ? '–' : `${st.passed.length}/3`}</td>
+      <td>${sc.lesson === 'pits' ? (st.pitLicensed ? 'pits' : '') : st.licensed ? 'licensed' : ''}</td></tr>`;
   }).join('');
   const students = sc.students.length;
   $('hud').innerHTML = `<b>Driving school</b> · ${L.name} · ${students} student${students > 1 ? 's' : ''} · ${speed}×<br>`
