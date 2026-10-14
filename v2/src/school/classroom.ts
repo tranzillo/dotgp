@@ -3,7 +3,7 @@ import {
   adamStep, centeredRanks, DEFAULT_ES, FULL_DAMAGE_PENALTY, LICENSE_HEALTH, rookieDamagePenalty, rookieDamageScale,
 } from '../ai/es';
 import { Trial } from '../ai/evaluate';
-import { apprenticePitStops, cleanStop, PitTrial, type PitTrialResult } from './pitLesson';
+import { apprenticePitStops, cleanStop, PitTrial, REFRESHER_ROUNDS, type PitTrialResult } from './pitLesson';
 import { genomeSize } from '../ai/network';
 import { Rng } from '../ai/rng';
 import { DRIVER_LAYERS } from '../ai/drivers';
@@ -49,7 +49,7 @@ export const LESSONS: Record<LessonId, Lesson> = {
     description: 'A new generated oval every round, so drivers learn to handle tracks they have never seen.',
   },
   pits: {
-    id: 'pits', name: 'Pit stops', seconds: 100, pairs: 8, learningRate: 0.01,
+    id: 'pits', name: 'Pit stops', seconds: 100, pairs: 8, learningRate: 0.02,
     eligible: (d) => d.licensed && !d.pitLicensed, audience: 'licensed drivers who don\'t do their own stops yet',
     description: 'Do your own pit stop: down to the apron, onto pit road under the limit, stop on the box, back out and merge. Students first copy the veteran crews\' pit maneuver, then practise; a pit license comes with a clean stop on every preset track, and from then on they drive their own stops in races.',
   },
@@ -122,8 +122,13 @@ export interface SchoolView {
 /** A round's result without the weights (what the viewer shows). */
 export type RoundSummary = Omit<RoundReport, 'weights'>;
 
+/** Pit stop lesson: rounds in a row without a stop before a student goes back to the veteran for a refresher. */
+const STUCK_ROUNDS = 6;
+
 interface Student extends StudentSpec {
   pitLicensed: boolean;
+  /** Pit stop lesson: rounds in a row the student hasn't stopped. */
+  noStop: number;
   m: Float32Array;
   v: Float32Array;
   adamSteps: number;
@@ -158,7 +163,7 @@ export class Classroom {
     const size = genomeSize(DRIVER_LAYERS);
     this.students = spec.students.map((s) => ({
       ...s, weights: adaptWeights(s.weights).slice(), m: new Float32Array(size), v: new Float32Array(size), adamSteps: 0,
-      passed: new Set<string>(), last: null, pitLicensed: s.pitLicensed ?? false,
+      passed: new Set<string>(), last: null, pitLicensed: s.pitLicensed ?? false, noStop: 0,
     }));
     if (this.lesson.id === 'pits') {
       // First, each student watches the veteran crews' pit maneuver and learns to copy it.
@@ -303,6 +308,13 @@ export class Classroom {
       if (this.lesson.id === 'pits') {
         const p = own as PitTrialResult;
         report.stop = { serviced: p.serviced, completed: p.completed, speeding: p.speeding };
+        // Stuck (practice can't find a stop to build on): back to the veteran for a refresher.
+        s.noStop = p.serviced ? 0 : s.noStop + 1;
+        if (s.noStop >= STUCK_ROUNDS && !s.pitLicensed) {
+          apprenticePitStops(s.weights, this.presets, this.rng, REFRESHER_ROUNDS);
+          s.noStop = 0;
+          this.say(`${s.name} went back to watch the veteran's pit stops`);
+        }
       }
       // The report's weights are handed to the page (transferred, not copied), so the view keeps a copy without them.
       const { weights: _w, ...summary } = report;

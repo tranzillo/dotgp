@@ -206,18 +206,21 @@ class Apprentice implements Controller {
   }
 }
 
-/** Rounds of watching the teacher (the first) and driving under its eye (the rest). */
-const APPRENTICE_ROUNDS = 5;
+/** Rounds of watching the teacher (the first) and driving under its eye (the rest); a refresher is shorter. */
+export const APPRENTICE_ROUNDS = 5;
+export const REFRESHER_ROUNDS = 2;
 
 /**
  * Teach a student the scripted pit stop by imitation (DAgger). Trains its
  * weights in place; returns the examples gathered and the final loss.
  */
-export function apprenticePitStops(weights: Float32Array, tracks: Track[], rng: Rng): { examples: number; loss: number } {
+export function apprenticePitStops(
+  weights: Float32Array, tracks: Track[], rng: Rng, rounds = APPRENTICE_ROUNDS,
+): { examples: number; loss: number } {
   const examples: Example[] = [];
   const original = new NeuralDriver(weights.slice());
   let loss = NaN;
-  for (let round = 0; round < APPRENTICE_ROUNDS; round++) {
+  for (let round = 0; round < rounds; round++) {
     const studentDrives = round > 0;
     for (const track of tracks) {
       for (const lane of [-3, 2]) {
