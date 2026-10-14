@@ -38,6 +38,8 @@ export class Team implements Controller {
   private readonly autopilot = new PitAutopilot();
   private readonly formation = new FormationDriver();
   private lastS = NaN;
+  /** Who drove the car on the last decision: the learned driver, or a script (pit maneuver, formation). */
+  mode: 'driver' | 'pit' | 'formation' = 'driver';
 
   constructor(
     readonly driver: DriverBrain,
@@ -62,9 +64,9 @@ export class Team implements Controller {
     }
     this.lastS = r;
     this.spotter.call(car, world, this.radio);
-    if (car.pit.phase !== 'none') this.autopilot.decide(car, world, this.spotter);
-    else if (world.control?.pacing && !car.finished) this.formation.decide(car, world);
-    else this.driver.decide(car, world, this.radio);
+    if (car.pit.phase !== 'none' || this.autopilot.aborting) { this.mode = 'pit'; this.autopilot.decide(car, world, this.spotter); }
+    else if (world.control?.pacing && !car.finished) { this.mode = 'formation'; this.formation.decide(car, world); }
+    else { this.mode = 'driver'; this.driver.decide(car, world, this.radio); }
   }
 }
 

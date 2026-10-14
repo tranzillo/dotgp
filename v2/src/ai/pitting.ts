@@ -111,14 +111,54 @@ export class StrategistCrewChief implements CrewChief {
  * road at the speed limit, stop in the box, then out through the blend lane
  * and back on track on the back straight. The world runs the stop itself.
  */
+/** Braking pit-road traffic rules plan around (m/s^2), and the gap kept to the car ahead (m, bumper to bumper). */
+const PIT_DECEL = 4;
+const PIT_GAP = 3;
+/** How long a car waits in its box for the fast lane to clear before going anyway (s). */
+const BOX_WAIT_LIMIT = 10;
+/** Abort the pit entry if not lined up this far before the wall's nose (m). */
+const ABORT_DISTANCE = 90;
+
 export class PitAutopilot {
   private fromLane = 0;
   /** Distance from the box (m) where the merge began, once the spotter cleared it. */
   private mergeFrom = NaN;
+  /** World time the car started waiting in its box for a gap. */
+  private waitingSince = NaN;
+  /**
+   * The pit entry was aborted: the maneuver keeps the wheel until the car is
+   * back on the racing surface past the pit wall's nose, rather than letting
+   * it coast into the wall end.
+   */
+  aborting = false;
 
   begin(car: Car): void {
     this.fromLane = car.d;
     this.mergeFrom = NaN;
+    this.waitingSince = NaN;
+    this.aborting = false;
+  }
+
+  /**
+   * The fastest this car may go and still stop behind whatever is ahead on its
+   * path (laneAt), within range: cars on pit road, a car being serviced in a
+   * shared box, the pace car on its way in.
+   */
+  private followLimit(car: Car, world: World, laneAt: (s: number) => number, range = 80): number {
+    const track = world.track;
+    let limit = Infinity;
+    const others = [...world.cars, ...world.officials.map((o) => o.car)];
+    for (const other of others) {
+      if (other === car || other.cleared) continue;
+      const gap = track.distanceFrom(car.s, other.s);
+      if (gap <= 0 || gap > range) continue;
+      // On our path (or right where we are now).
+      if (Math.abs(other.d - laneAt(other.s)) > 2.6 && Math.abs(other.d - car.d) > 2.6) continue;
+      const along = other.vx * track.tx[other.trackIdx] + other.vy * track.ty[other.trackIdx];
+      const room = Math.max(0, gap - 2 * P.CAR_RADIUS - PIT_GAP);
+      limit = Math.min(limit, Math.sqrt(Math.max(0, along) ** 2 + 2 * PIT_DECEL * room));
+    }
+    return limit;
   }
 
   decide(car: Car, world: World, spotter: Spotter): void {
@@ -137,15 +177,27 @@ export class PitAutopilot {
     const ramp = (r: number, r0: number, r1: number, a: number, b: number) =>
       r <= r0 ? a : r >= r1 ? b : a + (b - a) * (r - r0) / (r1 - r0);
 
-    if (pit.phase === 'in') {
+    if (this.aborting) {
+      // Back up onto the racing surface and past the wall's nose, then hand back.
       const r0 = track.signedS(car.s);
-      // Not lined up for pit road as the wall's nose approaches: abort and stay out.
-      if (r0 > track.pit.wallStart - 40 && r0 < track.pit.wallStart && car.d < wallClear - 0.8) {
-        pit.phase = 'none';
-        pit.call = null;
-        world.announce(car, 'missed-pit', 'Aborted pit entry, not lined up');
+      if (r0 > track.pit.wallStart + 10 || r0 < track.pit.wallStart - ABORT_DISTANCE - 60) {
+        this.aborting = false;
         car.inputX = 0;
         car.inputY = 0;
+        return;
+      }
+      followLine(car, world, (s) => track.innerEdgeAt(s) - 2.5, () => Infinity, 0.75);
+      return;
+    }
+    if (pit.phase === 'in') {
+      const r0 = track.signedS(car.s);
+      // Not lined up for pit road with room to spare before the wall's nose: abort and stay out.
+      if (r0 > track.pit.wallStart - ABORT_DISTANCE && r0 < track.pit.wallStart && car.d < wallClear - 1.2) {
+        pit.phase = 'none';
+        pit.call = null;
+        this.aborting = true;
+        world.announce(car, 'missed-pit', 'Aborted pit entry, not lined up');
+        this.decide(car, world, spotter);
         return;
       }
       const lane = (s: number) => {
@@ -155,11 +207,13 @@ export class PitAutopilot {
         if (r < track.pit.wallStart) return ramp(r, entryStart, track.pit.wallStart - 50, entryLane, fastLane);
         return ramp(r, pit.boxS - 40, pit.boxS - 8, fastLane, boxLane);
       };
+      // Never faster than lets us stop behind the car ahead (or a car still in our box).
+      const follow = this.followLimit(car, world, lane);
       const cap = (s: number) => {
         const r = track.signedS(s);
-        if (r < track.pit.wallStart - 5 || r > track.pit.wallEnd + 5) return Infinity;
+        if (r < track.pit.wallStart - 5 || r > track.pit.wallEnd + 5) return follow;
         // Pit limiter speed, then a stop on the box.
-        return Math.min(PIT_SERVICE.SPEED_LIMIT - 1, Math.sqrt(2 * 3 * Math.max(0, pit.boxS - r)));
+        return Math.min(follow, PIT_SERVICE.SPEED_LIMIT - 1, Math.sqrt(2 * 3 * Math.max(0, pit.boxS - r)));
       };
       // Well under the cornering limit, leaving grip to work down the track.
       followLine(car, world, lane, cap, 0.75);
@@ -183,7 +237,17 @@ export class PitAutopilot {
         }
         return ramp(du, mergeFrom, mergeFrom + 90, apronLaneAt(s), track.innerEdgeAt(s) - 2.5);
       };
-      const cap = (s: number) => (track.signedS(s) < track.pit.wallEnd ? PIT_SERVICE.SPEED_LIMIT - 1 : Infinity);
+      // Leaving the box: wait for a gap in the fast lane behind (cars coming down pit road), within reason.
+      let hold = false;
+      if (u < 20) {
+        if (Number.isNaN(this.waitingSince)) this.waitingSince = world.time;
+        const waited = world.time - this.waitingSince;
+        hold = waited < BOX_WAIT_LIMIT && world.cars.some((o) => o !== car && !o.cleared && !o.retired
+          && o.surface === 'pit' && o.d < boxLane - 4 && o.speed > 4
+          && track.distanceFrom(o.s, car.s) > 0 && track.distanceFrom(o.s, car.s) < 45);
+      }
+      const follow = hold ? 0 : this.followLimit(car, world, lane);
+      const cap = (s: number) => Math.min(follow, track.signedS(s) < track.pit.wallEnd ? PIT_SERVICE.SPEED_LIMIT - 1 : Infinity);
       followLine(car, world, lane, cap, 0.9);
     } else {
       car.inputX = 0;

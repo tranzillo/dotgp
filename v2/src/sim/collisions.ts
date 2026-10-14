@@ -118,8 +118,8 @@ export function resolveCarCollisions(cars: Car[]): void {
       B.vx += ix * invB; B.vy += iy * invB;
 
       const closing = -vrel;
-      if (!A.retired) applyImpact(A, -ix * invA, -iy * invA, closing, jt * invA * tvm);
-      if (!B.retired) applyImpact(B, ix * invB, iy * invB, closing, jt * invB * tvm);
+      if (!A.retired) applyImpact(A, -ix * invA, -iy * invA, closing, jt * invA * tvm, 1, { kind: 'car', other: B.id });
+      if (!B.retired) applyImpact(B, ix * invB, iy * invB, closing, jt * invB * tvm, 1, { kind: 'car', other: A.id });
     }
   }
 }

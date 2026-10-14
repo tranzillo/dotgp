@@ -142,6 +142,7 @@ export class RaceControl {
     if (this.paceCarOut && this.oneToGo && this.paceCar.surface === 'pit' && t.signedS(this.paceCar.s) > t.pit.wallStart + 15
       && t.signedS(this.paceCar.s) < t.pit.wallEnd - 20) {
       this.paceCarOut = false; // pulled in and parked
+      this.paceCar.cleared = true; // parked off to the side: not an obstacle on pit road
     }
     if (this.flag === 'restart' && leader && this.crossedLine(leader)) {
       this.flag = 'green';
@@ -197,6 +198,7 @@ export class RaceControl {
       this.paceCar.placeOnTrack(t, t.pit.wallEnd - 5, t.pit.wallD + t.pit.wallThickness / 2 + 3);
       setSpeed(this.paceCar, t, 5);
       this.paceCar.retired = false;
+      this.paceCar.cleared = false;
       this.paceCarOut = true;
     }
   }
@@ -264,7 +266,8 @@ export class RaceControl {
     let best: Car | null = null;
     let bestGap = 220;
     for (const other of [...this.world.cars, ...(this.paceCarOut ? [this.paceCar] : [])]) {
-      if (other === car || other.cleared || Math.abs(other.d - lane) > 2.6) continue;
+      // In our lane, or close to where we are now (a car cutting down to pit road crosses both).
+      if (other === car || other.cleared || (Math.abs(other.d - lane) > 2.6 && Math.abs(other.d - car.d) > 2.6)) continue;
       const gap = t.distanceFrom(car.s, other.s);
       if (gap > 0 && gap < bestGap) { bestGap = gap; best = other; }
     }

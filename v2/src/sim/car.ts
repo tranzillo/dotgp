@@ -84,6 +84,12 @@ export class Car {
   parked = false;
   /** Took the checkered flag. */
   finished = false;
+  /**
+   * The last thing that hurt the car: a wall or another car (by id), how
+   * hard (health lost), and the impact speed. For incident analysis now,
+   * stewards' blame later.
+   */
+  lastImpact: { kind: 'wall' | 'car'; other: number | null; severity: number; speed: number } | null = null;
 
   // Per-step telemetry
   frameX = 1;
@@ -334,6 +340,7 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1): void
  */
 export function applyImpact(
   car: Car, dvx: number, dvy: number, impactSpeed: number, scrapeWork: number, damageScale = 1,
+  source: { kind: 'wall' | 'car'; other: number | null } = { kind: 'wall', other: null },
 ): void {
   const thr = P.DAMAGE_SPEED_THRESHOLD;
   let severity = Math.max(0, impactSpeed * impactSpeed - thr * thr) * P.DAMAGE_PER_ENERGY;
@@ -355,6 +362,7 @@ export function applyImpact(
     car.damageEngine = Math.min(1, car.damageEngine + (effective - P.ENGINE_DAMAGE_THRESHOLD) * 2);
   }
   car.health -= effective;
+  car.lastImpact = { kind: source.kind, other: source.other, severity: effective, speed: impactSpeed };
   if (car.health <= 0) {
     car.health = 0;
     car.retired = true;

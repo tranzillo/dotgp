@@ -48,7 +48,13 @@ const TIRE_BANDS = [1, 0.8, 0.6, 0.4, 0.3, 0.2, 0];
 
 const roster: Array<{ weights: number[] }> = JSON.parse(readFileSync(driversFile, 'utf8')).drivers;
 
-interface Retirement { time: number; context: string; speed: number }
+interface Retirement {
+  time: number; context: string; speed: number;
+  /** Who was driving: the learned driver or a script. */
+  mode: string;
+  /** What finished it: a wall, or a car (and that car's driver mode). */
+  hit: string;
+}
 interface RaceStats {
   track: string;
   seed: number;
@@ -182,7 +188,11 @@ function runRace(trackName: keyof typeof specs, seed: number): RaceStats {
         const context = car.pit.phase === 'out' ? 'merging' : merging ? 'near a merging car'
           : flagBefore === 'green' ? (world.time - lastGreen < RESTART_WINDOW ? 'start/restart' : 'green')
           : flagBefore === 'caution' ? `caution +${Math.round(world.time - cautionStart)}s` : flagBefore;
-        stats.retirements.push({ time: world.time, context, speed: speedBefore[k] });
+        const team = world.controllers[k] as unknown as { mode?: string } | null;
+        const imp = car.lastImpact;
+        const otherTeam = imp?.kind === 'car' && imp.other !== null ? world.controllers[imp.other] as unknown as { mode?: string } | null : null;
+        const hit = !imp ? 'stalled' : imp.kind === 'wall' ? 'wall' : `car (${otherTeam?.mode ?? 'official'})`;
+        stats.retirements.push({ time: world.time, context, speed: speedBefore[k], mode: team?.mode ?? '?', hit });
         return;
       }
       stats.steps++;
@@ -276,6 +286,9 @@ for (const name of trackNames) {
   console.log(`  WRECKS  ${f(ret.length / runs.length)} retirements/race, ${f(mean(runs.map((s) => s.cautions)))} cautions/race, `
     + `${multi.length} multi-car wrecks (mean ${f(mean(multi.map((c) => c.length)))} cars, max ${Math.max(0, ...ch.map((c) => c.length))})`);
   console.log(`          by context: ${[...byContext].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ')}`);
+  const byWho = new Map<string, number>();
+  for (const e of ret) { const key = `${e.mode} hit ${e.hit}`; byWho.set(key, (byWho.get(key) ?? 0) + 1); }
+  console.log(`          who / what: ${[...byWho].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ')}`);
   console.log(`  TIRES   wear ${f(wear, 4)}/green lap -> cliff (${P.TIRE_CLIFF}) after ${f((1 - P.TIRE_CLIFF) / wear, 0)} laps; `
     + `sliding >0.05 ${pct(slide[0])}, >0.35 ${pct(slide[1])}, >0.6 ${pct(slide[2])} of car-steps`);
   console.log(`  FUEL    burn ${f(burn, 2)} kg/green lap -> ${f(P.FUEL_CAPACITY / burn, 0)} laps per tank`);
