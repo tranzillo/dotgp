@@ -56,6 +56,8 @@ interface Retirement {
   hit: string;
   /** For cars in a pit cycle: which part of pit road, in or out, and the lane. */
   where: string | null;
+  /** Car contact: this car's share of the fault for the last hit. */
+  fault: number | null;
 }
 interface RaceStats {
   track: string;
@@ -71,6 +73,8 @@ interface RaceStats {
   lapsByTire: Array<[number, number]>;
   slideSteps: number[]; // car-steps with sliding above 0.05 / 0.35 / 0.6
   steps: number;
+  /** Damage cars did to each other (by fault), summed. */
+  harm: number;
   coverage: Array<{ lap: number; groove: number; skid: number; dark10: number; dark25: number }>;
 }
 
@@ -176,7 +180,7 @@ function runRace(trackName: keyof typeof specs, seed: number): RaceStats {
 
   const stats: RaceStats = {
     track: trackName, seed, laps, finished: 0, cautions: 0, cautionLaps: 0, retirements: [], wearPerLap: [], burnPerLap: [],
-    stops: [], lapsByTire: [], slideSteps: [0, 0, 0], steps: 0, coverage: [],
+    stops: [], lapsByTire: [], slideSteps: [0, 0, 0], steps: 0, harm: 0, coverage: [],
   };
   const out = new Set<Car>();
   const prevPhase = new Map<Car, string>();
@@ -205,7 +209,8 @@ function runRace(trackName: keyof typeof specs, seed: number): RaceStats {
         const imp = car.lastImpact;
         const otherTeam = imp?.kind === 'car' && imp.other !== null ? world.controllers[imp.other] as unknown as { mode?: string } | null : null;
         const hit = !imp ? 'stalled' : imp.kind === 'wall' ? 'wall' : `car (${otherTeam?.mode ?? 'official'})`;
-        stats.retirements.push({ time: world.time, context, speed: speedBefore[k], mode: team?.mode ?? '?', hit, where: pitWhere(car, track) });
+        stats.retirements.push({ time: world.time, context, speed: speedBefore[k], mode: team?.mode ?? '?', hit, where: pitWhere(car, track),
+          fault: imp?.kind === 'car' ? imp.fault ?? null : null });
         return;
       }
       stats.steps++;
@@ -242,6 +247,7 @@ function runRace(trackName: keyof typeof specs, seed: number): RaceStats {
   }
   stats.cautions = ctl.cautions;
   stats.finished = cars.filter((c) => race.isFinished(c)).length;
+  stats.harm = cars.reduce((a, c) => a + c.harmDone, 0);
   return stats;
 }
 
@@ -302,6 +308,13 @@ for (const name of trackNames) {
   const byWho = new Map<string, number>();
   for (const e of ret) { const key = `${e.mode} hit ${e.hit}`; byWho.set(key, (byWho.get(key) ?? 0) + 1); }
   console.log(`          who / what: ${[...byWho].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ')}`);
+  const contact = ret.filter((e) => e.fault !== null);
+  if (contact.length) {
+    const own = contact.filter((e) => e.fault! >= 0.5).length;
+    console.log(`          contact retirements: ${own} at fault, ${contact.length - own} hit by another`);
+  }
+  const harm = runs.reduce((a, r) => a + r.harm, 0) / runs.length;
+  console.log(`          damage done to others (by fault): ${f(harm, 2)} health/race`);
   const byWhere = new Map<string, number>();
   for (const e of ret) if (e.where) byWhere.set(e.where, (byWhere.get(e.where) ?? 0) + 1);
   if (byWhere.size) console.log(`          in a pit cycle: ${[...byWhere].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ')}`);

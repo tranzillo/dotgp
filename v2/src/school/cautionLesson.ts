@@ -49,7 +49,7 @@ export interface CautionResult {
   laneError: number;
   /** Positions gained under caution. */
   passes: number;
-  /** Health the rest of the field lost in contact with the student. */
+  /** Damage the student did to others (health they lost, by its share of the fault). */
   harm: number;
 }
 
@@ -75,8 +75,6 @@ export class CautionDrill implements Drill<CautionResult> {
   private greenDist = 0;
   private lastDist = 0;
   private finishedFlag = false;
-  private harm = 0;
-  private readonly lastHealth: number[];
 
   /** controllerFor(slot): the controller for each grid slot (the student's slot gets the student's). */
   constructor(track: Track, studentSlot: number, controllerFor: (slot: number) => Controller) {
@@ -92,7 +90,6 @@ export class CautionDrill implements Drill<CautionResult> {
     // Short drills: the restart is coming as soon as the field has formed up.
     this.control.oneToGo = true;
     this.lastDist = this.student.dist;
-    this.lastHealth = this.world.cars.map((c) => c.health);
   }
 
   get done(): boolean {
@@ -133,18 +130,11 @@ export class CautionDrill implements Drill<CautionResult> {
       }
     }
     this.lastDist = car.dist;
-    // Damage the student did to others: health they lost in contact with it.
-    this.world.cars.forEach((c, k) => {
-      if (c !== car && c.health < this.lastHealth[k] && c.lastImpact?.kind === 'car' && c.lastImpact.other === car.id) {
-        this.harm += this.lastHealth[k] - c.health;
-      }
-      this.lastHealth[k] = c.health;
-    });
   }
 
   result(): CautionResult {
     const car = this.student;
-    const harm = this.harm;
+    const harm = car.harmDone;
     const placeError = this.samples ? this.placeSum / this.samples : 999;
     const laneError = this.samples ? this.laneSum / this.samples : 99;
     const laps = this.greenDist / this.world.track.length;

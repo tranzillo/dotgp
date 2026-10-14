@@ -86,10 +86,14 @@ export class Car {
   finished = false;
   /**
    * The last thing that hurt the car: a wall or another car (by id), how
-   * hard (health lost), and the impact speed. For incident analysis now,
-   * stewards' blame later.
+   * hard (health lost), the impact speed, and (car contact) this car's share
+   * of the fault. For incident analysis now, stewards' blame later.
    */
-  lastImpact: { kind: 'wall' | 'car'; other: number | null; severity: number; speed: number } | null = null;
+  lastImpact: { kind: 'wall' | 'car'; other: number | null; severity: number; speed: number; fault?: number } | null = null;
+  /** Damage this car has done to others: health they lost in contact, times its share of the fault. */
+  harmDone = 0;
+  /** Damage it did to itself: walls, and its own share of the fault in contact. */
+  selfInflicted = 0;
 
   // Per-step telemetry
   frameX = 1;
@@ -363,6 +367,7 @@ export function applyImpact(
   }
   car.health -= effective;
   car.lastImpact = { kind: source.kind, other: source.other, severity: effective, speed: impactSpeed };
+  if (source.kind === 'wall') car.selfInflicted += effective;
   if (car.health <= 0) {
     car.health = 0;
     car.retired = true;

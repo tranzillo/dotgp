@@ -32,7 +32,7 @@ const RACERS: Array<[number, number]> = [[-60, 3], [-100, -3], [130, 0], [200, -
 const STUDENT_LANES = [0, -3, 3];
 
 export interface PitTrafficResult extends PitTrialResult {
-  /** Health the rest of the field lost in contact with the student. */
+  /** Damage the student did to others (health they lost, by its share of the fault). */
   harm: number;
 }
 
@@ -48,8 +48,6 @@ export class PitTrafficDrill implements Drill<PitTrafficResult> {
   private readonly stop = new StopTracker();
   private readonly startDist: number;
   private steps = 0;
-  private harm = 0;
-  private readonly lastHealth: number[];
 
   /** student: the student's team (drives its own stop or not); racing: weights the racers drive with. */
   constructor(track: Track, student: { team: Team; controller?: Controller }, racing: Float32Array, lane = STUDENT_LANES[0]) {
@@ -71,7 +69,6 @@ export class PitTrafficDrill implements Drill<PitTrafficResult> {
       car.vy = track.ty[car.trackIdx] * START_SPEED;
     }
     this.startDist = this.student.dist;
-    this.lastHealth = this.world.cars.map((c) => c.health);
   }
 
   get done(): boolean {
@@ -82,26 +79,19 @@ export class PitTrafficDrill implements Drill<PitTrafficResult> {
     if (this.done) return;
     this.world.step();
     this.steps++;
-    const me = this.student;
-    this.stop.update(me, this.world.track);
-    this.world.cars.forEach((c, k) => {
-      if (c !== me && c.health < this.lastHealth[k] && c.lastImpact?.kind === 'car' && c.lastImpact.other === me.id) {
-        this.harm += this.lastHealth[k] - c.health;
-      }
-      this.lastHealth[k] = c.health;
-    });
+    this.stop.update(this.student, this.world.track);
   }
 
   result(): PitTrafficResult {
     const car = this.student;
     const laps = (car.dist - this.startDist) / this.world.track.length;
     return {
-      fitness: laps - FULL_DAMAGE_PENALTY * (1 - car.health) - this.stop.penalty() - HARM_PENALTY * this.harm,
+      fitness: laps - FULL_DAMAGE_PENALTY * (1 - car.health) - this.stop.penalty() - HARM_PENALTY * car.harmDone,
       laps,
       bestLap: car.lapTimes.length ? Math.min(...car.lapTimes) : Infinity,
       health: car.health,
       ...this.stop.marks(),
-      harm: this.harm,
+      harm: car.harmDone,
     };
   }
 }

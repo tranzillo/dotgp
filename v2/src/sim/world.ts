@@ -102,7 +102,7 @@ export class World {
     if (this.opts.collisions) {
       const all = this.officials.length ? [...cars, ...this.officials.map((o) => o.car)] : cars;
       const before = cars.map((c) => c.retired);
-      resolveCarCollisions(all);
+      resolveCarCollisions(all, track);
       cars.forEach((c, i) => { if (c.retired && !before[i]) this.announce(c, 'retired', 'Out of the race after contact'); });
       for (const car of all) reproject(car, track);
       for (const { car } of this.officials) { car.health = 1; car.retired = false; } // officials don't wreck

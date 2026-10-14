@@ -77,8 +77,31 @@ function wallImpact(
   if (!car.retired) applyImpact(car, dvx, dvy, -vn, friction * vtMag, damageScale);
 }
 
-/** Circle-circle impulses between every overlapping pair. */
-export function resolveCarCollisions(cars: Car[]): void {
+/**
+ * Each car's share of the fault for contact between A and B (A's share; B's
+ * is the rest), in the track frame: closing along the track is the car
+ * behind's fault, moving across into the other car is the mover's. Neither
+ * (touching at the same speed, side by side): shared.
+ */
+export function faultShare(A: Car, B: Car, track: Track): number {
+  const i = A.trackIdx;
+  const tx = track.tx[i], ty = track.ty[i];
+  const lx = -ty, ly = tx;
+  const dx = B.x - A.x, dy = B.y - A.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  const along = (dx * tx + dy * ty) / dist; // > 0: B is ahead of A
+  const across = (dx * lx + dy * ly) / dist;
+  const closing = Math.max(0, ((A.vx - B.vx) * tx + (A.vy - B.vy) * ty) * Math.sign(along)) * Math.abs(along);
+  const side = Math.sign(across);
+  const latA = Math.max(0, (A.vx * lx + A.vy * ly) * side) * Math.abs(across);
+  const latB = Math.max(0, -(B.vx * lx + B.vy * ly) * side) * Math.abs(across);
+  const wA = (along > 0 ? closing : 0) + latA;
+  const wB = (along < 0 ? closing : 0) + latB;
+  return wA + wB < 0.05 ? 0.5 : wA / (wA + wB);
+}
+
+/** Circle-circle impulses between every overlapping pair; damage done is charged by fault (with a track). */
+export function resolveCarCollisions(cars: Car[], track?: Track): void {
   const r2 = 2 * P.CAR_RADIUS;
   for (let a = 0; a < cars.length; a++) {
     const A = cars[a];
@@ -105,6 +128,8 @@ export function resolveCarCollisions(cars: Car[]): void {
       const rvx = B.vx - A.vx, rvy = B.vy - A.vy;
       const vrel = rvx * nx + rvy * ny;
       if (vrel >= 0) continue;
+      // Who caused it, judged on the velocities going in.
+      const fault = track ? faultShare(A, B, track) : 0.5;
       const j = (-(1 + P.CAR_RESTITUTION) * vrel) / invSum;
 
       // Tangential friction (rubbing), capped by Coulomb.
@@ -118,8 +143,15 @@ export function resolveCarCollisions(cars: Car[]): void {
       B.vx += ix * invB; B.vy += iy * invB;
 
       const closing = -vrel;
+      const hA = A.health, hB = B.health;
       if (!A.retired) applyImpact(A, -ix * invA, -iy * invA, closing, jt * invA * tvm, 1, { kind: 'car', other: B.id });
       if (!B.retired) applyImpact(B, ix * invB, iy * invB, closing, jt * invB * tvm, 1, { kind: 'car', other: A.id });
+      A.harmDone += (hB - B.health) * fault;
+      B.harmDone += (hA - A.health) * (1 - fault);
+      A.selfInflicted += (hA - A.health) * fault;
+      B.selfInflicted += (hB - B.health) * (1 - fault);
+      if (A.lastImpact?.other === B.id && hA !== A.health) A.lastImpact.fault = fault;
+      if (B.lastImpact?.other === A.id && hB !== B.health) B.lastImpact.fault = 1 - fault;
     }
   }
 }

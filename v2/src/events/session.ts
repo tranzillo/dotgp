@@ -135,6 +135,10 @@ export interface EntrantResult {
 const RADIO_REPEAT = 4; // seconds before the same call from the same team is repeated
 /** Seconds a lap is charged per unit of health lost on it, when comparing laps: contact never pays. */
 const DAMAGE_SECONDS = 120;
+/** ... and per unit of damage done to others (by its share of the fault). */
+const HARM_SECONDS = 120;
+/** A lap on which a driver did itself or others this much harm counts, even if spoiled (caution, wreck). */
+const FAULT_COUNTS = 0.02;
 const RESPAWN_DELAY = 3; // s a wreck sits before an open session puts the car back out
 const TECHNIQUE_DECAY = 0.9997;
 
@@ -153,7 +157,13 @@ export class Session {
   private pendingRadio: RadioLine[] = [];
   private eventsSeen = 0;
   /** Learning while racing: per car, its learner and the lap in progress. */
-  private readonly learners = new Map<number, { learner: OnlineLearner; driverId: string; laps: number; clean: boolean; health: number; done: boolean }>();
+  private readonly learners = new Map<number, {
+    learner: OnlineLearner; driverId: string; laps: number; clean: boolean; done: boolean;
+    /** At the start of the lap in progress: health, harm done, self-inflicted damage. */
+    health: number; harm: number; self: number;
+    /** Last clean lap time: what a spoiled lap is scored against. */
+    ref: number;
+  }>();
   private learned: LearnedStep[] = [];
   /** Mark strokes, collected only while someone is watching. */
   readonly strokes = new StrokeCollector();
@@ -180,7 +190,7 @@ export class Session {
       this.drivers.set(entrant.driver.id, driver);
       if (spec.learn && spec.kind === 'race') {
         const learner = new OnlineLearner(driver.net.weights, RACE_LEARNING, new Rng(spec.seed ^ ((k + 1) * 0x9e3779b1)));
-        this.learners.set(car.id, { learner, driverId: entrant.driver.id, laps: 0, clean: true, health: 1, done: false });
+        this.learners.set(car.id, { learner, driverId: entrant.driver.id, laps: 0, clean: true, done: false, health: 1, harm: 0, self: 0, ref: NaN });
       }
     });
     // Races run under race control: pace laps, green at the line, cautions with the wrecker crew.
@@ -228,7 +238,10 @@ export class Session {
   /**
    * Score each finished lap for the driver's learner: a clean green-flag lap
    * (no caution, no pit stop) scores its lap time plus a heavy charge for any
-   * damage taken; anything else doesn't count and the same variation runs again.
+   * damage taken or done to others (by fault). A spoiled lap doesn't count and
+   * the same variation runs again, unless the driver caused the trouble (did
+   * itself or others harm): then it counts, against its last clean lap time,
+   * charges included, even if the lap ended in a wreck.
    */
   private learnFromLaps(): void {
     const race = this.race!;
@@ -236,6 +249,7 @@ export class Session {
       const l = this.learners.get(car.id);
       if (!l || l.done) continue;
       if (car.retired || car.finished || race.state !== 'green') {
+        if (car.retired && race.started) this.scoreLap(l, car, false); // a wreck it caused still teaches
         l.learner.finish(); // the car keeps the driver's own weights from here on
         l.done = true;
         continue;
@@ -245,14 +259,26 @@ export class Session {
       const laps = car.lapTimes.length;
       if (laps < l.laps) l.laps = laps; // the green flag reset lap counts
       if (laps === l.laps) continue;
-      const lapTime = car.lapTimes[laps - 1];
-      const score = l.clean ? -lapTime - DAMAGE_SECONDS * Math.max(0, l.health - car.health) : null;
-      if (l.learner.lapDone(score)) {
-        this.learned.push({ driverId: l.driverId, weights: l.learner.weights.slice(), steps: l.learner.updates });
-      }
+      if (l.clean) l.ref = car.lapTimes[laps - 1];
+      this.scoreLap(l, car, l.clean);
       l.laps = laps;
       l.clean = true;
       l.health = car.health;
+      l.harm = car.harmDone;
+      l.self = car.selfInflicted;
+    }
+  }
+
+  private scoreLap(l: NonNullable<ReturnType<typeof this.learners.get>>, car: Car, counts: boolean): void {
+    const harm = car.harmDone - l.harm;
+    const atFault = harm + (car.selfInflicted - l.self) >= FAULT_COUNTS;
+    if (Number.isNaN(l.ref) || !(counts || atFault)) {
+      l.learner.lapDone(null);
+      return;
+    }
+    const score = -l.ref - DAMAGE_SECONDS * Math.max(0, l.health - car.health) - HARM_SECONDS * harm;
+    if (l.learner.lapDone(score)) {
+      this.learned.push({ driverId: l.driverId, weights: l.learner.weights.slice(), steps: l.learner.updates });
     }
   }
 
