@@ -54,6 +54,13 @@ export class Race {
     }
   }
 
+  /** Green now, from wherever the cars are (no pace laps): for drills that begin mid-race. */
+  startGreen(): void {
+    this.control?.startGreen();
+    this.started = true;
+    this.startTime = this.world.time;
+  }
+
   /** Laps before the green don't count: everyone starts lap 1 at the line. */
   private greenFlag(leader: Car): void {
     if (this.started) return; // a restart, not the start

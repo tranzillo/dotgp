@@ -7,7 +7,7 @@ import { apprenticePitStops, cleanStop, PitTrial, REFRESHER_ROUNDS, type PitTria
 import { DrillTrial, racingKept } from './drill';
 import { PACK_SIZE, RacecraftTrial, randomLayout, type RacecraftResult } from './racecraftLesson';
 import { apprenticePitTraffic, cleanTrafficStop, PitTrafficTrial, TRAFFIC_BASELINE_MARGIN, trafficBaseline, type PitTrafficResult } from './pitTrafficLesson';
-import { apprenticeCautions, BASELINE_MARGIN, CautionTrial, DRILL_FIELD, scriptBaseline, type CautionResult } from './cautionLesson';
+import { CAUTION_WEIGHTS, apprenticeCautions, BASELINE_MARGIN, CautionTrial, DRILL_FIELD, scriptBaseline, type CautionResult } from './cautionLesson';
 import { genomeSize } from '../ai/network';
 import { Rng } from '../ai/rng';
 import { DRIVER_LAYERS } from '../ai/drivers';
@@ -39,6 +39,8 @@ export interface Lesson {
   seconds: number;
   pairs: number;
   learningRate: number;
+  /** Only these weights train (1), if set: lessons for skills whose inputs are zero the rest of the time. */
+  trains?: Float32Array;
 }
 
 export const LESSONS: Record<LessonId, Lesson> = {
@@ -68,7 +70,7 @@ export const LESSONS: Record<LessonId, Lesson> = {
     description: "Pit with a race going on: two cars ahead pit too, so pit road has a queue, and four more keep racing around you, two of them closing from behind as you slow for pit road. Students first go back over the veteran's stop in traffic, then practise; the license comes with a clean stop in traffic (nobody hurt, no speeding) at least as quick as the veteran's on every preset. Drivers need both pit licenses to do their own stops in races.",
   },
   cautions: {
-    id: 'cautions', name: 'Cautions', seconds: 0, pairs: 6, learningRate: 0.01,
+    id: 'cautions', name: 'Cautions', seconds: 0, pairs: 6, learningRate: 0.01, trains: CAUTION_WEIGHTS,
     eligible: (d) => d.licensed && !d.cautionLicensed, audience: 'licensed drivers who don\'t drive their own cautions yet',
     description: 'Drive under caution: form up behind the pace car, hold your place and lane in the line, never pass, take the restart. Drills in a small field: green, a caution for debris, a caution lap, the restart. Students first copy the formation script, then practise; the caution license comes with driving a clean drill at least as well as the script on every preset, and from then on they drive their own cautions in races.',
   },
@@ -181,6 +183,7 @@ export class Classroom {
   trial!: LessonTrial;
   /** Caution drills: the grid slot this round's students start from. */
   private drillSlot = 0;
+  private drillSpread: number | undefined;
   walls = 1;
   private readonly presets: Track[];
   private readonly rng: Rng;
@@ -302,6 +305,8 @@ export class Classroom {
       for (let p = 0; p < lesson.pairs; p++) {
         const e = new Float32Array(size);
         for (let i = 0; i < size; i++) e[i] = this.rng.gaussian();
+        // Lessons that train only some weights (cautions) vary only those.
+        if (this.lesson.trains) for (let i = 0; i < size; i++) e[i] *= this.lesson.trains[i];
         eps.push(e);
         const plus = new Float32Array(size), minus = new Float32Array(size);
         for (let i = 0; i < size; i++) {
@@ -315,9 +320,11 @@ export class Classroom {
     const lessons = this.students.reduce((a, s) => a + s.rounds, 0) / this.students.length;
     // Caution drills: everyone starts from the same grid slot this round; one student's drill is shown.
     this.drillSlot = 2 + (this.round % (DRILL_FIELD - 3));
+    // Every other round the caution finds the field strung out round the lap, as in a race.
+    this.drillSpread = this.round % 2 === 1 ? hashSeed(this.seed, `spread${this.round}`) : undefined;
     this.trial = lesson.id === 'cautions'
       ? new CautionTrial(this.track, candidates, 1 + 2 * lesson.pairs, this.drillSlot, this.round % this.students.length,
-        this.students.map((s) => s.reference))
+        this.students.map((s) => s.reference), this.drillSpread)
       : lesson.id === 'racecraft'
         ? new RacecraftTrial(this.track, candidates, 1 + 2 * lesson.pairs, this.round % PACK_SIZE,
           this.students.map((s) => s.weights), this.round % this.students.length, randomLayout(this.track, this.rng),
@@ -351,7 +358,9 @@ export class Classroom {
       s.rounds++;
       // A student who has passed this lesson's license stops learning in it while the rest of the class
       // catches up: practising on, it drifted (racing got slower) after passing.
-      if (!this.passedLesson(s)) adamStep(s, grad, 1 / (2 * this.lesson.pairs * sigma), this.lesson.learningRate, DEFAULT_ES.weightDecay);
+      if (!this.passedLesson(s)) {
+        adamStep(s, grad, 1 / (2 * this.lesson.pairs * sigma), this.lesson.learningRate, DEFAULT_ES.weightDecay, this.lesson.trains);
+      }
 
       // The license test: a clean lap at full walls on each preset track.
       let graduated = false;
@@ -401,7 +410,7 @@ export class Classroom {
       if (!s.cautionLicensed && this.lesson.id === 'cautions') {
         const c = own as CautionResult;
         if (c.health >= 0.95 && c.harm < 0.05 && racingKept(this.track, s.weights, s.reference)
-          && c.fitness >= scriptBaseline(this.track, this.drillSlot, s.weights).fitness - BASELINE_MARGIN) {
+          && c.fitness >= scriptBaseline(this.track, this.drillSlot, s.weights, this.drillSpread).fitness - BASELINE_MARGIN) {
           if (!s.passed.has(this.track.name)) {
             s.passed.add(this.track.name);
             this.say(`${s.name} drove a clean caution drill at ${this.track.name} (${s.passed.size} of ${this.presets.length})`);

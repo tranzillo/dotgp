@@ -1,8 +1,10 @@
 import { DRIVER_LAYERS, NeuralDriver, ScriptedDriver, Team } from '../ai/drivers';
 import { FULL_DAMAGE_PENALTY } from '../ai/es';
 import { FormationDriver, PaceCarDriver } from '../ai/formation';
-import { trainSupervised, type Example } from '../ai/network';
-import type { Rng } from '../ai/rng';
+import { inputWeightMask, trainSupervised, type Example } from '../ai/network';
+import { CAUTION_SIZE, OBS_SIZE, PIT_SIZE } from '../ai/observe';
+import { RADIO_SIZE } from '../ai/spotter';
+import { Rng } from '../ai/rng';
 import { TowerSpotter } from '../ai/spotter';
 import { Car } from '../sim/car';
 import { PHYSICS as P } from '../sim/constants';
@@ -11,7 +13,6 @@ import { Race } from '../sim/race';
 import type { RaceControl } from '../sim/raceControl';
 import type { Track } from '../sim/track';
 import { World, type Controller } from '../sim/world';
-import { racingExamples } from './imitation';
 import { DrillTrial, type Drill } from './drill';
 
 /**
@@ -30,11 +31,16 @@ export const DRILL_FIELD = 8;
 /** Seconds of green before the debris caution, and after the restart before the drill ends. */
 const GREEN_BEFORE = 10;
 const GREEN_AFTER = 10;
+/** Strung-out drills: seconds of green before the caution, and the speed the field is racing at. */
+const SPREAD_GREEN_BEFORE = 5;
+const SPREAD_SPEED = 32;
 /** Longest a drill can run (s). */
 const DRILL_LIMIT = 320;
 
 /** Score weights: laps per metre of place error, per metre of lane error, per pass under caution, per unit of damage done to others. */
 const PLACE_ERROR = 1 / 30;
+/** Place error counted per moment, at most (m). */
+const PLACE_CAP = 30;
 const LANE_ERROR = 1 / 4;
 const PASS_PENALTY = 0.5;
 const HARM_PENALTY = 2;
@@ -77,8 +83,13 @@ export class CautionDrill implements Drill<CautionResult> {
   private lastDist = 0;
   private finishedFlag = false;
 
-  /** controllerFor(slot): the controller for each grid slot (the student's slot gets the student's). */
-  constructor(track: Track, studentSlot: number, controllerFor: (slot: number) => Controller) {
+  private readonly greenBefore: number;
+
+  /**
+   * controllerFor(slot): the controller for each grid slot (the student's slot gets the student's).
+   * spread: begin mid-race instead, the field strung out round the lap (a seed for where).
+   */
+  constructor(track: Track, studentSlot: number, controllerFor: (slot: number) => Controller, spread?: number) {
     this.world = new World(track, { collisions: true, drafting: true });
     for (let k = 0; k < DRILL_FIELD; k++) {
       const car = new Car(k);
@@ -88,8 +99,16 @@ export class CautionDrill implements Drill<CautionResult> {
     this.student = this.world.cars[studentSlot];
     this.race = new Race(this.world, 999, new PaceCarDriver());
     this.control = this.race.control!;
-    // Short drills: the restart is coming as soon as the field has formed up.
-    this.control.oneToGo = true;
+    if (spread === undefined) {
+      // Short drills: the restart is coming as soon as the field has formed up.
+      this.control.oneToGo = true;
+      this.greenBefore = GREEN_BEFORE;
+    } else {
+      // A caution in a race finds the field strung out round the lap, cars far from their place in line.
+      spreadField(this.world.cars, track, studentSlot, spread);
+      this.race.startGreen();
+      this.greenBefore = SPREAD_GREEN_BEFORE;
+    }
     this.lastDist = this.student.dist;
   }
 
@@ -107,7 +126,7 @@ export class CautionDrill implements Drill<CautionResult> {
       if (this.phase === 'start') { this.phase = 'green'; this.greenAt = this.time; }
       if (this.phase === 'caution') { this.phase = 'restarted'; this.greenAt = this.time; }
       if (!car.retired) this.greenDist += car.dist - this.lastDist;
-      if (this.phase === 'green' && this.time - this.greenAt > GREEN_BEFORE) {
+      if (this.phase === 'green' && this.time - this.greenAt > this.greenBefore) {
         ctl.debrisCaution(1);
         this.phase = 'caution';
         this.bestIndex = Infinity;
@@ -120,7 +139,9 @@ export class CautionDrill implements Drill<CautionResult> {
         let err = t.distanceFrom(car.s, slot.s);
         if (err > t.length / 2) err -= t.length;
         if (err < -150) err += t.length;
-        this.placeSum += Math.abs(err);
+        // Capped: a car half a lap from its place is out of place, not 30 times as wrong as one 30 m off.
+        // Uncapped, catching up fast was worth more than anything, and charging the line is what wrecks.
+        this.placeSum += Math.min(Math.abs(err), PLACE_CAP);
         this.laneSum += Math.abs(slot.d - car.d);
         this.samples++;
         // Passing under caution: moving up the order while pacing.
@@ -153,6 +174,21 @@ export class CautionDrill implements Drill<CautionResult> {
   }
 }
 
+/** Place the field round the whole lap at racing speed (no two cars within 25 m), each pack car in its lane. */
+function spreadField(cars: Car[], track: Track, studentSlot: number, seed: number): void {
+  const rng = new Rng(seed);
+  const spots: number[] = [];
+  while (spots.length < cars.length) {
+    const s = rng.next() * track.length;
+    if (spots.every((o) => Math.abs(((s - o + 1.5 * track.length) % track.length) - track.length / 2) > 25)) spots.push(s);
+  }
+  cars.forEach((car, k) => {
+    car.placeOnTrack(track, spots[k], k === studentSlot ? 0 : packLane(k));
+    car.vx = track.tx[car.trackIdx] * SPREAD_SPEED;
+    car.vy = track.ty[car.trackIdx] * SPREAD_SPEED;
+  });
+}
+
 /**
  * The pack: each car holds its own lane under green, on its own file's side
  * (even grid slots start inside, odd outside, so nobody cuts across at the
@@ -160,21 +196,23 @@ export class CautionDrill implements Drill<CautionResult> {
  */
 const INSIDE_LANES = [-5, -1.5];
 const OUTSIDE_LANES = [5.5, 2];
-export const packCar = (slot: number) => {
-  const lanes = slot % 2 === 0 ? INSIDE_LANES : OUTSIDE_LANES;
-  return new Team(new ScriptedDriver(lanes[Math.floor(slot / 2) % 2], 0.9), new TowerSpotter(), null, false, false);
-};
+const packLane = (slot: number) => (slot % 2 === 0 ? INSIDE_LANES : OUTSIDE_LANES)[Math.floor(slot / 2) % 2];
+export const packCar = (slot: number) => new Team(new ScriptedDriver(packLane(slot), 0.9), new TowerSpotter(), null, false, false);
 
 /**
  * One round of the lesson: every candidate (each student and its variations)
- * drives its own drill from the same grid slot. One student's drill is shown.
+ * drives its own drill from the same grid slot (and the same strung-out field, if spread). One student's
+ * drill is shown.
  */
 export class CautionTrial extends DrillTrial<CautionResult> {
   /** candidates: per student, [own, +e1, -e1, ...]; references: each student as it drove before the class. */
-  constructor(track: Track, candidates: Float32Array[], perStudent: number, slot: number, show: number, references: Float32Array[] = []) {
+  constructor(
+    track: Track, candidates: Float32Array[], perStudent: number, slot: number, show: number, references: Float32Array[] = [],
+    spread?: number,
+  ) {
     super(candidates.map((g) => new CautionDrill(track, slot, (k) => (k === slot
       ? new Team(new NeuralDriver(g), new TowerSpotter(), null, false, true) // the candidate drives its own caution
-      : packCar(k)))), perStudent, show, candidates, references.length ? { track, references } : undefined);
+      : packCar(k)), spread)), perStudent, show, candidates, references.length ? { track, references } : undefined);
   }
 }
 
@@ -226,16 +264,25 @@ class CautionApprentice implements Controller {
   }
 }
 
+/**
+ * The only weights this lesson trains: those from the caution inputs. They are
+ * zero under green, so the lesson can't change how a driver races (the guards
+ * in drill.ts can only check that from outside, and missed traffic: a class
+ * left drivers racing worse in packs while their solo laps looked fine).
+ */
+const CAUTION_FROM = OBS_SIZE + RADIO_SIZE + PIT_SIZE;
+export const CAUTION_WEIGHTS = inputWeightMask(DRIVER_LAYERS, CAUTION_FROM, CAUTION_FROM + CAUTION_SIZE);
+
 /** Share of moments under caution recorded (thousands a drill; a sample teaches as much). */
 const PACING_SAMPLE = 0.25;
 
 export const CAUTION_APPRENTICE_ROUNDS = 3;
 
 /** How the formation script does in the same drill, driving for this student (its racing, the script's pacing). */
-export function scriptBaseline(track: Track, slot: number, weights: Float32Array): CautionResult {
+export function scriptBaseline(track: Track, slot: number, weights: Float32Array, spread?: number): CautionResult {
   const drill = new CautionDrill(track, slot, (k) => (k === slot
     ? new Team(new NeuralDriver(weights.slice()), new TowerSpotter(), null, false, false)
-    : packCar(k)));
+    : packCar(k)), spread);
   while (!drill.done) drill.step();
   return drill.result();
 }
@@ -253,18 +300,18 @@ export function apprenticeCautions(
   for (let round = 0; round < rounds; round++) {
     const studentDrives = round > 0;
     for (const track of tracks) {
-      for (const slot of [2, 5]) {
+      // Both kinds of caution: the field bunched after a start, and strung out round the lap mid-race.
+      for (const [slot, spread] of [[2, undefined], [5, undefined], [3, round * 31 + 1], [6, round * 31 + 2]] as const) {
         const drill = new CautionDrill(track, slot, (k) => {
           if (k !== slot) return packCar(k);
           const team = new Team(new NeuralDriver(weights), new TowerSpotter(), null, false, studentDrives);
           return new CautionApprentice(team, new NeuralDriver(weights), original, examples, rng);
-        });
+        }, spread);
         while (!drill.done) drill.step();
       }
     }
-    // As many moments of its own original racing, so learning this doesn't overwrite how it races.
-    const racing = racingExamples(original.net.weights, tracks, rng, examples.length);
-    loss = trainSupervised(DRIVER_LAYERS, weights, examples.concat(racing), round === 0 ? 30 : 12, 0.01, () => rng.next());
+    // Only the caution weights train, so its racing can't change (no need for racing examples here).
+    loss = trainSupervised(DRIVER_LAYERS, weights, examples, round === 0 ? 30 : 12, 0.01, () => rng.next(), CAUTION_WEIGHTS);
   }
   return { examples: examples.length, loss };
 }

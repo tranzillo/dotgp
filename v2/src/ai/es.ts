@@ -333,12 +333,17 @@ export interface AdamState {
 }
 
 /** One Adam ascent step on an ES gradient estimate (grad * scale). */
-export function adamStep(st: AdamState, grad: Float32Array, scale: number, learningRate: number, weightDecay: number): void {
+export function adamStep(
+  st: AdamState, grad: Float32Array, scale: number, learningRate: number, weightDecay: number,
+  /** Only these weights (1) change, weight decay included. Default: all. */
+  trainable?: Float32Array,
+): void {
   const t = ++st.adamSteps;
   const c1 = 1 - Math.pow(ADAM_B1, t);
   const c2 = 1 - Math.pow(ADAM_B2, t);
   const w = st.weights;
   for (let i = 0; i < w.length; i++) {
+    if (trainable && !trainable[i]) continue;
     const g = grad[i] * scale - weightDecay * w[i];
     st.m[i] = ADAM_B1 * st.m[i] + (1 - ADAM_B1) * g;
     st.v[i] = ADAM_B2 * st.v[i] + (1 - ADAM_B2) * g * g;

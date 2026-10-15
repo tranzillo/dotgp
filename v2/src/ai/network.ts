@@ -64,6 +64,22 @@ export function widenNetwork(
   return w;
 }
 
+/**
+ * Which weights a lesson may train: only the first layer's weights from the
+ * inputs in [from, to) (no biases). When those inputs are zero (a caution's
+ * inputs under green, a pit stop's when not pitting) these weights contribute
+ * nothing, so training them can't change how the driver does anything else:
+ * the rest of its driving is untouched by construction.
+ */
+export function inputWeightMask(layers: readonly number[], from: number, to: number): Float32Array {
+  const mask = new Float32Array(genomeSize(layers));
+  const nIn = layers[0];
+  for (let o = 0; o < layers[1]; o++) {
+    for (let k = from; k < to; k++) mask[o * (nIn + 1) + 1 + k] = 1;
+  }
+  return mask;
+}
+
 export interface Example {
   x: Float32Array;
   y: Float32Array;
@@ -78,6 +94,8 @@ export interface Example {
  */
 export function trainSupervised(
   layers: readonly number[], weights: Float32Array, data: Example[], epochs: number, learningRate: number, random: () => number,
+  /** Only these weights (1) change; the rest stay as they are. Default: all. */
+  trainable?: Float32Array,
 ): number {
   const L = layers.length;
   const acts = layers.map((n) => new Float32Array(n));
@@ -126,6 +144,11 @@ export function trainSupervised(
           const row = base + o * (nIn + 1);
           const d = deltas[l][o] * learningRate;
           if (d === 0) continue;
+          if (trainable) {
+            weights[row] -= d * trainable[row];
+            for (let k = 0; k < nIn; k++) weights[row + 1 + k] -= d * acts[l - 1][k] * trainable[row + 1 + k];
+            continue;
+          }
           weights[row] -= d;
           for (let k = 0; k < nIn; k++) weights[row + 1 + k] -= d * acts[l - 1][k];
         }

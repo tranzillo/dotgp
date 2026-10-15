@@ -59,3 +59,23 @@ describe('drivers doing their own cautions', () => {
     expect(drill.control.cautions).toBe(1);
   });
 });
+
+describe('the caution lesson trains only caution weights', () => {
+  it('leaves every weight outside the caution inputs untouched, so racing is unchanged', async () => {
+    const { inputWeightMask, trainSupervised, genomeSize } = await import('../src/ai/network');
+    const layers = [6, 4, 2] as const;
+    const rng = new Rng(3);
+    const w = Float32Array.from({ length: genomeSize(layers) }, () => rng.gaussian() * 0.5);
+    const before = w.slice();
+    const mask = inputWeightMask(layers, 4, 6); // the last two inputs
+    const data = Array.from({ length: 50 }, () => ({
+      x: Float32Array.from({ length: 6 }, () => rng.gaussian()), y: Float32Array.of(0.5, -0.5), mask: Float32Array.of(1, 1),
+    }));
+    trainSupervised(layers, w, data, 5, 0.05, () => rng.next(), mask);
+    let changedInside = 0;
+    w.forEach((v, i) => {
+      if (mask[i]) { if (v !== before[i]) changedInside++; } else expect(v).toBe(before[i]);
+    });
+    expect(changedInside).toBeGreaterThan(0);
+  });
+});

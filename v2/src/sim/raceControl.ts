@@ -121,6 +121,19 @@ export class RaceControl {
     this.oneToGo = false;
   }
 
+  /**
+   * Green from wherever the field is, with no pace laps (drills that begin
+   * mid-race): the pace car waits on pit road for the next caution.
+   */
+  startGreen(): void {
+    const t = this.track;
+    this.paceCar.placeOnTrack(t, (t.pit.wallStart + t.pit.wallEnd) / 2, t.pit.laneD + 2);
+    this.paceCar.cleared = true;
+    this.paceCarOut = false;
+    this.oneToGo = false;
+    this.flag = 'green';
+  }
+
   slotFor(car: Car): FormationSlot | undefined {
     return this.slots.get(car);
   }
