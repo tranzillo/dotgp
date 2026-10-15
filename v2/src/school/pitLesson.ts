@@ -6,6 +6,7 @@ import { TowerSpotter } from '../ai/spotter';
 import { Car, type PitCall } from '../sim/car';
 import { PHYSICS as P, PIT_SERVICE } from '../sim/constants';
 import type { Track } from '../sim/track';
+import { racingExamples } from './imitation';
 import { World, type Controller } from '../sim/world';
 
 /**
@@ -247,7 +248,9 @@ export function apprenticePitStops(
         for (let k = 0; k < 75 / P.DT && !car.retired; k++) world.step();
       }
     }
-    loss = trainSupervised(DRIVER_LAYERS, weights, examples, round === 0 ? 30 : 12, 0.01, () => rng.next());
+    // As many moments of its own original racing, so learning this doesn't overwrite how it races.
+    const racing = racingExamples(original.net.weights, tracks, rng, examples.length);
+    loss = trainSupervised(DRIVER_LAYERS, weights, examples.concat(racing), round === 0 ? 30 : 12, 0.01, () => rng.next());
   }
   return { examples: examples.length, loss };
 }

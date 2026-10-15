@@ -1,7 +1,5 @@
 import { NeuralDriver, Team } from '../ai/drivers';
-import { FULL_DAMAGE_PENALTY } from '../ai/es';
 import { danger, fearScale } from '../ai/fear';
-import { Trial } from '../ai/evaluate';
 import type { Rng } from '../ai/rng';
 import { TowerSpotter } from '../ai/spotter';
 import { Car } from '../sim/car';
@@ -167,31 +165,17 @@ export class RacecraftDrill implements Drill<RacecraftResult> {
   }
 }
 
-/** Seconds of solo laps every candidate also drives, as in practice. */
-const SOLO_SECONDS = 60;
-/** Laps of score per solo lap lost against the student's own (losing pace costs double). */
-const SOLO_PACE = 2;
-
 /**
  * One round: every candidate races its own drill from the same slot, in the
  * same pack (the class's current drivers, by slot), so the only difference
- * between a student's variations is the variation. Every candidate also
- * drives solo laps (ghosts, as in practice), and a variation that drives
- * them worse than the student does now is charged the difference: the drill
- * alone only measures packs, and variations that drove cleaner there while
- * losing their way round the track on their own won out (in races: more
- * wrecks, not fewer). Going faster solo earns nothing here, so the lesson
- * teaches clean racing rather than speed (a faster pack hits harder).
+ * between a student's variations is the variation. Solo driving is held to
+ * the student's own from before the class (DrillTrial's anchor).
  */
 export class RacecraftTrial extends DrillTrial<RacecraftResult> {
-  private readonly solo: Trial;
-  private readonly perStudent: number;
-  private readonly candidates: number;
-
   /**
    * candidates: per student, [own, +e1, -e1, ...]; classmates: each student's current weights;
    * nerves: each student's nerve (what fear costs it); references: each student as it drove
-   * when the class began (its solo pace is held to that; default: its current self).
+   * when the class began (default: its current self).
    */
   constructor(
     track: Track, candidates: Float32Array[], perStudent: number, slot: number, classmates: Float32Array[], show: number,
@@ -202,38 +186,6 @@ export class RacecraftTrial extends DrillTrial<RacecraftResult> {
       const own = Math.floor(i / perStudent);
       // Slots around the student: the student's own racing and its classmates', in turn.
       return new RacecraftDrill(track, slot, g, (k) => pack[(own + k) % pack.length], layout, fearScale(nerves[own]));
-    }), perStudent, show);
-    this.perStudent = perStudent;
-    this.candidates = candidates.length;
-    // The references drive the same solo laps, after the candidates.
-    const refs = classmates.map((w, l) => references[l] ?? w);
-    this.solo = new Trial(track, [...candidates, ...refs], { seconds: SOLO_SECONDS, damagePenaltyLaps: FULL_DAMAGE_PENALTY });
-  }
-
-  override get done(): boolean {
-    return super.done && this.solo.done;
-  }
-
-  override step(): void {
-    super.step();
-    this.solo.step();
-  }
-
-  /**
-   * The drill's result, less any solo driving lost against the student as it
-   * drove when the class began: pace (laps) and cleanliness (damage) each on
-   * their own. Compared as one score, a much slower variation that avoided a
-   * scrape looked no worse; compared with the student's current self, small
-   * losses slipped through round after round. Either way drivers drifted
-   * slow, and one slow car in a 24-car field gets rear-ended all race.
-   */
-  override results(): RacecraftResult[] {
-    const solo = this.solo.results();
-    return super.results().map((r, i) => {
-      const own = solo[this.candidates + Math.floor(i / this.perStudent)], mine = solo[i];
-      const lostPace = Math.max(0, own.laps - mine.laps);
-      const extraDamage = Math.max(0, own.health - mine.health);
-      return { ...r, fitness: r.fitness - SOLO_PACE * lostPace - FULL_DAMAGE_PENALTY * extraDamage, soloLaps: mine.laps };
-    });
+    }), perStudent, show, candidates, { track, references: classmates.map((w, l) => references[l] ?? w) });
   }
 }

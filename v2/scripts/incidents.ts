@@ -10,8 +10,9 @@
  *            using the renderer's own deposit rules (render/marks.ts)
  *
  *   npx tsx scripts/incidents.ts [drivers.json] --tracks speedway,short --seeds 2 --field 24 --pace 4 [--laps N] [--marks 0]
+ *     [--seed-start 1] [--json out.json]   (scripts/bench.ts runs many of these in parallel and adds error bars)
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { adaptWeights, neuralTeam } from '../src/ai/drivers';
 import { PaceCarDriver } from '../src/ai/formation';
 import { randomTraits, StrategistCrewChief } from '../src/ai/pitting';
@@ -34,6 +35,8 @@ const driversFile = positional[0] ?? 'public/drivers/default.json';
 const specs = { speedway: SPEEDWAY, short: SHORT_TRACK, flat: FLAT_TRACK } as const;
 const trackNames = (args.get('tracks') ?? 'speedway,short').split(',') as Array<keyof typeof specs>;
 const seeds = Number(args.get('seeds') ?? 2);
+const seedStart = Number(args.get('seed-start') ?? 1);
+const jsonOut = args.get('json');
 const fieldSize = Number(args.get('field') ?? 24);
 const pace = Number(args.get('pace') ?? 4);
 const lapsArg = args.get('laps');
@@ -46,7 +49,8 @@ const RESTART_WINDOW = 20;
 const MARK_CELL = 0.5; // m
 const TIRE_BANDS = [1, 0.8, 0.6, 0.4, 0.3, 0.2, 0];
 
-const roster: Array<{ weights: number[] }> = JSON.parse(readFileSync(driversFile, 'utf8')).drivers;
+/** Drivers; one with a caution (or pit) license drives its own cautions (stops), as in races. */
+const roster: Array<{ weights: number[]; cautionLicensed?: boolean; pitLicensed?: boolean }> = JSON.parse(readFileSync(driversFile, 'utf8')).drivers;
 
 interface Retirement {
   time: number; context: string; speed: number;
@@ -171,7 +175,8 @@ function runRace(trackName: keyof typeof specs, seed: number): RaceStats {
     const car = new Car(k);
     placeOnGrid(car, track, k, true);
     const d = roster[(k + seed) % roster.length];
-    world.addCar(car, neuralTeam(adaptWeights(Float32Array.from(d.weights)), new StrategistCrewChief(randomTraits(() => rng.next()))));
+    world.addCar(car, neuralTeam(adaptWeights(Float32Array.from(d.weights)), new StrategistCrewChief(randomTraits(() => rng.next())),
+      d.pitLicensed ?? false, d.cautionLicensed ?? false));
   }
   const race = new Race(world, laps, new PaceCarDriver());
   const ctl = race.control!;
@@ -269,7 +274,7 @@ function chains(r: Retirement[]): Retirement[][] {
 
 const all: RaceStats[] = [];
 for (const name of trackNames) {
-  for (let seed = 1; seed <= seeds; seed++) {
+  for (let seed = seedStart; seed < seedStart + seeds; seed++) {
     const t0 = Date.now();
     const s = runRace(name, seed);
     all.push(s);
@@ -283,6 +288,25 @@ for (const name of trackNames) {
       console.log(`  marks lap ${c.lap}: groove ${pct(c.groove)}, skids ${pct(c.skid)} mean darkness; ${pct(c.dark10)} of surface >10% dark, ${pct(c.dark25)} >25%`);
     }
   }
+}
+
+if (jsonOut) writeFileSync(jsonOut, JSON.stringify(all.map(raceSummary)));
+
+/** One race in numbers, for scripts/bench.ts. */
+export interface RaceSummary {
+  track: string; seed: number; retirements: number; cautions: number; multiCar: number;
+  atFault: number; hitByAnother: number; formationWrecks: number; harm: number; lapTime: number;
+}
+function raceSummary(s: RaceStats): RaceSummary {
+  const laps = s.lapsByTire.filter(([tire]) => tire >= 0.6).map(([, t]) => t);
+  return {
+    track: s.track, seed: s.seed, retirements: s.retirements.length, cautions: s.cautions,
+    multiCar: chains(s.retirements).filter((c) => c.length > 1).length,
+    atFault: s.retirements.filter((e) => e.fault !== null && e.fault >= 0.5).length,
+    hitByAnother: s.retirements.filter((e) => e.fault !== null && e.fault < 0.5).length,
+    formationWrecks: s.retirements.filter((e) => e.mode === 'formation' && e.hit === 'car (formation)').length,
+    harm: s.harm, lapTime: laps.length ? laps.reduce((a, b) => a + b, 0) / laps.length : NaN,
+  };
 }
 
 console.log('\n=== summary by track');

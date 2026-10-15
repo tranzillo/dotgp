@@ -11,6 +11,7 @@ import { Race } from '../sim/race';
 import type { RaceControl } from '../sim/raceControl';
 import type { Track } from '../sim/track';
 import { World, type Controller } from '../sim/world';
+import { racingExamples } from './imitation';
 import { DrillTrial, type Drill } from './drill';
 
 /**
@@ -169,11 +170,11 @@ export const packCar = (slot: number) => {
  * drives its own drill from the same grid slot. One student's drill is shown.
  */
 export class CautionTrial extends DrillTrial<CautionResult> {
-  /** candidates: per student, [own, +e1, -e1, ...]. */
-  constructor(track: Track, candidates: Float32Array[], perStudent: number, slot: number, show: number) {
+  /** candidates: per student, [own, +e1, -e1, ...]; references: each student as it drove before the class. */
+  constructor(track: Track, candidates: Float32Array[], perStudent: number, slot: number, show: number, references: Float32Array[] = []) {
     super(candidates.map((g) => new CautionDrill(track, slot, (k) => (k === slot
       ? new Team(new NeuralDriver(g), new TowerSpotter(), null, false, true) // the candidate drives its own caution
-      : packCar(k)))), perStudent, show);
+      : packCar(k)))), perStudent, show, candidates, references.length ? { track, references } : undefined);
   }
 }
 
@@ -200,8 +201,9 @@ class CautionApprentice implements Controller {
     const pacing = !!world.control?.pacing && car.pit.phase === 'none';
     let label: [number, number] | null = null;
     if (pacing) {
+      // The teacher follows every moment (it keeps track as it goes); only a sample is recorded.
       this.teacher.decide(car, world);
-      label = [car.inputX, car.inputY];
+      if (this.rng.next() < PACING_SAMPLE) label = [car.inputX, car.inputY];
       car.inputX = px;
       car.inputY = py;
     } else if (this.rng.next() < 0.15) {
@@ -223,6 +225,9 @@ class CautionApprentice implements Controller {
     this.examples.push({ x, y: Float32Array.of(clamp(label[0]), clamp(label[1])), mask: Float32Array.of(1, 1) });
   }
 }
+
+/** Share of moments under caution recorded (thousands a drill; a sample teaches as much). */
+const PACING_SAMPLE = 0.25;
 
 export const CAUTION_APPRENTICE_ROUNDS = 3;
 
@@ -257,7 +262,9 @@ export function apprenticeCautions(
         while (!drill.done) drill.step();
       }
     }
-    loss = trainSupervised(DRIVER_LAYERS, weights, examples, round === 0 ? 30 : 12, 0.01, () => rng.next());
+    // As many moments of its own original racing, so learning this doesn't overwrite how it races.
+    const racing = racingExamples(original.net.weights, tracks, rng, examples.length);
+    loss = trainSupervised(DRIVER_LAYERS, weights, examples.concat(racing), round === 0 ? 30 : 12, 0.01, () => rng.next());
   }
   return { examples: examples.length, loss };
 }

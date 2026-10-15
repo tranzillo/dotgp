@@ -58,6 +58,8 @@ export interface FormationSlot {
   speed: number;
 }
 
+/** How far the virtual pace car may run ahead of a leader that can't keep up before it waits for it (m). */
+const VIRTUAL_LEAD_MAX = 100;
 /** Under pacing, how far one car must be ahead of the car before it in line to take its place (m). */
 const SWAP_MARGIN = 8;
 
@@ -83,6 +85,8 @@ export class RaceControl {
   private garageSlots = 0;
   /** Cars in formation order this tick, and their slots. */
   private order: Car[] = [];
+  /** Where the virtual pace car is when the real one isn't leading the line (NaN: none). */
+  private virtualS = NaN;
   private readonly slots = new Map<Car, FormationSlot>();
   /** Set when the green flag waves; used by the race to start the clock. */
   onGreen: ((leader: Car) => void) | null = null;
@@ -126,7 +130,7 @@ export class RaceControl {
     const t = this.track;
     this.detectIncidents(dt);
     this.stepWreckers(dt);
-    this.updateFormation(leader);
+    this.updateFormation(leader, dt);
 
     if (this.flag === 'pace' && !this.oneToGo && leader && this.crossedLine(leader)) {
       this.oneToGo = true;
@@ -236,7 +240,7 @@ export class RaceControl {
 
   // ---------- formation ----------
 
-  private updateFormation(leader: Car | null): void {
+  private updateFormation(leader: Car | null, dt: number): void {
     const t = this.track;
     this.slots.clear();
     const inLine = (c: Car) => !c.retired && !c.cleared && c.pit.phase === 'none';
@@ -267,7 +271,19 @@ export class RaceControl {
     // The pace car leads if it's on track ahead of the leader; otherwise the leader sets the pace.
     const paceCarLeads = this.paceCarOut && !this.paceCarHeadingInAndOff() && pc.d < t.innerEdge(pc.trackIdx) + 1
       && t.distanceFrom(head.s, pc.s) < 400;
-    const refS = paceCarLeads ? pc.s : head.s;
+    let refS = pc.s;
+    if (paceCarLeads) {
+      this.virtualS = NaN;
+    } else {
+      // No pace car in front: the line follows a virtual one, moving at pace speed from where the leader
+      // is. Referenced to the leader itself, the line could wait on itself: cars ahead of their slots
+      // slowed for them, the leader stuck behind them slowed too, the slots (set from the leader) stopped,
+      // and the whole field crawled into each other.
+      const ahead = Number.isNaN(this.virtualS) ? NaN : t.distanceFrom(head.s, this.virtualS);
+      if (Number.isNaN(ahead) || ahead > VIRTUAL_LEAD_MAX) this.virtualS = head.s; // new, behind the leader, or the leader lost it
+      else this.virtualS = t.wrapS(this.virtualS + this.paceSpeed * (this.flag === 'caution' ? 1.15 : 1) * dt);
+      refS = this.virtualS;
+    }
     const refSpeed = paceCarLeads ? Math.max(pc.speed, this.paceSpeed * 0.6) : this.paceSpeed * (this.flag === 'caution' ? 1.15 : 1);
     this.order.forEach((car, index) => {
       const row = Math.floor(index / 2);

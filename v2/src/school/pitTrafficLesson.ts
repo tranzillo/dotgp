@@ -8,6 +8,7 @@ import { PHYSICS as P } from '../sim/constants';
 import type { Track } from '../sim/track';
 import { World, type Controller } from '../sim/world';
 import { DrillTrial, type Drill } from './drill';
+import { racingExamples } from './imitation';
 import { Apprentice, inLapStart, START_SPEED, startInLap, StopTracker, type PitTrialResult } from './pitLesson';
 
 /**
@@ -104,10 +105,10 @@ const ownStop = (g: Float32Array) => ({ team: new Team(new NeuralDriver(g), new 
  * drill; the racers drive as the student did at the start of the round.
  */
 export class PitTrafficTrial extends DrillTrial<PitTrafficResult> {
-  /** candidates: per student, [own, +e1, -e1, ...]. */
-  constructor(track: Track, candidates: Float32Array[], perStudent: number, show: number) {
+  /** candidates: per student, [own, +e1, -e1, ...]; references: each student as it drove before the class. */
+  constructor(track: Track, candidates: Float32Array[], perStudent: number, show: number, references: Float32Array[] = []) {
     super(candidates.map((g, i) => new PitTrafficDrill(track, ownStop(g), candidates[i - (i % perStudent)].slice())),
-      perStudent, show);
+      perStudent, show, candidates, references.length ? { track, references } : undefined);
   }
 }
 
@@ -144,7 +145,9 @@ export function apprenticePitTraffic(
         while (!drill.done) drill.step();
       }
     }
-    loss = trainSupervised(DRIVER_LAYERS, weights, examples, round === 0 ? 30 : 12, 0.01, () => rng.next());
+    // As many moments of its own original racing, so learning this doesn't overwrite how it races.
+    const racing = racingExamples(original.net.weights, tracks, rng, examples.length);
+    loss = trainSupervised(DRIVER_LAYERS, weights, examples.concat(racing), round === 0 ? 30 : 12, 0.01, () => rng.next());
   }
   return { examples: examples.length, loss };
 }
