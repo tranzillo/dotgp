@@ -205,15 +205,31 @@ export const packCar = (slot: number) => new Team(new ScriptedDriver(packLane(sl
  * drill is shown.
  */
 export class CautionTrial extends DrillTrial<CautionResult> {
-  /** candidates: per student, [own, +e1, -e1, ...]; references: each student as it drove before the class. */
+  /**
+   * candidates: per student, [own, +e1, -e1, ...]; references: each student as it drove before the class;
+   * classmates: each student's current weights (half the pack drives its own cautions with them).
+   */
   constructor(
     track: Track, candidates: Float32Array[], perStudent: number, slot: number, show: number, references: Float32Array[] = [],
-    spread?: number,
+    spread?: number, classmates: Float32Array[] = [],
   ) {
+    const pack = mixedPack(classmates);
     super(candidates.map((g) => new CautionDrill(track, slot, (k) => (k === slot
       ? new Team(new NeuralDriver(g), new TowerSpotter(), null, false, true) // the candidate drives its own caution
-      : packCar(k)), spread)), perStudent, show, candidates, references.length ? { track, references } : undefined);
+      : pack(k)), spread)), perStudent, show, candidates, references.length ? { track, references } : undefined);
   }
+}
+
+/**
+ * The pack for a round: odd grid slots are classmates driving their own
+ * cautions (in races everyone around a student drives theirs too, not a
+ * script), the rest the calm scripted pack. No classmates: all scripted.
+ */
+export function mixedPack(classmates: Float32Array[]): (slot: number) => Controller {
+  const weights = classmates.map((w) => w.slice());
+  return (k) => (weights.length && k % 2 === 1
+    ? new Team(new NeuralDriver(weights[(k >> 1) % weights.length].slice()), new TowerSpotter(), null, false, true)
+    : packCar(k));
 }
 
 /**
@@ -279,10 +295,13 @@ const PACING_SAMPLE = 0.25;
 export const CAUTION_APPRENTICE_ROUNDS = 3;
 
 /** How the formation script does in the same drill, driving for this student (its racing, the script's pacing). */
-export function scriptBaseline(track: Track, slot: number, weights: Float32Array, spread?: number): CautionResult {
+export function scriptBaseline(
+  track: Track, slot: number, weights: Float32Array, spread?: number, classmates: Float32Array[] = [],
+): CautionResult {
+  const pack = mixedPack(classmates);
   const drill = new CautionDrill(track, slot, (k) => (k === slot
     ? new Team(new NeuralDriver(weights.slice()), new TowerSpotter(), null, false, false)
-    : packCar(k)), spread);
+    : pack(k)), spread);
   while (!drill.done) drill.step();
   return drill.result();
 }

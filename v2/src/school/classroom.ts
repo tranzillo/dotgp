@@ -184,6 +184,7 @@ export class Classroom {
   /** Caution drills: the grid slot this round's students start from. */
   private drillSlot = 0;
   private drillSpread: number | undefined;
+  private packWeights: Float32Array[] = [];
   walls = 1;
   private readonly presets: Track[];
   private readonly rng: Rng;
@@ -322,9 +323,10 @@ export class Classroom {
     this.drillSlot = 2 + (this.round % (DRILL_FIELD - 3));
     // Every other round the caution finds the field strung out round the lap, as in a race.
     this.drillSpread = this.round % 2 === 1 ? hashSeed(this.seed, `spread${this.round}`) : undefined;
+    this.packWeights = this.students.map((s) => s.weights.slice()); // the classmates in this round's packs
     this.trial = lesson.id === 'cautions'
       ? new CautionTrial(this.track, candidates, 1 + 2 * lesson.pairs, this.drillSlot, this.round % this.students.length,
-        this.students.map((s) => s.reference), this.drillSpread)
+        this.students.map((s) => s.reference), this.drillSpread, this.students.map((s) => s.weights))
       : lesson.id === 'racecraft'
         ? new RacecraftTrial(this.track, candidates, 1 + 2 * lesson.pairs, this.round % PACK_SIZE,
           this.students.map((s) => s.weights), this.round % this.students.length, randomLayout(this.track, this.rng),
@@ -410,7 +412,7 @@ export class Classroom {
       if (!s.cautionLicensed && this.lesson.id === 'cautions') {
         const c = own as CautionResult;
         if (c.health >= 0.95 && c.harm < 0.05 && racingKept(this.track, s.weights, s.reference)
-          && c.fitness >= scriptBaseline(this.track, this.drillSlot, s.weights, this.drillSpread).fitness - BASELINE_MARGIN) {
+          && c.fitness >= scriptBaseline(this.track, this.drillSlot, s.weights, this.drillSpread, this.packWeights).fitness - BASELINE_MARGIN) {
           if (!s.passed.has(this.track.name)) {
             s.passed.add(this.track.name);
             this.say(`${s.name} drove a clean caution drill at ${this.track.name} (${s.passed.size} of ${this.presets.length})`);
