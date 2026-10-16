@@ -5,7 +5,7 @@ import {
 import { Trial, type TrialResult } from '../ai/evaluate';
 import { apprenticePitStops, cleanStop, PitTrial, REFRESHER_ROUNDS, type PitTrialResult } from './pitLesson';
 import { DrillTrial, racingKept } from './drill';
-import { apprenticeRoadCourses } from './roadLesson';
+import { apprenticeRoadCourses, roadLicenseTest } from './roadLesson';
 import { PACK_SIZE, RacecraftTrial, randomLayout, type RacecraftResult } from './racecraftLesson';
 import { apprenticePitTraffic, cleanTrafficStop, PitTrafficTrial, TRAFFIC_BASELINE_MARGIN, trafficBaseline, type PitTrafficResult } from './pitTrafficLesson';
 import { CAUTION_WEIGHTS, apprenticeCautions, BASELINE_MARGIN, CautionTrial, DRILL_FIELD, scriptBaseline, type CautionResult } from './cautionLesson';
@@ -60,7 +60,7 @@ export const LESSONS: Record<LessonId, Lesson> = {
   circuits: {
     id: 'circuits', name: 'Road courses', seconds: 150, pairs: 8, learningRate: 0.02,
     eligible: (d) => d.licensed && !d.roadLicensed, audience: "licensed drivers without a road-course license",
-    description: "Learn road courses: flat corners from sweepers to hairpins, braking hard off long straights. Trains the driver's road-course skill (a second network used only on circuits, starting as a copy of its oval driving), so oval racing is never touched. A new skill first copies the line follower's laps of circuits, then practises. A new club circuit every round, starting on a random straight. The corners start no tighter than an oval's and the barriers soft; each round the class drives cleanly the corners tighten and the barriers harden, down to real hairpins. The license: a clean lap's worth of driving on three circuits at full tightness.",
+    description: "Learn road courses: flat corners from sweepers to hairpins, braking hard off long straights. Trains the driver's road-course skill (a second network used only on circuits, starting as a copy of its oval driving), so oval racing is never touched. A new skill first copies the line follower's laps of circuits, then practises. A new club circuit every round, starting on a random straight. The corners start no tighter than an oval's and the barriers soft; each round the class drives cleanly the corners tighten and the barriers harden, down to real hairpins. The license: a test on three new circuits from the line, a clean lap on each.",
   },
   racecraft: {
     id: 'racecraft', name: 'Racecraft', seconds: 0, pairs: 8, learningRate: 0.01,
@@ -498,20 +498,13 @@ export class Classroom {
           }
         }
       }
-      // The road-course license: a clean lap's worth of driving (from wherever it started) on three circuits at
-      // full tightness and full barriers.
+      // The road-course license: once the curriculum is at full tightness, a test on three new club circuits
+      // from the line (a full lap, no crash, on every one). A lucky clean round isn't enough.
       if (!s.roadLicensed && this.lesson.id === 'circuits' && this.roadRadius <= ROAD_FULL_RADIUS && this.walls >= 1) {
-        const r = own as unknown as TrialResult;
-        if (!r.retired && r.health >= LICENSE_HEALTH && r.distance >= this.track.length) {
-          if (!s.passed.has(this.track.name)) {
-            s.passed.add(this.track.name);
-            this.say(`${s.name} drove ${this.track.name} cleanly (${s.passed.size} of 3)`);
-          }
-          if (s.passed.size >= 3) {
-            s.roadLicensed = true;
-            graduated = true;
-            this.say(`${s.name} earned a road-course license`);
-          }
+        if (roadLicenseTest(s.weights, hashSeed(this.seed, `${s.id}-test${this.round}`), LICENSE_HEALTH)) {
+          s.roadLicensed = true;
+          graduated = true;
+          this.say(`${s.name} passed the road-course test: three new circuits, a clean lap on each`);
         }
       }
       const report: RoundReport = {

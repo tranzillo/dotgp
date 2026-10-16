@@ -66,6 +66,26 @@ class RoadApprentice implements Controller {
   }
 }
 
+/**
+ * The road-course license test: three new club circuits at full tightness,
+ * from the line as a race starts, 120 s each: a full lap's distance on every
+ * one without crashing (or badly hurting the car).
+ */
+export function roadLicenseTest(weights: Float32Array, seed: number, minHealth: number): boolean {
+  for (let k = 0; k < 3; k++) {
+    const track = new Track(generateLayout({ type: 'circuit', seed: hashSeed(seed, `test${k}`), variant: 'club' }));
+    const world = new World(track, { collisions: false, drafting: false });
+    const car = new Car(0);
+    world.addCar(car, new Team(new NeuralDriver(weights), new TowerSpotter(), null));
+    car.placeOnTrack(track, track.length - 20, 0);
+    car.vx = track.tx[car.trackIdx] * ROLLING_START_SPEED;
+    car.vy = track.ty[car.trackIdx] * ROLLING_START_SPEED;
+    for (let i = 0; i < SECONDS / P.DT && !car.retired && car.dist < track.length; i++) world.step();
+    if (car.retired || car.health < minHealth || car.dist < track.length) return false;
+  }
+  return true;
+}
+
 /** Circuits to learn on: club and GP, at full tightness. */
 function apprenticeCircuits(seed: number): Track[] {
   return Array.from({ length: CIRCUITS }, (_, k) => new Track(generateLayout({
