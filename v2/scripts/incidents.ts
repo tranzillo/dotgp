@@ -25,6 +25,7 @@ import { Race } from '../src/sim/race';
 import { Track } from '../src/sim/track';
 import { FLAT_TRACK, ovalTrack, SHORT_TRACK, SPEEDWAY } from '../src/trackgen';
 import { World } from '../src/sim/world';
+import { OVAL_RULES } from '../src/rules/rulebook';
 
 const positional = process.argv.slice(2).filter((a, i, all) => !a.startsWith('--') && !(all[i - 1] ?? '').startsWith('--'));
 const args = new Map<string, string>();
@@ -41,6 +42,8 @@ const fieldSize = Number(args.get('field') ?? 24);
 const pace = Number(args.get('pace') ?? 4);
 const lapsArg = args.get('laps');
 const measureMarks = args.get('marks') !== '0';
+/** Run the races to the oval rulebook, with stewards. */
+const withRules = args.get('rules') === '1';
 
 /** Retirements this close together (s) count as one incident. */
 const CHAIN_WINDOW = 12;
@@ -80,6 +83,8 @@ interface RaceStats {
   steps: number;
   /** Damage cars did to each other (by fault), summed. */
   harm: number;
+  /** Stewards' decisions (with --rules 1): offence, penalty. */
+  penalties: Array<[string, string]>;
   coverage: Array<{ lap: number; groove: number; skid: number; dark10: number; dark25: number }>;
 }
 
@@ -179,14 +184,14 @@ function runRace(trackName: keyof typeof specs, seed: number): RaceStats {
     world.addCar(car, neuralTeam(adaptWeights(Float32Array.from(d.weights)), new StrategistCrewChief(randomTraits(() => rng.next())),
       (d.pitLicensed && d.pitTrafficLicensed) ?? false, d.cautionLicensed ?? false));
   }
-  const race = new Race(world, laps, new PaceCarDriver());
+  const race = new Race(world, laps, new PaceCarDriver(), withRules ? { rulebook: OVAL_RULES, seed } : undefined);
   const ctl = race.control!;
   const cars = world.cars;
   const marks = measureMarks ? new MarkGrid(track) : null;
 
   const stats: RaceStats = {
     track: trackName, seed, laps, finished: 0, cautions: 0, cautionLaps: 0, retirements: [], wearPerLap: [], burnPerLap: [],
-    stops: [], lapsByTire: [], slideSteps: [0, 0, 0], steps: 0, harm: 0, coverage: [],
+    stops: [], lapsByTire: [], slideSteps: [0, 0, 0], steps: 0, harm: 0, penalties: [], coverage: [],
   };
   const out = new Set<Car>();
   const prevPhase = new Map<Car, string>();
@@ -254,6 +259,7 @@ function runRace(trackName: keyof typeof specs, seed: number): RaceStats {
   stats.cautions = ctl.cautions;
   stats.finished = cars.filter((c) => race.isFinished(c)).length;
   stats.harm = cars.reduce((a, c) => a + c.harmDone, 0);
+  stats.penalties = race.stewards?.record.map((p) => [p.offence, p.penalty] as [string, string]) ?? [];
   return stats;
 }
 
@@ -327,6 +333,11 @@ for (const name of trackNames) {
   const steps = runs.reduce((a, s) => a + s.steps, 0);
   const slide = [0, 1, 2].map((i) => runs.reduce((a, s) => a + s.slideSteps[i], 0) / steps);
   console.log(`\n${name} (${runs.length} races)`);
+  if (withRules) {
+    const count = new Map<string, number>();
+    for (const [o, p] of runs.flatMap((r) => r.penalties)) count.set(`${o}: ${p}`, (count.get(`${o}: ${p}`) ?? 0) + 1);
+    console.log(`  STEWARDS ${f(runs.reduce((a, r) => a + r.penalties.length, 0) / runs.length)} decisions/race: ${[...count].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ')}`);
+  }
   console.log(`  WRECKS  ${f(ret.length / runs.length)} retirements/race, ${f(mean(runs.map((s) => s.cautions)))} cautions/race, `
     + `${multi.length} multi-car wrecks (mean ${f(mean(multi.map((c) => c.length)))} cars, max ${Math.max(0, ...ch.map((c) => c.length))})`);
   console.log(`          by context: ${[...byContext].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ')}`);

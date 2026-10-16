@@ -61,15 +61,20 @@ export class Team implements Controller {
   decide(car: Car, world: World): void {
     const track = world.track;
     const r = track.signedS(car.s);
-    if (this.crewChief && car.pit.phase === 'none') {
+    if (car.pit.phase === 'none' && (this.crewChief || car.pendingPenalty)) {
       const dp = pitDecisionS(track);
       if (this.lastS < dp && r >= dp && r - this.lastS < 50) {
-        const call = this.crewChief.decide(car, world);
+        // A penalty to serve comes first, under green (stewards' orders); otherwise the chief decides.
+        const p = car.pendingPenalty;
+        const serve = p && (!world.control || world.control.flag === 'green');
+        const call = serve
+          ? { tires: false, fuel: 0, repair: false, penalty: p.kind, penaltySeconds: p.seconds }
+          : this.crewChief?.decide(car, world) ?? null;
         if (call) {
           car.pit.phase = 'in';
           car.pit.call = call;
           this.autopilot.begin(car);
-          world.announce(car, 'crew', this.crewChief.lastMessage);
+          world.announce(car, 'crew', serve ? `Serve the ${p.kind === 'stop-go' ? `${p.seconds} s stop-and-go` : 'drive-through'} this lap` : this.crewChief!.lastMessage);
         }
       }
     }

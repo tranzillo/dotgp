@@ -10,6 +10,9 @@ export interface PitCall {
   /** kg of fuel to add. */
   fuel: number;
   repair: boolean;
+  /** Serving a penalty instead: through pit road (a drive-through) or a stop in the box for some seconds. */
+  penalty?: 'drive-through' | 'stop-go';
+  penaltySeconds?: number;
 }
 
 /**
@@ -96,6 +99,11 @@ export class Car {
   selfInflicted = 0;
   /** The same impacts weighed as the driver feels them (trauma: big hits far worse than their size). */
   selfTrauma = 0;
+  /** A penalty to serve on pit road (stewards), and the green-flag laps left to serve it before the black flag. */
+  pendingPenalty: { kind: 'drive-through' | 'stop-go'; seconds: number; greenLapsLeft: number } | null = null;
+  /** Seconds the stewards added to its race time; shown the black flag. */
+  timePenalty = 0;
+  disqualified = false;
   /** The hardest single hit the car took (health lost, impact speed): what injures a driver. */
   worstHit: { severity: number; speed: number; kind: 'wall' | 'car' } | null = null;
 
@@ -394,6 +402,8 @@ export function trauma(damage: number): number {
 
 /** Seconds the crew needs for a pit call. Tires and fuel happen in parallel. */
 export function serviceTime(car: Car, call: PitCall): number {
+  // A penalty is served, not a stop: no service, only the time in the box (a drive-through barely stops).
+  if (call.penalty) return call.penalty === 'stop-go' ? call.penaltySeconds ?? 10 : 0.5;
   const fuelTime = Math.min(call.fuel, P.FUEL_CAPACITY - car.fuel) / PIT_SERVICE.FUEL_RATE;
   return Math.max(call.tires ? PIT_SERVICE.TIRE_TIME : 0, fuelTime, 2) + (call.repair ? PIT_SERVICE.REPAIR_TIME : 0);
 }

@@ -31,7 +31,7 @@ export const WRECK_CLEAR_TIME = 4;
 export interface WorldEvent {
   time: number;
   car: Car;
-  kind: 'pit-in' | 'pit-out' | 'missed-pit' | 'retired' | 'crew' | 'flag';
+  kind: 'pit-in' | 'pit-out' | 'missed-pit' | 'retired' | 'crew' | 'flag' | 'steward';
   text: string;
 }
 

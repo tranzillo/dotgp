@@ -1,6 +1,6 @@
 import { PIT_SERVICE, PHYSICS as P } from '../sim/constants';
 import type { Car } from '../sim/car';
-import { pullOffS } from '../sim/raceControl';
+import { FILE_OFFSET, pullOffS, ROW_GAP } from '../sim/raceControl';
 import type { Controller, World } from '../sim/world';
 import { followLine } from './lineFollower';
 
@@ -15,6 +15,12 @@ const CATCH_UP = 18;
 const FOLLOW_GAP = 6;
 /** Braking the following rule plans around (m/s^2): firm but comfortable. */
 const COMFORT_DECEL = 4;
+/**
+ * Where a car giving places back drives: one car's width (and a little air)
+ * outside the outer file, so the cars it has to let by pass in the files.
+ * Cars catching up stay inside it, so it stays free.
+ */
+const YIELD_LANE = -(FILE_OFFSET + 2 * P.CAR_RADIUS + 0.5);
 
 export class FormationDriver {
   decide(car: Car, world: World): void {
@@ -31,8 +37,20 @@ export class FormationDriver {
     // A slot far behind (a lapped car ahead of the leader) is reached by going around, not by stopping.
     if (err < -150) err += t.length;
     let v = Math.max(3, Math.min(slot.speed + CATCH_UP, slot.speed + 0.3 * err));
-    // Hold your lane while catching up; slide into your file once you're nearly there.
-    let lane = Math.abs(err) < 40 ? slot.d : Math.max(-6, Math.min(6, car.d));
+    // Ahead of our place by more than a row: give the places back, out of the way, up in the yield lane.
+    // Catching up: hold your lane (inside the yield lane); slide into your file once you're nearly there.
+    let lane = err < -ROW_GAP ? YIELD_LANE
+      : Math.abs(err) < 40 ? slot.d : Math.max(YIELD_LANE + 2 * P.CAR_RADIUS + 0.5, Math.min(6, car.d));
+    // Told by race control (over the radio) to line up behind a car: let it by, up in the yield lane, until
+    // we're behind it.
+    const behind = ctl.toLineUpBehind(car);
+    if (behind) {
+      const past = t.distanceFrom(behind.s, car.s); // how far we're ahead of it
+      if (past < t.length / 2) {
+        lane = YIELD_LANE;
+        v = Math.min(v, Math.max(3, behind.speed + 0.3 * -(past + 2 * P.CAR_RADIUS + FOLLOW_GAP)));
+      }
+    }
     // A wreck in our lane ahead: go around it on the side with more room.
     const wreck = ctl.wreckAhead(car);
     if (wreck && Math.abs(wreck.d - lane) < 4) lane = wreck.d > 0 ? wreck.d - 5 : wreck.d + 5;

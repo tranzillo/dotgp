@@ -18,9 +18,9 @@ export type Flag = 'pace' | 'restart' | 'green' | 'caution';
 
 /** Minimum laps under caution, however quickly the track is cleared. */
 const MIN_CAUTION_LAPS = 2;
-const ROW_GAP = 10; // m between rows in formation
+export const ROW_GAP = 10; // m between rows in formation
 const FIRST_ROW_GAP = 16; // m from the pace car to the front row
-const FILE_OFFSET = 2.6; // m either side of the centerline for the two files
+export const FILE_OFFSET = 2.6; // m either side of the centerline for the two files
 const WRECKER_SPEED = 22;
 const TOW_SPEED = 15;
 const HOOK_TIME = 8;
@@ -60,8 +60,6 @@ export interface FormationSlot {
 
 /** How far the virtual pace car may run ahead of a leader that can't keep up before it waits for it (m). */
 const VIRTUAL_LEAD_MAX = 100;
-/** Under pacing, how far one car must be ahead of the car before it in line to take its place (m). */
-const SWAP_MARGIN = 8;
 
 export class RaceControl {
   readonly world: World;
@@ -85,6 +83,38 @@ export class RaceControl {
   private garageSlots = 0;
   /** Cars in formation order this tick, and their slots. */
   private order: Car[] = [];
+  /** Stewards' penalty, or a car that couldn't keep pace: to the back of the official order. */
+  sendToTail(car: Car): void {
+    if (!this.pacing) return;
+    this.order = this.order.filter((c) => c !== car).concat(car);
+  }
+
+  /**
+   * Race control's calls to crews this caution: a car ahead on track of a car
+   * in an earlier row of the official order (row mates are side by side, so
+   * never) is told to line up behind it, with how far the car had gone when
+   * told. Still out of order a full lap later: the stewards' case.
+   */
+  private readonly calls = new Map<string, { car: Car; against: Car; dist: number }>();
+
+  /** Pairs already ruled, or reported as jumped restarts. */
+  private readonly ruled = new Set<string>();
+
+  /** For the stewards: a car that didn't give a place back within a lap of being told, or passed before the green at a restart. */
+  private readonly cases: Array<{ car: Car; against: Car; restart: boolean }> = [];
+  /** Calls still open when the green came out, carried until a lap after each. */
+  private carried: Array<{ car: Car; against: Car; dist: number }> = [];
+
+  /** Race control's call to this car's crew, if any: the car it has been told to line up behind. */
+  toLineUpBehind(car: Car): Car | null {
+    for (const c of this.calls.values()) if (c.car === car) return c.against;
+    return null;
+  }
+
+  takeLineupCases(): Array<{ car: Car; against: Car; restart: boolean }> {
+    return this.cases.splice(0);
+  }
+
   /** Where the virtual pace car is when the real one isn't leading the line (NaN: none). */
   private virtualS = NaN;
   private readonly slots = new Map<Car, FormationSlot>();
@@ -152,6 +182,8 @@ export class RaceControl {
     if (this.flag === 'caution') {
       const laps = leader ? leader.lapsCompleted - this.cautionLap : 0;
       const clear = this.wreckers.every((w) => w.phase === 'done' || (w.phase === 'tow' && w.wreck.d > t.innerEdge(w.wreck.trackIdx) + 3));
+      // One to go once the track is clear and the minimum laps are run. Race control doesn't wait for the
+      // field to be lined up: cars still catching up restart from where they are.
       if (clear && laps >= this.cautionMinLaps) this.oneToGo = true;
       this.releasePaceCar(leader);
     }
@@ -171,6 +203,83 @@ export class RaceControl {
       this.world.announce(leader, 'flag', 'Green flag!');
       this.onGreen?.(leader);
     }
+    this.lineup();
+  }
+
+  /** Signed distance from a car to its slot along the track: + it's behind its place, - ahead of it. */
+  private slotError(car: Car): number {
+    const slot = this.slots.get(car);
+    if (!slot) return 0;
+    const t = this.track;
+    let err = t.distanceFrom(car.s, slot.s);
+    if (err > t.length / 2) err -= t.length;
+    return err;
+  }
+
+  /**
+   * The official order against the cars on track, between cars that are in
+   * the line (within a row of their place): a car ahead of one in an earlier
+   * row is told to line up behind it, and still out of order a full lap later
+   * it's the stewards' case; a call still open at the green carries on, and a
+   * lap after it the car is a case if it's still ahead of the other. Once the
+   * pace car is off, passing a car ahead in line before the green is a jumped
+   * restart. Cars still catching up, or dropping back to give places back,
+   * aren't in the line yet: they're left to drive.
+   */
+  private lineup(): void {
+    if (!this.pacing) {
+      // Calls still open at the green: a lap after each, still ahead of the other car (by race distance,
+      // now they're racing) means the place was never given back.
+      for (const c of this.calls.values()) this.carried.push(c);
+      this.calls.clear();
+      this.ruled.clear();
+      this.carried = this.carried.filter((c) => {
+        if (c.car.retired || c.against.retired) return false;
+        if (c.car.dist < c.dist + this.track.length) return true;
+        if (c.car.dist > c.against.dist) this.cases.push({ car: c.car, against: c.against, restart: false });
+        return false;
+      });
+      return;
+    }
+    const inLine = this.order.filter((c) => Math.abs(this.slotError(c)) < ROW_GAP);
+    const index = new Map(this.order.map((c, i) => [c, i]));
+    const row = (c: Car) => Math.floor(index.get(c)! / 2);
+    // Ahead on track, between two cars in the line: the shorter way round (the line is far shorter than half a
+    // lap, so for cars in it this is never ambiguous). Not race distance: a car a lap down running ahead of a
+    // lead-lap car has less race distance, but it is ahead of it. Cars running ahead of the leader at the
+    // caution aren't in the line (their place is at its tail): they're waved around and join it there.
+    const L = this.track.length;
+    const aheadOf = (b: Car, a: Car) => this.track.distanceFrom(a.s, b.s) < L / 2;
+    const now = new Map<string, { car: Car; against: Car }>();
+    for (const a of inLine) {
+      for (const b of inLine) {
+        if (b === a || row(b) <= row(a) || !aheadOf(b, a)) continue; // b behind a in line, ahead of it on track
+        now.set(`${a.id}:${b.id}`, { car: b, against: a });
+      }
+    }
+    const caseFor = new Set<Car>(); // one ruling per car, however many cars it's ahead of
+    for (const [key, w] of now) {
+      if (this.ruled.has(key)) continue;
+      // Once the pace car is off, a new pass is a jumped restart; calls made before carry on as calls.
+      if (this.flag === 'restart' && !this.calls.has(key)) {
+        this.ruled.add(key);
+        // Past a car ahead of it in line before the green: one case per car this restart, however many it passed.
+        if (!this.ruled.has(`jump:${w.car.id}`)) this.cases.push({ car: w.car, against: w.against, restart: true });
+        this.ruled.add(`jump:${w.car.id}`);
+        continue;
+      }
+      const call = this.calls.get(key);
+      if (!call) {
+        this.calls.set(key, { ...w, dist: w.car.dist });
+        this.world.announce(w.car, 'crew', `Race control: line up behind #${w.against.id}`);
+      } else if (w.car.dist >= call.dist + this.track.length) {
+        this.ruled.add(key);
+        this.calls.delete(key);
+        if (!caseFor.has(w.car)) this.cases.push({ car: w.car, against: w.against, restart: false });
+        caseFor.add(w.car);
+      }
+    }
+    for (const key of [...this.calls.keys()]) if (!now.has(key)) this.calls.delete(key); // put right
   }
 
   // ---------- incidents ----------
@@ -259,23 +368,14 @@ export class RaceControl {
     const inLine = (c: Car) => !c.retired && !c.cleared && c.pit.phase === 'none';
     const byDistance = (a: Car, b: Car) => b.dist - a.dist;
     if (!this.pacing || !this.order.length) {
+      // Under green, the running order; the first step of pacing freezes it as the official order.
       this.order = this.world.cars.filter(inLine).sort(byDistance);
     } else {
-      // Under pacing two cars only swap places in line once one is clearly ahead: re-sorting every step
-      // swapped cars side by side in a row, and with them their files. Cars drop out (pitting, wrecked)
-      // and rejoin where they are.
+      // The official order, frozen when the caution came out: it changes only when cars leave it (pitting,
+      // wrecked) or rejoin (at the back), and by race control's rulings, never because cars moved.
       const order = this.order.filter(inLine);
-      for (const car of this.world.cars) {
-        if (!inLine(car) || order.includes(car)) continue;
-        const at = order.findIndex((c) => c.dist < car.dist);
-        order.splice(at < 0 ? order.length : at, 0, car);
-      }
-      for (let i = 1; i < order.length; i++) {
-        for (let j = i; j > 0 && order[j].dist > order[j - 1].dist + SWAP_MARGIN; j--) {
-          [order[j - 1], order[j]] = [order[j], order[j - 1]];
-        }
-      }
-      this.order = order;
+      const joining = this.world.cars.filter((c) => inLine(c) && !order.includes(c)).sort(byDistance);
+      this.order = order.concat(joining);
     }
     if (!this.pacing || !this.order.length) return;
     void leader;
