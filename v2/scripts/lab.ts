@@ -16,6 +16,7 @@
  *       { "kind": "class", "lesson": "cautions", "in": "$house", "out": "trained.json", "rounds": 100 },
  *       { "kind": "season", "in": "trained.json", "out": "seasoned.json", "races": 9, "nerve": 0.5 },
  *       { "kind": "bench", "a": "$house", "b": "trained.json", "seeds": 8 },
+ *       { "kind": "solo", "a": "$house", "b": "trained.json" },        (solo driving on circuits and mirrored ovals)
  *       { "kind": "promote", "candidate": "trained.json" } ] }
  * File names are in the experiment's results folder; $house is the house drivers (lab/house.json), $bundled
  * the drivers shipped with the commit. Promotion replaces the house drivers only if the last benchmark says
@@ -25,6 +26,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { appendFileSync, copyFileSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import type { BenchReport } from './bench';
+import type { SoloReport } from './solo';
 
 const mainV2 = process.cwd();
 const repoRoot = git(mainV2, 'rev-parse', '--show-toplevel');
@@ -42,6 +44,7 @@ type Step =
   | { kind: 'class'; lesson: string; in: string; out: string; rounds?: number; seed?: number }
   | { kind: 'season'; in: string; out: string; races?: number; nerve?: number; tracks?: string }
   | { kind: 'bench'; a: string; b?: string; seeds?: number; tracks?: string; laps?: number }
+  | { kind: 'solo'; a: string; b?: string; tracks?: number; seconds?: number }
   | { kind: 'promote'; candidate: string };
 interface Spec { note?: string; steps: Step[] }
 
@@ -155,6 +158,12 @@ async function runExperiment(file: string): Promise<void> {
           '--tracks', step.tracks ?? 'short,speedway,flat', '--jobs', String(BENCH_JOBS), '--json', json, ...(step.laps ? ['--laps', String(step.laps)] : [])], log);
         bench = JSON.parse(readFileSync(json, 'utf8')) as BenchReport;
         notes.push(`bench ${benchLine(bench)}`);
+      } else if (step.kind === 'solo') {
+        const json = join(dir, 'solo.json');
+        await runScript('solo', [path(step.a), ...(step.b ? [path(step.b)] : []), '--tracks', String(step.tracks ?? 6),
+          '--seconds', String(step.seconds ?? 120), '--json', json], log);
+        const r = JSON.parse(readFileSync(json, 'utf8')) as SoloReport;
+        notes.push(`solo ${Object.keys(r.results[0]).map((k) => `${k} ${r.results.map((x) => `${(100 * x[k].crashed).toFixed(0)}%`).join('→')} crashed`).join(', ')}`);
       } else if (step.kind === 'promote') {
         notes.push(promote(path(step.candidate), bench, name));
       }

@@ -14,7 +14,7 @@ import { DRIVER_LAYERS } from '../ai/drivers';
 import { StrokeCollector } from '../render/marks';
 import type { TrackLayout } from '../sim/layout';
 import { Track } from '../sim/track';
-import { generateLayout, hashSeed } from '../trackgen';
+import { generateLayout, hashSeed, mirrorLayout } from '../trackgen';
 import type { CarView, RadioLine, SessionSnapshot } from '../events/session';
 
 /**
@@ -25,7 +25,7 @@ import type { CarView, RadioLine, SessionSnapshot } from '../events/session';
  * training as headless practice, one visible track per round.
  */
 
-export type LessonId = 'rookie' | 'variety' | 'racecraft' | 'pits' | 'pitTraffic' | 'cautions';
+export type LessonId = 'rookie' | 'variety' | 'circuits' | 'racecraft' | 'pits' | 'pitTraffic' | 'cautions';
 
 export interface Lesson {
   id: LessonId;
@@ -55,6 +55,11 @@ export const LESSONS: Record<LessonId, Lesson> = {
     id: 'variety', name: 'Track variety', seconds: 60, pairs: 8, learningRate: 0.01,
     eligible: (d) => d.licensed, audience: 'licensed drivers',
     description: 'A new generated oval every round, so drivers learn to handle tracks they have never seen.',
+  },
+  circuits: {
+    id: 'circuits', name: 'Road courses', seconds: 80, pairs: 8, learningRate: 0.01,
+    eligible: (d) => d.licensed, audience: 'licensed drivers',
+    description: 'Turn right as well as left. Rounds cycle through a new club circuit, an oval run the other way round (all right-handers), a new GP circuit, and a new ordinary oval so the left-hand ovals stay sharp. Each round starts on a random straight, so the whole circuit gets driven. Runs until stopped.',
   },
   racecraft: {
     id: 'racecraft', name: 'Racecraft', seconds: 0, pairs: 8, learningRate: 0.01,
@@ -179,6 +184,31 @@ interface Student extends StudentSpec {
   last: RoundSummary | null;
 }
 
+/**
+ * The road courses lesson's track for a round: a new club circuit, an oval
+ * the other way round (all right-handers), a new GP circuit, and a new
+ * ordinary oval (left turns stay sharp), in turn.
+ */
+export function roadCourseTrack(round: number, seed: number): Track {
+  switch (round % 4) {
+    case 0: return new Track(generateLayout({ type: 'circuit', seed, variant: 'club' }));
+    case 1: return new Track(mirrorLayout(generateLayout({ type: 'oval', seed })));
+    case 2: return new Track(generateLayout({ type: 'circuit', seed, variant: 'gp' }));
+    default: return new Track(generateLayout({ type: 'oval', seed }));
+  }
+}
+
+/** A start on a random straight (at least 80 m of it ahead), so a round can begin anywhere round a circuit. */
+export function straightStart(track: Track, rng: Rng): number {
+  const starts: number[] = [];
+  for (let s = 0; s < track.length; s += 10) {
+    let straight = true;
+    for (let a = -10; a <= 80 && straight; a += 5) straight = Math.abs(track.curvatureAt(s + a)) < 1e-4;
+    if (straight) starts.push(s);
+  }
+  return starts.length ? starts[rng.int(starts.length)] : track.length - 20;
+}
+
 export class Classroom {
   readonly lesson: Lesson;
   readonly students: Student[];
@@ -290,13 +320,16 @@ export class Classroom {
   private startRound(): void {
     const lesson = this.lesson;
     const prevTrack = this.track;
-    if (lesson.id !== 'variety') {
+    if (lesson.id !== 'variety' && lesson.id !== 'circuits') {
       this.track = this.presets[this.round % this.presets.length];
       // One world, so one wall softness: the class's average experience sets it.
       const lessons = this.students.reduce((a, s) => a + s.rounds, 0) / this.students.length;
       this.walls = lesson.id === 'rookie' ? rookieDamageScale(lessons, DEFAULT_ES.curriculumRounds) : 1;
-    } else {
+    } else if (lesson.id === 'variety') {
       this.track = new Track(generateLayout({ type: 'oval', seed: hashSeed(this.seed, `round${this.round}`) }));
+      this.walls = 1;
+    } else {
+      this.track = roadCourseTrack(this.round, hashSeed(this.seed, `round${this.round}`));
       this.walls = 1;
     }
     this.trackChanged = this.track !== prevTrack;
@@ -339,6 +372,7 @@ export class Classroom {
         this.students.map((s) => s.reference))
       : lesson.id === 'pits' ? new PitTrial(this.track, candidates, lesson.seconds) : new Trial(this.track, candidates, {
       seconds: lesson.seconds,
+      startS: lesson.id === 'circuits' ? straightStart(this.track, this.rng) : undefined,
       damageScale: this.walls,
       damagePenaltyLaps: lesson.id === 'rookie' ? rookieDamagePenalty(lessons, DEFAULT_ES.curriculumRounds) : FULL_DAMAGE_PENALTY,
     });
