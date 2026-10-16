@@ -5,6 +5,7 @@ import { StewardsDesk } from '../rules/desk';
 import type { Rulebook } from '../rules/rulebook';
 import type { StewardTraits } from '../rules/stewards';
 import type { Controller, World } from './world';
+import { Rng } from '../ai/rng';
 
 export type RaceState = 'green' | 'checkered' | 'finished';
 
@@ -51,7 +52,14 @@ export class Race {
     if (paceCar) {
       this.control = new RaceControl(world);
       world.officials.push({ car: this.control.paceCar, controller: paceCar });
-      this.control.formUp(world.cars);
+      const start = rules?.rulebook.start;
+      if (start?.kind === 'standing') {
+        const rng = new Rng((rules?.seed ?? 1) ^ 0x2545f491);
+        this.control.formUpStanding(world.cars, start, () => rng.next());
+        this.control.onLightsOut = () => this.lightsOut();
+      } else {
+        this.control.formUp(world.cars);
+      }
       this.control.onGreen = (leader) => this.greenFlag(leader);
       this.started = false;
       if (rules) this.stewards = new StewardsDesk(world, this.control, rules.rulebook, rules.stewards, rules.seed);
@@ -66,6 +74,20 @@ export class Race {
     this.control?.startGreen();
     this.started = true;
     this.startTime = this.world.time;
+  }
+
+  /**
+   * A standing start: the clock starts as the lights go out. Each car's first
+   * lap starts when it crosses the line (the grid is behind it), and its race
+   * time includes the run from its box.
+   */
+  private lightsOut(): void {
+    this.started = true;
+    this.startTime = this.world.time;
+    for (const car of this.world.cars) {
+      car.lapTimes.length = 0;
+      car.lapStartTime = -1;
+    }
   }
 
   /** Laps before the green don't count: everyone starts lap 1 at the line. */

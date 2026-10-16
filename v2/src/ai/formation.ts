@@ -90,11 +90,19 @@ export class FormationDriver {
     if (err > t.length / 2) err -= t.length;
     // A slot far behind (a lapped car ahead of the leader) is reached by going around, not by stopping.
     if (err < -150) err += t.length;
-    let v = Math.max(3, Math.min(slot.speed + tr.eagerness, slot.speed + 0.3 * err));
+    // Never below a crawl while the line is moving; a slot standing still (a grid box) is stopped in.
+    let v = Math.max(slot.speed > 0 ? 3 : 0, Math.min(slot.speed + tr.eagerness, slot.speed + 0.3 * err));
     // Giving way (ahead of our place by more than the line's spacing): low, in the yield lane, so the cars we
     // must let by go past in the line. Catching up: hold your lane (above the yield lane, which stays free);
     // slide into your place once you're nearly there.
     const yieldLane = ctl.yieldLane();
+    // A grid box (a place standing still) is stopped in where it is; there's nobody to give way to. Once the
+    // lights are on, a driver holds the car still on the brakes.
+    if (slot.speed === 0 && ctl.flag === 'grid') {
+      const want = ctl.lights > 0 ? 0 : Math.max(0, Math.min(tr.eagerness, 0.3 * err));
+      followLine(car, world, () => slot.d, () => follow(slot.d, want), 0.85);
+      return;
+    }
     let lane = err < -ctl.lineSpacing() ? yieldLane
       : Math.abs(err) < 40 ? slot.d : Math.min(yieldLane - 2 * P.CAR_RADIUS - 0.5, Math.max(-6, car.d));
     // A car that belongs ahead of us coming up from behind, catching up to its place: give way, low, before

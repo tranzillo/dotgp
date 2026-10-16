@@ -458,7 +458,9 @@ function updateTower(): void {
     const lap = Math.min(r.laps, Math.max(1, leader.laps + 1));
     const w = meta.teams.get(cars[0].key)!;
     const who = `#${w.livery.number} ${roster.drivers.get(w.driver)?.name ?? ''}`;
-    const flagText = !r.started ? '<span class="flagtag pace">PACE LAPS</span>'
+    const flagText = r.flag === 'formation' ? '<span class="flagtag pace">FORMATION LAP</span>'
+      : r.flag === 'grid' ? (r.lights ? `<span style="color:#e5484d;letter-spacing:2px">${'●'.repeat(r.lights)}</span> lights` : '<span class="flagtag pace">GRID</span> forming up')
+      : !r.started ? '<span class="flagtag pace">PACE LAPS</span>'
       : r.flag === 'caution' ? `<span class="flagtag caution">CAUTION</span>${r.oneToGo ? ' one to go' : ''}`
       : r.flag === 'restart' ? '<span class="flagtag caution">RESTART</span> leader to the line'
       : '<span class="flagtag green">GREEN</span>';

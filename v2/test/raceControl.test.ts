@@ -49,3 +49,39 @@ describe('race control', () => {
     expect(maxFormationGap).toBeLessThan(60);
   });
 });
+
+describe('standing start', () => {
+  it('formation lap, the field stopped in its grid boxes, five lights, and the race starts as they go out', async () => {
+    const { OVAL_RULES } = await import('../src/rules/rulebook');
+    const { presetTrack } = await import('../src/trackgen');
+    const track = presetTrack('short');
+    const world = new World(track, { wearScale: 4 });
+    for (let k = 0; k < 8; k++) world.addCar(new Car(k), neuralTeam(drivers[k % drivers.length]));
+    const rulebook = { ...OVAL_RULES, start: { kind: 'standing' as const, formationLap: true, gridPitch: 8, lights: 5, lightInterval: 1, hold: [0.2, 3] as [number, number] } };
+    const race = new Race(world, 3, new PaceCarDriver(), { rulebook, seed: 1 });
+    const ctl = race.control!;
+    // On the grid, staggered, behind the line, standing still.
+    const grid = world.cars.map((c) => ({ s: track.signedS(c.s), d: c.d }));
+    expect(grid.every((g) => g.s < 0)).toBe(true);
+    expect(Math.sign(grid[0].d)).toBe(-Math.sign(grid[1].d));
+    const flags: string[] = [];
+    let maxLights = 0;
+    let gridStill = true;
+    while (ctl.flag !== 'green' && world.time < 200) {
+      race.step();
+      if (flags[flags.length - 1] !== ctl.flag) flags.push(ctl.flag);
+      maxLights = Math.max(maxLights, ctl.lights);
+      if (ctl.lights > 0) gridStill &&= world.cars.every((c) => c.speed < 0.5);
+      expect(race.started).toBe((ctl.flag as string) === 'green'); // the race starts as the lights go out, not before
+    }
+    expect(flags).toEqual(['formation', 'grid', 'green']);
+    expect(maxLights).toBe(5);
+    expect(gridStill).toBe(true); // nobody creeps while the lights are on
+    expect(world.cars.every((c) => !c.retired)).toBe(true); // waiting on the grid isn't stalling
+    // Every car back in its own box (the formation lap kept grid order).
+    world.cars.forEach((c, k) => expect(Math.abs(track.signedS(c.s) - grid[k].s)).toBeLessThan(3));
+    // Then they get away, each on its own reaction.
+    for (let k = 0; k < 3 / 0.008333; k++) race.step();
+    expect(world.cars.filter((c) => c.speed > 5).length).toBeGreaterThanOrEqual(6);
+  });
+});

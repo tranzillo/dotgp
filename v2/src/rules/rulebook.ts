@@ -36,6 +36,24 @@ export type Penalty =
   /** Out of the race. */
   | 'black-flag';
 
+/**
+ * How a race starts. Rolling: the field forms up behind the pace car and
+ * takes the green at the line (ovals). Standing: from a staggered grid behind
+ * the line, after a formation lap, when the start lights go out (circuits).
+ */
+export type StartProcedure =
+  | { kind: 'rolling' }
+  | {
+    kind: 'standing';
+    formationLap: boolean;
+    /** Metres between grid boxes (each car its own row, staggered left and right). */
+    gridPitch: number;
+    /** Red lights, one more every lightInterval seconds; all of them stay on for a random hold, then go out. */
+    lights: number;
+    lightInterval: number;
+    hold: [number, number];
+  };
+
 /** How an offence is usually punished, by how bad it was (0 marginal .. 1 flagrant). */
 export interface OffenceRule {
   /** Penalties for increasing severity: severity below thresholds[i] gets penalties[i], above all the last. */
@@ -45,6 +63,7 @@ export interface OffenceRule {
 
 export interface Rulebook {
   name: string;
+  start: StartProcedure;
   offences: Record<Offence, OffenceRule>;
   /** Seconds a 'time' penalty adds, and how long a 'stop-go' stops for. */
   timePenalty: number;
@@ -65,6 +84,7 @@ export interface Rulebook {
 /** Stock car rules for ovals. */
 export const OVAL_RULES: Rulebook = {
   name: 'Oval',
+  start: { kind: 'rolling' },
   offences: {
     'pit-speeding': { thresholds: [0.15, 0.6], penalties: ['warning', 'drive-through', 'stop-go'] },
     'passing-under-caution': { thresholds: [0.2], penalties: ['warning', 'tail'] },

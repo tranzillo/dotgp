@@ -2,6 +2,7 @@ import { Car } from './car';
 import { G, PHYSICS as P, PIT_SERVICE } from './constants';
 import type { Track } from './track';
 import type { World } from './world';
+import type { StartProcedure } from '../rules/rulebook';
 
 /**
  * Race control: flags, the pace car and the wrecker crew.
@@ -14,7 +15,13 @@ import type { World } from './world';
  *
  * The green flag flies when the leader crosses the start/finish line.
  */
-export type Flag = 'pace' | 'restart' | 'green' | 'caution';
+export type Flag = 'pace' | 'restart' | 'green' | 'caution' | 'formation' | 'grid';
+/** A standing start's settings (the rulebook's). */
+export type StandingStart = Extract<StartProcedure, { kind: 'standing' }>;
+/** Metres from the start line back to the pole position's box. */
+const POLE_BOX = 12;
+/** How hard the formation lap slows to a stop on the grid (m/s^2): gently. */
+const FORMATION_DECEL = 2.5;
 
 /** Minimum laps under caution, however quickly the track is cleared. */
 const MIN_CAUTION_LAPS = 2;
@@ -157,6 +164,16 @@ export class RaceControl {
   private readonly slots = new Map<Car, FormationSlot>();
   /** Set when the green flag waves; used by the race to start the clock. */
   onGreen: ((leader: Car) => void) | null = null;
+  /** A standing start's lights going out (the race starts there and then). */
+  onLightsOut: (() => void) | null = null;
+  /** Standing start: red lights showing (0 when none, or out). */
+  lights = 0;
+  private standing: StandingStart | null = null;
+  private readonly boxes = new Map<Car, { s: number; d: number }>();
+  /** How far the formation lap's reference has gone, when the lights sequence began, how long they hold. */
+  private formationDist = 0;
+  private lightsFrom = NaN;
+  private hold = 0;
 
   constructor(world: World) {
     this.world = world;
@@ -193,6 +210,92 @@ export class RaceControl {
   }
 
   /**
+   * A standing start: every car in its own grid box behind the line,
+   * staggered left and right, stopped; the pace car parked on pit road for
+   * cautions. With a formation lap the field goes round once at formation
+   * pace, single file in grid order, and stops in its boxes; then the lights.
+   */
+  formUpStanding(cars: Car[], start: StandingStart, random: () => number): void {
+    const t = this.track;
+    this.standing = start;
+    this.hold = start.hold[0] + random() * (start.hold[1] - start.hold[0]);
+    const stagger = Math.min(t.halfWidth * 0.45, FILE_OFFSET + 0.4);
+    cars.forEach((car, k) => {
+      const s = -POLE_BOX - k * start.gridPitch;
+      const d = k % 2 === 0 ? stagger : -stagger;
+      car.placeOnTrack(t, s, d, s);
+      this.boxes.set(car, { s: t.wrapS(s), d });
+    });
+    this.paceCar.placeOnTrack(t, (t.pit.wallStart + t.pit.wallEnd) / 2, t.pit.laneD + 2);
+    this.paceCar.cleared = true;
+    this.paceCarOut = false;
+    this.pickedUp = false;
+    this.oneToGo = false;
+    this.virtualS = t.wrapS(-POLE_BOX);
+    this.formationDist = 0;
+    this.flag = start.formationLap ? 'formation' : 'grid';
+  }
+
+  /**
+   * Formation pace at a point on the lap: well within what the corner there
+   * allows (60% of it), and no faster than the pace speed on the straights.
+   */
+  formationSpeedAt(s: number): number {
+    const k = Math.abs(this.track.curvatureAt(s));
+    const corner = k > 1e-6 ? Math.sqrt((P.TIRE_MU * 0.8 * G) / k) : Infinity;
+    return Math.min(PIT_SERVICE.SPEED_LIMIT * 2, 0.6 * corner);
+  }
+
+  /** Formation lap and grid: places in line follow the formation reference, then become the grid boxes. */
+  private standingSlots(dt: number): void {
+    const t = this.track;
+    let v = 0;
+    if (this.flag === 'formation') {
+      // Round at formation pace, braking gently to a stop at the pole box as the lap ends.
+      const left = t.length - this.formationDist;
+      v = Math.min(this.formationSpeedAt(this.virtualS), Math.sqrt(2 * FORMATION_DECEL * Math.max(0, left)));
+      this.virtualS = t.wrapS(this.virtualS + v * dt);
+      this.formationDist += v * dt;
+      if (left < 0.5) this.flag = 'grid';
+    }
+    this.order.forEach((car, index) => {
+      const box = this.boxes.get(car);
+      if (this.flag === 'grid' && box) {
+        this.slots.set(car, { index, s: box.s, d: box.d, speed: 0 });
+      } else {
+        this.slots.set(car, { index, s: t.wrapS(this.virtualS - index * SINGLE_FILE_GAP), d: 0, speed: v });
+      }
+    });
+  }
+
+  /**
+   * The start lights: once the whole field is stopped on the grid, one red
+   * light comes on each interval; with all of them on they hold for a random
+   * time, then go out, and that's the start.
+   */
+  private startLights(): void {
+    const start = this.standing!;
+    const now = this.world.time;
+    if (Number.isNaN(this.lightsFrom)) {
+      const running = this.world.cars.filter((c) => !c.retired && c.pit.phase === 'none');
+      if (running.every((c) => c.speed < 0.3)) {
+        this.lightsFrom = now;
+        this.world.announce(running[0] ?? this.paceCar, 'flag', 'The field is on the grid: lights');
+      }
+      return;
+    }
+    const allOn = this.lightsFrom + (start.lights - 1) * start.lightInterval;
+    if (now < allOn + this.hold) {
+      this.lights = Math.min(start.lights, 1 + Math.floor((now - this.lightsFrom) / start.lightInterval));
+      return;
+    }
+    this.lights = 0;
+    this.flag = 'green';
+    this.world.announce(this.order[0] ?? this.paceCar, 'flag', 'Lights out!');
+    this.onLightsOut?.();
+  }
+
+  /**
    * Green from wherever the field is, with no pace laps (drills that begin
    * mid-race): the pace car waits on pit road for the next caution.
    */
@@ -215,6 +318,7 @@ export class RaceControl {
     this.detectIncidents(dt);
     this.stepWreckers(dt);
     this.updateFormation(leader, dt);
+    if (this.flag === 'grid') this.startLights();
 
     if (this.flag === 'pace' && !this.oneToGo && leader && this.crossedLine(leader)) {
       this.oneToGo = true;
@@ -289,6 +393,8 @@ export class RaceControl {
     }
     // Before the pace car has the leader there's no line yet: the field is still slowing, each in its own way.
     if (this.flag === 'caution' && !this.pickedUp) return;
+    // The formation lap and the grid: no calls (the field drives round in grid order and stops in its boxes).
+    if (this.flag === 'formation' || this.flag === 'grid') return;
     const inLine = this.order.filter((c) => Math.abs(this.slotError(c)) < this.lineSpacing());
     const index = new Map(this.order.map((c, i) => [c, i]));
     const single = this.singleFile;
@@ -336,8 +442,9 @@ export class RaceControl {
     const t = this.track;
     for (const car of this.world.cars) {
       if (this.handled.has(car) || car.cleared) continue;
-      // A car stopped on the racing surface (out of fuel, spun) is a wreck too.
-      if (!car.retired && car.pit.phase === 'none' && car.speed < 3 && car.d < t.innerEdge(car.trackIdx) + 1) {
+      // A car stopped on the racing surface (out of fuel, spun) is a wreck too; waiting on the grid it's just
+      // waiting (a car that doesn't get away counts from the start).
+      if (!car.retired && this.flag !== 'grid' && car.pit.phase === 'none' && car.speed < 3 && car.d < t.innerEdge(car.trackIdx) + 1) {
         const since = (this.stoppedSince.get(car) ?? 0) + dt;
         this.stoppedSince.set(car, since);
         if (since > STALL_TIME) {
@@ -431,6 +538,10 @@ export class RaceControl {
     }
     if (!this.pacing || !this.order.length) return;
     void leader;
+    if (this.flag === 'formation' || this.flag === 'grid') {
+      this.standingSlots(dt);
+      return;
+    }
     const pc = this.paceCar;
     const head = this.order[0];
     // The pace car leads once it has picked up the leader (the leader has caught it, on track, right behind

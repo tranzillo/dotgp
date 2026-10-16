@@ -1,3 +1,4 @@
+import type { Flag } from '../sim/raceControl';
 import { NeuralDriver, Team } from '../ai/drivers';
 import { danger, fearScale } from '../ai/fear';
 import { PaceCarDriver, formationTraits } from '../ai/formation';
@@ -94,9 +95,11 @@ export interface RaceView {
   laps: number;
   state: Race['state'];
   started: boolean;
-  flag: 'pace' | 'restart' | 'green' | 'caution';
+  flag: Flag;
   oneToGo: boolean;
   pacing: boolean;
+  /** Standing start: red lights showing. */
+  lights: number;
   paceCar: { x: number; y: number } | null;
   wreckers: Array<{ x: number; y: number; phase: string }>;
 }
@@ -344,6 +347,7 @@ export class Session {
         flag: ctl?.flag ?? 'green',
         oneToGo: ctl?.oneToGo ?? false,
         pacing: ctl?.pacing ?? false,
+        lights: ctl?.lights ?? 0,
         paceCar: ctl?.paceCarOut ? { x: ctl.paceCar.x, y: ctl.paceCar.y } : null,
         wreckers: (ctl?.wreckers ?? []).map((w) => ({ x: w.x, y: w.y, phase: w.phase })),
       } : null,
