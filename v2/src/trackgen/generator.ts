@@ -35,8 +35,8 @@ export interface TrackType<P extends object = object> {
   name: string;
   /** Families of this type (size classes, shapes) that sample() understands. */
   variants: readonly string[];
-  /** Random parameters for a variant. */
-  sample(rng: Rng, variant: string): P;
+  /** Random parameters for a variant (hints: the caller's fixed parameters, which sampling may respect). */
+  sample(rng: Rng, variant: string, hints?: Record<string, unknown>): P;
   /** Lay out a track from parameters. */
   build(params: P, ctx: GenContext): TrackLayout;
   /** Checks only this type knows how to make. */
@@ -79,7 +79,7 @@ export function generateLayout(opts: GenerateOptions): TrackLayout {
     const seed = attempt === 0 ? opts.seed >>> 0 : hashSeed(opts.seed, `retry${attempt}`);
     const ctx = context(seed);
     const variant = opts.variant ?? type.variants[ctx.rng('variant').int(type.variants.length)];
-    const params = { ...type.sample(ctx.rng('params'), variant), ...opts.params };
+    const params = { ...type.sample(ctx.rng('params'), variant, opts.params), ...opts.params };
     const layout = type.build(params, ctx);
     layout.seed = opts.seed;
     layout.params = { ...layout.params, variant, attempt };

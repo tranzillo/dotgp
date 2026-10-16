@@ -28,6 +28,8 @@ export interface DriverAgent {
   pitTrafficLicensed?: boolean;
   /** Has passed the caution lesson: drives its own cautions and restarts instead of the formation script. */
   cautionLicensed?: boolean;
+  /** The road-course skill: a second network for road circuits, its training rounds, and the license. */
+  roadCourse?: { weights: Float32Array; rounds: number; licensed: boolean };
   /**
    * Nerve: appetite for risk, 0 timid to 1 fearless (unset: middling). It
    * sets what the driver learns to care about: how much fear of an imminent
@@ -343,7 +345,10 @@ export class Roster {
       version: 3,
       counter: this.counter,
       teams: this.teams,
-      drivers: [...this.drivers.values()].map((d) => ({ ...d, weights: Array.from(d.weights) })),
+      drivers: [...this.drivers.values()].map((d) => ({
+        ...d, weights: Array.from(d.weights),
+        ...(d.roadCourse ? { roadCourse: { ...d.roadCourse, weights: Array.from(d.roadCourse.weights) } } : {}),
+      })),
       spotters: [...this.spotters.values()],
       chiefs: [...this.chiefs.values()].map((c) => ({
         ...c,
@@ -360,7 +365,7 @@ export class Roster {
    */
   static fromBundle(
     bundle: { id: string; name: string },
-    drivers: Array<{ weights: number[]; rounds?: number; nerve?: number; cautionLicensed?: boolean }>,
+    drivers: Array<{ weights: number[]; rounds?: number; nerve?: number; cautionLicensed?: boolean; roadCourse?: { weights: number[]; rounds?: number; licensed?: boolean } }>,
     fieldSize: number,
     rng: Rng,
   ): Roster | null {
@@ -374,6 +379,9 @@ export class Roster {
         id: `${bundle.id}-${i}-${copy}`, name: `${bundle.name} ${letters[i % 26]}${copy > 1 ? copy : ''}`,
         weights: adaptWeights(Float32Array.from(src.weights)), rounds: src.rounds ?? 0, mentor: null, licensed: true,
         nerve: src.nerve, cautionLicensed: src.cautionLicensed,
+        roadCourse: src.roadCourse
+          ? { weights: adaptWeights(Float32Array.from(src.roadCourse.weights)), rounds: src.roadCourse.rounds ?? 0, licensed: !!src.roadCourse.licensed }
+          : undefined,
       };
       r.drivers.set(driver.id, driver);
       const spotter: SpotterAgent = { id: `${bundle.id}-S${k}`, name: `Spotter ${k + 1}`, skill: PERFECT_SPOTTER };
@@ -397,9 +405,10 @@ export class Roster {
     const d = data as Record<string, unknown>;
     if (d && d.version === 3) {
       r.counter = Number(d.counter) || 0;
-      for (const x of d.drivers as Array<DriverAgent & { weights: number[] }>) {
+      for (const x of d.drivers as Array<Omit<DriverAgent, 'roadCourse'> & { weights: number[]; roadCourse?: { weights: number[]; rounds: number; licensed: boolean } }>) {
         r.drivers.set(x.id, {
           ...x, weights: adaptWeights(Float32Array.from(x.weights)), licensed: x.licensed ?? (x.rounds > 0 || x.mentor !== null),
+          roadCourse: x.roadCourse ? { ...x.roadCourse, weights: adaptWeights(Float32Array.from(x.roadCourse.weights)) } : undefined,
         });
       }
       for (const x of d.spotters as SpotterAgent[]) r.spotters.set(x.id, x);

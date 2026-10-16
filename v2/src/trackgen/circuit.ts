@@ -52,6 +52,8 @@ export interface CircuitParams {
   runoff: Array<'gravel' | 'runoff'>;
   character: string;
   name?: string;
+  /** Corners no tighter than this (m): gentler circuits for drivers learning road courses. */
+  minRadius?: number;
 }
 
 interface SizeClass {
@@ -119,20 +121,21 @@ function cornerSections(c: CornerSpec): Array<[number, number, number]> {
   return out;
 }
 
-function sampleCircuit(rng: Rng, variant: string): CircuitParams {
+function sampleCircuit(rng: Rng, variant: string, hints?: Record<string, unknown>): CircuitParams {
   const cls = CIRCUIT_CLASSES[variant];
   if (!cls) throw new Error(`unknown circuit variant "${variant}"`);
   const names = Object.keys(CHARACTERS);
   const character = names[rng.int(names.length)];
   const ch = CHARACTERS[character];
-  for (let attempt = 0; attempt < 200; attempt++) {
-    const params = tryCircuit(rng, cls, character, ch);
-    if (params) return params;
+  const minRadius = Math.max(MIN_RADIUS, Number(hints?.minRadius) || MIN_RADIUS);
+  for (let attempt = 0; attempt < 400; attempt++) {
+    const params = tryCircuit(rng, cls, character, ch, minRadius);
+    if (params) return { ...params, minRadius };
   }
   throw new Error('no feasible circuit shape');
 }
 
-function tryCircuit(rng: Rng, cls: SizeClass, character: string, ch: (typeof CHARACTERS)[string]): CircuitParams | null {
+function tryCircuit(rng: Rng, cls: SizeClass, character: string, ch: (typeof CHARACTERS)[string], minRadius: number): CircuitParams | null {
   const length = pick(rng, cls.length);
   const m = Math.max(6, Math.round(length / pick(rng, cls.perCorner)));
   // Polygon: points round an ellipse in angle order (so it never crosses itself), radii jittered, some pushed out.
@@ -157,7 +160,7 @@ function tryCircuit(rng: Rng, cls: SizeClass, character: string, ch: (typeof CHA
 
   // Corners: preferred radii, then shrunk until each edge fits its two corners and a straight.
   const corners: CornerSpec[] = turns.map((angle) => {
-    const radius = Math.max(MIN_RADIUS, preferredRadius(rng, angle) * ch.radius);
+    const radius = Math.max(minRadius, preferredRadius(rng, angle) * ch.radius);
     return { angle, radius, ease: easeFor(radius, angle) };
   });
   for (let pass = 0; pass < 30; pass++) {
@@ -179,6 +182,7 @@ function tryCircuit(rng: Rng, cls: SizeClass, character: string, ch: (typeof CHA
   }
   const straights = lengths.map((len, k) => len - tangentLength(corners[k]) - tangentLength(corners[(k + 1) % m]));
   if (straights.some((s) => s < MIN_STRAIGHT - 1)) return null;
+  if (corners.some((c) => c.radius < minRadius - 1e-6)) return null; // fitting squeezed a corner below the floor
 
   // The longest straight is the main straight; the lap starts in its middle.
   let mainEdge = 0;
@@ -188,7 +192,7 @@ function tryCircuit(rng: Rng, cls: SizeClass, character: string, ch: (typeof CHA
   for (let j = 1; j <= m; j++) {
     const v = (mainEdge + j) % m;
     elements.push({ corner: corners[v] });
-    if (j < m) elements.push(...straightWithFeatures(rng, straights[v], ch.chicanes));
+    if (j < m) elements.push(...straightWithFeatures(rng, straights[v], ch.chicanes, minRadius));
   }
   const params: CircuitParams = {
     main: straights[mainEdge], elements, width: Math.round(pick(rng, cls.width) * 2) / 2,
@@ -199,11 +203,11 @@ function tryCircuit(rng: Rng, cls: SizeClass, character: string, ch: (typeof CHA
 }
 
 /** A straight, sometimes with a chicane in it (left-right-left or the mirror, back onto the same line). */
-function straightWithFeatures(rng: Rng, length: number, chicaneChance: number): CircuitElement[] {
+function straightWithFeatures(rng: Rng, length: number, chicaneChance: number, minRadius: number): CircuitElement[] {
   if (length < 320 || rng.next() > chicaneChance) return [{ straight: length }];
   const dir = rng.next() < 0.5 ? 1 : -1;
   const a = pick(rng, [25, 45]) * Math.PI / 180;
-  const radius = pick(rng, [15, 30]);
+  const radius = Math.max(minRadius, pick(rng, [15, 30]));
   const link = pick(rng, [4, 12]);
   const first: CornerSpec = { angle: dir * a, radius, ease: easeFor(radius, a) };
   const middle: CornerSpec = { angle: -dir * 2 * a, radius, ease: easeFor(radius, 2 * a) };

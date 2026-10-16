@@ -34,7 +34,8 @@ export interface EntrantSpec {
   key: number;
   fill: string;
   /** pits / cautions: drives its own pit stops / cautions (it has learned to); otherwise the scripts do. */
-  driver: { id: string; weights: Float32Array; pits?: boolean; cautions?: boolean; nerve?: number };
+  /** roadWeights: the driver's road-course skill (drives road circuits instead of its main network). */
+  driver: { id: string; weights: Float32Array; roadWeights?: Float32Array; pits?: boolean; cautions?: boolean; nerve?: number };
   spotter: { id: string; skill: SpotterSkill };
   chief: { id: string; brain: { kind: 'neural'; weights: Float32Array } | { kind: 'scripted'; traits: CrewChiefTraits } };
 }
@@ -208,7 +209,7 @@ export class Session {
       const car = new Car(k, entrant.fill);
       if (contact) placeOnGrid(car, this.track, k, true);
       else this.rollingStart(car); // ghosts share one spot
-      const driver = new NeuralDriver(entrant.driver.weights);
+      const driver = new NeuralDriver(entrant.driver.weights, entrant.driver.roadWeights);
       const team = new Team(driver, new TowerSpotter(entrant.spotter.skill), contact ? makeChief(entrant.chief.brain) : null,
         entrant.driver.pits ?? false, entrant.driver.cautions ?? false,
         formationTraits(entrant.driver.nerve, () => traitRng.next()));

@@ -2,7 +2,7 @@ import { adaptWeights } from '../ai/drivers';
 import {
   adamStep, centeredRanks, DEFAULT_ES, FULL_DAMAGE_PENALTY, LICENSE_HEALTH, rookieDamagePenalty, rookieDamageScale,
 } from '../ai/es';
-import { Trial } from '../ai/evaluate';
+import { Trial, type TrialResult } from '../ai/evaluate';
 import { apprenticePitStops, cleanStop, PitTrial, REFRESHER_ROUNDS, type PitTrialResult } from './pitLesson';
 import { DrillTrial, racingKept } from './drill';
 import { PACK_SIZE, RacecraftTrial, randomLayout, type RacecraftResult } from './racecraftLesson';
@@ -14,7 +14,7 @@ import { DRIVER_LAYERS } from '../ai/drivers';
 import { StrokeCollector } from '../render/marks';
 import type { TrackLayout } from '../sim/layout';
 import { Track } from '../sim/track';
-import { generateLayout, hashSeed, mirrorLayout } from '../trackgen';
+import { generateLayout, hashSeed } from '../trackgen';
 import type { CarView, RadioLine, SessionSnapshot } from '../events/session';
 
 /**
@@ -32,7 +32,7 @@ export interface Lesson {
   name: string;
   description: string;
   /** Who it's for. */
-  eligible: (driver: { licensed: boolean; pitLicensed?: boolean; pitTrafficLicensed?: boolean; cautionLicensed?: boolean }) => boolean;
+  eligible: (driver: { licensed: boolean; pitLicensed?: boolean; pitTrafficLicensed?: boolean; cautionLicensed?: boolean; roadLicensed?: boolean }) => boolean;
   /** Who's eligible, in words. */
   audience: string;
   /** Seconds per round, antithetic pairs per student, learning rate. */
@@ -57,9 +57,9 @@ export const LESSONS: Record<LessonId, Lesson> = {
     description: 'A new generated oval every round, so drivers learn to handle tracks they have never seen.',
   },
   circuits: {
-    id: 'circuits', name: 'Road courses', seconds: 80, pairs: 8, learningRate: 0.01,
-    eligible: (d) => d.licensed, audience: 'licensed drivers',
-    description: 'Turn right as well as left. Rounds cycle through a new club circuit, an oval run the other way round (all right-handers), a new GP circuit, and a new ordinary oval so the left-hand ovals stay sharp. Each round starts on a random straight, so the whole circuit gets driven. Runs until stopped.',
+    id: 'circuits', name: 'Road courses', seconds: 150, pairs: 8, learningRate: 0.02,
+    eligible: (d) => d.licensed && !d.roadLicensed, audience: "licensed drivers without a road-course license",
+    description: "Learn road courses: flat corners from sweepers to hairpins, braking hard off long straights. Trains the driver's road-course skill (a second network used only on circuits, starting as a copy of its oval driving), so oval racing is never touched. A new club circuit every round, starting on a random straight. The corners start no tighter than an oval's and the barriers soft; each round the class drives cleanly the corners tighten and the barriers harden, down to real hairpins. The license: a clean lap's worth of driving on three circuits at full tightness.",
   },
   racecraft: {
     id: 'racecraft', name: 'Racecraft', seconds: 0, pairs: 8, learningRate: 0.01,
@@ -110,6 +110,8 @@ export interface StudentSpec {
   pitTrafficLicensed?: boolean;
   /** Drives its own cautions and restarts. */
   cautionLicensed?: boolean;
+  /** Has the road-course license. (In the Road courses lesson, `weights` are the road-course skill's.) */
+  roadLicensed?: boolean;
   /** Appetite for risk (0 timid .. 1 fearless): what fear costs it in lessons that score it. */
   nerve?: number;
 }
@@ -132,6 +134,7 @@ export interface RoundReport {
   pitLicensed: boolean;
   pitTrafficLicensed: boolean;
   cautionLicensed: boolean;
+  roadLicensed: boolean;
   /** Earned a license this round (which one: the lesson's). */
   graduated: boolean;
   track: string;
@@ -160,7 +163,9 @@ export interface SchoolView {
   track: string;
   remaining: number;
   walls: number;
-  students: Array<{ key: number; id: string; name: string; rounds: number; licensed: boolean; pitLicensed: boolean; pitTrafficLicensed: boolean; cautionLicensed: boolean; passed: string[]; last: RoundSummary | null }>;
+  students: Array<{ key: number; id: string; name: string; rounds: number; licensed: boolean; pitLicensed: boolean; pitTrafficLicensed: boolean; cautionLicensed: boolean; roadLicensed: boolean; passed: string[]; last: RoundSummary | null }>;
+  /** Road courses: the tightest corner this round's circuit may have (m). */
+  roadRadius?: number;
 }
 
 /** A round's result without the weights (what the viewer shows). */
@@ -173,6 +178,7 @@ interface Student extends StudentSpec {
   pitLicensed: boolean;
   pitTrafficLicensed: boolean;
   cautionLicensed: boolean;
+  roadLicensed: boolean;
   /** Pit stop lesson: rounds in a row the student hasn't stopped. */
   noStop: number;
   /** How it drove when the class began (racecraft holds its solo pace to this). */
@@ -184,17 +190,27 @@ interface Student extends StudentSpec {
   last: RoundSummary | null;
 }
 
-/**
- * The road courses lesson's track for a round: a new club circuit, an oval
- * the other way round (all right-handers), a new GP circuit, and a new
- * ordinary oval (left turns stay sharp), in turn.
- */
-export function roadCourseTrack(round: number, seed: number): Track {
-  switch (round % 4) {
-    case 0: return new Track(generateLayout({ type: 'circuit', seed, variant: 'club' }));
-    case 1: return new Track(mirrorLayout(generateLayout({ type: 'oval', seed })));
-    case 2: return new Track(generateLayout({ type: 'circuit', seed, variant: 'gp' }));
-    default: return new Track(generateLayout({ type: 'oval', seed }));
+/** Road courses curriculum: corners start no tighter than this (m, about an oval turn's)... */
+export const ROAD_START_RADIUS = 80;
+/** ...and tighten to real hairpins. */
+export const ROAD_FULL_RADIUS = 13;
+/** Each round most of the class drives cleanly, the tightest corner allowed shrinks by this factor. */
+const ROAD_TIGHTEN = 0.9;
+
+/** Barrier softness at a curriculum stage: soft while the corners are gentle, full at real hairpins. */
+export function roadWalls(minRadius: number): number {
+  const progress = (ROAD_START_RADIUS - minRadius) / (ROAD_START_RADIUS - ROAD_FULL_RADIUS);
+  return Math.min(1, Math.max(0.3, 0.3 + 0.7 * progress));
+}
+
+/** A new club circuit with corners no tighter than minRadius (the next seed if one can't be laid out). */
+export function roadCourseTrack(seed: number, minRadius: number): Track {
+  for (let k = 0; ; k++) {
+    try {
+      return new Track(generateLayout({ type: 'circuit', seed: hashSeed(seed, `try${k}`), variant: 'club', params: { minRadius } }));
+    } catch (e) {
+      if (k >= 5) throw e;
+    }
   }
 }
 
@@ -221,6 +237,8 @@ export class Classroom {
   private packWeights: Float32Array[] = [];
   walls = 1;
   private readonly presets: Track[];
+  /** Road courses: the tightest corner this round's circuit may have (the curriculum). */
+  roadRadius = ROAD_START_RADIUS;
   private readonly rng: Rng;
   private readonly seed: number;
   private noise: Float32Array[][] = [];
@@ -241,7 +259,7 @@ export class Classroom {
     this.students = spec.students.map((s) => ({
       ...s, weights: adaptWeights(s.weights).slice(), m: new Float32Array(size), v: new Float32Array(size), adamSteps: 0,
       passed: new Set<string>(), last: null, pitLicensed: s.pitLicensed ?? false, pitTrafficLicensed: s.pitTrafficLicensed ?? false,
-      cautionLicensed: s.cautionLicensed ?? false, noStop: 0, reference: adaptWeights(s.weights).slice(),
+      cautionLicensed: s.cautionLicensed ?? false, roadLicensed: s.roadLicensed ?? false, noStop: 0, reference: adaptWeights(s.weights).slice(),
     }));
     if (this.lesson.id === 'pits') {
       // First, each student watches the veteran crews' pit maneuver and learns to copy it.
@@ -274,6 +292,7 @@ export class Classroom {
       case 'pits': return s.pitLicensed;
       case 'pitTraffic': return s.pitTrafficLicensed;
       case 'cautions': return s.cautionLicensed;
+      case 'circuits': return s.roadLicensed;
       default: return false;
     }
   }
@@ -283,6 +302,7 @@ export class Classroom {
     if (this.lesson.id === 'pits') return this.students.every((s) => s.pitLicensed);
     if (this.lesson.id === 'cautions') return this.students.every((s) => s.cautionLicensed);
     if (this.lesson.id === 'pitTraffic') return this.students.every((s) => s.pitTrafficLicensed);
+    if (this.lesson.id === 'circuits') return this.students.every((s) => s.roadLicensed);
     return false;
   }
 
@@ -329,8 +349,8 @@ export class Classroom {
       this.track = new Track(generateLayout({ type: 'oval', seed: hashSeed(this.seed, `round${this.round}`) }));
       this.walls = 1;
     } else {
-      this.track = roadCourseTrack(this.round, hashSeed(this.seed, `round${this.round}`));
-      this.walls = 1;
+      this.track = roadCourseTrack(hashSeed(this.seed, `round${this.round}`), this.roadRadius);
+      this.walls = roadWalls(this.roadRadius);
     }
     this.trackChanged = this.track !== prevTrack;
     const size = genomeSize(DRIVER_LAYERS);
@@ -373,6 +393,7 @@ export class Classroom {
       : lesson.id === 'pits' ? new PitTrial(this.track, candidates, lesson.seconds) : new Trial(this.track, candidates, {
       seconds: lesson.seconds,
       startS: lesson.id === 'circuits' ? straightStart(this.track, this.rng) : undefined,
+      ...(lesson.id === 'circuits' ? { damageScale: this.walls } : {}),
       damageScale: this.walls,
       damagePenaltyLaps: lesson.id === 'rookie' ? rookieDamagePenalty(lessons, DEFAULT_ES.curriculumRounds) : FULL_DAMAGE_PENALTY,
     });
@@ -462,9 +483,25 @@ export class Classroom {
           }
         }
       }
+      // The road-course license: a clean lap's worth of driving (from wherever it started) on three circuits at
+      // full tightness and full barriers.
+      if (!s.roadLicensed && this.lesson.id === 'circuits' && this.roadRadius <= ROAD_FULL_RADIUS && this.walls >= 1) {
+        const r = own as unknown as TrialResult;
+        if (!r.retired && r.health >= LICENSE_HEALTH && r.distance >= this.track.length) {
+          if (!s.passed.has(this.track.name)) {
+            s.passed.add(this.track.name);
+            this.say(`${s.name} drove ${this.track.name} cleanly (${s.passed.size} of 3)`);
+          }
+          if (s.passed.size >= 3) {
+            s.roadLicensed = true;
+            graduated = true;
+            this.say(`${s.name} earned a road-course license`);
+          }
+        }
+      }
       const report: RoundReport = {
         key: s.key, id: s.id, weights: s.weights.slice(), rounds: s.rounds, licensed: s.licensed, pitLicensed: s.pitLicensed,
-        pitTrafficLicensed: s.pitTrafficLicensed, cautionLicensed: s.cautionLicensed, graduated,
+        pitTrafficLicensed: s.pitTrafficLicensed, cautionLicensed: s.cautionLicensed, roadLicensed: s.roadLicensed, graduated,
         track: this.track.name, fitness: own.fitness, laps: own.laps,
         bestLap: Number.isFinite(own.bestLap) ? own.bestLap : null, health: own.health, walls: this.walls,
         beaten: fits.filter((f) => f > own.fitness).length, passed: [...s.passed],
@@ -504,6 +541,18 @@ export class Classroom {
       s.last = summary;
       this.reports.push(report);
     });
+    // Road courses: most of the class drove its own round cleanly (a lap's worth, no crash, as the license asks),
+    // so the corners tighten (and the barriers harden). Stopping in the run-off isn't clean.
+    if (this.lesson.id === 'circuits' && this.roadRadius > ROAD_FULL_RADIUS) {
+      const clean = this.students.filter((_, l) => {
+        const r = results[l * per] as unknown as TrialResult;
+        return !r.retired && r.health >= LICENSE_HEALTH && r.distance >= this.track.length;
+      }).length;
+      if (clean * 2 > this.students.length) {
+        this.roadRadius = Math.max(ROAD_FULL_RADIUS, this.roadRadius * ROAD_TIGHTEN);
+        this.say(`Corners tighten: down to ${this.roadRadius.toFixed(0)} m (barriers ${Math.round(roadWalls(this.roadRadius) * 100)}%)`);
+      }
+    }
     this.timeOffset += this.trial.world.time;
     this.round++;
   }
@@ -544,8 +593,9 @@ export class Classroom {
         lesson: this.lesson.id, round: this.round, track: this.track.name, remaining: this.trial.remaining, walls: this.walls,
         students: this.students.map((s) => ({
           key: s.key, id: s.id, name: s.name, rounds: s.rounds, licensed: s.licensed, pitLicensed: s.pitLicensed,
-          pitTrafficLicensed: s.pitTrafficLicensed, cautionLicensed: s.cautionLicensed, passed: [...s.passed], last: s.last,
+          pitTrafficLicensed: s.pitTrafficLicensed, cautionLicensed: s.cautionLicensed, roadLicensed: s.roadLicensed, passed: [...s.passed], last: s.last,
         })),
+        roadRadius: this.lesson.id === 'circuits' ? this.roadRadius : undefined,
       },
     };
   }

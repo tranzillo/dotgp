@@ -41,9 +41,12 @@ export interface SoloReport {
 const report: SoloReport = { files, seconds, results: [] };
 const tracks = Object.fromEntries(Object.entries(KINDS).map(([kind, make]) => [kind, Array.from({ length: perKind }, (_, k) => make(k))]));
 for (const file of files) {
-  const genomes = (JSON.parse(readFileSync(file, 'utf8')).drivers as Array<{ weights: number[] }>).map((d) => adaptWeights(Float32Array.from(d.weights)));
+  const drivers = JSON.parse(readFileSync(file, 'utf8')).drivers as Array<{ weights: number[]; roadCourse?: { weights: number[] } }>;
   const out: SoloReport['results'][number] = {};
   for (const [kind, list] of Object.entries(tracks)) {
+    // Road circuits are driven by the road-course skill where a driver has one, as in races.
+    const road = kind === 'club' || kind === 'gp';
+    const genomes = drivers.map((d) => adaptWeights(Float32Array.from(road ? d.roadCourse?.weights ?? d.weights : d.weights)));
     let distance = 0, crashed = 0, laps = 0, n = 0;
     for (const track of list) {
       const trial = new Trial(track, genomes, { seconds });

@@ -46,3 +46,20 @@ describe('road circuits', () => {
     }
   });
 });
+
+describe('the road-course skill', () => {
+  it('drives road circuits; ovals keep the driver\'s own network', async () => {
+    const { NeuralDriver, adaptWeights } = await import('../src/ai/drivers');
+    const { presetTrack } = await import('../src/trackgen');
+    const { readFileSync } = await import('node:fs');
+    const w = adaptWeights(Float32Array.from(JSON.parse(readFileSync('public/drivers/default.json', 'utf8')).drivers[0].weights));
+    const road = w.slice().fill(0);
+    const driver = new NeuralDriver(w, road);
+    const circuit = new Track(generateLayout({ type: 'circuit', seed: 1, variant: 'club' }));
+    expect(driver.netFor(circuit)).toBe(driver.roadNet);
+    expect(driver.netFor(presetTrack('short'))).toBe(driver.net);
+    // Without the skill, a driver takes circuits with its own driving.
+    const plain = new NeuralDriver(w);
+    expect(plain.netFor(circuit)).toBe(plain.net);
+  });
+});

@@ -32,15 +32,20 @@ interface DriverEntry {
   pitTrafficLicensed?: boolean;
   cautionLicensed?: boolean;
   nerve?: number;
+  /** The road-course skill (Road courses trains this, not `weights`). */
+  roadCourse?: { weights: number[]; rounds?: number; licensed?: boolean };
 }
+const road = lesson === 'circuits';
 const file = JSON.parse(readFileSync(inFile, 'utf8')) as { drivers: DriverEntry[] };
 const t0 = Date.now();
 const c = new Classroom({
   lesson, presets: Object.keys(PRESETS).map(presetLayout), seed: Number(args.get('seed') ?? 7),
   students: file.drivers.map((d, k) => ({
-    key: k, id: `D${k}`, name: `Driver ${k}`, weights: adaptWeights(Float32Array.from(d.weights)), rounds: 0,
+    key: k, id: `D${k}`, name: `Driver ${k}`,
+    // Road courses starts the skill as a copy of the driver's own driving.
+    weights: adaptWeights(Float32Array.from(road ? d.roadCourse?.weights ?? d.weights : d.weights)), rounds: road ? d.roadCourse?.rounds ?? 0 : 0,
     licensed: d.licensed ?? true, pitLicensed: d.pitLicensed, pitTrafficLicensed: d.pitTrafficLicensed,
-    cautionLicensed: d.cautionLicensed, nerve: d.nerve,
+    cautionLicensed: d.cautionLicensed, roadLicensed: d.roadCourse?.licensed, nerve: d.nerve,
   })),
 });
 console.log(`${lesson}: ${file.drivers.length} students, apprenticeship ${((Date.now() - t0) / 1000).toFixed(0)} s`);
@@ -48,7 +53,7 @@ c.takeRadio();
 while (c.round < maxRounds && !c.finished) {
   c.step();
   c.takeReports();
-  for (const l of c.takeRadio()) if (/now|went back|license/.test(l.text)) console.log(`round ${c.round}: ${l.text}`);
+  for (const l of c.takeRadio()) if (/now|went back|license|tighten|cleanly/.test(l.text)) console.log(`round ${c.round}: ${l.text}`);
 }
 const seconds = (Date.now() - t0) / 1000;
 console.log(`${c.round} rounds, ${seconds.toFixed(0)} s, finished ${c.finished}`);
@@ -57,6 +62,7 @@ writeFileSync(outFile, JSON.stringify({
   ...file,
   drivers: file.drivers.map((d, k) => {
     const s = c.students[k];
+    if (road) return { ...d, roadCourse: { weights: Array.from(s.weights), rounds: s.rounds, licensed: s.roadLicensed } };
     return {
       ...d, weights: Array.from(s.weights), licensed: s.licensed, pitLicensed: s.pitLicensed,
       pitTrafficLicensed: s.pitTrafficLicensed, cautionLicensed: s.cautionLicensed,
@@ -68,6 +74,8 @@ if (summaryFile) {
     lesson, rounds: c.round, seconds, finished: c.finished,
     students: c.students.map((s) => ({
       id: s.id, licensed: s.licensed, pitLicensed: s.pitLicensed, pitTrafficLicensed: s.pitTrafficLicensed, cautionLicensed: s.cautionLicensed,
+      roadLicensed: s.roadLicensed,
     })),
+    roadRadius: road ? c.roadRadius : undefined,
   }, null, 2));
 }

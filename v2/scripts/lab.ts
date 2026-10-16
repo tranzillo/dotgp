@@ -145,7 +145,7 @@ async function runExperiment(file: string): Promise<void> {
         await runScript('class', ['--lesson', step.lesson, '--in', path(step.in), '--out', path(step.out),
           '--rounds', String(step.rounds ?? 100), '--seed', String(step.seed ?? 7), '--summary', summary], log);
         const s = JSON.parse(readFileSync(summary, 'utf8'));
-        const key = { cautions: 'cautionLicensed', pits: 'pitLicensed', pitTraffic: 'pitTrafficLicensed', rookie: 'licensed' }[step.lesson as string];
+        const key = { cautions: 'cautionLicensed', pits: 'pitLicensed', pitTraffic: 'pitTrafficLicensed', rookie: 'licensed', circuits: 'roadLicensed' }[step.lesson as string];
         const passed = key ? s.students.filter((x: Record<string, boolean>) => x[key]).length : null;
         notes.push(`${step.lesson} class ${s.rounds} rounds${passed !== null ? `, ${passed}/${s.students.length} licensed` : ''}`);
       } else if (step.kind === 'season') {

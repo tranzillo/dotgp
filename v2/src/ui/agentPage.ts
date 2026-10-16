@@ -85,6 +85,7 @@ export class AgentPage {
       facts.push(`nerve ${(nerve * 100).toFixed(0)}: ${nerve < 0.3 ? 'cautious, keeps out of trouble' : nerve < 0.7 ? 'takes a gap when there is one' : 'fearless, goes for gaps that might not be there'}`);
       facts.push(d.pitLicensed && d.pitTrafficLicensed ? 'does their own pit stops' : 'pit stops: the veteran maneuver');
       facts.push(d.cautionLicensed ? 'drives their own cautions' : 'cautions: the formation script');
+      facts.push(d.roadCourse ? `road courses: ${d.roadCourse.licensed ? 'licensed' : 'learning'} (${d.roadCourse.rounds} rounds)` : 'road courses: not yet learned (drives circuits with its oval driving)');
       facts.push(`${d.rounds} training rounds`);
     } else if (role === 'chief') {
       const c = roster.chiefs.get(id)!;
@@ -235,6 +236,8 @@ function describe(r: ActivityRecord): string {
         ? `<b>Passed pit road in traffic</b>: does their own stops in races from now on`
       : r.data.license === 'caution'
         ? `<b>Passed the caution lesson</b>: drives their own cautions and restarts from now on`
+      : r.data.license === 'roadCourse'
+        ? `<b>Earned a road-course license</b> after ${r.data.lessons} rounds`
         : `<b>Earned a license</b> after ${r.data.lessons} lessons`;
     case 'strategy': return `Strategy race: ${((r.data.relativeTime - 1) * 100).toFixed(1)}% off the best${ev}`;
     case 'race': {

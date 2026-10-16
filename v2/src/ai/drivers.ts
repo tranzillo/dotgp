@@ -170,13 +170,21 @@ export function mirrorDriverInputs(x: Float32Array): void {
  */
 export class NeuralDriver implements DriverBrain {
   readonly net: Network;
+  /** The road-course skill: a second network that drives on road circuits (ovals are the main network's). */
+  readonly roadNet: Network | null;
   private readonly input = new Float32Array(OBS_SIZE + RADIO_SIZE + PIT_SIZE + CAUTION_SIZE);
   private readonly obs = new Float32Array(OBS_SIZE);
   /** The last inputs were mirrored (the coming corner turns right): labels for them must be mirrored too. */
   mirrored = false;
 
-  constructor(weights: Float32Array) {
+  constructor(weights: Float32Array, roadWeights?: Float32Array) {
     this.net = new Network(DRIVER_LAYERS, weights);
+    this.roadNet = roadWeights ? new Network(DRIVER_LAYERS, roadWeights) : null;
+  }
+
+  /** The network that drives this track: the road-course skill on road circuits (if the driver has one). */
+  netFor(track: Track): Network {
+    return this.roadNet && track.layout.type === 'circuit' ? this.roadNet : this.net;
   }
 
   /** The network's input for this moment (also what an apprentice is shown), mirrored when the next corner turns right. */
@@ -192,7 +200,7 @@ export class NeuralDriver implements DriverBrain {
   }
 
   decide(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array): void {
-    const out = this.net.forward(this.inputs(car, world, radio, pit, caution));
+    const out = this.netFor(world.track).forward(this.inputs(car, world, radio, pit, caution));
     car.inputX = out[0];
     car.inputY = this.mirrored ? -out[1] : out[1];
   }
