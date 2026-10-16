@@ -79,7 +79,7 @@ export class FormationDriver {
     if (ctl.flag === 'caution' && !ctl.pickedUp && !ctl.wavedAround(car)) {
       const lane = Math.max(-6, Math.min(6, car.d));
       const ahead = ctl.carAheadInFile(car, lane);
-      const want = ahead ? ctl.paceSpeed + tr.eagerness : ctl.paceSpeed;
+      const want = ahead ? ctl.paceSpeedAt(car.s) + tr.eagerness : ctl.paceSpeedAt(car.s);
       let holdLane = lane;
       const wreck = ctl.wreckAhead(car);
       if (wreck && Math.abs(wreck.d - holdLane) < 4) holdLane = car.d < wreck.d ? wreck.d - 5 : wreck.d + 5;
@@ -90,8 +90,11 @@ export class FormationDriver {
     if (err > t.length / 2) err -= t.length;
     // A slot far behind (a lapped car ahead of the leader) is reached by going around, not by stopping.
     if (err < -150) err += t.length;
-    // Never below a crawl while the line is moving; a slot standing still (a grid box) is stopped in.
-    let v = Math.max(slot.speed > 0 ? 3 : 0, Math.min(slot.speed + tr.eagerness, slot.speed + 0.3 * err));
+    // Never below a crawl while the line is moving; a slot standing still (a grid box) is stopped in. Catching up
+    // a driver may go the pace for where it is (behind a safety car: quick on a straight while the safety car is in
+    // a hairpin) plus its own eagerness; the car ahead still sets the limit.
+    const base = Math.max(slot.speed, ctl.paceSpeedAt(car.s));
+    let v = Math.max(slot.speed > 0 ? 3 : 0, Math.min(base + tr.eagerness, slot.speed + 0.3 * err));
     // Giving way (ahead of our place by more than the line's spacing): low, in the yield lane, so the cars we
     // must let by go past in the line. Catching up: hold your lane (above the yield lane, which stays free);
     // slide into your place once you're nearly there.
@@ -163,16 +166,20 @@ export class PaceCarDriver implements Controller {
     const pull = pullOffS(t);
 
     const inner = t.innerEdge(car.trackIdx);
-    if (ctl.oneToGo && (car.d > inner + 0.5 || (r > pull - 180 && r < t.pit.wallStart))) {
-      // Heading in: down to the apron at turn 4 exit, onto pit road, stop at its start.
+    // An oval has an apron to drop down to before pit road; a circuit's pit lane leaves the track at its entry.
+    const apron = t.apronWidth > 0;
+    const leaveFrom = apron ? pull - 180 : t.pit.entryStart - 5;
+    if (ctl.oneToGo && (car.d > inner + 0.5 || (r > leaveFrom && r < t.pit.wallStart))) {
+      // Heading in: (down to the apron at turn 4 exit,) onto pit road, stop at its start.
       const lane = (s: number) => {
         const x = t.signedS(s);
+        if (!apron) return ramp(x, t.pit.entryStart, t.pit.wallStart - 20, 0, fastLane);
         if (x < pull) return ramp(x, pull - 180, pull, 0, wallClear);
         return ramp(x, pull, t.pit.wallStart - 50, wallClear, fastLane);
       };
       const cap = (s: number) => {
         const x = t.signedS(s);
-        if (x < t.pit.wallStart - 5) return ctl.paceSpeed;
+        if (x < t.pit.wallStart - 5) return Math.min(ctl.paceSpeedAt(s), PIT_SERVICE.SPEED_LIMIT * 1.5);
         return Math.min(PIT_SERVICE.SPEED_LIMIT - 1, Math.sqrt(2 * 3 * Math.max(0, t.pit.wallStart + 25 - x)));
       };
       followLine(car, world, lane, cap, 0.75);
@@ -181,10 +188,10 @@ export class PaceCarDriver implements Controller {
     if (car.d > inner) {
       // Just released from pit road: out through the exit taper and onto the track.
       const lane = (s: number) => ramp(t.signedS(s), t.pit.wallEnd + 15, t.pit.exitEnd, fastLane, 0);
-      followLine(car, world, lane, () => ctl.paceSpeed * 1.2, 0.8);
+      followLine(car, world, lane, (s) => ctl.paceSpeedAt(s) * 1.2, 0.8);
       return;
     }
     // Out on track: slowly until it has picked up the leader (the leader catches it), then at pace speed.
-    followLine(car, world, () => 0, () => (ctl.pickedUp ? ctl.paceSpeed : PICKUP_SPEED * ctl.paceSpeed), 0.9);
+    followLine(car, world, () => 0, (s) => (ctl.pickedUp ? ctl.paceSpeedAt(s) : PICKUP_SPEED * ctl.paceSpeedAt(s)), 0.9);
   }
 }

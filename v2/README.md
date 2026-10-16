@@ -112,6 +112,11 @@ Rules are data (`src/rules/rulebook.ts`, the oval rulebook first; other discipli
 - *The restart*: green when the leader crosses the line; everyone accelerates, but no car may gain a place until it has crossed the line itself (judged per car as it crosses, against cars in earlier rows that haven't crossed yet).
 Out of order means clear ahead by a car length; nose to nose is two cars settling into line. Short track, 4 races: cars in their place at the green 58% -> 74%, average distance from their place at one to go 97 -> 44 m. Over 8 races, formation pileups on the short track went 2.3 -> 6.9 (single file, everyone braking at once) -> 1.3 (two phases).
 
+**Road circuit rules** (`CIRCUIT_RULES`; a session races to the rulebook for its track type). The rulebook carries procedures as well as offences:
+- *Standing start*: every car in its own grid box behind the line, staggered. A formation lap single file in grid order behind a reference at formation pace (60% of each corner's limit, capped on straights), braking gently into the pole box; the field stops in its boxes and holds still on the brakes once the lights are on. Five red lights a second apart, a random 0.2-3 s hold, lights out: the race starts there, each driver launching on its own reaction (wheelspin and all), each car's first lap starting at the line. Waiting on the grid isn't stalling.
+- *Safety car*: comes out of pit exit in front of the leader, as the pace car does, but drives the track at formation pace (quick on the straights, slow in the hairpins); the field stays single file throughout and restarts single file; each driver may drive the safety car's pace for where it is plus its own eagerness, so the line breathes like a real one (bunched in slow corners, stretched on straights) without anyone passing. Marshals with a crane lift a wreck off where it stopped (25 s); "safety car in this lap", into the pit entry, restart at the line.
+- Ovals keep the rolling start and the pace car (`OVAL_RULES`). Still to come for circuits: local yellows and the virtual safety car, track limits (with grace that scales by league), blue flags.
+
 ## Infield
 
 Garage lot behind pit road (wrecks are parked there), escape lane from the back-straight apron across the infield. Progress only counts distance driven, so neither is a shortcut.

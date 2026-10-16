@@ -85,3 +85,39 @@ describe('standing start', () => {
     expect(world.cars.filter((c) => c.speed > 5).length).toBeGreaterThanOrEqual(6);
   });
 });
+
+describe('safety car', () => {
+  it('a circuit race: standing start, a wreck, the safety car (single file, marshals), a restart, the flag', async () => {
+    const { ScriptedDriver, Team } = await import('../src/ai/drivers');
+    const { TowerSpotter } = await import('../src/ai/spotter');
+    const { CIRCUIT_RULES } = await import('../src/rules/rulebook');
+    const { Track } = await import('../src/sim/track');
+    const { generateLayout } = await import('../src/trackgen');
+    const track = new Track(generateLayout({ type: 'circuit', seed: 1, variant: 'club' }));
+    const world = new World(track, { wearScale: 4 });
+    // Scripted drivers (the trained ones haven't learned circuits yet), each a little different.
+    for (let k = 0; k < 6; k++) world.addCar(new Car(k), new Team(new ScriptedDriver(0, 0.8 + 0.01 * k), new TowerSpotter()));
+    const race = new Race(world, 5, new PaceCarDriver(), { rulebook: CIRCUIT_RULES, seed: 2 });
+    const ctl = race.control!;
+    expect(ctl.safetyCar).toBe(true);
+    const flags: string[] = [];
+    let wrecked: Car | null = null;
+    let singleFile = true;
+    while (race.state !== 'finished' && world.time < 1500) {
+      race.step();
+      if (flags[flags.length - 1] !== ctl.flag) flags.push(ctl.flag);
+      const leader = race.leader();
+      if (!wrecked && race.started && leader && leader.lapsCompleted === 2) {
+        wrecked = world.cars.find((c) => c !== leader)!;
+        wrecked.health = 0;
+        wrecked.retired = true;
+      }
+      if (ctl.flag === 'caution') for (const c of ctl.lineOrder()) singleFile &&= ctl.slotFor(c)?.d === 0;
+    }
+    expect(flags).toEqual(['formation', 'grid', 'green', 'caution', 'restart', 'green']);
+    expect(singleFile).toBe(true);
+    expect(wrecked!.cleared).toBe(true); // lifted off by the marshals
+    expect(race.state).toBe('finished');
+    expect(race.standings().filter((s) => s.status === 'finished').length).toBe(5);
+  });
+});

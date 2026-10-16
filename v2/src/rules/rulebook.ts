@@ -64,6 +64,13 @@ export interface OffenceRule {
 export interface Rulebook {
   name: string;
   start: StartProcedure;
+  /**
+   * How a race is neutralised for a wreck. Pace car (ovals): constant pace
+   * speed, single file, doubled up for the restart. Safety car (circuits): it
+   * drives the track (quick on the straights, slow through corners), single
+   * file throughout, restarts single file.
+   */
+  neutralise: 'pace-car' | 'safety-car';
   offences: Record<Offence, OffenceRule>;
   /** Seconds a 'time' penalty adds, and how long a 'stop-go' stops for. */
   timePenalty: number;
@@ -85,6 +92,7 @@ export interface Rulebook {
 export const OVAL_RULES: Rulebook = {
   name: 'Oval',
   start: { kind: 'rolling' },
+  neutralise: 'pace-car',
   offences: {
     'pit-speeding': { thresholds: [0.15, 0.6], penalties: ['warning', 'drive-through', 'stop-go'] },
     'passing-under-caution': { thresholds: [0.2], penalties: ['warning', 'tail'] },
@@ -105,6 +113,23 @@ export const OVAL_RULES: Rulebook = {
   // As in NASCAR: the out-of-bounds line is a superspeedway rule; elsewhere the apron is just slow.
   belowTheLineOn: ['superspeedway'],
 };
+
+/**
+ * Road circuit rules: standing start after a formation lap, the safety car.
+ * The line rule is an oval thing; everything else carries over.
+ */
+export const CIRCUIT_RULES: Rulebook = {
+  ...OVAL_RULES,
+  name: 'Circuit',
+  start: { kind: 'standing', formationLap: true, gridPitch: 8, lights: 5, lightInterval: 1, hold: [0.2, 3] },
+  neutralise: 'safety-car',
+  belowTheLineOn: [],
+};
+
+/** The rulebook a track races to. */
+export function rulebookFor(trackType: string): Rulebook {
+  return trackType === 'circuit' ? CIRCUIT_RULES : OVAL_RULES;
+}
 
 export const OFFENCE_NAMES: Record<Offence, string> = {
   'pit-speeding': 'speeding on pit road',

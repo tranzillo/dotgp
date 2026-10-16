@@ -218,7 +218,7 @@ export class Detector {
       // The cars each one must not get by before the line: those in earlier rows of the official order (the
       // field is doubled up; row mates are level). Passing a car that's out of place ahead isn't gaining one.
       const order = this.control.lineOrder();
-      const row = (c: Car) => Math.floor(order.indexOf(c) / 2);
+      const row = (c: Car) => this.control.rowOf(order.indexOf(c));
       this.restartAhead = new Map(lined.map((c) => [c, lined.filter((o) => row(o) < row(c))]));
       this.restartCrossed = new Set();
     }

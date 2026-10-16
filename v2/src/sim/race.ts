@@ -52,6 +52,7 @@ export class Race {
     if (paceCar) {
       this.control = new RaceControl(world);
       world.officials.push({ car: this.control.paceCar, controller: paceCar });
+      this.control.safetyCar = rules?.rulebook.neutralise === 'safety-car';
       const start = rules?.rulebook.start;
       if (start?.kind === 'standing') {
         const rng = new Rng((rules?.seed ?? 1) ^ 0x2545f491);

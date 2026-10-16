@@ -34,6 +34,8 @@ const WRECKER_SPEED = 22;
 const TOW_SPEED = 15;
 const HOOK_TIME = 8;
 const STALL_TIME = 5; // s stopped on the racing surface before a car counts as a wreck
+/** Marshals' time to lift a wrecked car off a circuit (s). */
+const MARSHAL_TIME = 25;
 
 /** The pace car's livery number; it never appears in standings. */
 export const PACE_CAR_ID = -1;
@@ -56,6 +58,8 @@ export interface Wrecker {
   dir: number;
   /** Escape lane it tows along (index into the infield's lanes), or -1 for pit road. */
   via: number;
+  /** Marshals with a crane (circuits) rather than a tow truck. */
+  marshals?: boolean;
 }
 
 export interface FormationSlot {
@@ -121,7 +125,22 @@ export class RaceControl {
    * up for the restart (the start's pace laps are double file throughout).
    */
   get singleFile(): boolean {
+    if (this.safetyCar) return this.flag === 'caution' || this.flag === 'restart';
     return this.flag === 'caution' && !this.oneToGo;
+  }
+
+  /** Row of a place in the official order: the field doubles up for a pace-car restart, not behind the safety car. */
+  rowOf(index: number): number {
+    return this.safetyCar ? index : Math.floor(index / 2);
+  }
+
+  /**
+   * Pace at a point on the lap. The pace car holds one speed all the way
+   * round (an oval's corners are all alike); a safety car drives the track,
+   * at formation pace.
+   */
+  paceSpeedAt(s: number): number {
+    return this.safetyCar ? this.formationSpeedAt(s) : this.paceSpeed;
   }
 
   /** Room between places in line: in its place means closer than this to it. */
@@ -168,6 +187,8 @@ export class RaceControl {
   onLightsOut: (() => void) | null = null;
   /** Standing start: red lights showing (0 when none, or out). */
   lights = 0;
+  /** A safety car (circuits) rather than a pace car: drives the track, single file throughout, marshals recover wrecks. */
+  safetyCar = false;
   private standing: StandingStart | null = null;
   private readonly boxes = new Map<Car, { s: number; d: number }>();
   /** How far the formation lap's reference has gone, when the lights sequence began, how long they hold. */
@@ -340,7 +361,7 @@ export class RaceControl {
     if ((this.flag === 'pace' || this.flag === 'caution') && this.paceCarOut && this.oneToGo
       && this.paceCar.d > t.innerEdge(this.paceCar.trackIdx) + 0.5 && this.paceCarHeadingIn()) {
       this.flag = 'restart';
-      this.world.announce(leader ?? this.paceCar, 'flag', 'Pace car is off: leader to the line for the green');
+      this.world.announce(leader ?? this.paceCar, 'flag', this.safetyCar ? 'Safety car in this lap: leader to the line for the restart' : 'Pace car is off: leader to the line for the green');
     }
     if (this.paceCarOut && this.oneToGo && this.paceCar.surface === 'pit' && t.signedS(this.paceCar.s) > t.pit.wallStart + 15
       && t.signedS(this.paceCar.s) < t.pit.wallEnd - 20) {
@@ -456,7 +477,7 @@ export class RaceControl {
       }
       if (!car.retired) continue;
       // Caution as soon as a car is out on or near the racing surface; the wrecker goes once it stops.
-      if (this.flag === 'green' && car.d < t.apronEdgeAt(car.s) + 5 && !this.cautioned.has(car)) {
+      if (this.flag === 'green' && car.d < t.apronEdgeAt(car.s) + 5 && car.d > t.outerEdgeAt(car.s) - 5 && !this.cautioned.has(car)) {
         this.cautioned.add(car);
         this.throwCaution(car);
       }
@@ -473,7 +494,7 @@ export class RaceControl {
     this.cautionMinLaps = MIN_CAUTION_LAPS;
     const leader = this.order[0];
     this.cautionLap = leader ? leader.lapsCompleted : 0;
-    this.world.announce(cause, 'flag', 'Caution! Field slows, pace car coming out');
+    this.world.announce(cause, 'flag', this.safetyCar ? 'Safety car deployed: no overtaking' : 'Caution! Field slows, pace car coming out');
   }
 
   /**
@@ -488,7 +509,7 @@ export class RaceControl {
     this.oneToGo = false;
     this.cautionMinLaps = minLaps;
     this.cautionLap = this.order[0].lapsCompleted;
-    this.world.announce(this.order[0], 'flag', 'Caution for debris: field slows, pace car coming out');
+    this.world.announce(this.order[0], 'flag', this.safetyCar ? 'Safety car deployed for debris: no overtaking' : 'Caution for debris: field slows, pace car coming out');
   }
 
   /**
@@ -502,7 +523,7 @@ export class RaceControl {
     const toExit = t.distanceFrom(leader.s, t.pit.wallEnd);
     if (toExit > FIRST_ROW_GAP && toExit < FIRST_ROW_GAP + ROW_GAP) {
       this.paceCar.placeOnTrack(t, t.pit.wallEnd - 5, t.pit.wallD + t.pit.wallThickness / 2 + 3);
-      setSpeed(this.paceCar, t, this.paceSpeed);
+      setSpeed(this.paceCar, t, this.paceSpeedAt(this.paceCar.s));
       this.paceCar.retired = false;
       this.paceCar.cleared = false;
       this.paceCarOut = true;
@@ -580,7 +601,7 @@ export class RaceControl {
       // and the whole field crawled into each other.
       const ahead = Number.isNaN(this.virtualS) ? NaN : t.distanceFrom(head.s, this.virtualS);
       if (Number.isNaN(ahead) || ahead > VIRTUAL_LEAD_MAX) this.virtualS = head.s; // new, behind the leader, or the leader lost it
-      else this.virtualS = t.wrapS(this.virtualS + this.paceSpeed * (this.flag === 'caution' ? 1.15 : 1) * dt);
+      else this.virtualS = t.wrapS(this.virtualS + this.paceSpeedAt(this.virtualS) * (this.flag === 'caution' ? 1.15 : 1) * dt);
       // The real pace car out on track ahead, waiting to pick up the leader: the line can't run past it.
       if (this.paceCarOut && pc.d < t.innerEdge(pc.trackIdx) + 1 && t.distanceFrom(head.s, pc.s) < t.length / 2) {
         const limit = t.wrapS(pc.s - FIRST_ROW_GAP);
@@ -588,7 +609,7 @@ export class RaceControl {
       }
       refS = this.virtualS;
     }
-    const refSpeed = paceCarLeads ? Math.max(pc.speed, this.paceSpeed * 0.6) : this.paceSpeed * (this.flag === 'caution' ? 1.15 : 1);
+    const refSpeed = paceCarLeads ? Math.max(pc.speed, this.paceSpeedAt(pc.s) * 0.6) : this.paceSpeedAt(refS) * (this.flag === 'caution' ? 1.15 : 1);
     const single = this.singleFile;
     this.order.forEach((car, index) => {
       const back = (paceCarLeads ? FIRST_ROW_GAP : 0) + (single ? index * SINGLE_FILE_GAP : Math.floor(index / 2) * ROW_GAP);
@@ -638,6 +659,14 @@ export class RaceControl {
 
   private dispatchWrecker(wreck: Car): void {
     const t = this.track;
+    if (this.safetyCar) {
+      // Marshals and a crane where the car stopped: lifted over the barrier, then it's gone.
+      this.wreckers.push({
+        wreck, x: wreck.x, y: wreck.y, s: wreck.s, d: wreck.d,
+        phase: 'hook', timer: MARSHAL_TIME, route: [], exitS: 0, dir: 1, via: -1, marshals: true,
+      });
+      return;
+    }
     const start = t.toWorld(t.pit.wallEnd, t.apronEdgeAt(t.pit.wallEnd) - 2);
     // Drive the shorter way round along the apron (against traffic is fine for a wrecker).
     const fwd = t.distanceFrom(t.pit.wallEnd, wreck.s);
@@ -666,7 +695,13 @@ export class RaceControl {
         }
       } else if (w.phase === 'hook') {
         w.timer -= dt;
-        if (w.timer <= 0) this.planTow(w);
+        if (w.timer <= 0 && w.marshals) {
+          // Lifted off: parked out of the way in the paddock.
+          const park = t.infield.garage.parking[this.garageSlots++ % t.infield.garage.parking.length];
+          w.wreck.cleared = true;
+          [w.x, w.y] = park;
+          this.parkWreck(w);
+        } else if (w.timer <= 0) this.planTow(w);
       } else if (w.phase === 'tow') {
         if (w.route.length === 0) {
           // On the oval: back to the apron, then along it to the exit point.

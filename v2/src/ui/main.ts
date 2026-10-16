@@ -480,7 +480,7 @@ function updateTower(): void {
     const flagText = r.flag === 'formation' ? '<span class="flagtag pace">FORMATION LAP</span>'
       : r.flag === 'grid' ? (r.lights ? `<span style="color:#e5484d;letter-spacing:2px">${'●'.repeat(r.lights)}</span> lights` : '<span class="flagtag pace">GRID</span> forming up')
       : !r.started ? '<span class="flagtag pace">PACE LAPS</span>'
-      : r.flag === 'caution' ? `<span class="flagtag caution">CAUTION</span>${r.oneToGo ? ' one to go' : ''}`
+      : r.flag === 'caution' ? (r.safetyCar ? `<span class="flagtag caution">SAFETY CAR</span>${r.oneToGo ? ' in this lap' : ''}` : `<span class="flagtag caution">CAUTION</span>${r.oneToGo ? ' one to go' : ''}`)
       : r.flag === 'restart' ? '<span class="flagtag caution">RESTART</span> leader to the line'
       : '<span class="flagtag green">GREEN</span>';
     const next = Number.isNaN(raceDoneAt) || loop === 'stop' ? ''
@@ -707,8 +707,8 @@ function buttonGroup<T>(hostId: string, options: Array<[string, T]>, current: ()
   return render;
 }
 
-/** Races need the oval procedures (rolling start behind a pace car); road circuits get practice until their rulebook exists. */
-const racesOn = (t: Track) => t.layout.type === 'oval';
+/** Every track races to its own rulebook (ovals: rolling start, pace car; circuits: standing start, safety car). */
+const racesOn = (_t: Track) => true;
 
 function selectTrack(name: string): void {
   championship = false;
@@ -724,7 +724,7 @@ const newTrack = (type: 'oval' | 'circuit') => {
   selectTrack(trackOptions[trackOptions.length - 1][0]);
   renderTrackButtons();
   news(`New track: ${t.name}, ${t.length.toFixed(0)} m (${type}, seed ${t.layout.seed}). Open it again with ?track=${type}:${t.layout.seed}`
-    + (type === 'circuit' ? '. The drivers have only ever turned left: expect wrecks until they learn right-handers.' : ''));
+    + (type === 'circuit' ? ". Drivers without a road-course license (Academy: Road courses) haven't learned circuits' tight corners yet: expect wrecks." : ''));
 };
 $('newTrack').onclick = () => newTrack('oval');
 $('newCircuit').onclick = () => newTrack('circuit');

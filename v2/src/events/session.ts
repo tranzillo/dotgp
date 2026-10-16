@@ -15,7 +15,7 @@ import type { Surface, TrackLayout } from '../sim/layout';
 import { Race } from '../sim/race';
 import { Track } from '../sim/track';
 import { World } from '../sim/world';
-import { OVAL_RULES, type Offence, type Penalty } from '../rules/rulebook';
+import { rulebookFor, type Offence, type Penalty } from '../rules/rulebook';
 import type { StewardTraits } from '../rules/stewards';
 import type { SchoolView } from '../school/classroom';
 
@@ -101,6 +101,8 @@ export interface RaceView {
   pacing: boolean;
   /** Standing start: red lights showing. */
   lights: number;
+  /** Neutralised by a safety car (circuits) rather than a pace car. */
+  safetyCar: boolean;
   paceCar: { x: number; y: number } | null;
   wreckers: Array<{ x: number; y: number; phase: string }>;
 }
@@ -227,7 +229,7 @@ export class Session {
     });
     // Races run under race control: pace laps, green at the line, cautions with the wrecker crew.
     this.race = spec.kind === 'race'
-      ? new Race(this.world, spec.laps, new PaceCarDriver(), { rulebook: OVAL_RULES, stewards: spec.stewards, seed: spec.seed })
+      ? new Race(this.world, spec.laps, new PaceCarDriver(), { rulebook: rulebookFor(spec.layout.type), stewards: spec.stewards, seed: spec.seed })
       : null;
   }
 
@@ -349,6 +351,7 @@ export class Session {
         oneToGo: ctl?.oneToGo ?? false,
         pacing: ctl?.pacing ?? false,
         lights: ctl?.lights ?? 0,
+        safetyCar: ctl?.safetyCar ?? false,
         paceCar: ctl?.paceCarOut ? { x: ctl.paceCar.x, y: ctl.paceCar.y } : null,
         wreckers: (ctl?.wreckers ?? []).map((w) => ({ x: w.x, y: w.y, phase: w.phase })),
       } : null,
