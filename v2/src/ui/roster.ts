@@ -29,7 +29,7 @@ export interface DriverAgent {
   /** Has passed the caution lesson: drives its own cautions and restarts instead of the formation script. */
   cautionLicensed?: boolean;
   /** The road-course skill: a second network for road circuits, its training rounds, and the license. */
-  roadCourse?: { weights: Float32Array; rounds: number; licensed: boolean };
+  roadCourse?: { weights: Float32Array; rounds: number; licensed: boolean; radius?: number };
   /**
    * Nerve: appetite for risk, 0 timid to 1 fearless (unset: middling). It
    * sets what the driver learns to care about: how much fear of an imminent

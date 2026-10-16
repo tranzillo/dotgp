@@ -33,7 +33,7 @@ interface DriverEntry {
   cautionLicensed?: boolean;
   nerve?: number;
   /** The road-course skill (Road courses trains this, not `weights`). */
-  roadCourse?: { weights: number[]; rounds?: number; licensed?: boolean };
+  roadCourse?: { weights: number[]; rounds?: number; licensed?: boolean; radius?: number };
 }
 const road = lesson === 'circuits';
 const file = JSON.parse(readFileSync(inFile, 'utf8')) as { drivers: DriverEntry[] };
@@ -45,7 +45,7 @@ const c = new Classroom({
     // Road courses starts the skill as a copy of the driver's own driving.
     weights: adaptWeights(Float32Array.from(road ? d.roadCourse?.weights ?? d.weights : d.weights)), rounds: road ? d.roadCourse?.rounds ?? 0 : 0,
     licensed: d.licensed ?? true, pitLicensed: d.pitLicensed, pitTrafficLicensed: d.pitTrafficLicensed,
-    cautionLicensed: d.cautionLicensed, roadLicensed: d.roadCourse?.licensed, nerve: d.nerve,
+    cautionLicensed: d.cautionLicensed, roadLicensed: d.roadCourse?.licensed, roadRadius: d.roadCourse?.radius, nerve: d.nerve,
   })),
 });
 console.log(`${lesson}: ${file.drivers.length} students, apprenticeship ${((Date.now() - t0) / 1000).toFixed(0)} s`);
@@ -62,7 +62,7 @@ writeFileSync(outFile, JSON.stringify({
   ...file,
   drivers: file.drivers.map((d, k) => {
     const s = c.students[k];
-    if (road) return { ...d, roadCourse: { weights: Array.from(s.weights), rounds: s.rounds, licensed: s.roadLicensed } };
+    if (road) return { ...d, roadCourse: { weights: Array.from(s.weights), rounds: s.rounds, licensed: s.roadLicensed, radius: c.roadRadius } };
     return {
       ...d, weights: Array.from(s.weights), licensed: s.licensed, pitLicensed: s.pitLicensed,
       pitTrafficLicensed: s.pitTrafficLicensed, cautionLicensed: s.cautionLicensed,

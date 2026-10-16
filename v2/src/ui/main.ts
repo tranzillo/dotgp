@@ -1175,7 +1175,7 @@ function startClass(): void {
       weights: lesson === 'circuits' ? (d.roadCourse?.weights ?? d.weights).slice() : d.weights,
       rounds: lesson === 'circuits' ? d.roadCourse?.rounds ?? 0 : d.rounds,
       licensed: d.licensed, pitLicensed: d.pitLicensed, pitTrafficLicensed: d.pitTrafficLicensed, cautionLicensed: d.cautionLicensed,
-      roadLicensed: d.roadCourse?.licensed, nerve: d.nerve,
+      roadLicensed: d.roadCourse?.licensed, roadRadius: d.roadCourse?.radius, nerve: d.nerve,
     })),
     presets: Object.keys(PRESETS).map(presetLayout),
     seed: (rng.next() * 2 ** 32) >>> 0,
@@ -1202,7 +1202,7 @@ function lessonRounds(handle: EventHandle, reports: RoundReport[]): void {
     if (!d) continue;
     if (meta?.lesson === 'circuits') {
       // The road-course skill learned; the driver's oval driving is untouched.
-      d.roadCourse = { weights: r.weights.slice(), rounds: r.rounds, licensed: r.roadLicensed };
+      d.roadCourse = { weights: r.weights.slice(), rounds: r.rounds, licensed: r.roadLicensed, radius: r.roadRadius };
     } else {
       d.weights.set(r.weights);
       d.rounds = r.rounds;

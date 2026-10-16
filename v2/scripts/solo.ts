@@ -27,6 +27,8 @@ const seconds = Number(args.get('seconds') ?? 120);
 const KINDS: Record<string, (k: number) => Track> = {
   club: (k) => new Track(generateLayout({ type: 'circuit', seed: hashSeed(9001, `club${k}`), variant: 'club' })),
   gp: (k) => new Track(generateLayout({ type: 'circuit', seed: hashSeed(9001, `gp${k}`), variant: 'gp' })),
+  // Club circuits with no corner tighter than 40 m: progress partway up the road-course curriculum.
+  club40: (k) => new Track(generateLayout({ type: 'circuit', seed: hashSeed(9001, `club40-${k}`), variant: 'club', params: { minRadius: 40 } })),
   mirrored: (k) => new Track(mirrorLayout(generateLayout({ type: 'oval', seed: hashSeed(9001, `mirror${k}`) }))),
   oval: (k) => new Track(generateLayout({ type: 'oval', seed: hashSeed(9001, `oval${k}`) })),
 };
@@ -45,7 +47,7 @@ for (const file of files) {
   const out: SoloReport['results'][number] = {};
   for (const [kind, list] of Object.entries(tracks)) {
     // Road circuits are driven by the road-course skill where a driver has one, as in races.
-    const road = kind === 'club' || kind === 'gp';
+    const road = kind === 'club' || kind === 'gp' || kind === 'club40';
     const genomes = drivers.map((d) => adaptWeights(Float32Array.from(road ? d.roadCourse?.weights ?? d.weights : d.weights)));
     let distance = 0, crashed = 0, laps = 0, n = 0;
     for (const track of list) {

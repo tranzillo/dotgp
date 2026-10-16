@@ -112,6 +112,8 @@ export interface StudentSpec {
   cautionLicensed?: boolean;
   /** Has the road-course license. (In the Road courses lesson, `weights` are the road-course skill's.) */
   roadLicensed?: boolean;
+  /** Road courses: the tightest corners this driver has reached in the curriculum (m). */
+  roadRadius?: number;
   /** Appetite for risk (0 timid .. 1 fearless): what fear costs it in lessons that score it. */
   nerve?: number;
 }
@@ -135,6 +137,8 @@ export interface RoundReport {
   pitTrafficLicensed: boolean;
   cautionLicensed: boolean;
   roadLicensed: boolean;
+  /** Road courses: the curriculum stage reached (tightest corners, m). */
+  roadRadius?: number;
   /** Earned a license this round (which one: the lesson's). */
   graduated: boolean;
   track: string;
@@ -261,6 +265,8 @@ export class Classroom {
       passed: new Set<string>(), last: null, pitLicensed: s.pitLicensed ?? false, pitTrafficLicensed: s.pitTrafficLicensed ?? false,
       cautionLicensed: s.cautionLicensed ?? false, roadLicensed: s.roadLicensed ?? false, noStop: 0, reference: adaptWeights(s.weights).slice(),
     }));
+    // Road courses carries on where the class got to: the least advanced student's stage.
+    if (this.lesson.id === 'circuits') this.roadRadius = Math.max(ROAD_FULL_RADIUS, ...this.students.map((s) => s.roadRadius ?? ROAD_START_RADIUS));
     if (this.lesson.id === 'pits') {
       // First, each student watches the veteran crews' pit maneuver and learns to copy it.
       for (const s of this.students) {
@@ -502,6 +508,7 @@ export class Classroom {
       const report: RoundReport = {
         key: s.key, id: s.id, weights: s.weights.slice(), rounds: s.rounds, licensed: s.licensed, pitLicensed: s.pitLicensed,
         pitTrafficLicensed: s.pitTrafficLicensed, cautionLicensed: s.cautionLicensed, roadLicensed: s.roadLicensed, graduated,
+        roadRadius: this.lesson.id === 'circuits' ? this.roadRadius : undefined,
         track: this.track.name, fitness: own.fitness, laps: own.laps,
         bestLap: Number.isFinite(own.bestLap) ? own.bestLap : null, health: own.health, walls: this.walls,
         beaten: fits.filter((f) => f > own.fitness).length, passed: [...s.passed],
