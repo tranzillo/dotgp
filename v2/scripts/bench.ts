@@ -7,9 +7,10 @@
  * the noise.
  *
  *   npx tsx scripts/bench.ts [A.json] [B.json] --tracks short,speedway,flat --seeds 8 [--jobs N] [--field 24] [--pace 4] [--laps N]
+ *     [--json out.json]   (the numbers and verdicts, for the lab's promotion gate)
  */
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { cpus, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { RaceSummary } from './incidents';
@@ -86,11 +87,27 @@ const metrics: Array<[keyof RaceSummary, string, number, boolean]> = [
   ['lapTime', 'lap time (s, tires 60%+)', 2, true],
 ];
 
+/** What --json writes: per track and metric, each file's mean and 95% range, and B against A. */
+export interface BenchMetric {
+  values: Array<{ mean: number; ci: number }>;
+  diff?: { mean: number; ci: number };
+  verdict?: 'B better' | 'B worse' | 'within noise' | 'n/a';
+}
+export interface BenchReport {
+  files: string[];
+  seeds: number;
+  tracks: Record<string, Record<string, BenchMetric>>;
+}
+const report: BenchReport = { files, seeds, tracks: {} };
+
 console.log(`${seeds} races per track, ${field} cars, ${pace}x pace; ${files.map((f, i) => `${'AB'[i] ?? i}: ${f.split(/[\\/]/).pop()}`).join(', ')}`);
 for (const track of tracks) {
   console.log(`\n${track}`);
+  report.tracks[track] = {};
   for (const [key, label, d, lowerBetter] of metrics) {
     const per = files.map((_, file) => Array.from({ length: seeds }, (_, k) => results.get(`${file}-${track}-${k + 1}`)![key] as number));
+    const entry: BenchMetric = { values: per.map((xs) => stats(xs)) };
+    report.tracks[track][key] = entry;
     let line = `  ${label.padEnd(26)} ${per.map((xs) => fmt(stats(xs), d).padStart(14)).join('  ')}`;
     if (files.length === 2) {
       // Only races where both sides have the number (a field that never ran a lap on fresh tires has no lap time).
@@ -101,7 +118,11 @@ for (const track of tracks) {
         : Math.abs(diff.mean) <= diff.ci || !Number.isFinite(diff.ci) ? 'within noise'
         : (diff.mean < 0) === lowerBetter ? 'B better' : 'B worse';
       line += `   B-A ${fmt(diff, d).padStart(14)}  ${verdict}`;
+      entry.diff = diff;
+      entry.verdict = verdict.startsWith('n/a') ? 'n/a' : verdict as BenchMetric['verdict'];
     }
     console.log(line);
   }
 }
+const jsonOut = args.get('json');
+if (jsonOut) writeFileSync(jsonOut, JSON.stringify(report, null, 2));

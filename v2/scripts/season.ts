@@ -30,7 +30,9 @@ const tracks = (args.get('tracks') ?? 'short,speedway,flat').split(',');
 const lapsArg = args.get('laps');
 const out = args.get('out');
 
-const roster: Array<{ weights: number[] }> = JSON.parse(readFileSync(file, 'utf8')).drivers;
+/** Drivers; licenses as in races (own cautions with a caution license, own stops with both pit licenses). */
+const roster: Array<{ weights: number[]; cautionLicensed?: boolean; pitLicensed?: boolean; pitTrafficLicensed?: boolean }> =
+  JSON.parse(readFileSync(file, 'utf8')).drivers;
 const weights = Array.from({ length: fieldSize }, (_, k) => adaptWeights(Float32Array.from(roster[k % roster.length].weights)));
 
 console.log(`season: ${races} races, ${fieldSize} cars, nerve ${nerve}, drivers ${file}`);
@@ -40,7 +42,11 @@ for (let r = 0; r < races; r++) {
   const layout = presetLayout(trackName as never);
   const entrants: EntrantSpec[] = weights.map((w, k) => ({
     key: k, fill: '#ffffff',
-    driver: { id: `D${k}`, weights: w, nerve },
+    driver: {
+      id: `D${k}`, weights: w, nerve,
+      pits: (roster[k % roster.length].pitLicensed && roster[k % roster.length].pitTrafficLicensed) ?? false,
+      cautions: roster[k % roster.length].cautionLicensed ?? false,
+    },
     spotter: { id: `S${k}`, skill: PERFECT_SPOTTER },
     chief: { id: `C${k}`, brain: { kind: 'scripted', traits: { fuelMarginLaps: 1, tireLimit: 0.3, repairBelow: 0.5, minLapsForTires: 5 } } },
   }));
@@ -80,6 +86,7 @@ for (let r = 0; r < races; r++) {
   console.log(`${String(r + 1).padStart(4)} ${trackName.padEnd(10)} ${String(outCount).padStart(4)} ${harm.toFixed(2).padStart(5)} ${String(passes).padStart(7)} ${(greenLapTime / (greenLaps || 1)).toFixed(2).padStart(7)} ${(dangerSum / carLaps).toFixed(3).padStart(13)} ${String(steps).padStart(6)}`);
 }
 if (out) {
-  writeFileSync(out, JSON.stringify({ drivers: weights.map((w, k) => ({ lineage: `D${k}`, rounds: 0, weights: Array.from(w) })) }));
+  // Each driver as it came in (licenses, nerve), with what it learned; a field bigger than the file keeps the first of each.
+  writeFileSync(out, JSON.stringify({ drivers: roster.map((d, k) => ({ ...d, weights: Array.from(weights[k]) })) }));
   console.log(`wrote ${out}`);
 }

@@ -1,0 +1,195 @@
+/**
+ * The lab: driver training as a background job, out of the way of feature
+ * work. Experiments run in a second checkout of the repo (the lab worktree,
+ * beside this one) pinned to a commit, so editing code here never disturbs a
+ * class or a benchmark in progress. Experiments are queued as JSON specs in
+ * lab/queue/ and run one after another; each gets a results folder (its spec,
+ * every step's log, the drivers it trained) and a line in lab/RESULTS.md.
+ *
+ *   npx tsx scripts/lab.ts init            create the lab worktree and lab/ (house drivers from public/drivers)
+ *   npx tsx scripts/lab.ts sync            move the lab to this checkout's HEAD (commit training changes first)
+ *   npx tsx scripts/lab.ts run [--once]    work through the queue, oldest first (--once: stop when it's empty)
+ *   npx tsx scripts/lab.ts status          the queue, what's running, recent results
+ *
+ * A spec (lab/queue/<name>.json):
+ *   { "note": "why", "steps": [
+ *       { "kind": "class", "lesson": "cautions", "in": "$house", "out": "trained.json", "rounds": 100 },
+ *       { "kind": "season", "in": "trained.json", "out": "seasoned.json", "races": 9, "nerve": 0.5 },
+ *       { "kind": "bench", "a": "$house", "b": "trained.json", "seeds": 8 },
+ *       { "kind": "promote", "candidate": "trained.json" } ] }
+ * File names are in the experiment's results folder; $house is the house drivers (lab/house.json), $bundled
+ * the drivers shipped with the commit. Promotion replaces the house drivers only if the last benchmark says
+ * the candidate is no worse on any track (retirements, lap time) and better on at least one (retirements).
+ */
+import { execFileSync, spawn } from 'node:child_process';
+import { appendFileSync, copyFileSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, relative, resolve } from 'node:path';
+import type { BenchReport } from './bench';
+
+const mainV2 = process.cwd();
+const repoRoot = git(mainV2, 'rev-parse', '--show-toplevel');
+const labRoot = join(dirname(repoRoot), `${basename(repoRoot)}-lab`);
+const labV2 = join(labRoot, relative(repoRoot, mainV2));
+const data = join(mainV2, 'lab');
+const dirs = { queue: join(data, 'queue'), results: join(data, 'results'), houseHistory: join(data, 'house-history') };
+const house = join(data, 'house.json');
+const runningFile = join(data, 'running.json');
+const resultsLog = join(data, 'RESULTS.md');
+/** Cores a benchmark may use (the rest stay free for development). */
+const BENCH_JOBS = 6;
+
+type Step =
+  | { kind: 'class'; lesson: string; in: string; out: string; rounds?: number; seed?: number }
+  | { kind: 'season'; in: string; out: string; races?: number; nerve?: number; tracks?: string }
+  | { kind: 'bench'; a: string; b?: string; seeds?: number; tracks?: string; laps?: number }
+  | { kind: 'promote'; candidate: string };
+interface Spec { note?: string; steps: Step[] }
+
+function git(cwd: string, ...args: string[]): string {
+  return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+}
+
+const command = process.argv[2];
+if (command === 'init') init();
+else if (command === 'sync') sync();
+else if (command === 'run') await run(process.argv.includes('--once'));
+else if (command === 'status') status();
+else console.log('usage: npx tsx scripts/lab.ts init | sync | run [--once] | status');
+
+function init(): void {
+  for (const d of Object.values(dirs)) mkdirSync(d, { recursive: true });
+  if (!existsSync(labRoot)) {
+    git(repoRoot, 'worktree', 'add', '--detach', labRoot, 'HEAD');
+    console.log(`lab worktree at ${labRoot}`);
+  }
+  const modules = join(labV2, 'node_modules');
+  if (!existsSync(modules)) symlinkSync(join(mainV2, 'node_modules'), modules, 'junction');
+  if (!existsSync(house)) {
+    copyFileSync(join(mainV2, 'public/drivers/default.json'), house);
+    console.log('house drivers: the bundled drivers');
+  }
+  console.log(`lab at ${git(labRoot, 'rev-parse', '--short', 'HEAD')}; queue: ${dirs.queue}`);
+}
+
+function sync(): void {
+  if (running()) throw new Error('an experiment is running; sync after it finishes');
+  const head = git(mainV2, 'rev-parse', 'HEAD');
+  git(labRoot, 'checkout', '--detach', head);
+  console.log(`lab now at ${head.slice(0, 7)}${git(mainV2, 'status', '--porcelain').length ? ' (uncommitted changes here are not in the lab)' : ''}`);
+}
+
+function running(): { name: string; pid: number; started: string; step: string } | null {
+  if (!existsSync(runningFile)) return null;
+  const r = JSON.parse(readFileSync(runningFile, 'utf8'));
+  try { process.kill(r.pid, 0); return r; } catch { return null; } // a runner that died leaves a stale file
+}
+
+function status(): void {
+  const r = running();
+  const queue = existsSync(dirs.queue) ? readdirSync(dirs.queue).filter((f) => f.endsWith('.json')).sort() : [];
+  console.log(`lab at ${existsSync(labRoot) ? git(labRoot, 'rev-parse', '--short', 'HEAD') : '(not set up: lab.ts init)'}`);
+  console.log(r ? `running: ${r.name} since ${r.started}, step ${r.step}` : 'running: nothing');
+  console.log(`queued: ${queue.length ? queue.join(', ') : 'nothing'}`);
+  if (existsSync(resultsLog)) console.log(`\nrecent results:\n${readFileSync(resultsLog, 'utf8').trim().split('\n').slice(-8).join('\n')}`);
+}
+
+/** Run a script in the lab worktree, its output into a log; resolves when it exits. */
+function runScript(script: string, args: string[], log: string): Promise<void> {
+  return new Promise((ok, fail) => {
+    const out = createWriteStream(log);
+    const quoted = args.map((a) => (/[\s"]/.test(a) ? `"${a}"` : a));
+    const child = spawn('npx', ['tsx', `scripts/${script}.ts`, ...quoted], { cwd: labV2, shell: true });
+    child.stdout.pipe(out);
+    child.stderr.pipe(out);
+    child.on('exit', (code) => (code === 0 ? ok() : fail(new Error(`${script} exited ${code}; see ${log}`))));
+  });
+}
+
+async function run(once: boolean): Promise<void> {
+  if (running()) throw new Error('a lab runner is already running');
+  if (!existsSync(labV2)) throw new Error('no lab yet: npx tsx scripts/lab.ts init');
+  for (;;) {
+    const next = existsSync(dirs.queue) ? readdirSync(dirs.queue).filter((f) => f.endsWith('.json')).sort()[0] : undefined;
+    if (!next) {
+      if (once) break;
+      await new Promise((r) => setTimeout(r, 30_000));
+      continue;
+    }
+    await runExperiment(next);
+  }
+  rmSync(runningFile, { force: true });
+}
+
+async function runExperiment(file: string): Promise<void> {
+  const name = file.replace(/\.json$/, '');
+  const spec = JSON.parse(readFileSync(join(dirs.queue, file), 'utf8')) as Spec;
+  const started = new Date();
+  const stamp = started.toISOString().slice(0, 16).replace(/[:T]/g, '-');
+  const dir = join(dirs.results, `${stamp}-${name}`);
+  mkdirSync(dir, { recursive: true });
+  renameSync(join(dirs.queue, file), join(dir, 'spec.json'));
+  const commit = git(labRoot, 'rev-parse', '--short', 'HEAD');
+  const path = (p: string) => (p === '$house' ? house : p === '$bundled' ? join(labV2, 'public/drivers/default.json') : resolve(dir, p));
+  const notes: string[] = [];
+  let bench: BenchReport | null = null;
+  let failed = '';
+  for (const [i, step] of spec.steps.entries()) {
+    writeFileSync(runningFile, JSON.stringify({ name, pid: process.pid, started: started.toISOString(), step: `${i + 1}/${spec.steps.length} ${step.kind}` }));
+    const log = join(dir, `${String(i + 1).padStart(2, '0')}-${step.kind}.log`);
+    try {
+      if (step.kind === 'class') {
+        const summary = join(dir, `${String(i + 1).padStart(2, '0')}-class.json`);
+        await runScript('class', ['--lesson', step.lesson, '--in', path(step.in), '--out', path(step.out),
+          '--rounds', String(step.rounds ?? 100), '--seed', String(step.seed ?? 7), '--summary', summary], log);
+        const s = JSON.parse(readFileSync(summary, 'utf8'));
+        const key = { cautions: 'cautionLicensed', pits: 'pitLicensed', pitTraffic: 'pitTrafficLicensed', rookie: 'licensed' }[step.lesson as string];
+        const passed = key ? s.students.filter((x: Record<string, boolean>) => x[key]).length : null;
+        notes.push(`${step.lesson} class ${s.rounds} rounds${passed !== null ? `, ${passed}/${s.students.length} licensed` : ''}`);
+      } else if (step.kind === 'season') {
+        await runScript('season', [path(step.in), '--out', path(step.out), '--races', String(step.races ?? 9),
+          '--nerve', String(step.nerve ?? 0.5), ...(step.tracks ? ['--tracks', step.tracks] : [])], log);
+        notes.push(`season ${step.races ?? 9} races`);
+      } else if (step.kind === 'bench') {
+        const json = join(dir, 'bench.json');
+        await runScript('bench', [path(step.a), ...(step.b ? [path(step.b)] : []), '--seeds', String(step.seeds ?? 8),
+          '--tracks', step.tracks ?? 'short,speedway,flat', '--jobs', String(BENCH_JOBS), '--json', json, ...(step.laps ? ['--laps', String(step.laps)] : [])], log);
+        bench = JSON.parse(readFileSync(json, 'utf8')) as BenchReport;
+        notes.push(`bench ${benchLine(bench)}`);
+      } else if (step.kind === 'promote') {
+        notes.push(promote(path(step.candidate), bench, name));
+      }
+    } catch (e) {
+      failed = (e as Error).message;
+      notes.push(`FAILED at step ${i + 1} (${step.kind}): ${failed}`);
+      break;
+    }
+  }
+  const minutes = ((Date.now() - started.getTime()) / 60_000).toFixed(0);
+  const line = `- ${started.toISOString().slice(0, 16).replace('T', ' ')} **${name}** @${commit} (${minutes} min)${spec.note ? ` — ${spec.note}` : ''}: ${notes.join('; ')}`;
+  writeFileSync(join(dir, 'summary.md'), `${line}\n`);
+  appendFileSync(resultsLog, `${line}\n`);
+  rmSync(runningFile, { force: true });
+  console.log(line);
+}
+
+/** Retirements per track, B against A (or A's alone). */
+function benchLine(b: BenchReport): string {
+  return Object.entries(b.tracks).map(([track, m]) => {
+    const r = m.retirements;
+    return r.diff ? `${track} ${r.values[0].mean.toFixed(1)}→${r.values[1].mean.toFixed(1)} (${r.verdict})` : `${track} ${r.values[0].mean.toFixed(1)}`;
+  }).join(', ');
+}
+
+/** The promotion gate: no worse anywhere (retirements, lap time), better somewhere (retirements). */
+function promote(candidate: string, bench: BenchReport | null, name: string): string {
+  if (!bench || bench.files.length !== 2) return 'promote: skipped (needs a bench of house vs candidate first)';
+  const tracks = Object.entries(bench.tracks);
+  const worse = tracks.filter(([, m]) => m.retirements.verdict === 'B worse' || m.lapTime.verdict === 'B worse').map(([t]) => t);
+  const better = tracks.filter(([, m]) => m.retirements.verdict === 'B better').map(([t]) => t);
+  if (worse.length) return `promote: rejected (worse on ${worse.join(', ')})`;
+  if (!better.length) return 'promote: rejected (not better anywhere)';
+  mkdirSync(dirs.houseHistory, { recursive: true });
+  if (existsSync(house)) copyFileSync(house, join(dirs.houseHistory, `${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}-before-${name}.json`));
+  copyFileSync(candidate, house);
+  return `promote: **promoted** (better on ${better.join(', ')})`;
+}

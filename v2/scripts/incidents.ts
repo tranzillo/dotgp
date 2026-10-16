@@ -49,8 +49,9 @@ const RESTART_WINDOW = 20;
 const MARK_CELL = 0.5; // m
 const TIRE_BANDS = [1, 0.8, 0.6, 0.4, 0.3, 0.2, 0];
 
-/** Drivers; one with a caution (or pit) license drives its own cautions (stops), as in races. */
-const roster: Array<{ weights: number[]; cautionLicensed?: boolean; pitLicensed?: boolean }> = JSON.parse(readFileSync(driversFile, 'utf8')).drivers;
+/** Drivers; one with a caution license (both pit licenses) drives its own cautions (stops), as in races. */
+const roster: Array<{ weights: number[]; cautionLicensed?: boolean; pitLicensed?: boolean; pitTrafficLicensed?: boolean }> =
+  JSON.parse(readFileSync(driversFile, 'utf8')).drivers;
 
 interface Retirement {
   time: number; context: string; speed: number;
@@ -176,7 +177,7 @@ function runRace(trackName: keyof typeof specs, seed: number): RaceStats {
     placeOnGrid(car, track, k, true);
     const d = roster[(k + seed) % roster.length];
     world.addCar(car, neuralTeam(adaptWeights(Float32Array.from(d.weights)), new StrategistCrewChief(randomTraits(() => rng.next())),
-      d.pitLicensed ?? false, d.cautionLicensed ?? false));
+      (d.pitLicensed && d.pitTrafficLicensed) ?? false, d.cautionLicensed ?? false));
   }
   const race = new Race(world, laps, new PaceCarDriver());
   const ctl = race.control!;
