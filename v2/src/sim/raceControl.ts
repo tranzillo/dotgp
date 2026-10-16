@@ -179,7 +179,10 @@ export class RaceControl {
     setSpeed(this.paceCar, t, this.paceSpeed);
     cars.forEach((car, k) => {
       const row = Math.floor(k / 2);
-      car.placeOnTrack(t, paceS - FIRST_ROW_GAP - row * ROW_GAP, k % 2 === 0 ? FILE_OFFSET : -FILE_OFFSET); // leader inside
+      // Behind the line by however far back the row is, even when a big field reaches past half a lap (wrapped,
+      // the back rows would count as ahead of the leader).
+      const s = paceS - FIRST_ROW_GAP - row * ROW_GAP;
+      car.placeOnTrack(t, s, k % 2 === 0 ? FILE_OFFSET : -FILE_OFFSET, s - t.length * Math.ceil(s / t.length)); // leader inside
       setSpeed(car, t, this.paceSpeed);
     });
     this.flag = 'pace';

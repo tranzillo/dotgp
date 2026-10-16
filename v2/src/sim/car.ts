@@ -170,7 +170,12 @@ export class Car {
     return this.lapTimes.length;
   }
 
-  placeOnTrack(track: Track, s: number, d: number): void {
+  /**
+   * Put the car at (s, d), stopped. Its race distance is where it sits relative
+   * to the line, the shorter way round, unless the caller knows better: a grid
+   * reaching back more than half a lap passes `dist` (negative, behind the line).
+   */
+  placeOnTrack(track: Track, s: number, d: number, dist?: number): void {
     const [x, y] = track.toWorld(s, d);
     this.x = x;
     this.y = y;
@@ -181,7 +186,7 @@ export class Car {
     this.d = p.d;
     this.trackIdx = p.idx;
     // Starting behind the line means dist is negative until the first crossing.
-    this.dist = p.s > track.length / 2 ? p.s - track.length : p.s;
+    this.dist = dist ?? (p.s > track.length / 2 ? p.s - track.length : p.s);
     this.nextLineDist = this.dist < 0 ? 0 : track.length;
   }
 }
