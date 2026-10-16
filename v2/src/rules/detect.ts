@@ -3,6 +3,7 @@ import { PHYSICS as P, PIT_SERVICE } from '../sim/constants';
 import type { RaceControl } from '../sim/raceControl';
 import type { World } from '../sim/world';
 import type { Offence, Rulebook } from './rulebook';
+import { turnAt } from '../trackgen/circuit';
 
 /**
  * Detection: offences the sim can measure, reported once each with how bad
@@ -44,6 +45,8 @@ export class Detector {
   private pitOver = new Map<Car, { seconds: number; worst: number; reported: boolean }>();
   private blendReported = new Set<Car>();
   private harmBefore = new Map<Car, number>();
+  /** Cars wholly past the white line right now (an excursion counts once, as it begins). */
+  private offTrack = new Set<Car>();
   private contacts = new Map<string, { car: Car; against: Car | null; harm: number; last: number; speed: number }>();
 
   constructor(private readonly world: World, private readonly control: RaceControl, private readonly rules: Rulebook) {
@@ -58,9 +61,31 @@ export class Detector {
     this.contact(out, now);
     this.line(out, now);
     this.restart(out, now);
+    if (this.rules.trackLimits) this.trackLimits(out, now);
     if (control.pacing) this.alongside.clear();
     else if (this.lineRule) this.belowTheLine(out, now);
     return out;
+  }
+
+  /**
+   * Track limits: the whole car past the white line (its centre a car's half
+   * width beyond the edge), under green, racing. Each excursion counts once,
+   * as it begins; pit lane and the pit approach are not leaving the track.
+   */
+  private trackLimits(out: Violation[], now: number): void {
+    const { world, control } = this;
+    const t = world.track;
+    for (const car of world.cars) {
+      const i = car.trackIdx;
+      const off = car.d > t.innerEdge(i) + P.CAR_RADIUS || car.d < t.outerEdge(i) - P.CAR_RADIUS;
+      const racing = control.flag === 'green' && !car.retired && !car.finished && car.pit.phase === 'none'
+        && car.surface !== 'pit' && car.surface !== 'apron';
+      if (off && racing && !this.offTrack.has(car)) {
+        const turn = turnAt(t.layout, car.s);
+        out.push({ offence: 'track-limits', car, time: now, severity: 1, against: null, detail: turn ? `turn ${turn}` : `${Math.round(t.signedS(car.s))} m` });
+      }
+      if (off) this.offTrack.add(car); else this.offTrack.delete(car);
+    }
   }
 
   /** Speeding on pit road (reported once a visit, when the car leaves it), crossing the blend line early. */

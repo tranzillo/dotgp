@@ -19,7 +19,9 @@ export type Offence =
   /** Crossed onto the racing surface before the end of the pit exit blend line. */
   | 'blend-line'
   /** Hit another car, mostly at fault, and hurt it. */
-  | 'avoidable-contact';
+  | 'avoidable-contact'
+  /** Left the track: the whole car past the white line (road circuits). */
+  | 'track-limits';
 
 /** What a steward can hand out, mildest first. */
 export type Penalty =
@@ -86,6 +88,13 @@ export interface Rulebook {
   reviewSeconds: number;
   /** Track size classes where the apron is out of bounds for passing (the line rule). */
   belowTheLineOn: string[];
+  /**
+   * Track limits (road circuits): every time the whole car is past the white
+   * line counts. Up to `strikes` they're noted; the last of them brings the
+   * black-and-white flag; each one after that is a time penalty. The grace is
+   * a league's: lenient for beginners, tight at the top. Null: no track limits.
+   */
+  trackLimits: { strikes: number } | null;
 }
 
 /** Stock car rules for ovals. */
@@ -102,6 +111,8 @@ export const OVAL_RULES: Rulebook = {
     'passing-below-the-line': { thresholds: [0.5], penalties: ['none', 'drive-through'] },
     'blend-line': { thresholds: [0.3], penalties: ['warning', 'drive-through'] },
     'avoidable-contact': { thresholds: [0.25, 0.5, 0.85], penalties: ['warning', 'time', 'drive-through', 'black-flag'] },
+    // Counted by race control rather than judged (see trackLimits): past the grace, each one is time.
+    'track-limits': { thresholds: [], penalties: ['time'] },
   },
   timePenalty: 5,
   stopGoSeconds: 10,
@@ -112,6 +123,7 @@ export const OVAL_RULES: Rulebook = {
   reviewSeconds: 10,
   // As in NASCAR: the out-of-bounds line is a superspeedway rule; elsewhere the apron is just slow.
   belowTheLineOn: ['superspeedway'],
+  trackLimits: null,
 };
 
 /**
@@ -124,6 +136,7 @@ export const CIRCUIT_RULES: Rulebook = {
   start: { kind: 'standing', formationLap: true, gridPitch: 8, lights: 5, lightInterval: 1, hold: [0.2, 3] },
   neutralise: 'safety-car',
   belowTheLineOn: [],
+  trackLimits: { strikes: 3 },
 };
 
 /** The rulebook a track races to. */
@@ -138,4 +151,5 @@ export const OFFENCE_NAMES: Record<Offence, string> = {
   'passing-below-the-line': 'passing below the line',
   'blend-line': 'crossing the blend line',
   'avoidable-contact': 'avoidable contact',
+  'track-limits': 'track limits',
 };

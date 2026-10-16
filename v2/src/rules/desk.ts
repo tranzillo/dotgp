@@ -35,6 +35,8 @@ export class StewardsDesk {
   private readonly lapsSeen = new Map<Car, number>();
   /** What a car owes a drive-through or stop-and-go for. */
   private readonly owed = new Map<Car, Offence>();
+  /** Track limits strikes so far, per car. */
+  private readonly strikes = new Map<Car, number>();
   /** Incidents the stewards are looking at, and when they'll announce a decision. */
   private readonly underReview: Array<{ v: Violation; due: number }> = [];
 
@@ -54,11 +56,32 @@ export class StewardsDesk {
   step(): void {
     const now = this.world.time;
     for (const v of this.detector.step()) {
+      if (v.offence === 'track-limits') { this.trackLimits(v); continue; }
       this.underReview.push({ v, due: now + this.rules.reviewSeconds });
       this.world.announce(v.car, 'steward', `Stewards: incident under review, #${v.car.id}${v.against ? ` and #${v.against.id}` : ''}, ${OFFENCE_NAMES[v.offence]}`);
     }
     while (this.underReview.length && this.underReview[0].due <= now) this.apply(this.stewards.judge(this.underReview.shift()!.v));
     this.serving();
+  }
+
+  /**
+   * Track limits are counted by race control as they happen, not reviewed:
+   * strikes up to the grace are noted, the last of them with the
+   * black-and-white flag; every one after that is a time penalty.
+   */
+  private trackLimits(v: Violation): void {
+    const grace = this.rules.trackLimits?.strikes ?? Infinity;
+    const car = v.car;
+    const n = (this.strikes.get(car) ?? 0) + 1;
+    this.strikes.set(car, n);
+    if (n < grace) {
+      this.world.announce(car, 'steward', `Race control: #${car.id}, track limits at ${v.detail} (${n} of ${grace})`);
+    } else if (n === grace) {
+      this.record.push({ car, time: this.world.time, offence: 'track-limits', penalty: 'warning', detail: `${n} times, last at ${v.detail}` });
+      this.world.announce(car, 'steward', `Race control: #${car.id}, track limits at ${v.detail} (${n} of ${grace}): black and white flag`);
+    } else {
+      this.issue(car, 'track-limits', 'time', `#${car.id}: track limits at ${v.detail}, ${n} times: ${PENALTY_NAMES.time}`, `at ${v.detail}`);
+    }
   }
 
   private apply(d: Decision): void {

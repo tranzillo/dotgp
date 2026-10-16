@@ -105,3 +105,40 @@ describe('stewards review moves, not moments', () => {
     expect(pass(() => -3, false).filter((v) => v.offence === 'passing-below-the-line')).toHaveLength(0);
   });
 });
+
+describe('track limits', () => {
+  it('counts each excursion past the white line: strikes, the black-and-white flag, then time', async () => {
+    const { ScriptedDriver, Team } = await import('../src/ai/drivers');
+    const { followLine } = await import('../src/ai/lineFollower');
+    const { PaceCarDriver } = await import('../src/ai/formation');
+    const { TowerSpotter } = await import('../src/ai/spotter');
+    const { CIRCUIT_RULES } = await import('../src/rules/rulebook');
+    const { Car } = await import('../src/sim/car');
+    const { Race } = await import('../src/sim/race');
+    const { Track } = await import('../src/sim/track');
+    const { World } = await import('../src/sim/world');
+    const { generateLayout } = await import('../src/trackgen');
+    const track = new Track(generateLayout({ type: 'circuit', seed: 1, variant: 'club' }));
+    const world = new World(track, { wearScale: 4, collisions: false });
+    // One car weaves out past the left-hand line every few seconds (onto the verge), slowly; the other stays on track.
+    const weaver = { decide: (car: InstanceType<typeof Car>, w: InstanceType<typeof World>) => followLine(car, w, () => (Math.floor(w.time / 4) % 2 ? track.halfWidth + 4 : 0), () => 20, 0.7) };
+    world.addCar(new Car(0), new Team(new ScriptedDriver(0, 0.8), new TowerSpotter()));
+    world.addCar(new Car(1), new Team(weaver, new TowerSpotter()));
+    const rulebook = { ...CIRCUIT_RULES, trackLimits: { strikes: 2 } };
+    const race = new Race(world, 3, new PaceCarDriver(), { rulebook, seed: 1 });
+    const lines: string[] = [];
+    let greenAt = NaN;
+    while (world.time < 400 && (Number.isNaN(greenAt) || world.time < greenAt + 60)) {
+      race.step();
+      if (Number.isNaN(greenAt) && race.started) greenAt = world.time;
+      for (const e of world.events.splice(0)) if (/track limits/.test(e.text)) lines.push(`#${e.car.id} ${e.text}`);
+    }
+    const [clean, weaving] = world.cars;
+    expect(lines.some((l) => l.startsWith('#0'))).toBe(false); // the car on track: nothing
+    expect(lines.filter((l) => /\(1 of 2\)/.test(l)).length).toBe(1);
+    expect(lines.some((l) => /\(2 of 2\): black and white flag/.test(l))).toBe(true);
+    expect(weaving.timePenalty).toBeGreaterThan(0); // every one after the flag costs time
+    expect(clean.timePenalty).toBe(0);
+    expect(lines.every((l) => /turn \d+/.test(l))).toBe(true); // named by the corner
+  });
+});

@@ -328,6 +328,28 @@ function cornersAlong(p: CircuitParams, L: number): CornerAt[] {
   return out;
 }
 
+/**
+ * Turn numbers, as on real circuits: the corners in order from the start
+ * line. Where on the lap is turn n (within it, or the last one passed)?
+ * Null on tracks that aren't road circuits.
+ */
+export function turnAt(layout: TrackLayout, s: number): number | null {
+  if (layout.type !== 'circuit') return null;
+  const p = layout.params as unknown as CircuitParams;
+  const L = circuitLength(p);
+  const signed = (x: number) => { let r = ((x % L) + L) % L; if (r > L / 2) r -= L; return r; };
+  const corners = cornersAlong(p, L);
+  if (!corners.length) return null;
+  const r = signed(s);
+  let turn = corners.length; // before the first corner: still after the last one
+  corners.forEach((c, i) => { if (r >= c.s0 - 10) turn = i + 1; });
+  return turn;
+}
+
+function circuitLength(p: CircuitParams): number {
+  return circuitCenterline(p).sections.reduce((a, sec) => a + sec[0], 0);
+}
+
 /** Run-off depth on the outside of a corner: room to stop a car leaving it at corner speed (gravel ~0.7 g). */
 const runoffDepth = (radius: number) => Math.min(60, Math.max(12, 0.6 * radius + 8));
 
