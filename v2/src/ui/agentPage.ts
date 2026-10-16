@@ -36,10 +36,6 @@ export class AgentPage {
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.close(); });
   }
 
-  get isOpen(): boolean {
-    return this.current !== null;
-  }
-
   close(): void {
     this.current = null;
     this.host.hidden = true;
@@ -87,8 +83,7 @@ export class AgentPage {
       facts.push(d.licensed ? `licensed${s.licensedAfter !== null ? ` after ${s.licensedAfter} lessons` : ''}` : 'in driving school');
       const nerve = d.nerve ?? 0.5;
       facts.push(`nerve ${(nerve * 100).toFixed(0)}: ${nerve < 0.3 ? 'cautious, keeps out of trouble' : nerve < 0.7 ? 'takes a gap when there is one' : 'fearless, goes for gaps that might not be there'}`);
-      facts.push(d.pitLicensed && d.pitTrafficLicensed ? 'does their own pit stops'
-        : d.pitLicensed ? 'pit stops: the veteran maneuver until they pass pit road in traffic' : 'pit stops: the veteran maneuver');
+      facts.push(d.pitLicensed && d.pitTrafficLicensed ? 'does their own pit stops' : 'pit stops: the veteran maneuver');
       facts.push(d.cautionLicensed ? 'drives their own cautions' : 'cautions: the formation script');
       facts.push(`${d.rounds} training rounds`);
     } else if (role === 'chief') {

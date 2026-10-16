@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DotGP Practice</title>
+    <title>DotGP</title>
     <style>
       :root {
         --bg: #0d0d0f;
@@ -44,6 +44,10 @@
       tr { cursor: pointer; }
       .chip { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
       .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 3px solid; box-sizing: border-box; margin-right: 6px; vertical-align: -1px; }
+      .views { position: sticky; top: -14px; z-index: 2; display: flex; gap: 2px; margin: -14px -14px 4px; padding: 8px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
+      .views button { flex: 1; padding: 5px 4px; border-color: transparent; background: transparent; color: var(--muted); }
+      .views button.on { background: #1d1d21; color: var(--text); border-color: var(--line); }
+      section[hidden] { display: none; }
       .label { color: var(--muted); font-size: 11px; width: 52px; align-self: center; }
       .row.inline { margin: 0; }
       #towerWrap { max-height: 360px; overflow-y: auto; }
@@ -118,68 +122,91 @@
         <div id="hud"></div>
       </div>
       <aside>
-        <h2>Events <span class="muted">(one on screen, the rest run in the background)</span></h2>
-        <div id="eventsWrap"><table class="events"><tbody id="events"></tbody></table></div>
-        <div class="row"><button id="clearEvents">Clear finished</button></div>
+        <nav id="views" class="views">
+          <button data-view="watch">Watch</button><button data-view="series">Series</button><button data-view="paddock">Paddock</button><button data-view="academy">Academy</button><button data-view="settings">Settings</button>
+        </nav>
 
-        <h2>Driving school</h2>
-        <div class="row" id="lessonButtons"></div>
-        <div id="lessonNote" class="note"></div>
-        <div id="studentPicker"></div>
-        <div class="row"><button id="startClass">Start class</button></div>
+        <section data-view="watch">
+          <h2>Timing</h2>
+          <div id="towerWrap"><table>
+            <thead id="towerHead"><tr><th>P</th><th>Driver</th><th>Gap</th><th>Best</th><th>Tire</th><th>Fuel</th><th>Pit</th><th>Hlth</th></tr></thead>
+            <tbody id="tower"></tbody>
+          </table></div>
+          <p class="note">Click a car to follow it and hear only its radio; double-click for the driver's history.</p>
+          <div class="row"><span class="label">Speed</span><span id="speedButtons" class="row inline"></span></div>
+          <div class="row"><span class="label">Camera</span><span id="zoomButtons" class="row inline"></span></div>
 
-        <h2>Session</h2>
-        <div class="row" id="trackButtons"></div>
-        <div class="row"><button id="newTrack" title="Generate a random oval (drivers have only trained on the three presets)">New track</button></div>
-        <div class="row"><span class="label">Session</span><span id="modeButtons" class="row inline"></span></div>
-        <div class="row"><span class="label">Laps</span><span id="lapButtons" class="row inline"></span></div>
-        <div class="row"><span class="label">Pace</span><span id="paceButtons" class="row inline"></span></div>
-        <div class="row"><span class="label" title="Drivers learn as they race, comparing laps (from the next race)">Learn</span><span id="learnButtons" class="row inline"></span></div>
-        <div class="row"><span class="label"></span><span id="autoButtons" class="row inline"></span></div>
-        <div class="row"><span class="label">Field</span><span id="fieldButtons" class="row inline"></span></div>
-        <div class="row"><span class="label">Speed</span><span id="speedButtons" class="row inline"></span></div>
-        <div class="row"><span class="label">Camera</span><span id="zoomButtons" class="row inline"></span></div>
-        <div class="row"><span class="label">Cars</span><span id="dotButtons" class="row inline"></span></div>
-        <div class="row"><span class="label" title="Speed trails, and exhaust puffs while the engine is pulling">Trails</span><span id="effectButtons" class="row inline"></span></div>
-        <div class="row"><span class="label" title="Driving school: each student's practice variations, drawn faint">Variants</span><span id="variationButtons" class="row inline"></span></div>
-        <div class="row"><span class="label">Debug</span><span id="debugButtons" class="row inline"></span></div>
-        <div class="row">
-          <button id="clearMarks">Clear marks</button>
-          <button id="restart">Restart</button>
-        </div>
+          <h2>Team radio</h2>
+          <div id="radio"></div>
 
-        <h2>Timing</h2>
-        <div id="towerWrap"><table>
-          <thead id="towerHead"><tr><th>P</th><th>Driver</th><th>Gap</th><th>Best</th><th>Tire</th><th>Fuel</th><th>Pit</th><th>Hlth</th></tr></thead>
-          <tbody id="tower"></tbody>
-        </table></div>
+          <h2>Events <span class="muted">(one on screen, the rest run in the background)</span></h2>
+          <div id="eventsWrap"><table class="events"><tbody id="events"></tbody></table></div>
+          <div class="row"><button id="clearEvents">Clear finished</button></div>
+        </section>
 
-        <h2>Championship</h2>
-        <div id="season"></div>
+        <section data-view="series" hidden>
+          <h2>Championship</h2>
+          <div id="season"></div>
+          <div class="row"><button id="nextRound" title="Race the next round of the championship now">Race the next round</button></div>
+          <div class="row"><span class="label" title="What the field does when a race ends">Then</span><span id="autoButtons" class="row inline"></span></div>
 
-        <h2>Teams <span class="muted">(driver · spotter · crew chief)</span></h2>
-        <div id="teamsWrap"><table class="teams"><tbody id="teams"></tbody></table></div>
-        <div id="teamsNote" class="note"></div>
+          <h2>Race settings <span class="muted">(championship and exhibitions)</span></h2>
+          <div class="row"><span class="label">Field</span><span id="fieldButtons" class="row inline"></span></div>
+          <div class="row"><span class="label">Laps</span><span id="lapButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="Tire wear and fuel burn multiplier">Pace</span><span id="paceButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="Drivers learn as they race, comparing laps (from the next race)">Learn</span><span id="learnButtons" class="row inline"></span></div>
+          <div class="row"><button id="restart" title="Start the field's current session again with these settings">Restart</button></div>
 
-        <h2>Roster <span class="muted">(click a name for their history)</span></h2>
-        <div class="row"><span id="rosterTabs" class="row inline"></span><button id="recruit" title="Sign a new agent to the academy (no seat): drivers descend from a licensed driver">Recruit</button><button id="recruitRookie" title="Sign a raw rookie driver (no license: driving school first)">Raw rookie</button></div>
-        <div id="rosterWrap"><table class="roster"><tbody id="roster"></tbody></table></div>
+          <h2>Exhibition <span class="muted">(doesn't count for the championship)</span></h2>
+          <div class="row" id="trackButtons"></div>
+          <div class="row"><button id="newTrack" title="Generate a random oval (drivers practise on generated ovals in the Track variety lesson)">New track</button></div>
+          <div class="row"><span class="label">Session</span><span id="modeButtons" class="row inline"></span></div>
+          <p class="note">Picking a track or a session starts it straight away.</p>
+        </section>
 
-        <h2>Team radio <span class="muted">(click a driver to filter)</span></h2>
-        <div id="radio"></div>
+        <section data-view="paddock" hidden>
+          <h2>Teams <span class="muted">(driver · spotter · crew chief)</span></h2>
+          <div id="teamsWrap"><table class="teams"><tbody id="teams"></tbody></table></div>
+          <div id="teamsNote" class="note"></div>
 
-        <h2>Practice (live learning)</h2>
-        <div class="row">
-          <button id="practice">Start practice</button>
-          <label class="btn">Load drivers<input type="file" id="loadFile" accept=".json" /></label>
-          <button id="saveFile">Download</button>
-          <button id="newDrivers">New rookies</button>
-        </div>
-        <div id="practiceStatus"></div>
-        <p class="note">Practice runs offscreen in a worker: 8-car race heats with contact on all three ovals. Each round, the cars on track get the improved weights.</p>
+          <h2>Roster <span class="muted">(click a name for their history)</span></h2>
+          <div class="row"><span id="rosterTabs" class="row inline"></span><button id="recruit" title="Sign a new agent to the academy (no seat): drivers descend from a licensed driver">Recruit</button><button id="recruitRookie" title="Sign a raw rookie driver (no license: driving school first)">Raw rookie</button></div>
+          <div id="rosterWrap"><table class="roster"><tbody id="roster"></tbody></table></div>
+        </section>
 
-        <h2>Technique <span class="muted">(where tire force points vs. travel)</span></h2>
-        <div id="techniques"></div>
+        <section data-view="academy" hidden>
+          <h2>Driving school</h2>
+          <div class="row" id="lessonButtons"></div>
+          <div id="lessonNote" class="note"></div>
+          <div id="studentPicker"></div>
+          <div class="row"><button id="startClass">Start class</button></div>
+
+          <h2>Practice (live learning)</h2>
+          <div class="row"><button id="practice">Start practice</button></div>
+          <div id="practiceStatus"></div>
+          <p class="note">The field practises offscreen in a worker: 6-car heats with contact on the preset ovals, and crew chiefs learn strategy. Each round the cars on track get the improved driving. Unlicensed drivers in the field do rookie school here.</p>
+        </section>
+
+        <section data-view="settings" hidden>
+          <h2>Display</h2>
+          <div class="row"><span class="label">Cars</span><span id="dotButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="Speed trails, and exhaust puffs while the engine is pulling">Trails</span><span id="effectButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="Driving school: each student's practice variations, drawn faint">Variants</span><span id="variationButtons" class="row inline"></span></div>
+          <div class="row"><button id="clearMarks" title="Clear the skid marks">Clear marks</button></div>
+
+          <h2>Debug</h2>
+          <div class="row"><span class="label">Layers</span><span id="debugButtons" class="row inline"></span></div>
+          <h2>Technique <span class="muted">(where tire force points vs. travel)</span></h2>
+          <div id="techniques"></div>
+
+          <h2>Data</h2>
+          <div class="row">
+            <label class="btn" title="Load a roster saved with Download">Load roster<input type="file" id="loadFile" accept=".json" /></label>
+            <button id="saveFile" title="Save the roster and the championship to a file">Download</button>
+            <button id="newDrivers" title="Replace every driver in the field with a raw rookie (the old drivers are deleted)">New rookies</button>
+          </div>
+          <div id="dataNote" class="note"></div>
+        </section>
       </aside>
     </div>
     <script type="module" src="/src/ui/main.ts"></script>

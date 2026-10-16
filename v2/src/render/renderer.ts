@@ -221,6 +221,7 @@ export class Renderer {
       c.width = w;
       c.height = h;
     }
+    this.trackDirty = true; // resizing a canvas wipes it, even when the view doesn't change
     const b = track.bounds;
     const pad = 24 * this.dpr;
     this.fitScale = Math.min((w - 2 * pad) / (b.maxX - b.minX), (h - 2 * pad) / (b.maxY - b.minY));

@@ -122,6 +122,11 @@ let learnInRaces = true;
  */
 type Loop = 'races' | 'weekend' | 'stop';
 let loop: Loop = 'weekend';
+/**
+ * Whether the field's races are championship rounds (on the calendar's next
+ * track) or exhibitions (any track, picked by hand: no points).
+ */
+let championship = true;
 /** Practice rounds (in the trainer) between races in the weekend loop. */
 const WEEKEND_PRACTICE_ROUNDS = 9;
 let weekendPractice: { roundsLeft: number } | null = null;
@@ -151,6 +156,8 @@ interface EventMeta {
   /** Driving school: each student's colours and initials, by student key. */
   liveries?: Map<number, Livery>;
   lesson?: LessonId;
+  /** A championship round (scores points), not an exhibition. */
+  round?: boolean;
 }
 const metas = new Map<EventHandle, EventMeta>();
 /** The event the field is in (on screen or not). */
@@ -213,15 +220,23 @@ const carOf = (entry: TeamEntry | null) => (entry && shownMeta()?.mode !== 'clas
 /** Driving school: draw each student's practice variations (faint) too. */
 let showVariations = true;
 
-function newEventRef(): EventRef {
+function newEventRef(round: boolean): EventRef {
   const type = mode === 'ghost' ? 'ghost' : mode;
-  const label = mode === 'race'
+  const label = round
     ? `Season ${season.number} round ${Math.min(season.races.length + 1, season.schedule.length)} · ${trackName}`
+    : mode === 'race' ? `Exhibition · ${trackName}`
     : mode === 'practice' ? `Practice · ${trackName}` : `Ghost laps · ${trackName}`;
   return {
     id: `${type}-${Date.now().toString(36)}-${++eventCounter}`, type, label, track: trackName,
-    parent: mode === 'race' ? `season-${season.number}` : undefined,
+    parent: round ? `season-${season.number}` : undefined,
   };
+}
+
+/** The championship's next round goes on its calendar track. */
+function toNextRound(): void {
+  championship = true;
+  trackName = nextTrack(season);
+  track = TRACKS.get(trackName) ?? TRACKS.get(SEASON_TRACKS[0])!;
 }
 
 function entrantSpec(t: TeamEntry): EntrantSpec {
@@ -242,7 +257,8 @@ function entrantSpec(t: TeamEntry): EntrantSpec {
  */
 function startSession(attach = true, warm = 0): EventHandle | null {
   if (fieldEvent) endEvent(fieldEvent);
-  const ref = newEventRef();
+  const round = mode === 'race' && championship;
+  const ref = newEventRef(round);
   // Injured or retired drivers' seats go to stand-ins; recovered regulars get theirs back.
   for (const line of roster.fillSeats(field(), (id) => occupancy.isFree(id))) news(line);
   const teams = field();
@@ -256,7 +272,7 @@ function startSession(attach = true, warm = 0): EventHandle | null {
     seed: (rng.next() * 2 ** 32) >>> 0, learn: learnInRaces,
   };
   const handle = host.start(ref, { what: 'session', spec }, { attach, runDetached: mode === 'race', warm });
-  metas.set(handle, { mode, trackName, track, teams: new Map(teams.map((t) => [t.id, t])), recorded: false });
+  metas.set(handle, { mode, trackName, track, teams: new Map(teams.map((t) => [t.id, t])), recorded: false, round });
   fieldEvent = handle;
   raceDoneAt = NaN;
   if (attach) showEvent(handle);
@@ -293,6 +309,7 @@ function carryOn(prev: EventHandle): void {
   raceDoneAt = NaN;
   if (loop === 'races') {
     mode = 'race';
+    toNextRound();
     startSession(attach);
   } else if (loop === 'weekend') {
     startWeekendPractice(attach);
@@ -434,7 +451,7 @@ function updateTower(): void {
   const followed = (selected && meta.teams.has(selected.id) ? selected : null) ?? meta.teams.get(leader.key)!;
   const following = zoom === 1 ? '' : fixedFocusS !== null && !selected ? ' · camera parked'
     : ` · following #${followed.livery.number} ${roster.drivers.get(followed.driver)?.name ?? ''}`;
-  const session = meta.mode === 'race' ? `race · ${pace}× pace` : meta.mode === 'practice' ? `practice · ${pace}× pace` : 'ghosts';
+  const session = meta.mode === 'race' ? `${meta.round ? 'championship' : 'exhibition'} race · ${pace}× pace` : meta.mode === 'practice' ? `practice · ${pace}× pace` : 'ghosts';
   let status = `leader ${(leader.speed * 3.6).toFixed(0)} km/h · t ${s.time.toFixed(0)}s`;
   const r = s.race;
   if (r) {
@@ -565,7 +582,7 @@ $('teams').onchange = (e) => {
   roster.assign(team, sel.dataset.role as Role, sel.value);
   persist();
   renderTeams();
-  $('teamsNote').textContent = 'Changes take effect at the next start (Restart applies them now).';
+  $('teamsNote').textContent = 'Changes take effect at the next start (Series: Restart applies them now).';
 };
 
 // ---------- Technique roses ----------
@@ -651,7 +668,7 @@ function drawTechniques(): void {
 /** Re-render callbacks for every button group, so state loaded at boot shows correctly. */
 const buttonGroups: Array<() => void> = [];
 
-function buttonGroup<T>(hostId: string, options: Array<[string, T]>, current: () => T, onPick: (v: T) => void): () => void {
+function buttonGroup<T>(hostId: string, options: Array<[string, T]>, current: () => T | null, onPick: (v: T) => void): () => void {
   const hostEl = $(hostId);
   const render = () => {
     hostEl.innerHTML = '';
@@ -669,11 +686,12 @@ function buttonGroup<T>(hostId: string, options: Array<[string, T]>, current: ()
 }
 
 function selectTrack(name: string): void {
+  championship = false;
   trackName = name;
   track = TRACKS.get(name)!;
   startSession();
 }
-const renderTrackButtons = buttonGroup('trackButtons', trackOptions, () => trackName, selectTrack);
+const renderTrackButtons = buttonGroup('trackButtons', trackOptions, () => (championship ? null : trackName), selectTrack);
 $('newTrack').onclick = () => {
   const t = addGeneratedTrack();
   selectTrack(trackOptions[trackOptions.length - 1][0]);
@@ -699,8 +717,9 @@ buttonGroup('effectButtons', [['Show', true], ['Hide', false]] as Array<[string,
 buttonGroup('variationButtons', [['Show', true], ['Hide', false]] as Array<[string, boolean]>,
   () => showVariations, (v) => { showVariations = v; });
 buttonGroup('modeButtons', [['Race', 'race'], ['Practice', 'practice'], ['Ghosts', 'ghost']] as Array<[string, Mode]>,
-  () => mode, (m) => {
+  () => (championship ? null : mode), (m) => {
     mode = m;
+    championship = false;
     weekendPractice = null;
     startSession(); // ends the field's previous session (and its practice training)
   });
@@ -710,8 +729,15 @@ buttonGroup('lapButtons', [['20', 20], ['50', 50], ['100', 100], ['200', 200]], 
 });
 buttonGroup('paceButtons', [['Real', 1], ['4×', 4], ['8×', 8]], () => pace, (p) => { pace = p; startSession(); });
 buttonGroup('learnButtons', [['On', true], ['Off', false]] as Array<[string, boolean]>, () => learnInRaces, (v) => { learnInRaces = v; });
-buttonGroup('autoButtons', [['Weekends', 'weekend'], ['Race after race', 'races'], ['Stop', 'stop']] as Array<[string, Loop]>,
+buttonGroup('autoButtons', [['Race weekend', 'weekend'], ['Next round', 'races'], ['Stop', 'stop']] as Array<[string, Loop]>,
   () => loop, (l) => { loop = l; });
+$('nextRound').onclick = () => {
+  weekendPractice = null;
+  mode = 'race';
+  toNextRound();
+  startSession();
+  buttonGroups.forEach((render) => render());
+};
 // Debug overlays: independent toggles.
 {
   const hostEl = $('debugButtons');
@@ -753,9 +779,12 @@ function finishRace(handle: EventHandle): void {
   const results = handle.results!;
   meta.recorded = true;
   const laps = (handle.event.spec as SessionSpec).laps;
-  recordRace(season, meta.trackName, laps, results.map((r) => ({
-    team: r.key, driver: r.driver, chief: r.chief, spotter: r.spotter, position: r.position, status: r.status, laps: r.laps,
-  })));
+  const round = !!meta.round;
+  if (round) {
+    recordRace(season, meta.trackName, laps, results.map((r) => ({
+      team: r.key, driver: r.driver, chief: r.chief, spotter: r.spotter, position: r.position, status: r.status, laps: r.laps,
+    })));
+  }
   // Every agent in the race gets its result in the log: drivers, crew chiefs and spotters alike.
   for (const r of results) {
     const data = {
@@ -763,14 +792,14 @@ function finishRace(handle: EventHandle): void {
       bestLap: r.bestLap, avgLap: r.avgLap, stops: r.stops, wallHits: r.wallHits, health: r.health,
       penalties: r.penalties.filter((p) => p.penalty !== 'none').map((p) => `${PENALTY_NAMES[p.penalty]} for ${OFFENCE_NAMES[p.offence]}`),
       disqualified: r.disqualified,
-      points: pointsFor(r.position, results.length, r.status), season: season.number, round: season.races.length,
+      ...(round ? { points: pointsFor(r.position, results.length, r.status), season: season.number, round: season.races.length } : {}),
     };
     activity.record({ kind: 'race', agent: r.driver, role: 'driver', event: handle.ref, brain: roster.drivers.get(r.driver)?.rounds, data });
     activity.record({ kind: 'race', agent: r.chief, role: 'chief', event: handle.ref, brain: roster.chiefs.get(r.chief)?.rounds, data });
     activity.record({ kind: 'race', agent: r.spotter, role: 'spotter', event: handle.ref, data });
   }
   recordInjuries(handle, meta.trackName, results);
-  if (seasonComplete(season)) {
+  if (round && seasonComplete(season)) {
     recordSeasonActivity();
     const lines = offSeason(season, roster, field());
     lines.reverse().forEach(news);
@@ -841,8 +870,7 @@ function renderSeason(): void {
 
 /** Race weekend: practice on the season's next track, then race there. */
 function startWeekendPractice(attach: boolean): void {
-  trackName = nextTrack(season);
-  track = TRACKS.get(trackName) ?? TRACKS.get(SEASON_TRACKS[0])!;
+  toNextRound();
   mode = 'practice';
   if (!startSession(attach)) return;
   weekendPractice = { roundsLeft: WEEKEND_PRACTICE_ROUNDS };
@@ -904,7 +932,7 @@ function startPractice(): void {
       lines.push(`${carLabel(teams[c.index])} crew chief ${chief.name}: strategy race ${((c.relativeTime - 1) * 100).toFixed(1)}% off the best`);
     }
     $('practiceStatus').innerHTML = `round ${r.round} · walls ×${r.damageScale.toFixed(2)} · ${(r.elapsedMs / 1000).toFixed(1)}s/round<br>`
-      + `practising now (best laps speedway / short / flat):<br>${lines.join('<br>')}`;
+      + `practising now (best laps ${trackNames.join(' / ')}):<br>${lines.join('<br>')}`;
     if (performance.now() - lastPersist > 5000) {
       persist();
       lastPersist = performance.now();
@@ -946,6 +974,7 @@ $('practice').onclick = () => {
   startPractice();
 };
 $('newDrivers').onclick = () => {
+  if (!confirm(`Replace all ${fieldSize} drivers in the field with raw rookies? The current drivers are deleted.`)) return;
   stopPractice();
   roster.freshDriversForAll();
   technique.clear();
@@ -954,7 +983,7 @@ $('newDrivers').onclick = () => {
   startSession();
 };
 $('saveFile').onclick = () => {
-  const blob = new Blob([JSON.stringify({ fieldSize, roster: roster.toJSON() })], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ fieldSize, roster: roster.toJSON(), season })], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'dotgp-roster.json';
@@ -964,9 +993,14 @@ $('saveFile').onclick = () => {
 $<HTMLInputElement>('loadFile').onchange = async (e) => {
   const file = (e.target as HTMLInputElement).files?.[0];
   if (!file) return;
-  const data = JSON.parse(await file.text());
+  (e.target as HTMLInputElement).value = ''; // the same file can be loaded again
+  let data: { roster?: unknown; season?: SeasonState };
+  try { data = JSON.parse(await file.text()); } catch { data = {}; }
   const loaded = Roster.load(data.roster ?? data, rng, roster.chiefTemplates);
-  if (!loaded) return;
+  if (!loaded) { $('dataNote').textContent = `${file.name} isn't a roster file.`; return; }
+  $('dataNote').textContent = `Loaded ${file.name}.`;
+  if (data.season?.schedule) season = data.season;
+  renderSeason();
   const wasPracticing = !!trainer;
   stopPractice();
   if (fieldEvent) endEvent(fieldEvent);
@@ -1066,7 +1100,7 @@ function renderSchool(): void {
   for (const id of [...picked]) if (!eligible(id)) picked.delete(id);
   $('studentPicker').innerHTML = free.length
     ? free.map((d) => `<label class="pick"><input type="checkbox" data-student="${d.id}"${picked.has(d.id) ? ' checked' : ''}> ${d.name} <span class="muted">${d.rounds}r${roster.teamOf('driver', d.id) ? '' : ' · academy'}</span></label>`).join('')
-    : `<div class="muted">No free ${L.audience}. ${L.id === 'rookie' ? 'Recruit a raw rookie in the Roster panel.' : 'Drivers in a running session are busy: stop it, or recruit to the academy.'}</div>`;
+    : `<div class="muted">No free ${L.audience}. ${L.id === 'rookie' ? 'Recruit a raw rookie under Paddock: Roster.' : 'Drivers in a running session are busy: stop it, or recruit to the academy.'}</div>`;
   ($('startClass') as HTMLButtonElement).disabled = picked.size === 0;
 }
 
@@ -1192,6 +1226,21 @@ $('tower').addEventListener('click', (e) => {
   if (link) void agentPage.open(link.dataset.agent!, 'driver');
 });
 
+// ---------- Views ----------
+
+const VIEW_KEY = 'dotgp.v2.view';
+
+function showView(view: string): void {
+  document.querySelectorAll<HTMLElement>('aside section[data-view]').forEach((el) => { el.hidden = el.dataset.view !== view; });
+  document.querySelectorAll<HTMLElement>('#views button').forEach((b) => { b.className = b.dataset.view === view ? 'on' : ''; });
+  try { localStorage.setItem(VIEW_KEY, view); } catch { /* remembered for this visit only */ }
+}
+$('views').onclick = (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('button[data-view]');
+  if (b) showView(b.dataset.view!);
+};
+showView((() => { try { return localStorage.getItem(VIEW_KEY) ?? 'watch'; } catch { return 'watch'; } })());
+
 // ---------- Boot ----------
 
 async function boot(): Promise<void> {
@@ -1216,8 +1265,11 @@ async function boot(): Promise<void> {
   const [kind, seedText, variant] = (params.get('track') ?? '').split(':');
   if (kind === 'oval' && seedText) {
     addGeneratedTrack(Number(seedText), variant || undefined);
+    championship = false;
     trackName = trackOptions[trackOptions.length - 1][0];
     track = TRACKS.get(trackName)!;
+  } else {
+    toNextRound();
   }
   watchRoster(roster);
   roster.ensureTeams(fieldSize);
