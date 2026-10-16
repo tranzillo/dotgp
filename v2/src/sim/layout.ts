@@ -16,7 +16,12 @@
 
 export const LAYOUT_VERSION = 1;
 
-export type Surface = 'track' | 'apron' | 'pit' | 'garage' | 'road' | 'grass';
+/**
+ * What a car drives on. Ovals: track, apron, pit, garage, road, grass. Road
+ * circuits add kerbs (the painted strips at the edge, a little bumpy),
+ * asphalt run-off beyond the track limits, and gravel traps.
+ */
+export type Surface = 'track' | 'apron' | 'pit' | 'garage' | 'road' | 'grass' | 'kerb' | 'runoff' | 'gravel';
 
 /** [s0, s1] in signed s (s1 > s0, may exceed L/2 to wrap), or null for the whole lap. */
 export type SRange = [number, number] | null;

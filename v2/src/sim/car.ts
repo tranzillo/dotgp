@@ -332,10 +332,10 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1): void
   const slideMult = 1 + P.SLIDE_WEAR * over;
   car.tireLife = Math.max(0, car.tireLife - P.WEAR_RATE * wearScale * (speed + P.WEAR_SLIP_FLOOR) * load2 * slideMult * dt);
   // Every car working its tires adds a little to the groove; only a real slide leaves a skid.
-  const onGrass = surfaceKind === 'grass';
-  car.groove = onGrass ? 0 : Math.min(1, (Math.sqrt(load2) * (speed + P.WEAR_SLIP_FLOOR) * slideMult) / P.MARK_NORM);
-  car.skid = onGrass
-    ? Math.min(1, speed / 40) // torn turf
+  const loose = surfaceKind === 'grass' || surfaceKind === 'gravel';
+  car.groove = loose ? 0 : Math.min(1, (Math.sqrt(load2) * (speed + P.WEAR_SLIP_FLOOR) * slideMult) / P.MARK_NORM);
+  car.skid = loose
+    ? Math.min(1, speed / 40) // torn turf, scattered stones
     : speed > 3 && over > P.SKID_THRESHOLD ? (over - P.SKID_THRESHOLD) / (1 - P.SKID_THRESHOLD) : 0;
 
   // --- Fuel ---

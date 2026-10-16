@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { Car, stepCar } from '../src/sim/car';
 import { PHYSICS as P } from '../src/sim/constants';
 import { resolveWalls } from '../src/sim/collisions';
-import { ovalTrack, SPEEDWAY } from '../src/trackgen';
+import { buildLayout, ovalTrack, SPEEDWAY } from '../src/trackgen';
+import { Track } from '../src/sim/track';
+
+const speedwayLayout = () => buildLayout('oval', SPEEDWAY);
 import { World } from '../src/sim/world';
 
 const track = ovalTrack(SPEEDWAY);
@@ -51,6 +54,50 @@ describe('surfaces', () => {
     const onGrass = coast(track.apronEdgeAt(0) + 10);
     expect(onGrass.surface).toBe('grass');
     expect(40 - onGrass.speed).toBeGreaterThan(2.5 * (40 - onTrack.speed));
+  });
+});
+
+describe('road circuit surfaces', () => {
+  // Strips of each surface laid across the speedway's back straight (on top of the track), coasting and braking.
+  const back = SPEEDWAY.straightLength / 2 + 2 * SPEEDWAY.easementLength + Math.PI * SPEEDWAY.turnRadius + 30;
+  const strip = (surface: 'kerb' | 'runoff' | 'gravel' | 'grass' | 'track') => {
+    const layout = speedwayLayout();
+    layout.surfaces.push({ id: 'test', surface, shape: { kind: 'band', range: [back - 20, back + 400], d0: -8, d1: 8 } });
+    return new Track(layout);
+  };
+  const run = (t: Track, input: number) => {
+    const car = new Car(0);
+    car.placeOnTrack(t, back, 0);
+    const i = car.trackIdx;
+    car.vx = t.tx[i] * 50; car.vy = t.ty[i] * 50;
+    car.frameX = t.tx[i]; car.frameY = t.ty[i];
+    car.inputX = input;
+    for (let k = 0; k < 1.5 / P.DT; k++) {
+      stepCar(car, t, P.DT);
+      const p = t.project(car.x, car.y, car.trackIdx);
+      car.trackIdx = p.idx; car.s = p.s; car.d = p.d;
+    }
+    return car;
+  };
+
+  it('gravel stops a car far harder than grass, which stops it harder than pavement', () => {
+    const lost = (surface: Parameters<typeof strip>[0]) => 50 - run(strip(surface), 0).speed;
+    expect(run(strip('gravel'), 0).surface).toBe('gravel');
+    expect(lost('gravel')).toBeGreaterThan(2 * lost('grass'));
+    expect(lost('grass')).toBeGreaterThan(2 * lost('track'));
+  });
+
+  it('kerbs and run-off brake nearly like the track; gravel and grass far worse', () => {
+    const braked = (surface: Parameters<typeof strip>[0]) => 50 - run(strip(surface), -1).speed;
+    expect(braked('kerb')).toBeGreaterThan(0.85 * braked('track'));
+    expect(braked('runoff')).toBeGreaterThan(0.85 * braked('track'));
+    // Braking on loose ground: less grip, though the drag helps (gravel's drag more than makes up for it).
+    expect(braked('grass')).toBeLessThan(braked('track'));
+  });
+
+  it('kerbs unsettle a car; run-off does not', () => {
+    const drift = (surface: Parameters<typeof strip>[0]) => Math.abs(run(strip(surface), 0).d);
+    expect(drift('kerb')).toBeGreaterThan(drift('runoff') + 0.05); // (both drift a little: the straight is banked)
   });
 });
 

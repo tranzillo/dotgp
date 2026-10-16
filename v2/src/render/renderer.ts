@@ -60,6 +60,12 @@ const COLORS = {
   startLine: 'rgba(255,255,255,0.92)',
   rubber: '8,8,10',
   turf: '78,58,32',
+  /** Stones thrown up in a gravel trap: lighter than the gravel. */
+  stones: '150,140,120',
+  gravel: '#4d483f',
+  runoff: '#2c2c31',
+  kerb: '#cfcfcf',
+  kerbStripe: '#b0413a',
 };
 
 const SURFACE_COLORS: Record<Surface, string> = {
@@ -69,6 +75,9 @@ const SURFACE_COLORS: Record<Surface, string> = {
   garage: COLORS.garageLot,
   road: COLORS.road,
   grass: COLORS.grass,
+  kerb: COLORS.kerb,
+  runoff: COLORS.runoff,
+  gravel: COLORS.gravel,
 };
 
 /** Painted lines: colour, width in CSS pixels, dash pattern in CSS pixels. */
@@ -314,6 +323,22 @@ export class Renderer {
     });
   }
 
+  /** Red blocks across a kerb every other stretch (it is filled white first). */
+  private kerbStripes(ctx: CanvasRenderingContext2D, range: SRange, d0: Edge, d1: Edge): void {
+    const track = this.track!;
+    const [s0, s1] = range ?? [0, track.length];
+    const block = 3; // m
+    ctx.fillStyle = COLORS.kerbStripe;
+    for (let s = s0; s < s1; s += 2 * block) {
+      const e = Math.min(s1, s + block);
+      ctx.beginPath();
+      this.trace(ctx, s, e, this.edgeFn(d0));
+      this.trace(ctx, s, e, this.edgeFn(d1), false, true);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
   /** Fill a surface region (and its pattern) on the base layer. */
   private paintRegion(ctx: CanvasRenderingContext2D, region: SurfaceRegion): void {
     const shape = region.shape;
@@ -346,6 +371,7 @@ export class Renderer {
     }
     ctx.fillStyle = color;
     ctx.fill(rule);
+    if (region.surface === 'kerb' && shape.kind === 'band') this.kerbStripes(ctx, shape.range, shape.d0, shape.d1);
     if (region.pattern === 'mowing') {
       ctx.save();
       ctx.clip(rule);
@@ -611,9 +637,10 @@ export class Renderer {
         groove.lineTo(x1, y1);
         groove.stroke();
       }
-      const skid = skidStroke({ skid: strokes[k + 5], surface: strokes[k + 6] ? 'grass' : 'track' });
+      const ground = strokes[k + 6];
+      const skid = skidStroke({ skid: strokes[k + 5], surface: ground === 1 ? 'grass' : ground === 2 ? 'gravel' : 'track' });
       if (skid) {
-        skids.strokeStyle = `rgba(${skid.turf ? COLORS.turf : COLORS.rubber},${skid.alpha.toFixed(3)})`;
+        skids.strokeStyle = `rgba(${skid.turf ? COLORS.turf : skid.gravel ? COLORS.stones : COLORS.rubber},${skid.alpha.toFixed(3)})`;
         skids.lineWidth = skid.width * MARK_RES;
         skids.beginPath();
         skids.moveTo(x0, y0);

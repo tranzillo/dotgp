@@ -87,6 +87,10 @@ export const PHYSICS = {
 /**
  * Surface behaviour. Grass is the infield: little grip (you can't turn or
  * brake well), heavy rolling drag, and bumps that knock the car off line.
+ * Gravel traps are built to stop cars: less grip still, and the stones drag
+ * a car down from racing speed in a hundred metres or so. Kerbs grip nearly
+ * like the track but their ridges unsettle a car; asphalt run-off is just
+ * pavement beyond the track limits.
  */
 export const SURFACES = {
   track: { grip: 1.0, rolling: 0.015, bump: 0 },
@@ -95,6 +99,9 @@ export const SURFACES = {
   garage: { grip: 0.9, rolling: 0.02, bump: 0 },
   road: { grip: 0.85, rolling: 0.02, bump: 0 },
   grass: { grip: 0.45, rolling: 0.2, bump: 0.06 },
+  kerb: { grip: 0.9, rolling: 0.02, bump: 0.025 },
+  runoff: { grip: 0.9, rolling: 0.015, bump: 0 },
+  gravel: { grip: 0.35, rolling: 0.7, bump: 0.08 },
 } as const;
 /** Pit road and pit service. */
 export const PIT_SERVICE = {

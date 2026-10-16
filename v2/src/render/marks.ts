@@ -35,7 +35,9 @@ export interface Stroke {
   alpha: number;
   /** Width in metres. */
   width: number;
+  /** Torn turf (grass) or scattered stones (gravel) rather than rubber. */
   turf: boolean;
+  gravel: boolean;
 }
 
 /**
@@ -53,16 +55,17 @@ export const GROOVE_WIDTH = P.CAR_RADIUS * 1.4;
 /** The skid stroke for this stretch of travel, or null if the car isn't marking. */
 export function skidStroke(car: { skid: number; surface: Surface }): Stroke | null {
   if (car.skid < 0.02) return null;
-  const turf = car.surface === 'grass';
+  const turf = car.surface === 'grass', gravel = car.surface === 'gravel';
   return {
     // A held slide is faint; a big one (a spin, a wreck) is dark.
-    alpha: turf ? 0.25 * car.skid : 0.03 + 0.25 * car.skid * car.skid,
+    alpha: turf || gravel ? 0.25 * car.skid : 0.03 + 0.25 * car.skid * car.skid,
     width: P.CAR_RADIUS * (0.5 + 0.6 * car.skid),
     turf,
+    gravel,
   };
 }
 
-/** Floats per stroke: x0, y0, x1, y1, groove, skid, turf (0/1). */
+/** Floats per stroke: x0, y0, x1, y1, groove, skid, ground (0 pavement, 1 grass, 2 gravel). */
 export const STROKE_FIELDS = 7;
 /** A car lays a stroke each time it has moved this far (m). */
 const STROKE_LENGTH = 0.5;
@@ -85,7 +88,7 @@ export class StrokeCollector {
       this.lastPos.set(car.id, [car.x, car.y]);
       if (!prev || Math.hypot(car.x - prev[0], car.y - prev[1]) > TELEPORT) continue;
       if (car.groove <= 0 && car.skid < 0.02) continue;
-      this.buf.push(prev[0], prev[1], car.x, car.y, car.groove, car.skid, car.surface === 'grass' ? 1 : 0);
+      this.buf.push(prev[0], prev[1], car.x, car.y, car.groove, car.skid, car.surface === 'grass' ? 1 : car.surface === 'gravel' ? 2 : 0);
     }
   }
 
