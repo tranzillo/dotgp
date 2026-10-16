@@ -353,6 +353,41 @@ export class Roster {
   }
 
   /**
+   * A bundle of drivers exactly as shipped (no variation), seated round the
+   * field in turn, with scripted crew chiefs and perfect spotters: the field
+   * the benchmarks race. Agents get stable ids, so their history pages build
+   * up across visits.
+   */
+  static fromBundle(
+    bundle: { id: string; name: string },
+    drivers: Array<{ weights: number[]; rounds?: number; nerve?: number; cautionLicensed?: boolean }>,
+    fieldSize: number,
+    rng: Rng,
+  ): Roster | null {
+    if (!drivers.length) return null;
+    const r = new Roster(rng);
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    for (let k = 0; k < fieldSize; k++) {
+      const i = k % drivers.length, copy = Math.floor(k / drivers.length) + 1;
+      const src = drivers[i];
+      const driver: DriverAgent = {
+        id: `${bundle.id}-${i}-${copy}`, name: `${bundle.name} ${letters[i % 26]}${copy > 1 ? copy : ''}`,
+        weights: adaptWeights(Float32Array.from(src.weights)), rounds: src.rounds ?? 0, mentor: null, licensed: true,
+        nerve: src.nerve, cautionLicensed: src.cautionLicensed,
+      };
+      r.drivers.set(driver.id, driver);
+      const spotter: SpotterAgent = { id: `${bundle.id}-S${k}`, name: `Spotter ${k + 1}`, skill: PERFECT_SPOTTER };
+      r.spotters.set(spotter.id, spotter);
+      const chief: ChiefAgent = { id: `${bundle.id}-C${k}`, name: `Chief ${k + 1}`, rounds: 0, mentor: null, brain: { kind: 'scripted', traits: randomTraits(r.random) } };
+      r.chiefs.set(chief.id, chief);
+      r.teams.push({
+        id: k, livery: randomLivery(r.teams.map((t) => t.livery.number), r.random), driver: driver.id, spotter: spotter.id, chief: chief.id,
+      });
+    }
+    return r;
+  }
+
+  /**
    * Load a saved roster. Also accepts the older formats (a list of drivers
    * with liveries, or bare training output), turning each into a team.
    */

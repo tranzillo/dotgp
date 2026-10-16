@@ -34,6 +34,21 @@ const FIELD_SIZES = [4, 8, 12, 16, 24, 32, 40];
 
 const rng = new Rng((Math.random() * 2 ** 32) >>> 0);
 let roster = new Roster(rng);
+
+/**
+ * Whose drivers are on screen: your own roster (it grows, learns, races the
+ * championship, and is saved), or a bundle shipped with the game, exactly as
+ * Claude's tests race it (read-only: no learning, classes or points).
+ */
+interface Bundle { id: string; name: string; file: string; note: string }
+let bundles: Bundle[] = [{ id: 'house', name: 'House', file: 'default.json', note: 'The house drivers.' }];
+/** 'mine', or a bundle id. */
+let source = 'mine';
+/** Your roster, kept aside while a bundle is on screen. */
+let myRoster: Roster | null = null;
+const bundleDrivers = new Map<string, Array<{ weights: number[]; rounds?: number; nerve?: number; cautionLicensed?: boolean }>>();
+const readOnly = () => source !== 'mine';
+const bundleOf = (id: string) => bundles.find((b) => b.id === id);
 let fieldSize = 8;
 const field = () => roster.teams.slice(0, fieldSize);
 
@@ -58,6 +73,7 @@ function watchRoster(r: Roster): void {
 watchRoster(roster);
 
 function persist(): void {
+  if (readOnly()) return; // a bundle is never saved over your roster
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ fieldSize, roster: roster.toJSON(), season }));
   } catch { /* storage unavailable: the roster just won't survive a reload */ }
@@ -269,7 +285,7 @@ function startSession(attach = true, warm = 0): EventHandle | null {
   }
   const spec: SessionSpec = {
     kind: mode, layout: track.layout, entrants: teams.map(entrantSpec), laps: raceLaps, pace,
-    seed: (rng.next() * 2 ** 32) >>> 0, learn: learnInRaces,
+    seed: (rng.next() * 2 ** 32) >>> 0, learn: learnInRaces && !readOnly(),
   };
   const handle = host.start(ref, { what: 'session', spec }, { attach, runDetached: mode === 'race', warm });
   metas.set(handle, { mode, trackName, track, teams: new Map(teams.map((t) => [t.id, t])), recorded: false, round });
@@ -307,7 +323,10 @@ function showEvent(handle: EventHandle): void {
 function carryOn(prev: EventHandle): void {
   const attach = prev.attachedTo;
   raceDoneAt = NaN;
-  if (loop === 'races') {
+  if (readOnly()) {
+    // A bundle doesn't race the championship or practise: another exhibition race where this one was.
+    if (loop !== 'stop') { mode = 'race'; startSession(attach); }
+  } else if (loop === 'races') {
     mode = 'race';
     toNextRound();
     startSession(attach);
@@ -476,7 +495,8 @@ function updateTower(): void {
   } else if (weekendPractice && shown() === fieldEvent) {
     status = `<b>Practice</b> · ${weekendPractice.roundsLeft} practice rounds until the race · drivers and crew chiefs learning`;
   }
-  $('hud').innerHTML = `<b>${meta.trackName}</b> · ${meta.track.length.toFixed(0)} m · ${s.cars.length} cars · ${session} · ${speed}×${following}<br>${status}`
+  const drivers = readOnly() ? ` · ${bundleOf(source)?.name} drivers` : '';
+  $('hud').innerHTML = `<b>${meta.trackName}</b> · ${meta.track.length.toFixed(0)} m · ${s.cars.length} cars${drivers} · ${session} · ${speed}×${following}<br>${status}`
     + (renderer.debug.banking || renderer.debug.forces ? `<br>${bankReadout(carOf(followed), meta)}` : '');
 }
 
@@ -711,7 +731,8 @@ $('newCircuit').onclick = () => newTrack('circuit');
 buttonGroup('fieldButtons', FIELD_SIZES.map((n) => [String(n), n] as [string, number]), () => fieldSize, (n) => {
   const practising = !!trainer;
   fieldSize = n;
-  roster.ensureTeams(n);
+  if (readOnly()) roster = Roster.fromBundle(bundleOf(source)!, bundleDrivers.get(source)!, n, rng)!;
+  else roster.ensureTeams(n);
   if (selected && !field().includes(selected)) selected = null;
   persist();
   renderTeams();
@@ -743,6 +764,7 @@ buttonGroup('learnButtons', [['On', true], ['Off', false]] as Array<[string, boo
 buttonGroup('autoButtons', [['Race weekend', 'weekend'], ['Next round', 'races'], ['Stop', 'stop']] as Array<[string, Loop]>,
   () => loop, (l) => { loop = l; });
 $('nextRound').onclick = () => {
+  if (readOnly()) { news('The championship is for your own roster: switch back to it under Paddock.'); return; }
   weekendPractice = null;
   mode = 'race';
   toNextRound();
@@ -974,6 +996,7 @@ function stopPractice(): void {
 }
 
 $('practice').onclick = () => {
+  if (readOnly()) { news(`The ${bundleOf(source)?.name} drivers are read-only (as tested): practice is for your own roster.`); return; }
   weekendPractice = null; // manual control takes over from the weekend loop
   if (trainer) { stopPractice(); return; }
   // Training happens in a practice session (the field can't practise and race at once).
@@ -985,6 +1008,7 @@ $('practice').onclick = () => {
   startPractice();
 };
 $('newDrivers').onclick = () => {
+  if (readOnly()) { news('Switch to your own roster (Paddock) to replace its drivers.'); return; }
   if (!confirm(`Replace all ${fieldSize} drivers in the field with raw rookies? The current drivers are deleted.`)) return;
   stopPractice();
   roster.freshDriversForAll();
@@ -1004,6 +1028,7 @@ $('saveFile').onclick = () => {
 $<HTMLInputElement>('loadFile').onchange = async (e) => {
   const file = (e.target as HTMLInputElement).files?.[0];
   if (!file) return;
+  if (readOnly()) { $('dataNote').textContent = 'Switch to your own roster (Paddock) before loading one over it.'; (e.target as HTMLInputElement).value = ''; return; }
   (e.target as HTMLInputElement).value = ''; // the same file can be loaded again
   let data: { roster?: unknown; season?: SeasonState };
   try { data = JSON.parse(await file.text()); } catch { data = {}; }
@@ -1132,6 +1157,7 @@ $('startClass').onclick = () => startClass();
 
 /** Start a class with the picked students, on screen (whatever was there goes to the background). */
 function startClass(): void {
+  if (readOnly()) { news(`The ${bundleOf(source)?.name} drivers are read-only (as tested): classes are for your own roster.`); return; }
   const L = LESSONS[lesson];
   const students = [...picked].map((id) => roster.drivers.get(id)!).slice(0, MAX_STUDENTS);
   if (!students.length) return;
@@ -1237,6 +1263,59 @@ $('tower').addEventListener('click', (e) => {
   if (link) void agentPage.open(link.dataset.agent!, 'driver');
 });
 
+// ---------- Roster source: yours, or a bundle as tested ----------
+
+async function useRoster(next: string): Promise<void> {
+  if (next === source) return;
+  try { localStorage.setItem('dotgp.v2.source', next); } catch { /* remembered for this visit only */ }
+  if (next !== 'mine' && !bundleDrivers.has(next)) {
+    const b = bundleOf(next);
+    const data = b && await fetchJson(`/drivers/${b.file}`) as { drivers?: Array<{ weights: number[] }> } | null;
+    if (!data?.drivers?.length) { news(`Couldn't load the ${b?.name ?? next} drivers.`); return; }
+    bundleDrivers.set(next, data.drivers);
+  }
+  stopPractice();
+  weekendPractice = null;
+  if (fieldEvent) endEvent(fieldEvent);
+  if (source === 'mine') myRoster = roster;
+  source = next;
+  if (next === 'mine') {
+    roster = myRoster ?? roster;
+    myRoster = null;
+    roster.ensureTeams(fieldSize);
+  } else {
+    roster = Roster.fromBundle(bundleOf(next)!, bundleDrivers.get(next)!, fieldSize, rng)!;
+    championship = false;
+    if (mode === 'race' || !racesOn(track)) mode = racesOn(track) ? 'race' : 'practice';
+  }
+  selected = null;
+  technique.clear();
+  renderRosterSource();
+  renderTeams();
+  renderRoster();
+  renderSeason();
+  renderSchool();
+  startSession();
+  buttonGroups.forEach((render) => render());
+}
+
+function renderRosterSource(): void {
+  const host = $('rosterSource');
+  host.innerHTML = '';
+  for (const [label, id] of [['My roster', 'mine'], ...bundles.map((b) => [`${b.name} drivers`, b.id])]) {
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.className = source === id ? 'on' : '';
+    btn.onclick = () => void useRoster(id);
+    host.appendChild(btn);
+  }
+  $('recruit').hidden = readOnly();
+  $('recruitRookie').hidden = readOnly();
+  $('rosterSourceNote').textContent = readOnly()
+    ? bundleOf(source)?.note ?? ''
+    : 'Your own drivers: they learn, race the championship and are saved in this browser.';
+}
+
 // ---------- Views ----------
 
 const VIEW_KEY = 'dotgp.v2.view';
@@ -1264,6 +1343,9 @@ async function boot(): Promise<void> {
     ?? Roster.load(await fetchJson('/drivers/default.json'), rng, templates)
     ?? new Roster(rng);
   roster.chiefTemplates = templates;
+  const index = await fetchJson('/drivers/index.json') as { bundles?: Bundle[] } | null;
+  if (index?.bundles?.length) bundles = index.bundles;
+  renderRosterSource();
   // Rosters saved before trained crew chiefs existed: bring their chiefs up to date.
   const upgraded = roster.upgradeScriptedChiefs();
   if (upgraded) news(`${upgraded} crew chiefs switched to learned strategy (descended from the trained chiefs)`);
@@ -1289,6 +1371,10 @@ async function boot(): Promise<void> {
   host.setSpeed(speed);
   // ?warm=N fast-forwards the first session N seconds (handy for screenshots and jumping in).
   startSession(true, Number(params.get('warm') ?? 0));
+  // ?roster=house (or the last choice) puts a bundle's drivers on track: exactly what the tests race.
+  const savedSource = (() => { try { return localStorage.getItem('dotgp.v2.source'); } catch { return null; } })();
+  const wanted = params.get('roster') ?? savedSource ?? 'mine';
+  if (wanted !== 'mine' && bundleOf(wanted)) await useRoster(wanted);
   buttonGroups.forEach((render) => render());
   renderTeams();
   renderSeason();

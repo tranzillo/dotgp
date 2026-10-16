@@ -1,0 +1,10 @@
+{
+  "bundles": [
+    {
+      "id": "house",
+      "name": "House",
+      "file": "default.json",
+      "note": "The house drivers: what the benchmarks and Claude's tests race (24 cars cycle through them). Read-only: they don't learn, take classes or score championship points."
+    }
+  ]
+}
