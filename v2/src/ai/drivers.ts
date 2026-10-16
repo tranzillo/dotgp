@@ -5,9 +5,10 @@ import { followLine } from './lineFollower';
 import { genomeSize, Network, widenNetwork } from './network';
 import { PIT_SERVICE } from '../sim/constants';
 import { PitAutopilot, pitDecisionS, pitRoute, type CrewChief } from './pitting';
-import { CAUTION_SIZE, OBS_SIZE, observe, observeCaution, observePit, PIT_SIZE } from './observe';
+import { CAUTION_SIZE, LOOKAHEAD, OBS_SIZE, observe, observeCaution, observePit, PIT_LOOKAHEAD, PIT_SIZE } from './observe';
 import { Rng } from './rng';
-import { RADIO_SIZE, TowerSpotter, type Spotter } from './spotter';
+import { RADIO, RADIO_SIZE, TowerSpotter, type Spotter } from './spotter';
+import type { Track } from '../sim/track';
 
 /** Driver network: own-car observations + the spotter's radio + a pit stop in progress + a caution -> acceleration request. */
 export const DRIVER_LAYERS = [OBS_SIZE + RADIO_SIZE + PIT_SIZE + CAUTION_SIZE, 32, 24, 2] as const;
@@ -124,29 +125,76 @@ export class Team implements Controller {
   }
 }
 
-/** Raw-control driver: network outputs the acceleration request in the travel frame. */
+/** How far ahead a driver looks for the next corner's direction (m): its curvature lookahead. */
+const CORNER_HORIZON = LOOKAHEAD[LOOKAHEAD.length - 1];
+
+/** Direction of the next corner within the horizon: +1 left, -1 right, 0 none in sight. */
+export function nextCornerDirection(track: Track, s: number): number {
+  for (let a = 0; a <= CORNER_HORIZON; a += 5) {
+    const k = track.curvatureAt(s + a);
+    if (Math.abs(k) > 1e-4) return Math.sign(k);
+  }
+  return 0;
+}
+
+/**
+ * The same moment seen in mirror image: everything lateral changes sign
+ * (heading against the track, lane, sideways speed, the banking's push, the
+ * last steering command, curvature ahead; traffic on the inside and outside
+ * swap; lateral offsets of cars, the hazard, the pit route and the caution
+ * slot flip). The physics has no handedness, so this is exact.
+ */
+export function mirrorDriverInputs(x: Float32Array): void {
+  for (const i of [1, 3, 4, 6, 10]) x[i] = -x[i];
+  for (let j = 0; j < LOOKAHEAD.length; j++) x[11 + j] = -x[11 + j];
+  const r = OBS_SIZE;
+  const lowProx = x[r + RADIO.LOW_PROX], lowRel = x[r + RADIO.LOW_REL];
+  x[r + RADIO.LOW_PROX] = x[r + RADIO.HIGH_PROX];
+  x[r + RADIO.LOW_REL] = x[r + RADIO.HIGH_REL];
+  x[r + RADIO.HIGH_PROX] = lowProx;
+  x[r + RADIO.HIGH_REL] = lowRel;
+  for (const i of [RADIO.AHEAD_LANE, RADIO.AHEAD2_LANE, RADIO.BEHIND_LANE, RADIO.HAZARD_LANE]) x[r + i] = -x[r + i];
+  const p = OBS_SIZE + RADIO_SIZE;
+  for (let j = 2; j < 2 + PIT_LOOKAHEAD.length; j++) x[p + j] = -x[p + j];
+  x[p + PIT_SIZE + 3] = -x[p + PIT_SIZE + 3];
+}
+
+/**
+ * Raw-control driver: network outputs the acceleration request in the travel frame.
+ *
+ * Every corner is driven as a left-hander: when the next corner turns right
+ * the driver sees the world in mirror image and its steering is mirrored back.
+ * A right-hander is exactly a mirrored left-hander, so on ovals (all left)
+ * nothing changes, and an oval run the other way round drives exactly like
+ * the original. Between corners the view follows the coming one.
+ */
 export class NeuralDriver implements DriverBrain {
   readonly net: Network;
   private readonly input = new Float32Array(OBS_SIZE + RADIO_SIZE + PIT_SIZE + CAUTION_SIZE);
   private readonly obs = new Float32Array(OBS_SIZE);
+  /** The last inputs were mirrored (the coming corner turns right): labels for them must be mirrored too. */
+  mirrored = false;
 
   constructor(weights: Float32Array) {
     this.net = new Network(DRIVER_LAYERS, weights);
   }
 
-  /** The network's input for this moment (also what an apprentice is shown). */
+  /** The network's input for this moment (also what an apprentice is shown), mirrored when the next corner turns right. */
   inputs(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array): Float32Array {
     this.input.set(observe(car, world.track, this.obs), 0);
     this.input.set(radio, OBS_SIZE);
     this.input.set(pit, OBS_SIZE + RADIO_SIZE);
     this.input.set(caution, OBS_SIZE + RADIO_SIZE + PIT_SIZE);
+    const dir = nextCornerDirection(world.track, car.s);
+    if (dir !== 0) this.mirrored = dir < 0; // nothing in sight: keep the last view
+    if (this.mirrored) mirrorDriverInputs(this.input);
     return this.input;
   }
 
   decide(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array): void {
     const out = this.net.forward(this.inputs(car, world, radio, pit, caution));
     car.inputX = out[0];
-    car.inputY = out[1];
+    car.inputY = this.mirrored ? -out[1] : out[1];
   }
 }
 

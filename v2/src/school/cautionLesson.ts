@@ -276,6 +276,8 @@ class CautionApprentice implements Controller {
     if (Number.isNaN(label[0])) {
       const out = this.original.net.forward(x);
       label = [out[0], out[1]];
+    } else if (this.student.mirrored) {
+      label = [label[0], -label[1]]; // the script steered in the world's frame; the student saw it mirrored
     }
     car.inputX = ax;
     car.inputY = ay;

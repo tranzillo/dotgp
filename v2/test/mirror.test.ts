@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { ScriptedDriver } from '../src/ai/drivers';
+import { readFileSync } from 'node:fs';
+import { adaptWeights, neuralTeam, ScriptedDriver } from '../src/ai/drivers';
 import { Car } from '../src/sim/car';
 import { PHYSICS as P } from '../src/sim/constants';
 import { Track } from '../src/sim/track';
 import { World } from '../src/sim/world';
 import { mirrorLayout, presetLayout } from '../src/trackgen';
 
-/** One scripted car driving solo for a while: where it got to, and its lateral position along the way. */
-function drive(track: Track, lane: number, seconds: number): { dist: number; laps: number[]; d: number[] } {
+/** One car driving solo for a while (scripted, or a trained driver): where it got to, and its lateral position along the way. */
+function drive(track: Track, lane: number, seconds: number, weights?: Float32Array): { dist: number; laps: number[]; d: number[] } {
   const world = new World(track, { collisions: false, drafting: false });
   const car = new Car(0);
   car.placeOnTrack(track, track.length - 20, lane);
-  world.addCar(car, new ScriptedDriver(lane));
+  if (weights) { car.vx = track.tx[car.trackIdx] * 35; car.vy = track.ty[car.trackIdx] * 35; }
+  world.addCar(car, weights ? neuralTeam(weights) : new ScriptedDriver(lane));
   const d: number[] = [];
   const steps = Math.round(seconds / P.DT);
   for (let k = 0; k < steps; k++) {
@@ -46,4 +48,14 @@ describe('driving the other way round', () => {
       a.d.forEach((d, i) => expect(b.d[i]).toBeCloseTo(-d, 3));
     });
   }
+
+  it('a trained driver drives a mirrored oval exactly as the original: it sees every corner as a left-hander', () => {
+    const weights = adaptWeights(Float32Array.from(JSON.parse(readFileSync('public/drivers/default.json', 'utf8')).drivers[0].weights));
+    const a = drive(new Track(presetLayout('short')), 0, 60, weights);
+    const b = drive(new Track(mirrorLayout(presetLayout('short'))), 0, 60, weights);
+    expect(a.laps.length).toBeGreaterThan(0);
+    expect(b.laps.length).toBe(a.laps.length);
+    a.laps.forEach((t, i) => expect(b.laps[i]).toBeCloseTo(t, 2));
+    a.d.forEach((d, i) => expect(b.d[i]).toBeCloseTo(-d, 1));
+  });
 });
