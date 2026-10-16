@@ -96,6 +96,11 @@ export class Track extends Centerline {
       }
     }
     this.regionsTopFirst = [...layout.surfaces].reverse();
+    // Frame everything a layout puts down, barriers and run-off included.
+    for (const w of layout.walls) {
+      const values = typeof w.d === 'number' ? [w.d] : w.d.keys.map(([, v]) => v);
+      for (const v of values) reach = Math.max(reach, Math.abs(v) + w.thickness / 2);
+    }
 
     const pad = reach + 4;
     const e = this.extent;

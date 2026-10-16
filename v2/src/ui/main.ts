@@ -97,9 +97,9 @@ let season: SeasonState = newSeason(SEASON_TRACKS, ROUNDS_PER_TRACK);
 let trackName = SEASON_TRACKS[0];
 let track = TRACKS.get(trackName)!;
 
-/** Generate an oval and add it to the track list (seed and variant random unless given). */
-function addGeneratedTrack(seed = Math.floor(Math.random() * 1e9), variant?: string): Track {
-  const t = generateTrack({ type: 'oval', seed, variant });
+/** Generate a track (an oval or a road circuit) and add it to the track list (seed and variant random unless given). */
+function addGeneratedTrack(type: 'oval' | 'circuit' = 'oval', seed = Math.floor(Math.random() * 1e9), variant?: string): Track {
+  const t = generateTrack({ type, seed, variant });
   const label = `${t.name} (${t.layout.params.variant})`;
   TRACKS.set(label, t);
   trackOptions.push([label, label]);
@@ -685,19 +685,27 @@ function buttonGroup<T>(hostId: string, options: Array<[string, T]>, current: ()
   return render;
 }
 
+/** Races need the oval procedures (rolling start behind a pace car); road circuits get practice until their rulebook exists. */
+const racesOn = (t: Track) => t.layout.type === 'oval';
+
 function selectTrack(name: string): void {
   championship = false;
   trackName = name;
   track = TRACKS.get(name)!;
+  if (mode === 'race' && !racesOn(track)) mode = 'practice';
   startSession();
+  buttonGroups.forEach((render) => render());
 }
 const renderTrackButtons = buttonGroup('trackButtons', trackOptions, () => (championship ? null : trackName), selectTrack);
-$('newTrack').onclick = () => {
-  const t = addGeneratedTrack();
+const newTrack = (type: 'oval' | 'circuit') => {
+  const t = addGeneratedTrack(type);
   selectTrack(trackOptions[trackOptions.length - 1][0]);
   renderTrackButtons();
-  news(`New track: ${t.name}, ${t.length.toFixed(0)} m (oval, seed ${t.layout.seed}). Open it again with ?track=oval:${t.layout.seed}`);
+  news(`New track: ${t.name}, ${t.length.toFixed(0)} m (${type}, seed ${t.layout.seed}). Open it again with ?track=${type}:${t.layout.seed}`
+    + (type === 'circuit' ? '. The drivers have only ever turned left: expect wrecks until they learn right-handers.' : ''));
 };
+$('newTrack').onclick = () => newTrack('oval');
+$('newCircuit').onclick = () => newTrack('circuit');
 buttonGroup('fieldButtons', FIELD_SIZES.map((n) => [String(n), n] as [string, number]), () => fieldSize, (n) => {
   const practising = !!trainer;
   fieldSize = n;
@@ -718,6 +726,7 @@ buttonGroup('variationButtons', [['Show', true], ['Hide', false]] as Array<[stri
   () => showVariations, (v) => { showVariations = v; });
 buttonGroup('modeButtons', [['Race', 'race'], ['Practice', 'practice'], ['Ghosts', 'ghost']] as Array<[string, Mode]>,
   () => (championship ? null : mode), (m) => {
+    if (m === 'race' && !racesOn(track)) { news(`No races on road circuits yet (standing starts and the safety car come with the circuit rulebook): practice or ghosts.`); return; }
     mode = m;
     championship = false;
     weekendPractice = null;
@@ -1261,13 +1270,14 @@ async function boot(): Promise<void> {
   if (params.has('laps')) raceLaps = Number(params.get('laps'));
   if (params.has('pace')) pace = Number(params.get('pace'));
   if (params.has('speed')) speed = Number(params.get('speed'));
-  // ?track=oval:<seed>[:<variant>] opens a generated track.
+  // ?track=oval:<seed>[:<variant>] or ?track=circuit:<seed>[:club|gp] opens a generated track.
   const [kind, seedText, variant] = (params.get('track') ?? '').split(':');
-  if (kind === 'oval' && seedText) {
-    addGeneratedTrack(Number(seedText), variant || undefined);
+  if ((kind === 'oval' || kind === 'circuit') && seedText) {
+    addGeneratedTrack(kind, Number(seedText), variant || undefined);
     championship = false;
     trackName = trackOptions[trackOptions.length - 1][0];
     track = TRACKS.get(trackName)!;
+    if (!racesOn(track)) mode = 'practice';
   } else {
     toNextRound();
   }

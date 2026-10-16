@@ -30,9 +30,14 @@ A framework that isn't oval-specific: other disciplines come in as new rulebooks
 
 Order: the framework on ovals first, with rules ovals can already detect (pit speeding, passing under caution, restart jumps, avoidable contact, blend line, apron track limits) and the UI; then penalties in learning and strategy, measured in the lab.
 
-## Track C: road courses and GP circuits
+## Track C: road courses and GP circuits (started 2026-10-16)
 
-Track generator for road and GP layouts (corners, kerbs, run-off, sectors), standing starts, local yellows, VSC and safety car, blue flags, track limits by corner, pit etiquette.
+Track generation is designed with every discipline in view: closed circuits, point-to-point street stages (the same corner vocabulary, open-ended) and open cross-country rally (terrain plus checkpoints, no road: a world-frame driver input, later). Lessons from v1: organic shapes are good; scale must be real (features sized to 3 m cars, longer tracks get more corners); variety across short and long tracks.
+
+1. Done: the sim has no handedness (right turns, mirrored layouts, scripted line follower); circuit surfaces (kerbs, run-off, gravel).
+2. Done (first version): circuit generator, club and GP classes, three characters; viewable in practice and ghosts.
+3. Next: drivers learn right-handers. Lessons on mirrored and mixed tracks (the drivers see signed curvature), anchored so oval racing is kept; a lab job.
+4. Then the circuit rulebook: standing starts, safety car and VSC, local yellows, track limits by corner, blue flags, pit etiquette. Pit lanes on either side; sectors.
 
 ## Track D: later
 

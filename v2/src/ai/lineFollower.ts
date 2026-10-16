@@ -26,7 +26,8 @@ export function followLine(
 
   // Target speed: the slowest corner speed or cap ahead, reachable by braking.
   let target = Math.min(95, capAt(car.s));
-  for (let ahead = 0; ahead <= 400; ahead += 20) {
+  // Every 5 m: a road circuit's tight corners can be shorter than 20 m of arc.
+  for (let ahead = 0; ahead <= 400; ahead += 5) {
     const s = car.s + ahead;
     const lane = laneAt(s);
     const mu = P.TIRE_MU * car.grip * SURFACES[track.surfaceAt(s, lane)].grip;
