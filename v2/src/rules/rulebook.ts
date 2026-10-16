@@ -10,11 +10,11 @@
 export type Offence =
   /** Over the pit road speed limit. */
   | 'pit-speeding'
-  /** Gained a place in line under caution (past a car still keeping pace). */
+  /** Under caution, still ahead of a car it was told to line up behind, a lap after being told. */
   | 'passing-under-caution'
-  /** Passed before the start/finish line at a start or restart. */
+  /** At a restart, gained places before the green (ahead of cars it should have been behind). */
   | 'jumped-restart'
-  /** Below the line: completed a pass with all four wheels on the apron. */
+  /** Made a pass using the apron: below the line (all four wheels) for much of the move. */
   | 'passing-below-the-line'
   /** Crossed onto the racing surface before the end of the pit exit blend line. */
   | 'blend-line'
@@ -56,6 +56,10 @@ export interface Rulebook {
   /** Pit road speed limit tolerance (m/s over) and how long over before it counts (s). */
   pitSpeedTolerance: number;
   pitSpeedGrace: number;
+  /** Seconds the stewards take to review an incident before they announce a decision. */
+  reviewSeconds: number;
+  /** Track size classes where the apron is out of bounds for passing (the line rule). */
+  belowTheLineOn: string[];
 }
 
 /** Stock car rules for ovals. */
@@ -64,8 +68,10 @@ export const OVAL_RULES: Rulebook = {
   offences: {
     'pit-speeding': { thresholds: [0.15, 0.6], penalties: ['warning', 'drive-through', 'stop-go'] },
     'passing-under-caution': { thresholds: [0.2], penalties: ['warning', 'tail'] },
-    'jumped-restart': { thresholds: [0.3], penalties: ['warning', 'drive-through'] },
-    'passing-below-the-line': { thresholds: [0.5], penalties: ['drive-through', 'drive-through'] },
+    // Severity: places gained before the green (half per place).
+    'jumped-restart': { thresholds: [0.25], penalties: ['none', 'drive-through'] },
+    // Severity: share of the move made below the line; less than half of it gets the benefit of the doubt.
+    'passing-below-the-line': { thresholds: [0.5], penalties: ['none', 'drive-through'] },
     'blend-line': { thresholds: [0.3], penalties: ['warning', 'drive-through'] },
     'avoidable-contact': { thresholds: [0.25, 0.5, 0.85], penalties: ['warning', 'time', 'drive-through', 'black-flag'] },
   },
@@ -75,6 +81,9 @@ export const OVAL_RULES: Rulebook = {
   warningsToDriveThrough: 3,
   pitSpeedTolerance: 0.5,
   pitSpeedGrace: 0.3,
+  reviewSeconds: 10,
+  // As in NASCAR: the out-of-bounds line is a superspeedway rule; elsewhere the apron is just slow.
+  belowTheLineOn: ['superspeedway'],
 };
 
 export const OFFENCE_NAMES: Record<Offence, string> = {

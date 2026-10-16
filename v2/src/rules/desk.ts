@@ -1,7 +1,7 @@
 import type { Car } from '../sim/car';
 import type { RaceControl } from '../sim/raceControl';
 import type { World } from '../sim/world';
-import { Detector } from './detect';
+import { Detector, type Violation } from './detect';
 import { OFFENCE_NAMES, type Offence, type Penalty, type Rulebook } from './rulebook';
 import { Stewards, type Decision, type StewardTraits } from './stewards';
 
@@ -35,6 +35,8 @@ export class StewardsDesk {
   private readonly lapsSeen = new Map<Car, number>();
   /** What a car owes a drive-through or stop-and-go for. */
   private readonly owed = new Map<Car, Offence>();
+  /** Incidents the stewards are looking at, and when they'll announce a decision. */
+  private readonly underReview: Array<{ v: Violation; due: number }> = [];
 
   constructor(
     private readonly world: World, private readonly control: RaceControl, private readonly rules: Rulebook,
@@ -44,15 +46,31 @@ export class StewardsDesk {
     this.stewards = new Stewards(rules, traits, seed);
   }
 
+  /**
+   * Incidents are reviewed, not ruled on the spot: each goes under review
+   * (on the broadcast feed) and the decision comes after the review time,
+   * "no further action" included.
+   */
   step(): void {
-    for (const v of this.detector.step()) this.apply(this.stewards.judge(v));
+    const now = this.world.time;
+    for (const v of this.detector.step()) {
+      this.underReview.push({ v, due: now + this.rules.reviewSeconds });
+      this.world.announce(v.car, 'steward', `Stewards: incident under review, #${v.car.id}${v.against ? ` and #${v.against.id}` : ''}, ${OFFENCE_NAMES[v.offence]}`);
+    }
+    while (this.underReview.length && this.underReview[0].due <= now) this.apply(this.stewards.judge(this.underReview.shift()!.v));
     this.serving();
   }
 
   private apply(d: Decision): void {
     const { violation: v } = d;
     const car = v.car;
-    if (car.disqualified || d.penalty === 'none') return;
+    if (car.disqualified) return;
+    if (d.penalty === 'none') {
+      this.world.announce(car, 'steward', `Stewards: #${car.id}, ${OFFENCE_NAMES[v.offence]}${v.against ? ` (#${v.against.id})` : ''}: no further action`);
+      return;
+    }
+    // Out of the race by the time of the decision: nothing left to serve.
+    if (car.retired && (d.penalty === 'drive-through' || d.penalty === 'stop-go' || d.penalty === 'tail')) return;
     let penalty = d.penalty;
     if (penalty === 'tail' && !this.control.pacing) penalty = 'drive-through'; // the caution's over: serve it on pit road
     let text = `#${car.id}: ${OFFENCE_NAMES[v.offence]}${v.against ? ` (#${v.against.id})` : ''}, ${v.detail}: ${PENALTY_NAMES[penalty]}`;

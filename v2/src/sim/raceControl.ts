@@ -105,6 +105,11 @@ export class RaceControl {
   /** Calls still open when the green came out, carried until a lap after each. */
   private carried: Array<{ car: Car; against: Car; dist: number }> = [];
 
+  /** The official order (pacing), or the running order (green). */
+  lineOrder(): readonly Car[] {
+    return this.order;
+  }
+
   /** Race control's call to this car's crew, if any: the car it has been told to line up behind. */
   toLineUpBehind(car: Car): Car | null {
     for (const c of this.calls.values()) if (c.car === car) return c.against;
@@ -260,14 +265,9 @@ export class RaceControl {
     const caseFor = new Set<Car>(); // one ruling per car, however many cars it's ahead of
     for (const [key, w] of now) {
       if (this.ruled.has(key)) continue;
-      // Once the pace car is off, a new pass is a jumped restart; calls made before carry on as calls.
-      if (this.flag === 'restart' && !this.calls.has(key)) {
-        this.ruled.add(key);
-        // Past a car ahead of it in line before the green: one case per car this restart, however many it passed.
-        if (!this.ruled.has(`jump:${w.car.id}`)) this.cases.push({ car: w.car, against: w.against, restart: true });
-        this.ruled.add(`jump:${w.car.id}`);
-        continue;
-      }
+      // Once the pace car is off there's no time to put things right: the stewards judge the whole restart
+      // at the green (detect.ts). Calls made before carry on as calls.
+      if (this.flag === 'restart' && !this.calls.has(key)) continue;
       const call = this.calls.get(key);
       if (!call) {
         this.calls.set(key, { ...w, dist: w.car.dist });

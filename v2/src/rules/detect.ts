@@ -1,6 +1,6 @@
 import type { Car } from '../sim/car';
 import { PHYSICS as P, PIT_SERVICE } from '../sim/constants';
-import type { RaceControl } from '../sim/raceControl';
+import { ROW_GAP, type RaceControl } from '../sim/raceControl';
 import type { World } from '../sim/world';
 import type { Offence, Rulebook } from './rulebook';
 
@@ -25,19 +25,28 @@ const CONTACT_SETTLE = 1;
 /** Harm (health, by fault) below which a touch isn't worth reporting, and the fault share that makes it the car's doing. */
 const CONTACT_MIN_HARM = 0.1;
 const CONTACT_FAULT = 0.6;
+/** A car's length: cars closer than this along the track are alongside; a pass is done when one is a car length clear. */
+const CAR_LENGTH = 2 * P.CAR_RADIUS;
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
 export class Detector {
-  /** Previous step's running order under green. */
-  private greenOrder: Car[] = [];
+  /** Pairs of cars alongside each other (a possible pass) and the evidence so far. */
+  private readonly alongside = new Map<string, { a: Car; b: Car; aStartedAhead: boolean; moments: number; aBelow: number; bBelow: number }>();
+  /** When the pace car pulled off: each car in the line, and the cars physically ahead of it then. */
+  private restartAhead: Map<Car, Car[]> | null = null;
+  private lastFlag = '';
+  /** Whether this track has the line rule (its size class). */
+  private readonly lineRule: boolean;
   /** Per car: seconds over the pit limit this visit, worst excess (m/s), already reported. */
   private pitOver = new Map<Car, { seconds: number; worst: number; reported: boolean }>();
   private blendReported = new Set<Car>();
   private harmBefore = new Map<Car, number>();
   private contacts = new Map<string, { car: Car; against: Car | null; harm: number; last: number; speed: number }>();
 
-  constructor(private readonly world: World, private readonly control: RaceControl, private readonly rules: Rulebook) {}
+  constructor(private readonly world: World, private readonly control: RaceControl, private readonly rules: Rulebook) {
+    this.lineRule = rules.belowTheLineOn.includes(String(world.track.layout.params.variant ?? ''));
+  }
 
   step(): Violation[] {
     const out: Violation[] = [];
@@ -46,8 +55,9 @@ export class Detector {
     this.pitRoad(out, now);
     this.contact(out, now);
     this.line(out, now);
-    if (control.pacing) this.greenOrder = [];
-    else this.belowTheLine(out, now);
+    this.restart(out, now);
+    if (control.pacing) this.alongside.clear();
+    else if (this.lineRule) this.belowTheLine(out, now);
     return out;
   }
 
@@ -130,22 +140,90 @@ export class Detector {
     }
   }
 
-  /** Under green: a pass completed with the passing car entirely on the apron. */
+  /** In the line: within a row of its place (not still catching up, nor dropping back). */
+  private inLine(c: Car): boolean {
+    const slot = this.control.slotFor(c);
+    if (!slot) return false;
+    return Math.abs(this.ahead(c, { s: slot.s } as Car)) < ROW_GAP;
+  }
+
+  /** How far a is ahead of b along the track, the shorter way round (negative: behind). */
+  private ahead(a: Car, b: Car): number {
+    const t = this.world.track;
+    const d = t.distanceFrom(b.s, a.s);
+    return d > t.length / 2 ? d - t.length : d;
+  }
+
+  /**
+   * Passing below the line, judged as a move: two cars alongside (overlapping,
+   * less than a car length apart) is a possible pass. While they're alongside,
+   * how much of the time each had all four wheels below the line is the
+   * evidence; when they're no longer alongside the move is over. If the car
+   * that started behind came out ahead, it made the pass, and the share of
+   * the move it made below the line is what the stewards look at.
+   */
   private belowTheLine(out: Violation[], now: number): void {
     const { world } = this;
     const t = world.track;
-    const order = world.cars.filter((c) => !c.retired && !c.finished && c.pit.phase === 'none').sort((a, b) => b.dist - a.dist);
-    const before = new Map(this.greenOrder.map((c, i) => [c, i]));
-    order.forEach((car, i) => {
-      const prev = order[i + 1];
-      const was = before.get(car), prevWas = prev ? before.get(prev) : undefined;
-      if (!prev || was === undefined || prevWas === undefined || was !== prevWas + 1) return; // not an adjacent pass
-      if (Math.abs(car.dist - prev.dist) > 10) return; // a lap apart, not a pass
-      const below = car.d - P.CAR_RADIUS > t.innerEdge(car.trackIdx);
-      if (below) {
-        out.push({ offence: 'passing-below-the-line', car, time: now, against: prev, severity: 0.6, detail: `passed #${prev.id} on the apron` });
+    const below = (c: Car) => c.d - P.CAR_RADIUS > t.innerEdge(c.trackIdx);
+    const racing = world.cars.filter((c) => !c.retired && !c.finished && c.pit.phase === 'none');
+    const still = new Set<string>();
+    for (const a of racing) {
+      for (const b of racing) {
+        if (a.id >= b.id) continue;
+        const key = `${a.id}:${b.id}`;
+        const gap = this.ahead(a, b);
+        if (Math.abs(gap) < CAR_LENGTH) {
+          still.add(key);
+          const m = this.alongside.get(key) ?? { a, b, aStartedAhead: gap > 0, moments: 0, aBelow: 0, bBelow: 0 };
+          m.moments++;
+          if (below(a)) m.aBelow++;
+          if (below(b)) m.bBelow++;
+          this.alongside.set(key, m);
+        }
       }
-    });
-    this.greenOrder = order;
+    }
+    for (const [key, m] of this.alongside) {
+      if (still.has(key)) continue;
+      this.alongside.delete(key); // the move is over
+      if (m.a.retired || m.b.retired) continue;
+      const aAhead = this.ahead(m.a, m.b) > 0;
+      if (aAhead === m.aStartedAhead) continue; // nobody got by
+      const [passer, passed, belowMoments] = aAhead ? [m.a, m.b, m.aBelow] : [m.b, m.a, m.bBelow];
+      if (!belowMoments) continue;
+      const share = belowMoments / m.moments;
+      out.push({
+        offence: 'passing-below-the-line', car: passer, time: now, against: passed, severity: share,
+        detail: `passed #${passed.id} with ${(share * 100).toFixed(0)}% of the move below the line`,
+      });
+    }
+  }
+
+  /**
+   * A restart, judged as a whole. When the pace car pulls off, the cars in
+   * the line (within a row of their place; cars still catching up aren't
+   * lined up yet) and who is physically ahead of whom among them are the
+   * reference. At the green, a car clearly (a car length) ahead of a car that
+   * was ahead of it in the line got past it before the line.
+   */
+  private restart(out: Violation[], now: number): void {
+    const flag = this.control.flag;
+    if (flag === 'restart' && this.lastFlag !== 'restart') {
+      const lined = this.control.lineOrder().filter((c) => this.inLine(c));
+      this.restartAhead = new Map(lined.map((c) => [c, lined.filter((o) => o !== c && this.ahead(o, c) > 0)]));
+    }
+    if (flag === 'green' && this.lastFlag === 'restart' && this.restartAhead) {
+      for (const [car, wasAhead] of this.restartAhead) {
+        if (car.retired || car.pit.phase !== 'none') continue;
+        const passed = wasAhead.filter((o) => !o.retired && o.pit.phase === 'none' && this.ahead(car, o) > CAR_LENGTH);
+        if (!passed.length) continue;
+        out.push({
+          offence: 'jumped-restart', car, time: now, against: passed[0], severity: Math.min(1, passed.length / 2),
+          detail: `got by ${passed.map((c) => `#${c.id}`).join(', ')} before the green`,
+        });
+      }
+      this.restartAhead = null;
+    }
+    this.lastFlag = flag;
   }
 }
