@@ -1,6 +1,6 @@
 import type { Car } from '../sim/car';
 import type { Controller, World } from '../sim/world';
-import { FormationDriver } from './formation';
+import { FormationDriver, type FormationTraits } from './formation';
 import { followLine } from './lineFollower';
 import { genomeSize, Network, widenNetwork } from './network';
 import { PIT_SERVICE } from '../sim/constants';
@@ -43,7 +43,10 @@ export class Team implements Controller {
   readonly pitInputs = new Float32Array(PIT_SIZE);
   readonly cautionInputs = new Float32Array(CAUTION_SIZE);
   readonly autopilot = new PitAutopilot();
-  private readonly formation = new FormationDriver();
+  private readonly formation: FormationDriver;
+  /** Whether race control had the field pacing at this driver's last look, and when that last changed. */
+  private flagPacing: boolean | null = null;
+  private flagChangedAt = -Infinity;
   private lastS = NaN;
   /** Who drove the car on the last decision: the learned driver, or a script (pit maneuver, formation). */
   mode: 'driver' | 'pit' | 'formation' = 'driver';
@@ -56,7 +59,11 @@ export class Team implements Controller {
     readonly driverPits = false,
     /** The driver drives its own cautions and restarts (it has learned to); otherwise the formation script does. */
     readonly driverCautions = false,
-  ) {}
+    /** How this driver drives a caution with the formation script (default: drawn for the car). */
+    formationTraits?: FormationTraits,
+  ) {
+    this.formation = new FormationDriver(formationTraits);
+  }
 
   decide(car: Car, world: World): void {
     const track = world.track;
@@ -83,8 +90,25 @@ export class Team implements Controller {
     this.observePit(car, world);
     observeCaution(car, world, this.cautionInputs);
     if (!this.driverPits && (car.pit.phase !== 'none' || this.autopilot.aborting)) { this.mode = 'pit'; this.autopilot.decide(car, world, this.spotter); }
-    else if (!this.driverCautions && world.control?.pacing && !car.finished && car.pit.phase === 'none') { this.mode = 'formation'; this.formation.decide(car, world); }
+    else if (!this.driverCautions && this.inFormation(car, world)) { this.mode = 'formation'; this.formation.decide(car, world); }
     else { this.mode = car.pit.phase === 'none' ? 'driver' : 'pit'; this.driver.decide(car, world, this.radio, this.pitInputs, this.cautionInputs); }
+  }
+
+  /**
+   * Formation driving, with this driver's own reaction: the caution flag (or
+   * the green) takes it a moment to react to, so it keeps doing what it was
+   * doing until it has: racing on into a caution, holding station into a green.
+   */
+  private inFormation(car: Car, world: World): boolean {
+    const pacing = !!world.control?.pacing;
+    if (this.flagPacing === null) this.flagPacing = pacing; // first look: already reacted
+    else if (pacing !== this.flagPacing) {
+      this.flagPacing = pacing;
+      this.flagChangedAt = world.time;
+    }
+    if (car.finished || car.pit.phase !== 'none' || !world.control) return false;
+    const reacted = world.time - this.flagChangedAt >= this.formation.traitsFor(car).reaction;
+    return pacing ? reacted : !reacted;
   }
 
   /** The pit stop as the driver sees it (zeros when not pitting). */

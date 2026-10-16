@@ -1,6 +1,6 @@
 import type { Car } from '../sim/car';
 import { PHYSICS as P, PIT_SERVICE } from '../sim/constants';
-import { ROW_GAP, type RaceControl } from '../sim/raceControl';
+import type { RaceControl } from '../sim/raceControl';
 import type { World } from '../sim/world';
 import type { Offence, Rulebook } from './rulebook';
 
@@ -35,6 +35,8 @@ export class Detector {
   private readonly alongside = new Map<string, { a: Car; b: Car; aStartedAhead: boolean; moments: number; aBelow: number; bBelow: number }>();
   /** When the pace car pulled off: each car in the line, and the cars physically ahead of it then. */
   private restartAhead: Map<Car, Car[]> | null = null;
+  /** Lined-up cars that have crossed the line since the pace car pulled off. */
+  private restartCrossed = new Set<Car>();
   private lastFlag = '';
   /** Whether this track has the line rule (its size class). */
   private readonly lineRule: boolean;
@@ -144,7 +146,7 @@ export class Detector {
   private inLine(c: Car): boolean {
     const slot = this.control.slotFor(c);
     if (!slot) return false;
-    return Math.abs(this.ahead(c, { s: slot.s } as Car)) < ROW_GAP;
+    return Math.abs(this.ahead(c, { s: slot.s } as Car)) < this.control.lineSpacing();
   }
 
   /** How far a is ahead of b along the track, the shorter way round (negative: behind). */
@@ -200,29 +202,43 @@ export class Detector {
   }
 
   /**
-   * A restart, judged as a whole. When the pace car pulls off, the cars in
-   * the line (within a row of their place; cars still catching up aren't
-   * lined up yet) and who is physically ahead of whom among them are the
-   * reference. At the green, a car clearly (a car length) ahead of a car that
-   * was ahead of it in the line got past it before the line.
+   * A restart. The green comes when the leader crosses the line and the field
+   * accelerates, but no car may gain a place until it has crossed the line
+   * itself. When the pace car pulls off, the cars in the line (within their
+   * place; cars still catching up aren't lined up yet) and the official order
+   * are the reference. Each lined-up car is judged as it crosses the line:
+   * clear (a car length) ahead of a car from an earlier row that hasn't
+   * crossed yet, it got by before the line. A place taken and given back
+   * before the line is no case.
    */
   private restart(out: Violation[], now: number): void {
     const flag = this.control.flag;
     if (flag === 'restart' && this.lastFlag !== 'restart') {
       const lined = this.control.lineOrder().filter((c) => this.inLine(c));
-      this.restartAhead = new Map(lined.map((c) => [c, lined.filter((o) => o !== c && this.ahead(o, c) > 0)]));
+      // The cars each one must not get by before the line: those in earlier rows of the official order (the
+      // field is doubled up; row mates are level). Passing a car that's out of place ahead isn't gaining one.
+      const order = this.control.lineOrder();
+      const row = (c: Car) => Math.floor(order.indexOf(c) / 2);
+      this.restartAhead = new Map(lined.map((c) => [c, lined.filter((o) => row(o) < row(c))]));
+      this.restartCrossed = new Set();
     }
-    if (flag === 'green' && this.lastFlag === 'restart' && this.restartAhead) {
+    if (flag === 'caution') this.restartAhead = null; // a caution before the field got going: no restart to judge
+    if (this.restartAhead) {
+      // Lap timing registers each crossing of the start/finish line (the first one at the start included).
+      for (const c of this.restartAhead.keys()) if (this.control.crossedLine(c)) this.restartCrossed.add(c);
+      const crossed = (c: Car) => this.restartCrossed.has(c);
       for (const [car, wasAhead] of this.restartAhead) {
-        if (car.retired || car.pit.phase !== 'none') continue;
-        const passed = wasAhead.filter((o) => !o.retired && o.pit.phase === 'none' && this.ahead(car, o) > CAR_LENGTH);
+        if (car.retired || car.pit.phase !== 'none') { this.restartAhead.delete(car); continue; }
+        if (!crossed(car)) continue;
+        this.restartAhead.delete(car);
+        const passed = wasAhead.filter((o) => !o.retired && o.pit.phase === 'none' && !crossed(o) && this.ahead(car, o) > CAR_LENGTH);
         if (!passed.length) continue;
         out.push({
           offence: 'jumped-restart', car, time: now, against: passed[0], severity: Math.min(1, passed.length / 2),
-          detail: `got by ${passed.map((c) => `#${c.id}`).join(', ')} before the green`,
+          detail: `got by ${passed.map((c) => `#${c.id}`).join(', ')} before the line`,
         });
       }
-      this.restartAhead = null;
+      if (!this.restartAhead.size) this.restartAhead = null;
     }
     this.lastFlag = flag;
   }

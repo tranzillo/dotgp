@@ -20,6 +20,8 @@ export type Flag = 'pace' | 'restart' | 'green' | 'caution';
 const MIN_CAUTION_LAPS = 2;
 export const ROW_GAP = 10; // m between rows in formation
 const FIRST_ROW_GAP = 16; // m from the pace car to the front row
+/** Single file under caution: a car length and the formation's following gap between cars (m). */
+const SINGLE_FILE_GAP = 9;
 export const FILE_OFFSET = 2.6; // m either side of the centerline for the two files
 const WRECKER_SPEED = 22;
 const TOW_SPEED = 15;
@@ -75,6 +77,8 @@ export class RaceControl {
   cautions = 0;
   /** Laps the leader had completed when the current caution came out. */
   private cautionLap = 0;
+  /** The leader's race distance when the pace car picked it up. */
+  private pickupDist = 0;
   /** Laps this caution runs at least. */
   private cautionMinLaps = MIN_CAUTION_LAPS;
   private readonly handled = new Set<Car>();
@@ -105,6 +109,24 @@ export class RaceControl {
   /** Calls still open when the green came out, carried until a lap after each. */
   private carried: Array<{ car: Car; against: Car; dist: number }> = [];
 
+  /**
+   * Under caution the field runs single file until one to go, then doubles
+   * up for the restart (the start's pace laps are double file throughout).
+   */
+  get singleFile(): boolean {
+    return this.flag === 'caution' && !this.oneToGo;
+  }
+
+  /** Room between places in line: in its place means closer than this to it. */
+  lineSpacing(): number {
+    return this.singleFile ? SINGLE_FILE_GAP : ROW_GAP;
+  }
+
+  /** Where a car giving way drives: low, a car's width (and a little air) inside the line. */
+  yieldLane(): number {
+    return (this.singleFile ? 0 : FILE_OFFSET) + 2 * P.CAR_RADIUS + 0.5;
+  }
+
   /** The official order (pacing), or the running order (green). */
   lineOrder(): readonly Car[] {
     return this.order;
@@ -120,6 +142,16 @@ export class RaceControl {
     return this.cases.splice(0);
   }
 
+  /** Cars waved around the pace car (between it and the leader before it has picked up the leader). */
+  private readonly waved = new Set<Car>();
+  private readonly wavedTold = new Set<Car>();
+
+  wavedAround(car: Car): boolean {
+    return this.waved.has(car);
+  }
+
+  /** The pace car has picked up the leader (and leads the line) this caution. */
+  pickedUp = false;
   /** Where the virtual pace car is when the real one isn't leading the line (NaN: none). */
   private virtualS = NaN;
   private readonly slots = new Map<Car, FormationSlot>();
@@ -147,11 +179,12 @@ export class RaceControl {
     setSpeed(this.paceCar, t, this.paceSpeed);
     cars.forEach((car, k) => {
       const row = Math.floor(k / 2);
-      car.placeOnTrack(t, paceS - FIRST_ROW_GAP - row * ROW_GAP, k % 2 === 0 ? -FILE_OFFSET : FILE_OFFSET);
+      car.placeOnTrack(t, paceS - FIRST_ROW_GAP - row * ROW_GAP, k % 2 === 0 ? FILE_OFFSET : -FILE_OFFSET); // leader inside
       setSpeed(car, t, this.paceSpeed);
     });
     this.flag = 'pace';
     this.paceCarOut = true;
+    this.pickedUp = true; // the field forms up right behind it
     // A full pace lap: "one to go" once the leader first crosses the line.
     this.oneToGo = false;
   }
@@ -188,9 +221,13 @@ export class RaceControl {
       const laps = leader ? leader.lapsCompleted - this.cautionLap : 0;
       const clear = this.wreckers.every((w) => w.phase === 'done' || (w.phase === 'tow' && w.wreck.d > t.innerEdge(w.wreck.trackIdx) + 3));
       // One to go once the track is clear and the minimum laps are run. Race control doesn't wait for the
-      // field to be lined up: cars still catching up restart from where they are.
-      if (clear && laps >= this.cautionMinLaps) this.oneToGo = true;
-      this.releasePaceCar(leader);
+      // field to be lined up: cars still catching up restart from where they are. But the pace car has to have
+      // the field first, and a full lap behind it to sort the line out: there's no restart to count down to without it.
+      // The head of the official order: the car the pace car picks up (the race leader may have pitted).
+      const head = this.order[0] ?? null;
+      const lapBehind = this.pickedUp && !!head && head.dist >= this.pickupDist + t.length;
+      if (clear && laps >= this.cautionMinLaps && lapBehind) this.oneToGo = true;
+      this.releasePaceCar(head);
     }
     // The pace car pulls off onto pit road; the leader takes the field to the green.
     if ((this.flag === 'pace' || this.flag === 'caution') && this.paceCarOut && this.oneToGo
@@ -201,6 +238,7 @@ export class RaceControl {
     if (this.paceCarOut && this.oneToGo && this.paceCar.surface === 'pit' && t.signedS(this.paceCar.s) > t.pit.wallStart + 15
       && t.signedS(this.paceCar.s) < t.pit.wallEnd - 20) {
       this.paceCarOut = false; // pulled in and parked
+      this.pickedUp = false;
       this.paceCar.cleared = true; // parked off to the side: not an obstacle on pit road
     }
     if (this.flag === 'restart' && leader && this.crossedLine(leader)) {
@@ -246,15 +284,22 @@ export class RaceControl {
       });
       return;
     }
-    const inLine = this.order.filter((c) => Math.abs(this.slotError(c)) < ROW_GAP);
+    // Before the pace car has the leader there's no line yet: the field is still slowing, each in its own way.
+    if (this.flag === 'caution' && !this.pickedUp) return;
+    const inLine = this.order.filter((c) => Math.abs(this.slotError(c)) < this.lineSpacing());
     const index = new Map(this.order.map((c, i) => [c, i]));
-    const row = (c: Car) => Math.floor(index.get(c)! / 2);
+    const single = this.singleFile;
+    const row = (c: Car) => (single ? index.get(c)! : Math.floor(index.get(c)! / 2));
     // Ahead on track, between two cars in the line: the shorter way round (the line is far shorter than half a
     // lap, so for cars in it this is never ambiguous). Not race distance: a car a lap down running ahead of a
     // lead-lap car has less race distance, but it is ahead of it. Cars running ahead of the leader at the
     // caution aren't in the line (their place is at its tail): they're waved around and join it there.
+    // Out of order means got past: clear ahead by a car length. Nose to nose is two cars settling into line.
     const L = this.track.length;
-    const aheadOf = (b: Car, a: Car) => this.track.distanceFrom(a.s, b.s) < L / 2;
+    const aheadOf = (b: Car, a: Car) => {
+      const d = this.track.distanceFrom(a.s, b.s);
+      return d < L / 2 && d > 2 * P.CAR_RADIUS;
+    };
     const now = new Map<string, { car: Car; against: Car }>();
     for (const a of inLine) {
       for (const b of inLine) {
@@ -336,14 +381,18 @@ export class RaceControl {
     this.world.announce(this.order[0], 'flag', 'Caution for debris: field slows, pace car coming out');
   }
 
-  /** Release the pace car from the end of pit road so it enters ahead of the leader. */
+  /**
+   * The pace car waits at the end of pit road and pulls out just in front of
+   * the leader as it arrives, at the distance that counts as picking it up.
+   * Cars on the road between them don't hold it in: they're waved around.
+   */
   private releasePaceCar(leader: Car | null): void {
-    if (this.paceCarOut || !leader || this.oneToGo) return;
+    if (this.paceCarOut || !leader || this.oneToGo || leader.pit.phase !== 'none') return;
     const t = this.track;
     const toExit = t.distanceFrom(leader.s, t.pit.wallEnd);
-    if (toExit > 150 && toExit < 700) {
+    if (toExit > FIRST_ROW_GAP && toExit < FIRST_ROW_GAP + ROW_GAP) {
       this.paceCar.placeOnTrack(t, t.pit.wallEnd - 5, t.pit.wallD + t.pit.wallThickness / 2 + 3);
-      setSpeed(this.paceCar, t, 5);
+      setSpeed(this.paceCar, t, this.paceSpeed);
       this.paceCar.retired = false;
       this.paceCar.cleared = false;
       this.paceCarOut = true;
@@ -355,7 +404,7 @@ export class RaceControl {
     return r > pullOffS(this.track) - 10 && r < this.track.pit.wallEnd;
   }
 
-  private crossedLine(car: Car): boolean {
+  crossedLine(car: Car): boolean {
     // Lap timing has already registered the crossing this step if lapStartTime is "now".
     return Math.abs(car.lapStartTime - this.world.time) < P.DT * 1.5;
   }
@@ -381,9 +430,32 @@ export class RaceControl {
     void leader;
     const pc = this.paceCar;
     const head = this.order[0];
-    // The pace car leads if it's on track ahead of the leader; otherwise the leader sets the pace.
-    const paceCarLeads = this.paceCarOut && !this.paceCarHeadingInAndOff() && pc.d < t.innerEdge(pc.trackIdx) + 1
-      && t.distanceFrom(head.s, pc.s) < 400;
+    // The pace car leads once it has picked up the leader (the leader has caught it, on track, right behind
+    // it); until then the line follows the virtual pace car, so the slots never jump to wherever it came out.
+    if (this.paceCarOut && !this.pickedUp && pc.d < t.innerEdge(pc.trackIdx) + 1
+      && t.distanceFrom(head.s, pc.s) < FIRST_ROW_GAP + ROW_GAP) {
+      this.pickedUp = true;
+      this.pickupDist = head.dist;
+    }
+    const paceCarLeads = this.paceCarOut && this.pickedUp && !this.paceCarHeadingInAndOff();
+    // Waved around: until it has picked up the leader, cars on the road between the pace car and the leader
+    // go past the pace car and on round to the tail of the line (their place in the order is behind anyway).
+    this.waved.clear();
+    if (this.paceCarOut && !this.pickedUp && pc.d < t.innerEdge(pc.trackIdx) + 1) {
+      const toPaceCar = t.distanceFrom(head.s, pc.s);
+      if (toPaceCar < t.length / 2) {
+        for (const car of this.order) {
+          const ahead = t.distanceFrom(head.s, car.s);
+          if (car === head || ahead <= 0 || ahead >= toPaceCar) continue;
+          this.waved.add(car);
+          if (!this.wavedTold.has(car)) {
+            this.wavedTold.add(car);
+            this.world.announce(car, 'crew', `Race control: #${car.id}, you're waved around`);
+          }
+        }
+      }
+    }
+    if (!this.pacing) this.wavedTold.clear();
     let refS = pc.s;
     if (paceCarLeads) {
       this.virtualS = NaN;
@@ -395,16 +467,22 @@ export class RaceControl {
       const ahead = Number.isNaN(this.virtualS) ? NaN : t.distanceFrom(head.s, this.virtualS);
       if (Number.isNaN(ahead) || ahead > VIRTUAL_LEAD_MAX) this.virtualS = head.s; // new, behind the leader, or the leader lost it
       else this.virtualS = t.wrapS(this.virtualS + this.paceSpeed * (this.flag === 'caution' ? 1.15 : 1) * dt);
+      // The real pace car out on track ahead, waiting to pick up the leader: the line can't run past it.
+      if (this.paceCarOut && pc.d < t.innerEdge(pc.trackIdx) + 1 && t.distanceFrom(head.s, pc.s) < t.length / 2) {
+        const limit = t.wrapS(pc.s - FIRST_ROW_GAP);
+        if (t.distanceFrom(limit, this.virtualS) < t.length / 2) this.virtualS = limit;
+      }
       refS = this.virtualS;
     }
     const refSpeed = paceCarLeads ? Math.max(pc.speed, this.paceSpeed * 0.6) : this.paceSpeed * (this.flag === 'caution' ? 1.15 : 1);
+    const single = this.singleFile;
     this.order.forEach((car, index) => {
-      const row = Math.floor(index / 2);
-      const back = paceCarLeads ? FIRST_ROW_GAP + row * ROW_GAP : row * ROW_GAP;
+      const back = (paceCarLeads ? FIRST_ROW_GAP : 0) + (single ? index * SINGLE_FILE_GAP : Math.floor(index / 2) * ROW_GAP);
       this.slots.set(car, {
         index,
         s: t.wrapS(refS - back),
-        d: index % 2 === 0 ? -FILE_OFFSET : FILE_OFFSET,
+        // Single file in the middle; doubled up, the leader takes the inside and the order alternates.
+        d: single ? 0 : index % 2 === 0 ? FILE_OFFSET : -FILE_OFFSET,
         speed: refSpeed,
       });
     });

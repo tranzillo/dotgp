@@ -141,9 +141,13 @@ export class CautionDrill implements Drill<CautionResult> {
         if (err < -150) err += t.length;
         // Capped: a car half a lap from its place is out of place, not 30 times as wrong as one 30 m off.
         // Uncapped, catching up fast was worth more than anything, and charging the line is what wrecks.
-        this.placeSum += Math.min(Math.abs(err), PLACE_CAP);
-        this.laneSum += Math.abs(slot.d - car.d);
-        this.samples++;
+        // Place and file count once there's a line to be in: until the pace car has the leader, drivers just
+        // slow and hold position.
+        if (ctl.pickedUp) {
+          this.placeSum += Math.min(Math.abs(err), PLACE_CAP);
+          this.laneSum += Math.abs(slot.d - car.d);
+          this.samples++;
+        }
         // Passing under caution: moving up the order while pacing.
         if (slot.index < this.bestIndex) {
           if (Number.isFinite(this.bestIndex)) this.passes += this.bestIndex - slot.index;

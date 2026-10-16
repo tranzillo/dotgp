@@ -1,6 +1,6 @@
 import { NeuralDriver, Team } from '../ai/drivers';
 import { danger, fearScale } from '../ai/fear';
-import { PaceCarDriver } from '../ai/formation';
+import { PaceCarDriver, formationTraits } from '../ai/formation';
 import { NeuralCrewChief } from '../ai/neuralChief';
 import { OnlineLearner, RACE_LEARNING } from '../ai/online';
 import { StrategistCrewChief, type CrewChief, type CrewChiefTraits } from '../ai/pitting';
@@ -198,6 +198,8 @@ export class Session {
     this.world = new World(this.track, { collisions: contact, drafting: contact, wearScale: spec.kind === 'ghost' ? 1 : spec.pace });
     // Shuffle the grid so the starting order isn't always roster order.
     const rng = new Rng(spec.seed);
+    // Each driver's own way of driving cautions, drawn once per race from the seed.
+    const traitRng = new Rng(spec.seed ^ 0x5bd1e995);
     const grid = spec.entrants.map((e) => ({ e, k: rng.next() })).sort((a, b) => a.k - b.k).map((x) => x.e);
     grid.forEach((entrant, k) => {
       const car = new Car(k, entrant.fill);
@@ -205,7 +207,8 @@ export class Session {
       else this.rollingStart(car); // ghosts share one spot
       const driver = new NeuralDriver(entrant.driver.weights);
       const team = new Team(driver, new TowerSpotter(entrant.spotter.skill), contact ? makeChief(entrant.chief.brain) : null,
-        entrant.driver.pits ?? false, entrant.driver.cautions ?? false);
+        entrant.driver.pits ?? false, entrant.driver.cautions ?? false,
+        formationTraits(entrant.driver.nerve, () => traitRng.next()));
       this.world.addCar(car, team);
       this.entrants.set(car.id, entrant);
       this.teams.set(car.id, team);
