@@ -499,6 +499,7 @@ export class Classroom {
         tireLife: car.tireLife, fuel: car.fuel, health: car.health,
         pitPhase: car.pit.phase, pitTimer: car.pit.timer, stops: car.pit.stops,
         laps: car.lapsCompleted, bestLap: car.lapTimes.length ? Math.min(...car.lapTimes) : null,
+        penalty: null, timePenalty: 0, disqualified: false,
       };
     });
     // Students first (by distance), then their variations.

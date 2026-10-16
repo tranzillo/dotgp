@@ -41,6 +41,9 @@ export interface RaceData {
   /** Health at the end (drivers). */
   health: number;
   points?: number;
+  /** What the stewards handed out (e.g. "a drive-through for avoidable contact"), and the black flag. */
+  penalties?: string[];
+  disqualified?: boolean;
   season?: number;
   round?: number;
 }

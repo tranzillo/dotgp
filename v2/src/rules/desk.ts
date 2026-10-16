@@ -21,7 +21,7 @@ export interface PenaltyRecord {
   detail: string;
 }
 
-const PENALTY_NAMES: Record<Penalty, string> = {
+export const PENALTY_NAMES: Record<Penalty, string> = {
   none: 'no further action', warning: 'a warning', time: 'a time penalty', tail: 'to the back of the line',
   'drive-through': 'a drive-through', 'stop-go': 'a stop-and-go', 'black-flag': 'the black flag',
 };

@@ -14,6 +14,8 @@ import type { Surface, TrackLayout } from '../sim/layout';
 import { Race } from '../sim/race';
 import { Track } from '../sim/track';
 import { World } from '../sim/world';
+import { OVAL_RULES, type Offence, type Penalty } from '../rules/rulebook';
+import type { StewardTraits } from '../rules/stewards';
 import type { SchoolView } from '../school/classroom';
 
 /**
@@ -48,6 +50,8 @@ export interface SessionSpec {
   seed: number;
   /** Drivers learn as they race (races only). */
   learn?: boolean;
+  /** Races are run to the oval rulebook; the stewards' panel (default: middling). */
+  stewards?: StewardTraits;
 }
 
 /** A driver took a learning step during the session: the weights it drives with now. */
@@ -74,6 +78,8 @@ export interface CarView {
   tireLife: number; fuel: number; health: number;
   pitPhase: Car['pit']['phase']; pitTimer: number; stops: number;
   laps: number; bestLap: number | null;
+  /** Stewards: a penalty still to serve, seconds added to the race time, shown the black flag. */
+  penalty: 'drive-through' | 'stop-go' | null; timePenalty: number; disqualified: boolean;
 }
 
 export interface StandingView {
@@ -134,6 +140,9 @@ export interface EntrantResult {
   /** The hardest single hit the car took (health lost; 0 if none), and how fast (m/s): what injures drivers. */
   worstHit: number;
   worstHitSpeed: number;
+  /** What the stewards handed this car (offence, penalty), and whether it was shown the black flag. */
+  penalties: Array<{ offence: Offence; penalty: Penalty }>;
+  disqualified: boolean;
 }
 
 const RADIO_REPEAT = 4; // seconds before the same call from the same team is repeated
@@ -210,7 +219,9 @@ export class Session {
       }
     });
     // Races run under race control: pace laps, green at the line, cautions with the wrecker crew.
-    this.race = spec.kind === 'race' ? new Race(this.world, spec.laps, new PaceCarDriver()) : null;
+    this.race = spec.kind === 'race'
+      ? new Race(this.world, spec.laps, new PaceCarDriver(), { rulebook: OVAL_RULES, stewards: spec.stewards, seed: spec.seed })
+      : null;
   }
 
   get time(): number {
@@ -352,6 +363,8 @@ export class Session {
         avgLap: laps.length ? laps.reduce((a, b) => a + b, 0) / laps.length : null,
         stops: car.pit.stops, wallHits: car.wallHits, health: car.health,
         worstHit: car.worstHit?.severity ?? 0, worstHitSpeed: car.worstHit?.speed ?? 0,
+        penalties: (this.race?.stewards?.record ?? []).filter((p) => p.car === car).map((p) => ({ offence: p.offence, penalty: p.penalty })),
+        disqualified: car.disqualified,
       };
     });
   }
@@ -369,6 +382,7 @@ export class Session {
       tireLife: car.tireLife, fuel: car.fuel, health: car.health,
       pitPhase: car.pit.phase, pitTimer: car.pit.timer, stops: car.pit.stops,
       laps: car.lapsCompleted, bestLap: car.lapTimes.length ? Math.min(...car.lapTimes) : null,
+      penalty: car.pendingPenalty?.kind ?? null, timePenalty: car.timePenalty, disqualified: car.disqualified,
     };
   }
 
@@ -427,7 +441,8 @@ export class Session {
       const e = world.events[this.eventsSeen];
       const key = this.entrants.get(e.car.id)?.key ?? null;
       if (e.kind === 'flag') push({ time: e.time, key: null, text: e.text });
-      else if (key !== null) push({ time: e.time, key, text: e.kind === 'crew' ? `Crew: ${e.text}` : e.text });
+      // Race control's calls go to the crew but are race control's words; stewards speak for themselves.
+      else if (key !== null) push({ time: e.time, key, text: e.kind === 'crew' && !e.text.startsWith('Race control') ? `Crew: ${e.text}` : e.text });
     }
     // Forget lines too old to suppress a repeat.
     while (this.recentRadio.length && world.time - this.recentRadio[0].time > RADIO_REPEAT) this.recentRadio.shift();

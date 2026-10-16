@@ -244,7 +244,9 @@ function describe(r: ActivityRecord): string {
     case 'strategy': return `Strategy race: ${((r.data.relativeTime - 1) * 100).toFixed(1)}% off the best${ev}`;
     case 'race': {
       const d = r.data;
-      return `${d.position === 1 ? '<b>Won</b>' : `P${d.position} of ${d.starters}`} at ${esc(d.track)}${d.status === 'out' ? ' (DNF)' : ''}, best ${lap(d.bestLap)}${d.points ? `, ${d.points} pts` : ''}${ev}`;
+      const outcome = d.disqualified ? ' (black flag)' : d.status === 'out' ? ' (DNF)' : '';
+      const penalties = d.penalties?.length ? `; penalties: ${d.penalties.map(esc).join(', ')}` : '';
+      return `${d.position === 1 ? '<b>Won</b>' : `P${d.position} of ${d.starters}`} at ${esc(d.track)}${outcome}, best ${lap(d.bestLap)}${d.points ? `, ${d.points} pts` : ''}${penalties}${ev}`;
     }
     case 'season': return `${r.data.champion ? '<b>Champion</b>' : `P${r.data.position}`} in season ${r.data.season} (${r.data.points} pts)`;
     case 'injury': {

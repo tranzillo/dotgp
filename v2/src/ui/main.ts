@@ -3,6 +3,8 @@ import { Rng } from '../ai/rng';
 import { EventHost, type EventHandle } from '../events/host';
 import type { CarView, EntrantResult, EntrantSpec, RadioLine as SessionRadio, SessionSnapshot, SessionSpec } from '../events/session';
 import { injuryFrom } from '../events/injury';
+import { OFFENCE_NAMES } from '../rules/rulebook';
+import { PENALTY_NAMES } from '../rules/desk';
 import { LESSONS, type ClassSpec, type LessonId, type RoundReport } from '../school/classroom';
 import { ActivityLog, MemoryActivityStore, type AgentRole, type EventRef } from '../records/activity';
 import { IndexedDbActivityStore } from '../records/idbStore';
@@ -375,6 +377,12 @@ function frame(): void {
 const fmt = (t: number | null) => (t !== null && Number.isFinite(t) ? t.toFixed(2) : '–');
 const pitStatus = (car: CarView) => ({ none: '', in: 'IN', service: `PIT ${car.pitTimer.toFixed(0)}s`, out: 'EXIT' })[car.pitPhase];
 const FLAG = '<span class="flag"></span>';
+/** Stewards' marks in the tower: a penalty still to serve (DT, SG), seconds added to the race time. */
+const penaltyMarks = (car: CarView) => {
+  const mark = (text: string, title: string) => ` <span title="${title}" style="color:#e5a00d;font-size:10px;font-weight:600">${text}</span>`;
+  return (car.penalty ? mark(car.penalty === 'stop-go' ? 'SG' : 'DT', `${car.penalty} to serve`) : '')
+    + (car.timePenalty ? mark(`+${car.timePenalty}s`, 'time penalty') : '');
+};
 
 /** Cars in classification order. */
 function runningOrder(s: SessionSnapshot): CarView[] {
@@ -405,7 +413,7 @@ function updateTower(): void {
     const st = standings?.[p];
     const finished = st?.status === 'finished';
     let gap: string;
-    if (car.retired) gap = 'OUT';
+    if (car.retired) gap = car.disqualified ? 'DQ' : 'OUT';
     else if (finished && winner) {
       // At the flag: laps down, or time behind the winner.
       gap = p === 0 ? 'WIN' : st!.laps < winner.laps ? `+${winner.laps - st!.laps}L` : `+${(st!.time - winner.time).toFixed(2)}`;
@@ -418,7 +426,7 @@ function updateTower(): void {
         : `+${((leader.dist - car.dist) / Math.max(20, leader.speed)).toFixed(2)}`);
     }
     return `<tr data-team="${t.id}" title="${roster.drivers.get(t.driver)?.name ?? ''}" class="${selected === t ? 'sel' : ''}${car.retired ? ' out' : ''}">
-      <td>${p + 1}</td><td>${carLabel(t)}${finished ? FLAG : ''}</td>
+      <td>${p + 1}</td><td>${carLabel(t)}${finished ? FLAG : ''}${penaltyMarks(car)}</td>
       <td>${gap}</td><td>${fmt(car.bestLap)}</td>
       <td>${Math.round(car.tireLife * 100)}</td><td>${Math.round((car.fuel / P.FUEL_CAPACITY) * 100)}</td>
       <td>${car.stops}</td><td>${Math.round(car.health * 100)}</td></tr>`;
@@ -753,6 +761,8 @@ function finishRace(handle: EventHandle): void {
     const data = {
       track: meta.trackName, raceLaps: laps, starters: results.length, position: r.position, status: r.status, laps: r.laps,
       bestLap: r.bestLap, avgLap: r.avgLap, stops: r.stops, wallHits: r.wallHits, health: r.health,
+      penalties: r.penalties.filter((p) => p.penalty !== 'none').map((p) => `${PENALTY_NAMES[p.penalty]} for ${OFFENCE_NAMES[p.offence]}`),
+      disqualified: r.disqualified,
       points: pointsFor(r.position, results.length, r.status), season: season.number, round: season.races.length,
     };
     activity.record({ kind: 'race', agent: r.driver, role: 'driver', event: handle.ref, brain: roster.drivers.get(r.driver)?.rounds, data });
