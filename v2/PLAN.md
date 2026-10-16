@@ -15,7 +15,7 @@ Open training work (queued in the lab, in no hurry):
 
 - **Cautions:** the short track is still worse than the formation script (15.4 vs 11.6 retirements a race); speedway and flat are within the noise.
 - **Racecraft:** pace now holds; drivers cause less damage on the short track but aren't a clear win anywhere. Next: dense packs like a 24-car short track.
-- **Pit stops:** masking to the pit inputs failed (too little control). Next: a separate pit-stop network that only drives during stops, for the same guarantee.
+- **Pit stops:** both pit lessons are withdrawn from the school: in the lab they cost drivers their racing (lap times 7-10 s slower, retirements doubled or worse). Masking to the pit inputs failed (too little control). Next: **skill networks**, a driver made of several networks; a pit-stop network that only drives during stops starts as a copy of the driver's racing and learns to pit without touching it. Cautions may move to their own skill network too.
 - **Seasons** with race learning, fear and nerve on, to see whether they move the field.
 
 ## Track B: stewards, rules and penalties (next feature)

@@ -1060,7 +1060,7 @@ function renderSchool(): void {
   ($('startClass') as HTMLButtonElement).disabled = picked.size === 0;
 }
 
-buttonGroup('lessonButtons', Object.values(LESSONS).map((l) => [l.name, l.id] as [string, LessonId]), () => lesson, (l) => {
+buttonGroup('lessonButtons', Object.values(LESSONS).filter((l) => !l.withdrawn).map((l) => [l.name, l.id] as [string, LessonId]), () => lesson, (l) => {
   lesson = l;
   picked.clear();
   renderSchool();

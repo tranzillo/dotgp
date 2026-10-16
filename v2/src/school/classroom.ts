@@ -41,6 +41,8 @@ export interface Lesson {
   learningRate: number;
   /** Only these weights train (1), if set: lessons for skills whose inputs are zero the rest of the time. */
   trains?: Float32Array;
+  /** Not offered in the driving school (why); the lab can still run it. */
+  withdrawn?: string;
 }
 
 export const LESSONS: Record<LessonId, Lesson> = {
@@ -61,11 +63,13 @@ export const LESSONS: Record<LessonId, Lesson> = {
   },
   pits: {
     id: 'pits', name: 'Pit stops', seconds: 100, pairs: 8, learningRate: 0.02,
+    withdrawn: 'it trains the whole driver and costs drivers their racing (lab, 2026-10-16); coming back as a separate pit-stop skill',
     eligible: (d) => d.licensed && !d.pitLicensed, audience: 'licensed drivers who don\'t do their own stops yet',
     description: 'Do your own pit stop: down to the apron, onto pit road under the limit, stop on the box, back out and merge. Students first copy the veteran crews\' pit maneuver, then practise; a pit license comes with a clean stop on every preset track, and from then on they drive their own stops in races.',
   },
   pitTraffic: {
     id: 'pitTraffic', name: 'Pit road in traffic', seconds: 0, pairs: 6, learningRate: 0.02,
+    withdrawn: 'it trains the whole driver and costs drivers their racing (lab, 2026-10-16); coming back as a separate pit-stop skill',
     eligible: (d) => d.licensed && !!d.pitLicensed && !d.pitTrafficLicensed, audience: "drivers with a pit license who haven't pitted in traffic yet",
     description: "Pit with a race going on: two cars ahead pit too, so pit road has a queue, and four more keep racing around you, two of them closing from behind as you slow for pit road. Students first go back over the veteran's stop in traffic, then practise; the license comes with a clean stop in traffic (nobody hurt, no speeding) at least as quick as the veteran's on every preset. Drivers need both pit licenses to do their own stops in races.",
   },
