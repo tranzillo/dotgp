@@ -33,10 +33,11 @@ export function followLine(
     const k = track.curvatureAt(s);
     const kappa = k / Math.max(0.2, 1 - k * lane);
     let limit = capAt(s);
-    if (kappa > 1e-6) {
-      const bank = track.bankAt(track.indexAt(s), lane);
+    if (Math.abs(kappa) > 1e-6) {
+      // Banking that leans into the turn (whichever way it goes) helps; leaning away costs.
+      const bank = Math.sign(kappa) * track.bankAt(track.indexAt(s), lane);
       const c = Math.cos(bank), sn = Math.sin(bank);
-      limit = Math.min(limit, Math.sqrt((G * (sn + mu * c)) / Math.max(0.05, c - mu * sn) / kappa) * margin);
+      limit = Math.min(limit, Math.sqrt((G * (sn + mu * c)) / Math.max(0.05, c - mu * sn) / Math.abs(kappa)) * margin);
     }
     target = Math.min(target, Math.sqrt(limit * limit + 2 * brake * ahead));
   }

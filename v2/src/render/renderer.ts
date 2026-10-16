@@ -515,7 +515,7 @@ export class Renderer {
   private drawBankLabels(ctx: CanvasRenderingContext2D): void {
     const track = this.track!;
     const n = track.n;
-    const kind = (i: number) => (track.turn[i] < 0.02 ? 0 : track.turn[i] > 0.98 ? 2 : 1);
+    const kind = (i: number) => { const t = Math.abs(track.turn[i]); return t < 0.02 ? 0 : t > 0.98 ? 2 : 1; };
     // Runs of straight / transition / arc, starting at a boundary so none wraps.
     let start = 0;
     while (start < n && kind(start) === kind((start - 1 + n) % n)) start++;

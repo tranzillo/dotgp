@@ -11,6 +11,7 @@ import { FLAT_TRACK, SHORT_TRACK, SPEEDWAY, type OvalParams } from './oval';
  */
 export * from './generator';
 export * from './oval';
+export { mirrorLayout } from './mirror';
 export type { Problem } from './validate';
 
 /** Hand-tuned tracks the drivers train on: fixed parameters, always the same layout. */

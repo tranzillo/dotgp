@@ -42,6 +42,9 @@ function curvatureKeys(spec: CenterlineSpec): Array<[number, number]> {
   let acc = 0;
   for (const [len, k0, k1] of spec.sections) {
     if (!keys.has(signed(acc))) keys.set(signed(acc), k0);
+    // A section running from one turn direction into the other (an S): its zero crossing is a key, so
+    // values that follow one direction only (widening on the outside) stay exact.
+    if (k0 * k1 < 0) keys.set(signed(acc + (len * k0) / (k0 - k1)), 0);
     acc += len;
     keys.set(signed(acc), k1);
   }
@@ -64,16 +67,28 @@ export function byCurvature(spec: CenterlineSpec, straight: number, corner: numb
   };
 }
 
+/** Like byCurvature, but only through turns one way: left (+1) or right (-1); zero elsewhere. */
+function byTurnsOneWay(spec: CenterlineSpec, way: 1 | -1, straight: number, corner: number): Profile {
+  const keys = curvatureKeys(spec);
+  const kMax = Math.max(...spec.sections.map((s) => Math.max(Math.abs(s[1]), Math.abs(s[2]))));
+  return {
+    keys: keys.map(([s, k]) => [s, straight + (corner - straight) * (kMax > 0 ? Math.max(0, way * k) / kMax : 0)]),
+    ease: 'linear',
+  };
+}
+
 /**
  * Racing surface edges for a track of a given width on the straights that
- * widens through the corners (to the outside, the way ovals usually do).
- * Without widening the edges are plain constants.
+ * widens through the corners, on the outside of each turn (the way ovals
+ * usually do): the right edge in left turns, the left edge in right turns.
+ * Without widening (or without turns that way) an edge is a plain constant.
  */
 export function edgesByCurvature(spec: CenterlineSpec, width: number, cornerWidening: number): { edgeIn: Edge; edgeOut: Edge } {
   const half = width / 2;
+  const turns = (way: 1 | -1) => spec.sections.some((s) => way * s[1] > 0 || way * s[2] > 0);
   return {
-    edgeIn: half,
-    edgeOut: cornerWidening > 0 ? byCurvature(spec, -half, -half - cornerWidening) : -half,
+    edgeIn: cornerWidening > 0 && turns(-1) ? byTurnsOneWay(spec, -1, half, half + cornerWidening) : half,
+    edgeOut: cornerWidening > 0 && turns(1) ? byTurnsOneWay(spec, 1, -half, -half - cornerWidening) : -half,
   };
 }
 
