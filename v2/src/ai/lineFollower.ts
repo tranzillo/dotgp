@@ -30,11 +30,12 @@ export function followLine(
   for (let ahead = 0; ahead <= 400; ahead += 5) {
     const s = car.s + ahead;
     const lane = laneAt(s);
-    const mu = P.TIRE_MU * car.grip * SURFACES[track.surfaceAt(s, lane)].grip;
     const k = track.curvatureAt(s);
     const kappa = k / Math.max(0.2, 1 - k * lane);
     let limit = capAt(s);
     if (Math.abs(kappa) > 1e-6) {
+      // The surface only matters in a corner (and it's the costly lookup here).
+      const mu = P.TIRE_MU * car.grip * SURFACES[track.surfaceAt(s, lane)].grip;
       // Banking that leans into the turn (whichever way it goes) helps; leaning away costs.
       const bank = Math.sign(kappa) * track.bankAt(track.indexAt(s), lane);
       const c = Math.cos(bank), sn = Math.sin(bank);

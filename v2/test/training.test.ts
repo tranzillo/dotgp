@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { initialWeights } from '../src/ai/es';
 import { Trial, type TrialOptions } from '../src/ai/evaluate';
-import { genomeSize, trainSupervised, type Example } from '../src/ai/network';
+import { genomeSize, Network, trainSupervised, type Example } from '../src/ai/network';
+import { Centerline } from '../src/sim/centerline';
 import { Rng } from '../src/ai/rng';
 import { Classroom, type ClassSpec, type GhostRunner } from '../src/school/classroom';
 import type { TrackLayout } from '../src/sim/layout';
@@ -59,6 +60,46 @@ describe('headless training', () => {
     expect(loss).toBe(plainLoss);
   });
 });
+
+describe('sim speed-ups', () => {
+  it('wraps track positions exactly as the double modulo does', () => {
+    const rng = new Rng(3);
+    for (const len of [3103.217, 1234.567891234, 0.5]) {
+      const line = new Centerline({ kind: 'curvature', sections: [[len, 0, 0]] });
+      const L = line.length;
+      const edges = [0, -0, L, -L, 2 * L, L * (1 - 1e-16), -L * (1 - 1e-16), 5e-324, -5e-324, L / 2, Infinity, NaN];
+      const values = [...edges, ...edges.map((v) => v + 1e-12), ...edges.map((v) => v - 1e-12)];
+      for (let i = 0; i < 20000; i++) values.push((rng.next() - 0.5) * 6 * L, L + (rng.next() - 0.5) * 1e-9, -L + (rng.next() - 0.5) * 1e-9);
+      for (const s of values) expect(Object.is(line.wrapS(s), ((s % L) + L) % L), `wrapS(${s}) on ${L}`).toBe(true);
+    }
+  });
+
+  it('runs the network exactly as the plain loop does, zero inputs skipped', () => {
+    const layers = [9, 6, 5, 2] as const;
+    const rng = new Rng(5);
+    const w = Float32Array.from({ length: genomeSize(layers) }, () => rng.gaussian() * 0.5);
+    const net = new Network(layers, w);
+    for (let n = 0; n < 200; n++) {
+      const x = Float32Array.from({ length: 9 }, () => (rng.next() < 0.5 ? rng.gaussian() : 0));
+      expect(Array.from(net.forward(x))).toEqual(Array.from(textbookForward(layers, w, x)));
+    }
+  });
+});
+
+function textbookForward(layers: readonly number[], weights: Float32Array, input: Float32Array): Float32Array {
+  let prev = Float32Array.from(input);
+  let w = 0;
+  for (let l = 1; l < layers.length; l++) {
+    const out = new Float32Array(layers[l]);
+    for (let o = 0; o < layers[l]; o++) {
+      let sum = weights[w++];
+      for (let k = 0; k < layers[l - 1]; k++) sum += prev[k] * weights[w++];
+      out[o] = Math.tanh(sum);
+    }
+    prev = out;
+  }
+  return prev;
+}
 
 /** Backprop as first written (before the speed-ups): the reference. */
 function textbookTrain(layers: readonly number[], weights: Float32Array, data: Example[], epochs: number, learningRate: number, random: () => number): number {

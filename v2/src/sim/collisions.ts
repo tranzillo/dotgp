@@ -161,16 +161,16 @@ export function resolveCarCollisions(cars: Car[], track?: Track): void {
 /** Slipstream: a car tucked behind another in the same lane sees less drag. */
 export function computeDraft(cars: Car[], track: Track): void {
   for (const c of cars) c.draftFactor = 1;
-  const L = track.length;
   for (const A of cars) {
     if (A.retired) continue;
     let best = 0;
     for (const B of cars) {
       if (B === A || B.retired) continue;
-      const gap = (((B.s - A.s) % L) + L) % L;
-      if (gap <= 0 || gap > P.DRAFT_LENGTH) continue;
+      // Every pair, every step: the cheap test first.
       const lateral = Math.abs(B.d - A.d);
       if (lateral > P.DRAFT_WIDTH) continue;
+      const gap = track.wrapS(B.s - A.s);
+      if (gap <= 0 || gap > P.DRAFT_LENGTH) continue;
       const strength = (1 - gap / P.DRAFT_LENGTH) * (1 - lateral / P.DRAFT_WIDTH);
       if (strength > best) best = strength;
       // The leader gets a small push from the car behind.

@@ -114,10 +114,10 @@ export class TowerSpotter implements Spotter {
       }
 
       // The tower sees the whole lap: wrecks and crawling cars anywhere ahead.
-      const gapAhead = ((other.s - car.s) % L + L) % L;
-      // Slow because they're pitting isn't a hazard; slow on the racing surface is.
+      const gapAhead = track.wrapS(other.s - car.s);
+      // Slow because they're pitting isn't a hazard; slow on the racing surface is. (Speed last: it's a square root.)
       const pitting = other.pit.phase !== 'none' && !other.retired;
-      if (!pitting && (other.retired || other.speed < HAZARD_SPEED) && gapAhead > ALONGSIDE_DS && gapAhead < hazardGap) {
+      if (gapAhead > ALONGSIDE_DS && gapAhead < hazardGap && !pitting && (other.retired || other.speed < HAZARD_SPEED)) {
         hazardGap = gapAhead;
         hazardD = other.d;
       }

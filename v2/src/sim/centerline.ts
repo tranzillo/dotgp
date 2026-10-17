@@ -96,8 +96,15 @@ export class Centerline {
   }
 
   wrapS(s: number): number {
+    // Exactly ((s % L) + L) % L, without the floating-point modulos where they
+    // aren't needed (this runs ~100 times per driver decision). s % L is s
+    // itself on the lap; and with u = r + L, u % L is u - L for u in [L, 2L)
+    // and u for u in (0, L), both exact.
     const L = this.length;
-    return ((s % L) + L) % L;
+    const r = s >= 0 && s < L ? s : s % L;
+    const u = r + L;
+    if (r >= 0) { if (u < 2 * L) return u - L; } else if (u < L) return u;
+    return u % L; // u landed on a boundary (or s isn't finite)
   }
 
   indexAt(s: number): number {
@@ -163,33 +170,36 @@ export class Centerline {
    * Project a world point onto the track frame. With a hint index (the car's
    * previous sample), a local hill-climb is O(1); without one it scans the lap.
    */
+  /** Squared distance from a point to sample i. */
+  private dist2(i: number, px: number, py: number): number {
+    const dx = px - this.x[i], dy = py - this.y[i];
+    return dx * dx + dy * dy;
+  }
+
   project(px: number, py: number, hint = -1): Projection {
+    // Every car, every physics step: no closures here (tsx's keepNames makes each one a defineProperty).
     const n = this.n;
-    const dist2 = (i: number) => {
-      const dx = px - this.x[i], dy = py - this.y[i];
-      return dx * dx + dy * dy;
-    };
     let i: number;
     if (hint < 0) {
       i = 0;
       let best = Infinity;
       for (let k = 0; k < n; k++) {
-        const d2 = dist2(k);
+        const d2 = this.dist2(k, px, py);
         if (d2 < best) { best = d2; i = k; }
       }
     } else {
       i = hint;
-      let best = dist2(i);
+      let best = this.dist2(i, px, py);
       let moved = false;
       for (;;) {
         const j = (i + 1) % n;
-        const dj = dist2(j);
+        const dj = this.dist2(j, px, py);
         if (dj < best) { i = j; best = dj; moved = true; } else break;
       }
       if (!moved) {
         for (;;) {
           const j = (i - 1 + n) % n;
-          const dj = dist2(j);
+          const dj = this.dist2(j, px, py);
           if (dj < best) { i = j; best = dj; } else break;
         }
       }

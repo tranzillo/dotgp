@@ -3,6 +3,7 @@ export class Network {
   readonly layers: readonly number[];
   readonly weights: Float32Array;
   private readonly acts: Float32Array[];
+  private readonly nonzero: Int32Array;
 
   constructor(layers: readonly number[], weights: Float32Array) {
     if (weights.length !== genomeSize(layers)) {
@@ -11,14 +12,26 @@ export class Network {
     this.layers = layers;
     this.weights = weights;
     this.acts = layers.map((n) => new Float32Array(n));
+    this.nonzero = new Int32Array(layers[0]);
   }
 
   /** Returns the output activation buffer (reused between calls). */
   forward(input: Float32Array): Float32Array {
-    const { layers, weights, acts } = this;
+    const { layers, weights, acts, nonzero } = this;
     acts[0].set(input);
-    let w = 0;
-    for (let l = 1; l < layers.length; l++) {
+    // The first layer skips zero inputs (a driver's pit and caution inputs mostly are, and the radio in ghost
+    // laps): adding their zero terms changes nothing.
+    const x = acts[0], first = acts[1], nIn0 = layers[0];
+    let nnz = 0;
+    for (let k = 0; k < nIn0; k++) if (x[k] !== 0) nonzero[nnz++] = k;
+    for (let o = 0; o < layers[1]; o++) {
+      const row = o * (nIn0 + 1);
+      let sum = weights[row];
+      for (let j = 0; j < nnz; j++) { const k = nonzero[j]; sum += x[k] * weights[row + 1 + k]; }
+      first[o] = Math.tanh(sum);
+    }
+    let w = layers[1] * (nIn0 + 1);
+    for (let l = 2; l < layers.length; l++) {
       const prev = acts[l - 1];
       const out = acts[l];
       const nIn = layers[l - 1];
