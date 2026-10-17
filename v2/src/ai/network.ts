@@ -105,52 +105,90 @@ export function trainSupervised(
   for (let l = 1; l < L; l++) { offsets.push(off); off += layers[l] * (layers[l - 1] + 1); }
   const order = data.map((_, i) => i);
   let loss = 0;
+  // The inner loops are the whole cost of an apprenticeship: buffers are looked up once per layer, not per weight,
+  // and the first layer skips inputs that are zero (radio, pit and caution inputs mostly are): adding or
+  // subtracting their zero terms changes nothing.
+  const nonzero = new Int32Array(layers[0]);
   for (let epoch = 0; epoch < epochs; epoch++) {
     for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
     loss = 0;
     for (const idx of order) {
       const ex = data[idx];
       acts[0].set(ex.x);
+      let nnz = 0;
+      for (let k = 0; k < layers[0]; k++) if (ex.x[k] !== 0) nonzero[nnz++] = k;
       // Forward.
-      for (let l = 1; l < L; l++) {
+      {
+        const nIn = layers[0], x = acts[0], out = acts[1];
+        for (let o = 0; o < layers[1]; o++) {
+          const row = o * (nIn + 1);
+          let sum = weights[row];
+          for (let j = 0; j < nnz; j++) { const k = nonzero[j]; sum += x[k] * weights[row + 1 + k]; }
+          out[o] = Math.tanh(sum);
+        }
+      }
+      for (let l = 2; l < L; l++) {
         const nIn = layers[l - 1];
+        const prev = acts[l - 1], out = acts[l];
         let w = offsets[l - 1];
         for (let o = 0; o < layers[l]; o++) {
           let sum = weights[w++];
-          for (let k = 0; k < nIn; k++) sum += acts[l - 1][k] * weights[w++];
-          acts[l][o] = Math.tanh(sum);
+          for (let k = 0; k < nIn; k++) sum += prev[k] * weights[w++];
+          out[o] = Math.tanh(sum);
         }
       }
       // Output error (masked MSE) through tanh'.
-      const out = acts[L - 1];
+      const out = acts[L - 1], outDelta = deltas[L - 1], y = ex.y, mask = ex.mask;
       for (let o = 0; o < layers[L - 1]; o++) {
-        const err = (out[o] - ex.y[o]) * ex.mask[o];
+        const err = (out[o] - y[o]) * mask[o];
         loss += err * err;
-        deltas[L - 1][o] = err * (1 - out[o] * out[o]);
+        outDelta[o] = err * (1 - out[o] * out[o]);
       }
       // Backward, updating weights as we go (each layer's deltas use its pre-update weights).
       for (let l = L - 1; l >= 1; l--) {
         const nIn = layers[l - 1];
         const base = offsets[l - 1];
+        const delta = deltas[l], prev = acts[l - 1];
+        if (l > 1 && !trainable) {
+          // One pass over the weights: each passes the error back (pre-update value), then takes its update.
+          const back = deltas[l - 1];
+          back.fill(0);
+          for (let o = 0; o < layers[l]; o++) {
+            const row = base + o * (nIn + 1);
+            const dl = delta[o];
+            const d = dl * learningRate;
+            weights[row] -= d;
+            for (let k = 0; k < nIn; k++) {
+              const wk = weights[row + 1 + k];
+              back[k] += dl * wk;
+              weights[row + 1 + k] = wk - d * prev[k];
+            }
+          }
+          for (let k = 0; k < nIn; k++) back[k] *= 1 - prev[k] * prev[k];
+          continue;
+        }
         if (l > 1) {
-          deltas[l - 1].fill(0);
+          const back = deltas[l - 1];
+          back.fill(0);
           for (let o = 0; o < layers[l]; o++) {
             const row = base + o * (nIn + 1) + 1;
-            for (let k = 0; k < nIn; k++) deltas[l - 1][k] += deltas[l][o] * weights[row + k];
+            const dl = delta[o];
+            for (let k = 0; k < nIn; k++) back[k] += dl * weights[row + k];
           }
-          for (let k = 0; k < nIn; k++) deltas[l - 1][k] *= 1 - acts[l - 1][k] * acts[l - 1][k];
+          for (let k = 0; k < nIn; k++) back[k] *= 1 - prev[k] * prev[k];
         }
         for (let o = 0; o < layers[l]; o++) {
           const row = base + o * (nIn + 1);
-          const d = deltas[l][o] * learningRate;
+          const d = delta[o] * learningRate;
           if (d === 0) continue;
           if (trainable) {
             weights[row] -= d * trainable[row];
-            for (let k = 0; k < nIn; k++) weights[row + 1 + k] -= d * acts[l - 1][k] * trainable[row + 1 + k];
+            for (let k = 0; k < nIn; k++) weights[row + 1 + k] -= d * prev[k] * trainable[row + 1 + k];
             continue;
           }
           weights[row] -= d;
-          for (let k = 0; k < nIn; k++) weights[row + 1 + k] -= d * acts[l - 1][k];
+          if (l === 1) for (let j = 0; j < nnz; j++) { const k = nonzero[j]; weights[row + 1 + k] -= d * prev[k]; }
+          else for (let k = 0; k < nIn; k++) weights[row + 1 + k] -= d * prev[k];
         }
       }
     }

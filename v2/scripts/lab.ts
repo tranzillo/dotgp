@@ -37,7 +37,7 @@ const dirs = { queue: join(data, 'queue'), results: join(data, 'results'), house
 const house = join(data, 'house.json');
 const runningFile = join(data, 'running.json');
 const resultsLog = join(data, 'RESULTS.md');
-/** Cores a benchmark may use (the rest stay free for development). */
+/** Cores a benchmark or a class may use (the rest stay free for development). */
 const BENCH_JOBS = 6;
 
 type Step =
@@ -143,7 +143,7 @@ async function runExperiment(file: string): Promise<void> {
       if (step.kind === 'class') {
         const summary = join(dir, `${String(i + 1).padStart(2, '0')}-class.json`);
         await runScript('class', ['--lesson', step.lesson, '--in', path(step.in), '--out', path(step.out),
-          '--rounds', String(step.rounds ?? 100), '--seed', String(step.seed ?? 7), '--summary', summary], log);
+          '--rounds', String(step.rounds ?? 100), '--seed', String(step.seed ?? 7), '--summary', summary, '--jobs', String(BENCH_JOBS)], log);
         const s = JSON.parse(readFileSync(summary, 'utf8'));
         const key = { cautions: 'cautionLicensed', pits: 'pitLicensed', pitTraffic: 'pitTrafficLicensed', rookie: 'licensed', circuits: 'roadLicensed' }[step.lesson as string];
         const passed = key ? s.students.filter((x: Record<string, boolean>) => x[key]).length : null;

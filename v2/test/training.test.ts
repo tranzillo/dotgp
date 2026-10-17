@@ -1,0 +1,117 @@
+import { describe, expect, it } from 'vitest';
+import { initialWeights } from '../src/ai/es';
+import { Trial, type TrialOptions } from '../src/ai/evaluate';
+import { genomeSize, trainSupervised, type Example } from '../src/ai/network';
+import { Rng } from '../src/ai/rng';
+import { Classroom, type ClassSpec, type GhostRunner } from '../src/school/classroom';
+import type { TrackLayout } from '../src/sim/layout';
+import { Track } from '../src/sim/track';
+import { PRESETS, presetLayout } from '../src/trackgen';
+
+/** Headless training's speed-ups must not change what drivers learn. */
+
+/** A round split into parts the way the worker pool splits it, all on this thread. */
+const splitRunner = (parts: number): GhostRunner => async (layout: TrackLayout, genomes: Float32Array[], opts: TrialOptions) => {
+  const track = new Track(layout);
+  const per = Math.ceil(genomes.length / parts);
+  const trials = Array.from({ length: parts }, (_, i) => new Trial(track, genomes.slice(i * per, (i + 1) * per), opts));
+  for (const t of trials) while (!t.done) t.step();
+  const until = Math.max(...trials.map((t) => t.stepsRun));
+  for (const t of trials) t.continueTo(until);
+  return { results: trials.flatMap((t) => t.results()), time: trials[0].world.time };
+};
+
+describe('headless training', () => {
+  it('drives a road-course round split into parts exactly as in one world', async () => {
+    const spec = (): ClassSpec => ({
+      lesson: 'circuits', presets: Object.keys(PRESETS).map(presetLayout), seed: 5,
+      // Untrained drivers crash and stall at different times, so parts end at different steps; already apprenticed.
+      students: [0, 1].map((k) => ({ key: k, id: `D${k}`, name: `D${k}`, weights: initialWeights(new Rng(k + 1)), rounds: 1, licensed: true })),
+    });
+    const one = new Classroom(spec());
+    const split = new Classroom(spec());
+    expect(split.ghostRounds).toBe(true);
+    for (let round = 0; round < 2; round++) {
+      while (one.round === round) one.step();
+      await split.runRound(splitRunner(3));
+    }
+    const a = one.takeReports(), b = split.takeReports();
+    expect(b.map((r) => [r.fitness, r.laps, r.health])).toEqual(a.map((r) => [r.fitness, r.laps, r.health]));
+    split.students.forEach((s, k) => expect(Array.from(s.weights)).toEqual(Array.from(one.students[k].weights)));
+    expect(split.time).toBeCloseTo(one.time, 9);
+  });
+
+  it('trains supervised exactly as the plain textbook loop does, zero inputs and all', () => {
+    const layers = [9, 6, 5, 2] as const;
+    const rng = new Rng(11);
+    const w0 = Float32Array.from({ length: genomeSize(layers) }, () => rng.gaussian() * 0.5);
+    // Inputs mostly zero, as a driver's radio, pit and caution inputs are in ghost laps.
+    const data: Example[] = Array.from({ length: 40 }, () => ({
+      x: Float32Array.from({ length: 9 }, (_, k) => (k < 3 || rng.next() < 0.3 ? rng.gaussian() : 0)),
+      y: Float32Array.of(rng.next() - 0.5, rng.next() - 0.5),
+      mask: Float32Array.of(1, rng.next() < 0.8 ? 1 : 0),
+    }));
+    const fast = w0.slice(), plain = w0.slice();
+    const r1 = new Rng(4), r2 = new Rng(4);
+    const loss = trainSupervised(layers, fast, data, 3, 0.05, () => r1.next());
+    const plainLoss = textbookTrain(layers, plain, data, 3, 0.05, () => r2.next());
+    expect(Array.from(fast)).toEqual(Array.from(plain));
+    expect(loss).toBe(plainLoss);
+  });
+});
+
+/** Backprop as first written (before the speed-ups): the reference. */
+function textbookTrain(layers: readonly number[], weights: Float32Array, data: Example[], epochs: number, learningRate: number, random: () => number): number {
+  const L = layers.length;
+  const acts = layers.map((n) => new Float32Array(n));
+  const deltas = layers.map((n) => new Float32Array(n));
+  const offsets: number[] = [];
+  let off = 0;
+  for (let l = 1; l < L; l++) { offsets.push(off); off += layers[l] * (layers[l - 1] + 1); }
+  const order = data.map((_, i) => i);
+  let loss = 0;
+  for (let epoch = 0; epoch < epochs; epoch++) {
+    for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+    loss = 0;
+    for (const idx of order) {
+      const ex = data[idx];
+      acts[0].set(ex.x);
+      for (let l = 1; l < L; l++) {
+        const nIn = layers[l - 1];
+        let w = offsets[l - 1];
+        for (let o = 0; o < layers[l]; o++) {
+          let sum = weights[w++];
+          for (let k = 0; k < nIn; k++) sum += acts[l - 1][k] * weights[w++];
+          acts[l][o] = Math.tanh(sum);
+        }
+      }
+      const out = acts[L - 1];
+      for (let o = 0; o < layers[L - 1]; o++) {
+        const err = (out[o] - ex.y[o]) * ex.mask[o];
+        loss += err * err;
+        deltas[L - 1][o] = err * (1 - out[o] * out[o]);
+      }
+      for (let l = L - 1; l >= 1; l--) {
+        const nIn = layers[l - 1];
+        const base = offsets[l - 1];
+        if (l > 1) {
+          deltas[l - 1].fill(0);
+          for (let o = 0; o < layers[l]; o++) {
+            const row = base + o * (nIn + 1) + 1;
+            for (let k = 0; k < nIn; k++) deltas[l - 1][k] += deltas[l][o] * weights[row + k];
+          }
+          for (let k = 0; k < nIn; k++) deltas[l - 1][k] *= 1 - acts[l - 1][k] * acts[l - 1][k];
+        }
+        for (let o = 0; o < layers[l]; o++) {
+          const row = base + o * (nIn + 1);
+          const d = deltas[l][o] * learningRate;
+          if (d === 0) continue;
+          weights[row] -= d;
+          for (let k = 0; k < nIn; k++) weights[row + 1 + k] -= d * acts[l - 1][k];
+        }
+      }
+    }
+    loss /= Math.max(1, data.length);
+  }
+  return loss;
+}

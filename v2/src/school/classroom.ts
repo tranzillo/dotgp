@@ -2,7 +2,7 @@ import { adaptWeights } from '../ai/drivers';
 import {
   adamStep, centeredRanks, DEFAULT_ES, FULL_DAMAGE_PENALTY, LICENSE_HEALTH, rookieDamagePenalty, rookieDamageScale,
 } from '../ai/es';
-import { Trial, type TrialResult } from '../ai/evaluate';
+import { Trial, type TrialOptions, type TrialResult } from '../ai/evaluate';
 import { apprenticePitStops, cleanStop, PitTrial, REFRESHER_ROUNDS, type PitTrialResult } from './pitLesson';
 import { DrillTrial, racingKept } from './drill';
 import { apprenticeRoadCourses, roadLicenseTest } from './roadLesson';
@@ -125,7 +125,19 @@ export interface ClassSpec {
   /** The preset tracks (rookie school rotates through them and tests the license on them). */
   presets: TrackLayout[];
   seed: number;
+  /**
+   * Road courses: apprenticeships the caller has already run (headless, in parallel), by student:
+   * the skill's weights after it and the moments studied. Students without one study here.
+   */
+  apprenticed?: Array<{ weights: Float32Array; examples: number } | undefined>;
 }
+
+/**
+ * Runs a round of ghost laps somewhere else (headless: worker threads) and
+ * hands back what the in-process trial would have: every car's result in
+ * order, and the simulated time the round took.
+ */
+export type GhostRunner = (layout: TrackLayout, genomes: Float32Array[], opts: TrialOptions) => Promise<{ results: TrialResult[]; time: number }>;
 
 /** One student's round. */
 export interface RoundReport {
@@ -247,6 +259,8 @@ export class Classroom {
   private readonly rng: Rng;
   private readonly seed: number;
   private noise: Float32Array[][] = [];
+  /** This round's ghost laps (lessons that drive plain ghost trials), for a GhostRunner. */
+  private ghostRound: { genomes: Float32Array[]; opts: TrialOptions } | null = null;
   private reports: RoundReport[] = [];
   private radio: RadioLine[] = [];
   private timeOffset = 0;
@@ -268,9 +282,11 @@ export class Classroom {
     }));
     if (this.lesson.id === 'circuits') {
       // A new road-course skill first copies the scripted line follower round circuits; then practice.
-      for (const s of this.students) {
+      for (const [k, s] of this.students.entries()) {
         if (s.rounds > 0) continue;
-        const { examples } = apprenticeRoadCourses(s.weights, hashSeed(this.seed, s.id));
+        const done = spec.apprenticed?.[k];
+        if (done) s.weights.set(done.weights);
+        const { examples } = done ?? apprenticeRoadCourses(s.weights, hashSeed(this.seed, s.id));
         this.say(`${s.name} studied the line follower's laps of road circuits (${examples} moments)`);
       }
       // Carry on where the class got to: the least advanced student's stage.
@@ -340,6 +356,24 @@ export class Classroom {
     }
   }
 
+  /** Does this lesson's round drive plain ghost laps (so a GhostRunner can drive it elsewhere)? */
+  get ghostRounds(): boolean {
+    return this.ghostRound !== null;
+  }
+
+  /**
+   * One whole round, its ghost laps driven by the runner (the same results
+   * as stepping it here). Headless classes use this to spread a round over
+   * threads; the viewer steps the round in front of it instead.
+   */
+  async runRound(runner: GhostRunner): Promise<void> {
+    if (this.finished) return;
+    if (!this.ghostRound) throw new Error(`${this.lesson.id} rounds aren't plain ghost laps`);
+    const { results, time } = await runner(this.track.layout, this.ghostRound.genomes, this.ghostRound.opts);
+    this.finishRound(results, time);
+    if (!this.finished) this.startRound();
+  }
+
   takeReports(): RoundReport[] {
     const out = this.reports;
     this.reports = [];
@@ -396,7 +430,7 @@ export class Classroom {
     // Every other round the caution finds the field strung out round the lap, as in a race.
     this.drillSpread = this.round % 2 === 1 ? hashSeed(this.seed, `spread${this.round}`) : undefined;
     this.packWeights = this.students.map((s) => s.weights.slice()); // the classmates in this round's packs
-    this.trial = lesson.id === 'cautions'
+    const drill: LessonTrial | null = lesson.id === 'cautions'
       ? new CautionTrial(this.track, candidates, 1 + 2 * lesson.pairs, this.drillSlot, this.round % this.students.length,
         this.students.map((s) => s.reference), this.drillSpread, this.students.map((s) => s.weights))
       : lesson.id === 'racecraft'
@@ -405,18 +439,25 @@ export class Classroom {
           this.students.map((s) => s.nerve), this.students.map((s) => s.reference))
       : lesson.id === 'pitTraffic' ? new PitTrafficTrial(this.track, candidates, 1 + 2 * lesson.pairs, this.round % this.students.length,
         this.students.map((s) => s.reference))
-      : lesson.id === 'pits' ? new PitTrial(this.track, candidates, lesson.seconds) : new Trial(this.track, candidates, {
-      seconds: lesson.seconds,
-      startS: lesson.id === 'circuits' ? straightStart(this.track, this.rng) : undefined,
-      ...(lesson.id === 'circuits' ? { damageScale: this.walls } : {}),
-      damageScale: this.walls,
-      damagePenaltyLaps: lesson.id === 'rookie' ? rookieDamagePenalty(lessons, DEFAULT_ES.curriculumRounds) : FULL_DAMAGE_PENALTY,
-    });
+      : lesson.id === 'pits' ? new PitTrial(this.track, candidates, lesson.seconds) : null;
+    this.ghostRound = null;
+    if (drill) this.trial = drill;
+    else {
+      const opts: TrialOptions = {
+        seconds: lesson.seconds,
+        startS: lesson.id === 'circuits' ? straightStart(this.track, this.rng) : undefined,
+        damageScale: this.walls,
+        damagePenaltyLaps: lesson.id === 'rookie' ? rookieDamagePenalty(lessons, DEFAULT_ES.curriculumRounds) : FULL_DAMAGE_PENALTY,
+      };
+      this.trial = new Trial(this.track, candidates, opts);
+      this.ghostRound = { genomes: candidates, opts };
+    }
     this.strokes.reset();
   }
 
-  private finishRound(): void {
-    const results = this.trial.results();
+  /** Learn from the round (results: every car's, in order; time: simulated seconds it ran). */
+  private finishRound(results: Array<{ fitness: number; laps: number; bestLap: number; health: number }> = this.trial.results(),
+    time = this.trial.world.time): void {
     const per = 1 + 2 * this.lesson.pairs;
     const sigma = DEFAULT_ES.sigma;
     const size = genomeSize(DRIVER_LAYERS);
@@ -562,7 +603,7 @@ export class Classroom {
         this.say(`Corners tighten: down to ${this.roadRadius.toFixed(0)} m (barriers ${Math.round(roadWalls(this.roadRadius) * 100)}%)`);
       }
     }
-    this.timeOffset += this.trial.world.time;
+    this.timeOffset += time;
     this.round++;
   }
 

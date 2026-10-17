@@ -103,6 +103,24 @@ export class Trial {
     }
   }
 
+  /** Physics steps run so far. */
+  get stepsRun(): number {
+    return this.stepIndex;
+  }
+
+  /**
+   * Keep stepping a finished trial up to a step count. A round split across
+   * threads (ghosts don't interact, so any split drives the same) ends where
+   * its longest part did; parts that ended sooner carry on there, their
+   * stalled cars still rolling as they would have in one world.
+   */
+  continueTo(steps: number): void {
+    while (this.stepIndex < steps) {
+      this.world.step();
+      this.stepIndex++;
+    }
+  }
+
   results(): TrialResult[] {
     return this.world.cars.map((car) => scoreCar(car, this.track, 0, this.damagePenaltyLaps));
   }

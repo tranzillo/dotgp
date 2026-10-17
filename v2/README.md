@@ -15,7 +15,7 @@ npx tsx scripts/inspect.ts runs/<file>.json [--track short]   # how champions dr
 npx tsx scripts/trace.ts runs/<file>.json <lineage> <track>   # step-by-step trace
 npx tsx scripts/incidents.ts --tracks speedway,short --seeds 2 --field 24 --pace 4   # race benchmark: wrecks, tires, fuel, stops, mark coverage
 npx tsx scripts/bench.ts A.json B.json --seeds 8   # the same races in parallel, with 95% ranges; compares A and B race by race
-npx tsx scripts/class.ts --lesson cautions --in drivers.json --out trained.json --rounds 100   # a driving school class, headless
+npx tsx scripts/class.ts --lesson cautions --in drivers.json --out trained.json --rounds 100   # a driving school class, headless (--jobs N threads; same results as 1)
 npx tsx scripts/lab.ts status   # the training lab (below)
 ```
 
@@ -156,7 +156,7 @@ The pit license is solo; races are not. **Pit road in traffic** (for drivers wit
 
 ## The lab: training in the background
 
-Training runs as a background job beside feature work (see `PLAN.md`). The lab is a second checkout of the repo (`../<repo>-lab`, made by `lab.ts init`) pinned to a commit, so classes and benchmarks there are never disturbed by edits here; `lab.ts sync` moves it to this checkout's HEAD (only committed code goes in). Experiments are JSON specs in `lab/queue/` (git ignores `lab/`): steps run in order, `class` (a driving school class), `season` (races with learning on), `bench` (house vs candidate, 8 races a track by default, on 6 cores) and `promote`. `lab.ts run --once` works through the queue; each experiment gets a results folder (spec, step logs, the trained drivers, `bench.json`) and a line in `lab/RESULTS.md`. The **house drivers** (`lab/house.json`, seeded from the bundled ones) are what experiments start from; `promote` replaces them only if the benchmark says the candidate is no worse on any track (retirements, lap time) and better on at least one (retirements), keeping the old ones in `lab/house-history/`. Promoted house drivers reach the game by copying them to `public/drivers/default.json` in a commit.
+Training runs as a background job beside feature work (see `PLAN.md`). The lab is a second checkout of the repo (`../<repo>-lab`, made by `lab.ts init`) pinned to a commit, so classes and benchmarks there are never disturbed by edits here; `lab.ts sync` moves it to this checkout's HEAD (only committed code goes in). Experiments are JSON specs in `lab/queue/` (git ignores `lab/`): steps run in order, `class` (a driving school class, on 6 threads), `season` (races with learning on), `bench` (house vs candidate, 8 races a track by default, on 6 cores) and `promote`. `lab.ts run --once` works through the queue; each experiment gets a results folder (spec, step logs, the trained drivers, `bench.json`) and a line in `lab/RESULTS.md`. The **house drivers** (`lab/house.json`, seeded from the bundled ones) are what experiments start from; `promote` replaces them only if the benchmark says the candidate is no worse on any track (retirements, lap time) and better on at least one (retirements), keeping the old ones in `lab/house-history/`. Promoted house drivers reach the game by copying them to `public/drivers/default.json` in a commit.
 
 ## Lessons must not cost drivers their racing
 
