@@ -14,6 +14,10 @@ export interface AgentPageDeps {
   roster: () => Roster;
   occupancy: Occupancy;
   log: ActivityLog;
+  /** Ids of the replays saved now (a record links to its moment only while its replay is kept). */
+  replays: () => ReadonlySet<string>;
+  /** Watch a saved replay, from just before `at` (sim s) or from the start. */
+  watch: (id: string, at?: number) => void;
 }
 
 const ROLE_LABEL: Record<AgentRole, string> = { driver: 'Driver', spotter: 'Spotter', chief: 'Crew chief' };
@@ -32,6 +36,11 @@ export class AgentPage {
       if (t.closest('[data-close]')) this.close();
       const link = t.closest<HTMLElement>('[data-agent]');
       if (link) void this.open(link.dataset.agent!, link.dataset.role as AgentRole);
+      const watch = t.closest<HTMLElement>('[data-watch]');
+      if (watch) {
+        this.close();
+        this.deps.watch(watch.dataset.watch!, watch.dataset.at ? Number(watch.dataset.at) : undefined);
+      }
     });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.close(); });
   }
@@ -117,14 +126,18 @@ export class AgentPage {
       .map((x) => x.t);
     const charts = tracks.map((t, i) => lapChart(t, downsample(lapProgression(records, t), 160), SERIES[i], s.bestLaps[t].time)).join('');
 
+    const saved = this.deps.replays();
+    const watch = (r: ActivityRecord) => (r.replay && saved.has(r.replay.id)
+      ? ` <a class="ap-watch" data-watch="${esc(r.replay.id)}"${r.replay.at !== undefined ? ` data-at="${r.replay.at}"` : ''} title="${r.replay.at !== undefined ? 'Watch the moment (from 5 s before)' : 'Watch the replay'}">▶ Watch</a>`
+      : '');
     const races = records.filter((r): r is Extract<ActivityRecord, { kind: 'race' }> => r.kind === 'race').slice(-12).reverse();
     const raceRows = races.map((r) => {
       const d = r.data;
       return `<tr><td>${ago(r.time)}</td><td>${esc(r.event?.label ?? d.track)}</td><td>${d.position}/${d.starters}</td>`
-        + `<td>${d.status === 'out' ? 'DNF' : `${d.laps} laps`}</td><td>${lap(d.bestLap)}</td><td>${d.stops}</td><td>${d.points ?? ''}</td></tr>`;
+        + `<td>${d.status === 'out' ? 'DNF' : `${d.laps} laps`}</td><td>${lap(d.bestLap)}</td><td>${d.stops}</td><td>${d.points ?? ''}</td><td>${watch(r)}</td></tr>`;
     }).join('');
 
-    const timeline = records.slice(-40).reverse().map((r) => `<div><span class="when">${ago(r.time)}</span>${describe(r)}</div>`).join('');
+    const timeline = records.slice(-40).reverse().map((r) => `<div><span class="when">${ago(r.time)}</span>${describe(r)}${watch(r)}</div>`).join('');
 
     return `
       <div class="ap-head">
@@ -135,7 +148,7 @@ export class AgentPage {
       </div>
       <div class="ap-tiles">${tiles}</div>
       ${charts ? `<h2>Best lap as they learned <span class="muted">(line: personal best · dots: each round's best · x: training rounds)</span></h2><div class="ap-charts">${charts}</div>` : ''}
-      ${raceRows ? `<h2>Recent races</h2><table class="ap-races"><thead><tr><th>When</th><th>Event</th><th>Pos</th><th>Result</th><th>Best</th><th>Stops</th><th>Pts</th></tr></thead><tbody>${raceRows}</tbody></table>` : ''}
+      ${raceRows ? `<h2>Recent races</h2><table class="ap-races"><thead><tr><th>When</th><th>Event</th><th>Pos</th><th>Result</th><th>Best</th><th>Stops</th><th>Pts</th><th></th></tr></thead><tbody>${raceRows}</tbody></table>` : ''}
       ${protégés.length ? `<h2>Protégés</h2><div class="facts">${protégés.map(link).join(' · ')}</div>` : ''}
       <h2>Activity</h2>
       <div class="ap-timeline">${timeline || '<div class="muted">No records yet. Records start from the first session after this version: earlier history wasn\'t kept.</div>'}</div>

@@ -50,6 +50,8 @@ export function tireGrip(life: number): number {
  */
 export class Car {
   readonly id: number;
+  /** The number on the car, which announcements call it by (the id unless a session gives it a team's number). */
+  number: number;
   color: string;
 
   // World state
@@ -145,6 +147,7 @@ export class Car {
 
   constructor(id: number, color = '#ffffff') {
     this.id = id;
+    this.number = id;
     this.color = color;
   }
 

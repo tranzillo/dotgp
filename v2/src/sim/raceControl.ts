@@ -446,7 +446,7 @@ export class RaceControl {
       const call = this.calls.get(key);
       if (!call) {
         this.calls.set(key, { ...w, dist: w.car.dist });
-        this.world.announce(w.car, 'crew', `Race control: line up behind #${w.against.id}`);
+        this.world.announce(w.car, 'crew', `Race control: line up behind #${w.against.number}`);
       } else if (w.car.dist >= call.dist + this.track.length) {
         this.ruled.add(key);
         this.calls.delete(key);
@@ -585,7 +585,7 @@ export class RaceControl {
           this.waved.add(car);
           if (!this.wavedTold.has(car)) {
             this.wavedTold.add(car);
-            this.world.announce(car, 'crew', `Race control: #${car.id}, you're waved around`);
+            this.world.announce(car, 'crew', `Race control: #${car.number}, you're waved around`);
           }
         }
       }

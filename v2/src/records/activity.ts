@@ -86,6 +86,8 @@ interface RecordBase {
   event?: EventRef;
   /** The agent's brain version: training rounds it had completed at the time. */
   brain?: number;
+  /** The saved replay it happened in (its id), and when in it (sim s; none: from the start). */
+  replay?: { id: string; at?: number };
 }
 
 export type ActivityRecord = RecordBase & (

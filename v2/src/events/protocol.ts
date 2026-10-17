@@ -1,6 +1,7 @@
-import type { ClassSpec, RoundReport } from '../school/classroom';
+import type { ClassSpec, RoundReport, RoundTape } from '../school/classroom';
 import type { TrackLayout } from '../sim/layout';
-import type { EntrantResult, LearnedStep, RadioLine, SessionSnapshot, SessionSpec } from './session';
+import type { EntrantResult, LearnedStep, RadioLine, SessionSnapshot, SessionSpec, TimelineEvent } from './session';
+import type { TapeSegment } from './tape';
 
 /** What an event runs: a session on track, or a driving-school class. */
 export type EventSpec = { what: 'session'; spec: SessionSpec } | { what: 'class'; spec: ClassSpec };
@@ -20,6 +21,8 @@ export type ToEvent =
   | { type: 'attach'; speed: number }
   | { type: 'detach' }
   | { type: 'speed'; speed: number }
+  /** Run this much sim time now, whatever the speed (stepping while paused). */
+  | { type: 'step'; seconds: number }
   | { type: 'drivers'; updates: Array<{ id: string; weights: Float32Array }> };
 
 export interface EventProgress {
@@ -33,13 +36,19 @@ export interface EventProgress {
   round: number | null;
 }
 
+/** Timeline events from index `from` on (everything from 0 after an attach). */
+export interface TimelineNews {
+  from: number;
+  events: TimelineEvent[];
+}
+
 export type FromEvent =
-  | { type: 'frame'; snapshot: SessionSnapshot; strokes: Float32Array; radio: RadioLine[] }
+  | { type: 'frame'; snapshot: SessionSnapshot; strokes: Float32Array; radio: RadioLine[]; timeline: TimelineNews; tape: TapeSegment | null }
   | { type: 'progress'; progress: EventProgress; radio: RadioLine[] }
-  | { type: 'finished'; results: EntrantResult[]; snapshot: SessionSnapshot }
+  | { type: 'finished'; results: EntrantResult[]; snapshot: SessionSnapshot; timeline: TimelineEvent[]; tape: TapeSegment | null }
   /** The event moved to another track (driving school rotates tracks between rounds). */
   | { type: 'track'; layout: TrackLayout }
-  /** A driving-school round ended: each student's result and improved weights. */
-  | { type: 'rounds'; reports: RoundReport[] }
+  /** Driving-school rounds ended: each student's result and improved weights, and the rounds kept on tape. */
+  | { type: 'rounds'; reports: RoundReport[]; tapes: RoundTape[] }
   /** Drivers learned while racing. */
   | { type: 'learned'; steps: LearnedStep[] };

@@ -14,7 +14,8 @@ import { placeOnGrid, ROLLING_START_SPEED } from '../sim/grid';
 import type { Surface, TrackLayout } from '../sim/layout';
 import { Race } from '../sim/race';
 import { Track } from '../sim/track';
-import { World } from '../sim/world';
+import { World, type WorldEvent } from '../sim/world';
+import { OPEN_SESSION_FRAMES, Tape, TAPE_STEPS } from './tape';
 import { rulebookFor, type Offence, type Penalty } from '../rules/rulebook';
 import type { StewardTraits } from '../rules/stewards';
 import type { SchoolView } from '../school/classroom';
@@ -33,6 +34,8 @@ export interface EntrantSpec {
   /** The team's id: identifies the car across snapshots and results. */
   key: number;
   fill: string;
+  /** The number on the car (what race control and the stewards call it). */
+  number?: number;
   /** pits / cautions: drives its own pit stops / cautions (it has learned to); otherwise the scripts do. */
   /** roadWeights: the driver's road-course skill (drives road circuits instead of its main network). */
   driver: { id: string; weights: Float32Array; roadWeights?: Float32Array; pits?: boolean; cautions?: boolean; nerve?: number };
@@ -62,6 +65,8 @@ export interface LearnedStep {
   weights: Float32Array;
   /** Steps this driver has taken this session. */
   steps: number;
+  /** When (sim s). */
+  time: number;
 }
 
 /** What the viewer needs about one car, as plain data. */
@@ -107,6 +112,25 @@ export interface RaceView {
   wreckers: Array<{ x: number; y: number; phase: string }>;
 }
 
+/** What a timeline event is: race control's flags and lead changes, or one of the world's announcements. */
+export type TimelineKind = 'start' | 'caution' | 'restart' | 'green' | 'checkered' | 'lead' | Exclude<WorldEvent['kind'], 'flag'>;
+
+/**
+ * Something that happened in a session, when and to whom: the timeline's
+ * markers, and (later) what agents' history links to.
+ */
+export interface TimelineEvent {
+  /** Sim time (s). */
+  time: number;
+  kind: TimelineKind;
+  /** The team it's about (entrant key); null for race control. */
+  key: number | null;
+  text: string;
+  /** Races: how far through the race distance the leader was (0..1), and the lap they were on. */
+  at?: number;
+  lap?: number;
+}
+
 /** A line for the broadcast feed: a team's radio call, a crew call, a flag. key null = race control. */
 export interface RadioLine {
   time: number;
@@ -146,6 +170,8 @@ export interface EntrantResult {
   /** The hardest single hit the car took (health lost; 0 if none), and how fast (m/s): what injures drivers. */
   worstHit: number;
   worstHitSpeed: number;
+  /** When the hardest hit happened (sim s), if there was one. */
+  worstHitTime: number | null;
   /** What the stewards handed this car (offence, penalty), and whether it was shown the black flag. */
   penalties: Array<{ offence: Offence; penalty: Penalty }>;
   disqualified: boolean;
@@ -181,7 +207,20 @@ export class Session {
   private readonly prevRadio = new Map<number, Float32Array>();
   private readonly recentRadio: RadioLine[] = [];
   private pendingRadio: RadioLine[] = [];
+  /** World announcements read so far (counting ones the world has since dropped). */
   private eventsSeen = 0;
+  /** Everything that happened, in order. */
+  readonly timeline: TimelineEvent[] = [];
+  /** Race control's last call this step (its words, and the car it was about), for the flag it goes with. */
+  private flagCall: { text: string; key: number | null } | null = null;
+  private flagWas: Flag = 'pace';
+  private startedWas = false;
+  private stateWas: Race['state'] = 'green';
+  /** Each car's hardest hit so far and when it came (a new worst hit is a new object on the car). */
+  private readonly worstHitAt = new Map<number, { hit: Car['worstHit']; time: number }>();
+  /** The leader on the timeline, and a new one until it has held the lead a second. */
+  private leaderId = -1;
+  private leadCandidate = { id: -1, since: 0 };
   /** Learning while racing: per car, its learner and the lap in progress. */
   private readonly learners = new Map<number, {
     learner: OnlineLearner; driverId: string; laps: number; clean: boolean; done: boolean;
@@ -195,6 +234,8 @@ export class Session {
   private learned: LearnedStep[] = [];
   /** Mark strokes, collected only while someone is watching. */
   readonly strokes = new StrokeCollector();
+  /** The session on tape, watched or not (races whole; open sessions their latest half hour). */
+  readonly tape: Tape;
   collectStrokes = false;
 
   constructor(spec: SessionSpec) {
@@ -209,6 +250,7 @@ export class Session {
     const grid = spec.entrants.map((e) => ({ e, k: rng.next() })).sort((a, b) => a.k - b.k).map((x) => x.e);
     grid.forEach((entrant, k) => {
       const car = new Car(k, entrant.fill);
+      if (entrant.number !== undefined) car.number = entrant.number;
       if (contact) placeOnGrid(car, this.track, k, true);
       else this.rollingStart(car); // ghosts share one spot
       const driver = new NeuralDriver(entrant.driver.weights, entrant.driver.roadWeights);
@@ -231,6 +273,11 @@ export class Session {
     this.race = spec.kind === 'race'
       ? new Race(this.world, spec.laps, new PaceCarDriver(), { rulebook: rulebookFor(spec.layout.type), stewards: spec.stewards, seed: spec.seed })
       : null;
+    this.tape = new Tape({
+      id: 0,
+      cars: this.world.cars.map((car) => ({ id: car.id, key: this.entrants.get(car.id)!.key, color: car.color })),
+      laps: this.race ? spec.laps : null,
+    }, this.race ? Infinity : OPEN_SESSION_FRAMES);
   }
 
   get time(): number {
@@ -249,6 +296,12 @@ export class Session {
     if (this.learners.size) this.learnFromLaps();
     this.recordTechnique();
     if (this.collectStrokes) this.strokes.collect(this.world.cars);
+    this.readAnnouncements();
+    if (this.race) this.watchRace(this.race);
+    for (const car of this.world.cars) {
+      if (car.worstHit && this.worstHitAt.get(car.id)?.hit !== car.worstHit) this.worstHitAt.set(car.id, { hit: car.worstHit, time: this.world.time });
+    }
+    if (this.world.tick % TAPE_STEPS === 0) this.tape.record(this.snapshot(false));
     if (this.world.tick % P.CONTROL_EVERY === 1) this.pollRadio();
     if (this.world.tick % 12 === 0) this.serviceCars();
   }
@@ -320,7 +373,7 @@ export class Session {
     const score = -l.ref - DAMAGE_SECONDS * Math.max(0, l.health - car.health) - HARM_SECONDS * harm
       - l.fearScale * (FEAR_SECONDS * l.fear + TRAUMA_SECONDS * extraTrauma);
     if (l.learner.lapDone(score)) {
-      this.learned.push({ driverId: l.driverId, weights: l.learner.weights.slice(), steps: l.learner.updates });
+      this.learned.push({ driverId: l.driverId, weights: l.learner.weights.slice(), steps: l.learner.updates, time: this.world.time });
     }
   }
 
@@ -331,7 +384,8 @@ export class Session {
     return out;
   }
 
-  snapshot(): SessionSnapshot {
+  /** What the viewer draws now (technique: the live-only histograms too). */
+  snapshot(technique = true): SessionSnapshot {
     const cars = this.world.cars.map((car) => this.view(car));
     const standings = this.race?.standings() ?? null;
     const order = standings
@@ -355,7 +409,7 @@ export class Session {
         paceCar: ctl?.paceCarOut ? { x: ctl.paceCar.x, y: ctl.paceCar.y } : null,
         wreckers: (ctl?.wreckers ?? []).map((w) => ({ x: w.x, y: w.y, phase: w.phase })),
       } : null,
-      technique: [...this.technique].map(([key, h]) => [key, Array.from(h)]),
+      technique: technique ? [...this.technique].map(([key, h]) => [key, Array.from(h)]) : [],
     };
   }
 
@@ -373,7 +427,7 @@ export class Session {
         bestLap: laps.length ? Math.min(...laps) : null,
         avgLap: laps.length ? laps.reduce((a, b) => a + b, 0) / laps.length : null,
         stops: car.pit.stops, wallHits: car.wallHits, health: car.health,
-        worstHit: car.worstHit?.severity ?? 0, worstHitSpeed: car.worstHit?.speed ?? 0,
+        worstHit: car.worstHit?.severity ?? 0, worstHitSpeed: car.worstHit?.speed ?? 0, worstHitTime: this.worstHitAt.get(car.id)?.time ?? null,
         penalties: (this.race?.stewards?.record ?? []).filter((p) => p.car === car).map((p) => ({ offence: p.offence, penalty: p.penalty })),
         disqualified: car.disqualified,
       };
@@ -441,20 +495,79 @@ export class Session {
     }
   }
 
-  /** Crew calls, pit and retirement events, flags, and each spotter's calls, for the broadcast feed. */
+  private pushRadio(line: RadioLine): void {
+    this.pendingRadio.push(line);
+    this.recentRadio.push(line);
+  }
+
+  /** The world's announcements since the last step: to the broadcast feed, and (all but flags) to the timeline. */
+  private readAnnouncements(): void {
+    const world = this.world;
+    this.flagCall = null;
+    this.eventsSeen = Math.max(this.eventsSeen, world.eventsDropped);
+    for (; this.eventsSeen < world.eventsDropped + world.events.length; this.eventsSeen++) {
+      const e = world.events[this.eventsSeen - world.eventsDropped];
+      const key = this.entrants.get(e.car.id)?.key ?? null;
+      if (e.kind === 'flag') {
+        this.pushRadio({ time: e.time, key: null, text: e.text });
+        this.flagCall = { text: e.text, key };
+        continue;
+      }
+      // Race control's calls go to the crew but are race control's words; stewards speak for themselves.
+      if (key !== null) this.pushRadio({ time: e.time, key, text: e.kind === 'crew' && !e.text.startsWith('Race control') ? `Crew: ${e.text}` : e.text });
+      this.log(e.kind, key, e.text);
+    }
+  }
+
+  /** Race control's flags (from its state, in its words) and lead changes, to the timeline. */
+  private watchRace(race: Race): void {
+    const flag = race.control?.flag ?? 'green';
+    const call = this.flagCall;
+    if (race.started && !this.startedWas) {
+      this.log('start', null, call?.text ?? 'Green flag');
+      this.leaderId = race.leader()?.id ?? -1;
+    } else if (race.started && flag !== this.flagWas) {
+      if (flag === 'caution') this.log('caution', call?.key ?? null, call?.text ?? 'Caution');
+      else if (flag === 'restart') this.log('restart', null, call?.text ?? 'Restart: leader to the line');
+      else if (flag === 'green') this.log('green', null, call?.text ?? 'Green flag');
+    }
+    if (race.state === 'checkered' && this.stateWas === 'green') {
+      const winner = race.standings()[0]?.car;
+      this.log('checkered', winner ? this.entrants.get(winner.id)?.key ?? null : null, 'Takes the checkered flag');
+    }
+    // Lead changes, once the new leader has held it a second (not every nose ahead side by side).
+    if (race.started && race.state === 'green' && this.world.tick % 12 === 0) {
+      const leader = race.leader();
+      if (leader && leader.id !== this.leaderId) {
+        if (this.leadCandidate.id !== leader.id) this.leadCandidate = { id: leader.id, since: this.world.time };
+        else if (this.world.time - this.leadCandidate.since >= 1) {
+          this.leaderId = leader.id;
+          this.log('lead', this.entrants.get(leader.id)?.key ?? null, 'Takes the lead');
+        }
+      } else this.leadCandidate.id = -1;
+    }
+    this.flagWas = flag;
+    this.startedWas = race.started;
+    this.stateWas = race.state;
+  }
+
+  private log(kind: TimelineKind, key: number | null, text: string): void {
+    const event: TimelineEvent = { time: this.world.time, kind, key, text };
+    const race = this.race;
+    if (race) {
+      const leader = race.leader();
+      const L = this.track.length;
+      event.at = race.state !== 'green' ? 1
+        : race.started && leader ? Math.min(1, (leader.lapsCompleted + this.track.wrapS(leader.s) / L) / race.laps) : 0;
+      event.lap = leader ? Math.min(race.laps, leader.lapsCompleted + 1) : race.laps;
+    }
+    this.timeline.push(event);
+  }
+
+  /** Each spotter's calls, for the broadcast feed. */
   private pollRadio(): void {
     const world = this.world;
-    const push = (line: RadioLine) => {
-      this.pendingRadio.push(line);
-      this.recentRadio.push(line);
-    };
-    for (; this.eventsSeen < world.events.length; this.eventsSeen++) {
-      const e = world.events[this.eventsSeen];
-      const key = this.entrants.get(e.car.id)?.key ?? null;
-      if (e.kind === 'flag') push({ time: e.time, key: null, text: e.text });
-      // Race control's calls go to the crew but are race control's words; stewards speak for themselves.
-      else if (key !== null) push({ time: e.time, key, text: e.kind === 'crew' && !e.text.startsWith('Race control') ? `Crew: ${e.text}` : e.text });
-    }
+    const push = (line: RadioLine) => this.pushRadio(line);
     // Forget lines too old to suppress a repeat.
     while (this.recentRadio.length && world.time - this.recentRadio[0].time > RADIO_REPEAT) this.recentRadio.shift();
     for (const car of world.cars) {

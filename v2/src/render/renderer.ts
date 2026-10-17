@@ -26,6 +26,14 @@ export interface RenderCar {
   variant?: boolean;
 }
 
+/** Edges of the view (CSS px). */
+export interface Insets {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
 /** Officials on track: the pace car, and wreckers (phase 'done' once parked). */
 export interface RenderOfficials {
   paceCar: { x: number; y: number } | null;
@@ -184,11 +192,16 @@ export class Renderer {
   private zoom = 1;
   private focusX = 0;
   private focusY = 0;
+  /** Edges of the view kept clear of the track (CSS px), for overlays such as the HUD. */
+  private insets: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
   private trackDirty = true;
   private debugLayers: DebugLayers = { inputs: true, forces: false, banking: false };
   dotMode: DotMode = 'legible';
   /** Speed trails and exhaust puffs behind the cars. */
   effects = true;
+  /** Hold the trails and exhaust (replays running backwards or being scrubbed, where they'd trail the wrong way). */
+  effectsPaused = false;
+  private effectsWere = true;
   private readonly exhaust = new Exhaust();
 
   constructor(canvas: HTMLCanvasElement) {
@@ -219,22 +232,40 @@ export class Renderer {
     this.resize();
   }
 
+  /**
+   * Match the canvas to its size on screen (call when that changes), and
+   * refit the track to it.
+   */
   resize(): void {
-    const track = this.track;
-    if (!track) return;
     const rect = this.canvas.getBoundingClientRect();
     this.dpr = window.devicePixelRatio || 1;
     const w = Math.max(1, Math.round(rect.width * this.dpr));
     const h = Math.max(1, Math.round(rect.height * this.dpr));
-    for (const c of [this.canvas, this.base, this.lines]) {
-      c.width = w;
-      c.height = h;
+    if (this.canvas.width !== w || this.canvas.height !== h) {
+      for (const c of [this.canvas, this.base, this.lines]) {
+        c.width = w;
+        c.height = h;
+      }
+      this.trackDirty = true; // resizing a canvas wipes it, even when the view doesn't change
     }
-    this.trackDirty = true; // resizing a canvas wipes it, even when the view doesn't change
+    const track = this.track;
+    if (!track) return;
     const b = track.bounds;
     const pad = 24 * this.dpr;
-    this.fitScale = Math.min((w - 2 * pad) / (b.maxX - b.minX), (h - 2 * pad) / (b.maxY - b.minY));
+    const ins = this.insets, px = this.dpr;
+    const fitW = w - 2 * pad - (ins.left + ins.right) * px;
+    const fitH = h - 2 * pad - (ins.top + ins.bottom) * px;
+    this.fitScale = Math.max(1e-3, Math.min(fitW / (b.maxX - b.minX), fitH / (b.maxY - b.minY)));
     this.updateTransform();
+  }
+
+  /** Keep these edges of the view (CSS px) clear of the track: it fits, and the camera centres, in what's left. */
+  setInsets(insets: Partial<Insets>): void {
+    const next = { ...this.insets, ...insets };
+    const old = this.insets;
+    if (next.top === old.top && next.right === old.right && next.bottom === old.bottom && next.left === old.left) return;
+    this.insets = next;
+    this.resize();
   }
 
   /**
@@ -255,8 +286,9 @@ export class Renderer {
     const cx = this.zoom > 1 ? this.focusX : (b.minX + b.maxX) / 2;
     const cy = this.zoom > 1 ? this.focusY : (b.minY + b.maxY) / 2;
     const scale = this.fitScale * this.zoom;
-    const offsetX = this.canvas.width / 2 - cx * scale;
-    const offsetY = this.canvas.height / 2 + cy * scale;
+    const ins = this.insets, px = this.dpr;
+    const offsetX = this.canvas.width / 2 + ((ins.left - ins.right) / 2) * px - cx * scale;
+    const offsetY = this.canvas.height / 2 + ((ins.top - ins.bottom) / 2) * px + cy * scale;
     if (scale !== this.scale || offsetX !== this.offsetX || offsetY !== this.offsetY) {
       this.scale = scale;
       this.offsetX = offsetX;
@@ -673,7 +705,12 @@ export class Renderer {
     const showNumbers = r >= 6 * this.dpr;
     const w = this.canvas.width, h = this.canvas.height;
 
-    if (this.effects) {
+    const effects = this.effects && !this.effectsPaused;
+    if (effects !== this.effectsWere) {
+      this.exhaust.reset(); // trails start afresh rather than joining across the gap
+      this.effectsWere = effects;
+    }
+    if (effects) {
       // Only cars under their own power smoke; the rest drop their trails.
       const running = cars
         .filter((c) => !c.variant && !c.retired && !c.cleared && !c.towed && !c.parked)

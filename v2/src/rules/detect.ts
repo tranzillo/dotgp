@@ -162,8 +162,8 @@ export class Detector {
   private line(out: Violation[], now: number): void {
     for (const c of this.control.takeLineupCases()) {
       out.push(c.restart
-        ? { offence: 'jumped-restart', car: c.car, time: now, against: c.against, severity: 1, detail: `passed #${c.against.id} before the green` }
-        : { offence: 'passing-under-caution', car: c.car, time: now, against: c.against, severity: 1, detail: `still ahead of #${c.against.id} a lap after being told` });
+        ? { offence: 'jumped-restart', car: c.car, time: now, against: c.against, severity: 1, detail: `passed #${c.against.number} before the green` }
+        : { offence: 'passing-under-caution', car: c.car, time: now, against: c.against, severity: 1, detail: `still ahead of #${c.against.number} a lap after being told` });
     }
   }
 
@@ -221,7 +221,7 @@ export class Detector {
       const share = belowMoments / m.moments;
       out.push({
         offence: 'passing-below-the-line', car: passer, time: now, against: passed, severity: share,
-        detail: `passed #${passed.id} with ${(share * 100).toFixed(0)}% of the move below the line`,
+        detail: `passed #${passed.number} with ${(share * 100).toFixed(0)}% of the move below the line`,
       });
     }
   }
@@ -260,7 +260,7 @@ export class Detector {
         if (!passed.length) continue;
         out.push({
           offence: 'jumped-restart', car, time: now, against: passed[0], severity: Math.min(1, passed.length / 2),
-          detail: `got by ${passed.map((c) => `#${c.id}`).join(', ')} before the line`,
+          detail: `got by ${passed.map((c) => `#${c.number}`).join(', ')} before the line`,
         });
       }
       if (!this.restartAhead.size) this.restartAhead = null;

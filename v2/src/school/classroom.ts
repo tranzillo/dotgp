@@ -1,3 +1,4 @@
+import { Tape, TAPE_STEPS, type TapeSegment } from '../events/tape';
 import { adaptWeights } from '../ai/drivers';
 import {
   adamStep, centeredRanks, DEFAULT_ES, FULL_DAMAGE_PENALTY, LICENSE_HEALTH, rookieDamagePenalty, rookieDamageScale,
@@ -154,6 +155,8 @@ export type GhostRunner = (layout: TrackLayout, genomes: Float32Array[], opts: T
 export interface RoundReport {
   key: number;
   id: string;
+  /** The class's round (the student's own count is `rounds`). */
+  round: number;
   weights: Float32Array;
   rounds: number;
   licensed: boolean;
@@ -194,6 +197,17 @@ export interface SchoolView {
   students: Array<{ key: number; id: string; name: string; rounds: number; licensed: boolean; pitLicensed: boolean; pitTrafficLicensed: boolean; cautionLicensed: boolean; roadLicensed: boolean; passed: string[]; last: RoundSummary | null }>;
   /** Road courses: the tightest corner this round's circuit may have (m). */
   roadRadius?: number;
+}
+
+/** A driving-school round kept on tape: watched, or someone earned a license in it. */
+export interface RoundTape {
+  round: number;
+  track: string;
+  layout: TrackLayout;
+  /** Students (keys) who earned the lesson's license this round. */
+  graduated: number[];
+  watched: boolean;
+  tape: TapeSegment;
 }
 
 /** A round's result without the weights (what the viewer shows). */
@@ -280,6 +294,12 @@ export class Classroom {
   trackChanged = true;
   readonly strokes = new StrokeCollector();
   collectStrokes = false;
+  /** The round on tape, once the viewer asks for tapes (startTaping): the students' own cars, not their variations. */
+  tape: Tape | undefined;
+  /** The round on tape was on screen at some point. */
+  private roundWatched = false;
+  /** Rounds kept on tape since the last takeTapes: ones watched, and ones that earned a license. */
+  private keptTapes: RoundTape[] = [];
 
   constructor(spec: ClassSpec) {
     this.lesson = { ...LESSONS[spec.lesson], ...spec.practice };
@@ -368,10 +388,40 @@ export class Classroom {
       const per = 1 + 2 * this.lesson.pairs;
       this.strokes.collect(this.trial instanceof DrillTrial ? this.trial.world.cars : this.trial.world.cars.filter((c) => c.id % per === 0));
     }
-    if (this.trial.done) {
-      this.finishRound();
-      if (!this.finished) this.startRound();
+    if (this.tape) {
+      if (this.collectStrokes) this.roundWatched = true;
+      if (this.trial.world.tick % TAPE_STEPS === 0) this.tape.record(this.snapshot());
     }
+    if (this.trial.done) {
+      const round = this.round, track = this.track.name, layout = this.track.layout, reported = this.reports.length;
+      this.finishRound();
+      const graduated = this.reports.slice(reported).filter((r) => r.graduated).map((r) => r.key);
+      if (this.tape && (this.roundWatched || graduated.length)) {
+        this.keptTapes.push({ round, track, layout, graduated, watched: this.roundWatched, tape: this.tape.segment() });
+      }
+      if (!this.finished) {
+        this.startRound();
+        if (this.tape) this.startTaping();
+      }
+    }
+  }
+
+  /** Tape rounds from now on (the viewer's classes; headless ones don't). */
+  startTaping(): void {
+    const snap = this.snapshot();
+    this.tape = new Tape({
+      id: this.round + 1,
+      cars: snap.cars.filter((c) => !c.variant).map((c) => ({ id: c.id, key: c.key, color: c.color })),
+      laps: null,
+    });
+    this.roundWatched = false; // until it's on screen while it runs
+  }
+
+  /** Rounds kept on tape since the last call. */
+  takeTapes(): RoundTape[] {
+    const out = this.keptTapes;
+    this.keptTapes = [];
+    return out;
   }
 
   /** Does this lesson's round drive plain ghost laps (so a GhostRunner can drive it elsewhere)? */
@@ -567,7 +617,7 @@ export class Classroom {
         }
       }
       const report: RoundReport = {
-        key: s.key, id: s.id, weights: s.weights.slice(), rounds: s.rounds, licensed: s.licensed, pitLicensed: s.pitLicensed,
+        key: s.key, id: s.id, round: this.round, weights: s.weights.slice(), rounds: s.rounds, licensed: s.licensed, pitLicensed: s.pitLicensed,
         pitTrafficLicensed: s.pitTrafficLicensed, cautionLicensed: s.cautionLicensed, roadLicensed: s.roadLicensed, graduated,
         roadRadius: this.lesson.id === 'circuits' ? this.roadRadius : undefined,
         track: this.track.name, fitness: own.fitness, laps: own.laps,

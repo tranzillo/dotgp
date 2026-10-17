@@ -58,7 +58,7 @@ export class StewardsDesk {
     for (const v of this.detector.step()) {
       if (v.offence === 'track-limits') { this.trackLimits(v); continue; }
       this.underReview.push({ v, due: now + this.rules.reviewSeconds });
-      this.world.announce(v.car, 'steward', `Stewards: incident under review, #${v.car.id}${v.against ? ` and #${v.against.id}` : ''}, ${OFFENCE_NAMES[v.offence]}`);
+      this.world.announce(v.car, 'review', `Stewards: incident under review, #${v.car.number}${v.against ? ` and #${v.against.number}` : ''}, ${OFFENCE_NAMES[v.offence]}`);
     }
     while (this.underReview.length && this.underReview[0].due <= now) this.apply(this.stewards.judge(this.underReview.shift()!.v));
     this.serving();
@@ -75,12 +75,12 @@ export class StewardsDesk {
     const n = (this.strikes.get(car) ?? 0) + 1;
     this.strikes.set(car, n);
     if (n < grace) {
-      this.world.announce(car, 'steward', `Race control: #${car.id}, track limits at ${v.detail} (${n} of ${grace})`);
+      this.world.announce(car, 'steward', `Race control: #${car.number}, track limits at ${v.detail} (${n} of ${grace})`);
     } else if (n === grace) {
       this.record.push({ car, time: this.world.time, offence: 'track-limits', penalty: 'warning', detail: `${n} times, last at ${v.detail}` });
-      this.world.announce(car, 'steward', `Race control: #${car.id}, track limits at ${v.detail} (${n} of ${grace}): black and white flag`);
+      this.world.announce(car, 'steward', `Race control: #${car.number}, track limits at ${v.detail} (${n} of ${grace}): black and white flag`);
     } else {
-      this.issue(car, 'track-limits', 'time', `#${car.id}: track limits at ${v.detail}, ${n} times: ${PENALTY_NAMES.time}`, `at ${v.detail}`);
+      this.issue(car, 'track-limits', 'time', `#${car.number}: track limits at ${v.detail}, ${n} times: ${PENALTY_NAMES.time}`, `at ${v.detail}`);
     }
   }
 
@@ -89,14 +89,14 @@ export class StewardsDesk {
     const car = v.car;
     if (car.disqualified) return;
     if (d.penalty === 'none') {
-      this.world.announce(car, 'steward', `Stewards: #${car.id}, ${OFFENCE_NAMES[v.offence]}${v.against ? ` (#${v.against.id})` : ''}: no further action`);
+      this.world.announce(car, 'review', `Stewards: #${car.number}, ${OFFENCE_NAMES[v.offence]}${v.against ? ` (#${v.against.number})` : ''}: no further action`);
       return;
     }
     // Out of the race by the time of the decision: nothing left to serve.
     if (car.retired && (d.penalty === 'drive-through' || d.penalty === 'stop-go' || d.penalty === 'tail')) return;
     let penalty = d.penalty;
     if (penalty === 'tail' && !this.control.pacing) penalty = 'drive-through'; // the caution's over: serve it on pit road
-    let text = `#${car.id}: ${OFFENCE_NAMES[v.offence]}${v.against ? ` (#${v.against.id})` : ''}, ${v.detail}: ${PENALTY_NAMES[penalty]}`;
+    let text = `#${car.number}: ${OFFENCE_NAMES[v.offence]}${v.against ? ` (#${v.against.number})` : ''}, ${v.detail}: ${PENALTY_NAMES[penalty]}`;
     if (penalty === 'warning') {
       const n = (this.warnings.get(car) ?? 0) + 1;
       this.warnings.set(car, n);
@@ -105,7 +105,7 @@ export class StewardsDesk {
         this.warnings.set(car, 0);
         this.issue(car, v.offence, 'warning', text, v.detail);
         penalty = 'drive-through';
-        text = `#${car.id}: ${this.rules.warningsToDriveThrough} warnings: a drive-through`;
+        text = `#${car.number}: ${this.rules.warningsToDriveThrough} warnings: a drive-through`;
       }
     }
     this.issue(car, v.offence, penalty, text, v.detail);
@@ -145,7 +145,7 @@ export class StewardsDesk {
       if (!p || car.retired) continue;
       if (car.pit.phase === 'out' && car.pit.call?.penalty) {
         car.pendingPenalty = null;
-        this.world.announce(car, 'steward', `Stewards: #${car.id} has served the ${p.kind === 'stop-go' ? 'stop-and-go' : 'drive-through'}`);
+        this.world.announce(car, 'served', `Stewards: #${car.number} has served the ${p.kind === 'stop-go' ? 'stop-and-go' : 'drive-through'}`);
         continue;
       }
       const seen = this.lapsSeen.get(car) ?? car.lapsCompleted;
@@ -155,7 +155,7 @@ export class StewardsDesk {
         if (p.greenLapsLeft < 0) {
           this.blackFlag(car);
           this.record.push({ car, time: this.world.time, offence: this.owed.get(car)!, penalty: 'black-flag', detail: 'penalty not served' });
-          this.world.announce(car, 'steward', `Stewards: #${car.id} didn't serve the penalty: the black flag`);
+          this.world.announce(car, 'steward', `Stewards: #${car.number} didn't serve the penalty: the black flag`);
         }
       }
     }

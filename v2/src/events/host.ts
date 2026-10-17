@@ -1,8 +1,10 @@
 import type { EventRef } from '../records/activity';
-import type { RoundReport } from '../school/classroom';
+import type { RoundReport, RoundTape } from '../school/classroom';
 import type { TrackLayout } from '../sim/layout';
 import type { EventProgress, EventSpec, FromEvent, ToEvent } from './protocol';
-import type { EntrantResult, LearnedStep, RadioLine, SessionSnapshot } from './session';
+import type { EntrantResult, LearnedStep, RadioLine, SessionSnapshot, TimelineEvent } from './session';
+import type { EventRef as Ref } from '../records/activity';
+import { Tape } from './tape';
 
 /**
  * The page's side of events. Each event runs in its own worker; at most one
@@ -12,18 +14,27 @@ import type { EntrantResult, LearnedStep, RadioLine, SessionSnapshot } from './s
  */
 export interface EventHandle {
   ref: EventRef;
-  event: EventSpec;
+  /** What it runs (null for a saved replay, which only has its tape). */
+  event: EventSpec | null;
   /** On screen. */
   attachedTo: boolean;
   state: 'running' | 'finished' | 'stopped';
   snapshot: SessionSnapshot | null;
   progress: EventProgress | null;
   results: EntrantResult[] | null;
+  /** What has happened so far (complete while attached, and once finished). */
+  timeline: TimelineEvent[];
+  /** The event on tape, as far as the page has it (complete while attached, and once finished). Classes: the round under way. */
+  tape: Tape | null;
+  /** Classes: rounds kept on tape (watched, or a license earned). */
+  roundTapes: RoundTape[];
   /** Races keep running when nobody watches; open sessions pause. */
   runDetached: boolean;
+  /** Its worker is running (so it can be watched live, not only from tape). */
+  alive: boolean;
   /** Why the event stopped, if its worker failed. */
   error?: string;
-  worker: Worker;
+  worker: Worker | null;
 }
 
 export interface HostListener {
@@ -36,6 +47,8 @@ export interface HostListener {
   track(handle: EventHandle, layout: TrackLayout): void;
   /** Driving-school rounds ended. */
   rounds(handle: EventHandle, reports: RoundReport[]): void;
+  /** Driving-school rounds kept on tape (watched, or a license earned). */
+  roundTapes(handle: EventHandle, tapes: RoundTape[]): void;
   /** Drivers learned while racing. */
   learned(handle: EventHandle, steps: LearnedStep[]): void;
 }
@@ -58,7 +71,7 @@ export class EventHost {
     if (opts.attach) this.detachAll();
     const worker = new Worker(new URL('./event.worker.ts', import.meta.url), { type: 'module' });
     const handle: EventHandle = {
-      ref, event, attachedTo: opts.attach, state: 'running', snapshot: null, progress: null, results: null,
+      ref, event, attachedTo: opts.attach, state: 'running', snapshot: null, progress: null, results: null, timeline: [], tape: null, roundTapes: [], alive: true,
       runDetached: opts.runDetached, worker,
     };
     worker.onmessage = (e: MessageEvent<FromEvent>) => this.receive(handle, e.data);
@@ -66,6 +79,7 @@ export class EventHost {
       // A crashed event stops (and says why) rather than sitting there looking busy.
       handle.error = e.message || 'worker error';
       handle.state = 'stopped';
+      handle.alive = false;
       handle.attachedTo = false;
       console.error(`event ${handle.ref.label} failed:`, e.message);
     };
@@ -96,9 +110,26 @@ export class EventHost {
     if (h) this.send(h, { type: 'speed', speed });
   }
 
+  /** Run the attached event on by this much sim time (stepping while paused). */
+  step(seconds: number): void {
+    const h = this.attached;
+    if (h) this.send(h, { type: 'step', seconds });
+  }
+
+  /** A saved replay, as an event: finished, on tape, nothing running. */
+  open(ref: Ref, tape: Tape, timeline: TimelineEvent[], results: EntrantResult[] | null): EventHandle {
+    const handle: EventHandle = {
+      ref, event: null, attachedTo: false, state: 'finished', snapshot: tape.frame(tape.end - 1), progress: null, results,
+      timeline, tape, roundTapes: [], runDetached: false, alive: false, worker: null,
+    };
+    this.events.push(handle);
+    return handle;
+  }
+
   /** End an event now (its worker goes away; finished events keep their results). */
   stop(handle: EventHandle): void {
-    handle.worker.terminate();
+    handle.worker?.terminate();
+    handle.alive = false;
     handle.attachedTo = false;
     if (handle.state === 'running') handle.state = 'stopped';
   }
@@ -120,7 +151,7 @@ export class EventHost {
   }
 
   private send(handle: EventHandle, msg: ToEvent): void {
-    handle.worker.postMessage(msg);
+    handle.worker?.postMessage(msg);
   }
 
   private receive(handle: EventHandle, msg: FromEvent): void {
@@ -128,6 +159,12 @@ export class EventHost {
     switch (msg.type) {
       case 'frame':
         handle.snapshot = msg.snapshot;
+        handle.timeline.length = Math.min(handle.timeline.length, msg.timeline.from);
+        handle.timeline.push(...msg.timeline.events);
+        if (msg.tape) {
+          if (handle.tape?.header.id !== msg.tape.header.id) handle.tape = new Tape(msg.tape.header);
+          handle.tape.append(msg.tape.first, msg.tape.count, msg.tape.bytes);
+        }
         if (handle.attachedTo) this.listener.frame(handle, msg.snapshot, msg.strokes, msg.radio);
         break;
       case 'progress':
@@ -137,16 +174,23 @@ export class EventHost {
       case 'finished':
         handle.snapshot = msg.snapshot;
         handle.results = msg.results;
+        handle.timeline = msg.timeline;
+        if (msg.tape) handle.tape = Tape.from(msg.tape);
         handle.state = 'finished';
         this.listener.finished(handle);
         // A watched race keeps circulating for the cool-down lap; otherwise the worker can go.
-        if (!handle.attachedTo) handle.worker.terminate();
+        if (!handle.attachedTo) {
+          handle.worker?.terminate();
+          handle.alive = false;
+        }
         break;
       case 'track':
         this.listener.track(handle, msg.layout);
         break;
       case 'rounds':
-        this.listener.rounds(handle, msg.reports);
+        handle.roundTapes.push(...msg.tapes);
+        if (msg.reports.length) this.listener.rounds(handle, msg.reports);
+        if (msg.tapes.length) this.listener.roundTapes(handle, msg.tapes);
         break;
       case 'learned':
         this.listener.learned(handle, msg.steps);

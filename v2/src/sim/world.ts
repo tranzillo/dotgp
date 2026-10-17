@@ -31,7 +31,8 @@ export const WRECK_CLEAR_TIME = 4;
 export interface WorldEvent {
   time: number;
   car: Car;
-  kind: 'pit-in' | 'pit-out' | 'missed-pit' | 'retired' | 'crew' | 'flag' | 'steward';
+  /** steward: a decision (warning, penalty, black flag); review: an incident looked at (or let go); served: a penalty served. */
+  kind: 'pit-in' | 'pit-out' | 'missed-pit' | 'retired' | 'crew' | 'flag' | 'steward' | 'review' | 'served';
   text: string;
 }
 
@@ -40,7 +41,10 @@ export class World {
   readonly opts: WorldOptions;
   readonly cars: Car[] = [];
   readonly controllers: Array<Controller | null> = [];
+  /** The latest announcements (the oldest are dropped past 500; see eventsDropped). */
   readonly events: WorldEvent[] = [];
+  /** Announcements dropped from the front of `events`: event n is at events[n - eventsDropped]. */
+  eventsDropped = 0;
   /** Race distance in laps, or null for open sessions. Crew chiefs plan around it. */
   raceLaps: number | null = null;
   /** Flags, pace car and wreckers, when a race is under race control. */
@@ -118,7 +122,7 @@ export class World {
 
   announce(car: Car, kind: WorldEvent['kind'], text: string): void {
     this.events.push({ time: this.time, car, kind, text });
-    if (this.events.length > 500) this.events.splice(0, this.events.length - 500);
+    if (this.events.length > 500) this.eventsDropped += this.events.splice(0, this.events.length - 500).length;
   }
 
   /** The pit cycle's rules live in the world, whoever is driving. */

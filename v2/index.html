@@ -16,11 +16,59 @@
       }
       * { box-sizing: border-box; }
       html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, sans-serif; }
-      #app { display: grid; grid-template-columns: 1fr 360px; height: 100vh; }
-      #stage { position: relative; min-width: 0; }
-      #track { width: 100%; height: 100%; display: block; }
-      #hud { position: absolute; left: 16px; top: 12px; font-family: var(--mono); color: var(--muted); font-size: 12px; pointer-events: none; }
+      /* The app is exactly the viewport; the sidebar scrolls inside it. */
+      #app { display: grid; grid-template-columns: minmax(0, 1fr) 360px; grid-template-rows: minmax(0, 1fr); height: 100vh; height: 100dvh; overflow: hidden; }
+      /* The track view over the control bar. */
+      #stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+      #view { position: relative; min-height: 0; }
+      /* Out of the flow: the canvas's pixel size (set to match the stage) must never size the stage back. */
+      #track { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+      /* One line per row of the HUD (ellipsis rather than wrapping), so its height, which the track is fitted under, holds steady. */
+      #hud { position: absolute; left: 16px; right: 16px; top: 12px; font-family: var(--mono); color: var(--muted); font-size: 12px; pointer-events: none;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       #hud b { color: var(--text); font-weight: 600; }
+      /* Control bar: transport, timeline, speed, camera, display options */
+      /* The timeline runs the full width on top; transport left, view options right, below it. */
+      #controls { display: flex; align-items: center; gap: 6px 14px; padding: 4px 16px 8px; border-top: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+      #controls .push { margin-left: auto; }
+      #controls .group { display: flex; align-items: center; gap: 6px; }
+      #controls .ctl-label { color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+      .seg { display: inline-flex; }
+      .seg button { border-radius: 0; margin-left: -1px; padding: 4px 8px; font-variant-numeric: tabular-nums; }
+      .seg button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+      .seg button:last-child { border-radius: 0 4px 4px 0; }
+      .seg button.on { position: relative; z-index: 1; }
+      .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 28px; padding: 0; }
+      .icon-btn svg { width: 14px; height: 14px; fill: currentColor; }
+      #timeline { order: -1; flex: 1 1 100%; display: flex; align-items: center; gap: 12px; }
+      #tlBar { position: relative; flex: 1; height: 18px; cursor: pointer; touch-action: none; }
+      /* Rewound: how far the race has got (the playhead can go back to it). */
+      #tlLive { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: #4a4a55; border-radius: 3px; }
+      #tlHead { position: absolute; top: 3px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 2px var(--panel); pointer-events: none; opacity: 0; transition: opacity .15s; }
+      #tlBar:hover #tlHead, #tlBar.replay #tlHead { opacity: 1; }
+      .live-btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--muted); }
+      .live-btn i { width: 7px; height: 7px; border-radius: 50%; background: #55555e; }
+      .live-btn.live { color: var(--text); cursor: default; }
+      .live-btn.live i { background: #ff3b3b; }
+      .live-btn[hidden] { display: none; }
+      button.icon-btn.on { background: var(--text); color: var(--bg); }
+      .tl-line { position: absolute; left: 0; right: 0; top: 6px; height: 6px; border-radius: 3px; background: #22222a; overflow: hidden; }
+      #tlFill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--text); border-radius: 3px; }
+      #tlCautions, #tlTicks, #tlMarks { position: absolute; inset: 0; }
+      #tlCautions span { position: absolute; top: 0; bottom: 0; background: #f5c518; }
+      #tlTicks i { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(13,13,15,0.7); }
+      /* Event markers: a thin line in the event's colour, with a wider hover target. */
+      #tlMarks i { position: absolute; top: 0; bottom: 0; width: 9px; margin-left: -4.5px; }
+      #tlMarks i::after { content: ''; position: absolute; left: 3.5px; top: 1px; bottom: 1px; width: 2px; border-radius: 1px; background: var(--c); }
+      #tlMarks i.minor::after { top: 3px; bottom: 3px; }
+      #tlMarks i:hover::after { left: 2.5px; width: 4px; }
+      #tlLabel { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+      #tlLabel b { color: var(--text); font-weight: 600; }
+      .popwrap { position: relative; }
+      #displayPop { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 4; width: 300px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px 6px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+      #displayPop[hidden] { display: none; }
+      #displayPop h2 { margin: 4px 0 8px; }
+      #displayPop h2 + .row { margin-top: 0; }
       aside { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 14px 14px 24px; }
       h2 { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; font-weight: 600; }
       h2:first-child { margin-top: 0; }
@@ -64,6 +112,10 @@
       #radio { font-family: var(--mono); font-size: 12px; min-height: 13em; }
       #rosterWrap { max-height: 260px; overflow-y: auto; }
       #eventsWrap { max-height: 180px; overflow-y: auto; margin-bottom: 6px; }
+      #replayWrap { max-height: 260px; overflow-y: auto; margin-top: 6px; }
+      #replayList .muted { font-size: 11px; margin-top: 1px; }
+      .usage { height: 4px; border-radius: 2px; background: #22222a; overflow: hidden; margin-top: 4px; }
+      #replayUsageBar { height: 100%; width: 0; background: var(--muted); }
       #studentPicker { max-height: 160px; overflow-y: auto; margin: 6px 0; }
       #studentPicker label.pick { display: block; padding: 2px 0; cursor: pointer; }
       #lessonNote { margin: 0 0 4px; }
@@ -73,6 +125,8 @@
       table.roster td { text-align: left; }
       a[data-agent] { color: var(--text); text-decoration: underline; text-decoration-color: #4a4a52; text-underline-offset: 2px; cursor: pointer; }
       a[data-agent]:hover { text-decoration-color: var(--text); }
+      a.ap-watch { color: var(--muted); cursor: pointer; margin-left: 6px; white-space: nowrap; font-family: system-ui, sans-serif; font-size: 11px; }
+      a.ap-watch:hover { color: var(--text); }
       /* Agent history page, over the track view */
       #agentPage { position: absolute; inset: 0; background: rgba(13,13,15,0.97); overflow-y: auto; padding: 22px 28px 40px; z-index: 5; }
       #agentPage[hidden] { display: none; }
@@ -109,7 +163,7 @@
       table.standings td.name, table.standings th:nth-child(3) { text-align: left; }
       table.standings td:nth-child(2) { text-align: left; }
       @media (max-width: 860px) {
-        #app { grid-template-columns: 1fr; grid-template-rows: 55vh auto; height: auto; }
+        #app { grid-template-columns: minmax(0, 1fr); grid-template-rows: 55vh auto; grid-template-rows: 55svh auto; height: auto; overflow: visible; }
         aside { border-left: 0; border-top: 1px solid var(--line); }
       }
     </style>
@@ -117,9 +171,35 @@
   <body>
     <div id="app">
       <div id="stage">
-        <canvas id="track"></canvas>
+        <div id="view">
+          <canvas id="track"></canvas>
+          <div id="hud"></div>
+        </div>
+        <div id="controls">
+          <div class="group">
+            <button id="stepBack" class="icon-btn" title="Step 0.1 s back (,)"><svg viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="2" height="11"/><path d="M13 2.5v11L5.5 8z"/></svg></button>
+            <button id="reverse" class="icon-btn" title="Play backwards (R)"><svg viewBox="0 0 16 16"><path d="M8 3v10L1.5 8zM15 3v10L8.5 8z"/></svg></button>
+            <button id="playPause" class="icon-btn" title="Pause (Space or K)"></button>
+            <button id="stepAhead" class="icon-btn" title="Step 0.1 s ahead (.)"><svg viewBox="0 0 16 16"><path d="M3 2.5v11l7.5-5.5z"/><rect x="11.5" y="2.5" width="2" height="11"/></svg></button>
+            <button id="goLive" class="live-btn" title="Back to live (End)"><i></i>LIVE</button>
+          </div>
+          <div id="timeline"><div id="tlBar"><div class="tl-line"><div id="tlLive"></div><div id="tlFill"></div><div id="tlCautions"></div><div id="tlTicks"></div></div><div id="tlMarks"></div><div id="tlHead"></div></div><span id="tlLabel"></span></div>
+          <div class="group push"><span class="ctl-label" title="Slower (J), faster (L)">Speed</span><span id="speedButtons" class="seg"></span></div>
+          <div class="group"><span class="ctl-label" title="Cycle with Z">Camera</span><span id="zoomButtons" class="seg"></span></div>
+          <div class="popwrap">
+            <button id="displayToggle" title="Display options" aria-expanded="false" aria-controls="displayPop">Display</button>
+            <div id="displayPop" hidden>
+              <h2>Display</h2>
+              <div class="row"><span class="label">Cars</span><span id="dotButtons" class="row inline"></span></div>
+              <div class="row"><span class="label" title="Speed trails, and exhaust puffs while the engine is pulling">Trails</span><span id="effectButtons" class="row inline"></span></div>
+              <div class="row"><span class="label" title="Driving school: each student's practice variations, drawn faint">Variants</span><span id="variationButtons" class="row inline"></span></div>
+              <div class="row"><span class="label">Marks</span><button id="clearMarks" title="Clear the skid marks">Clear</button></div>
+              <h2>Debug</h2>
+              <div class="row"><span class="label">Layers</span><span id="debugButtons" class="row inline"></span></div>
+            </div>
+          </div>
+        </div>
         <div id="agentPage" hidden></div>
-        <div id="hud"></div>
       </div>
       <aside>
         <nav id="views" class="views">
@@ -133,15 +213,13 @@
             <tbody id="tower"></tbody>
           </table></div>
           <p class="note">Click a car to follow it and hear only its radio; double-click for the driver's history.</p>
-          <div class="row"><span class="label">Speed</span><span id="speedButtons" class="row inline"></span></div>
-          <div class="row"><span class="label">Camera</span><span id="zoomButtons" class="row inline"></span></div>
 
           <h2>Team radio</h2>
           <div id="radio"></div>
 
           <h2>Events <span class="muted">(one on screen, the rest run in the background)</span></h2>
           <div id="eventsWrap"><table class="events"><tbody id="events"></tbody></table></div>
-          <div class="row"><button id="clearEvents">Clear finished</button></div>
+          <div class="row"><button id="clearEvents">Clear finished</button><span id="tapeNote" class="muted" style="align-self:center"></span></div>
         </section>
 
         <section data-view="series" hidden>
@@ -192,16 +270,14 @@
         </section>
 
         <section data-view="settings" hidden>
-          <h2>Display</h2>
-          <div class="row"><span class="label">Cars</span><span id="dotButtons" class="row inline"></span></div>
-          <div class="row"><span class="label" title="Speed trails, and exhaust puffs while the engine is pulling">Trails</span><span id="effectButtons" class="row inline"></span></div>
-          <div class="row"><span class="label" title="Driving school: each student's practice variations, drawn faint">Variants</span><span id="variationButtons" class="row inline"></span></div>
-          <div class="row"><button id="clearMarks" title="Clear the skid marks">Clear marks</button></div>
-
-          <h2>Debug</h2>
-          <div class="row"><span class="label">Layers</span><span id="debugButtons" class="row inline"></span></div>
           <h2>Technique <span class="muted">(where tire force points vs. travel)</span></h2>
           <div id="techniques"></div>
+
+          <h2>Replays</h2>
+          <div class="row"><span class="label" title="Past this, the oldest replays go (pinned ones stay)">Keep</span><span id="replayCapButtons" class="row inline"></span></div>
+          <div class="usage"><div id="replayUsageBar"></div></div>
+          <p id="replayUsage" class="note" style="margin-top:4px"></p>
+          <div id="replayWrap"><table class="events"><tbody id="replayList"></tbody></table></div>
 
           <h2>Data</h2>
           <div class="row">

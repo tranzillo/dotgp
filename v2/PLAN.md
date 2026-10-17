@@ -39,7 +39,35 @@ Track generation is designed with every discipline in view: closed circuits, poi
 3. Next: drivers learn right-handers. Lessons on mirrored and mixed tracks (the drivers see signed curvature), anchored so oval racing is kept; a lab job.
 4. Then the circuit rulebook: standing starts, safety car and VSC, local yellows, track limits by corner, blue flags, pit etiquette. Pit lanes on either side; sectors.
 
-## Track D: later
+## Track D: viewer controls and replays (planned 2026-10-17)
+
+Video-style control of what's on screen (pause, slow motion, rewind, a scrubber marked with the race's events) and, in the end, agent history that links to the moment it happened so it can be watched.
+
+**What's recorded.** Per event, two things:
+
+- **Event log:** every `world.announce` (flags, pit in/out, retirements, steward calls) stamped with its sim time, plus derived events (lead changes, contacts, laps). Tiny; always kept; the timeline's markers and what history links point at.
+- **Tape** (`src/events/tape.ts`, built): 10 frames a sim second, each a fixed-size record per car with everything the viewer draws (position, heading, speed, inputs, tire/fuel/health, pit state, laps, penalties, standings) plus race control's state; frames in 30 s chunks, so any frame is found by arithmetic. A frame reads back as the same snapshot the viewer draws live. The worker records whether or not anyone is watching (under 2% of sim speed); the page gets the backlog on attach, then new frames with each frame it draws, and the whole tape when a race finishes. Open sessions keep their latest 30 minutes. Driving school tapes each round, students' own cars only, and keeps the rounds that were on screen or earned a license. Tire marks are to be regenerated from the tape rather than stored.
+
+No recipe (spec + seed + inputs to re-simulate): the sim is deterministic on one build and engine, but recipes break with every code change and don't carry across browser engines. Tapes play regardless of code version and can leave the browser later if replays are ever shared. Recipes can come back if what-ifs or training from races become goals.
+
+**Size (measured).** In memory: 66 B per car per frame, about 720 B per car per sim second; gzip alone only gets that to about 430 (floats that change every frame). An 8-car race of ~2000 s is ~11 MB in memory. Storage needs its own codec (step 5): quantise and store each value as its change from the frame before, so gzip has small repeating integers to work with (expect ~10×). A total cap (start at 250 MB, adjustable in Settings, usage shown) with the oldest unpinned replays evicted first.
+
+**Decisions (user, 2026-10-17):**
+
+- Rewinding the race on screen **pauses it** until the playhead is back at live (a DVR, nothing missed). Races in the background keep running.
+- Driving school: tape only the round on screen and the round that earned a license (every round is taped in memory; the rest are dropped).
+- Retention is a size cap, nothing cleverer for now.
+
+**Order:**
+
+1. **Control bar under the track** (done): speed and camera move out of the aside, display options into a popover; pause, 0.25×, 0.5×; keyboard (Space, J/K/L, ←/→, `,`/`.`); a progress timeline.
+2. **Event log** (done): `Session.timeline`, streamed to the page; markers on the timeline as they happen.
+3. **Tape** (done): recorder in the worker; the page keeps a copy (backlog on attach, then streamed); handed to the page when a race finishes, before its worker goes; driving-school round tapes.
+4. **Rewind** (done): a playhead apart from the live edge; reverse at 1-64×, scrubbing, LIVE; tower, HUD and radio follow the playhead; tire marks rebuilt on seek; exhaust trails from the recorded path.
+5. **Storage** (done): replays in IndexedDB (their own database), packed by `tapeCodec.ts` to ~87 B per car per sim second (an 8-car race of ~2000 s is ~1.4 MB, so 250 MB holds ~180); the cap and eviction; pin to keep; Settings → Replays.
+6. **History links** (done): activity records carry `replay: { id, at }`; agent pages get a watch link (an injury opens at the hit, a penalty at the incident, a license at its round, a race result at the start with its markers); a stored replay opens like an event.
+
+## Track E: later
 
 Rally: A-to-B stages on mixed surfaces with interval starts and a co-driver agent reading pace notes; then open-terrain gate-to-gate rally where route choice is the skill. Car classes with different stats, multi-class racing.
 

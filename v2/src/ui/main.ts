@@ -1,16 +1,21 @@
 import type { PracticeRequest, PracticeRound } from '../ai/practice.worker';
 import { Rng } from '../ai/rng';
 import { EventHost, type EventHandle } from '../events/host';
-import type { CarView, EntrantResult, EntrantSpec, RadioLine as SessionRadio, SessionSnapshot, SessionSpec } from '../events/session';
+import type { CarView, EntrantResult, EntrantSpec, RadioLine as SessionRadio, SessionSnapshot, SessionSpec, TimelineEvent } from '../events/session';
 import { injuryFrom } from '../events/injury';
 import { OFFENCE_NAMES } from '../rules/rulebook';
 import { PENALTY_NAMES } from '../rules/desk';
-import { LESSONS, type ClassSpec, type LessonId, type RoundReport } from '../school/classroom';
+import { LESSONS, type ClassSpec, type LessonId, type RoundReport, type RoundTape } from '../school/classroom';
 import { ActivityLog, MemoryActivityStore, type AgentRole, type EventRef } from '../records/activity';
 import { IndexedDbActivityStore } from '../records/idbStore';
 import { Occupancy } from '../records/occupancy';
 import type { Livery } from '../render/livery';
-import { Renderer, type DebugLayers, type DotMode, type RenderCar } from '../render/renderer';
+import { Playback } from '../render/playback';
+import { Replay } from '../render/replay';
+import { Tape, TAPE_HZ, type TapeSegment } from '../events/tape';
+import { packTape, unpackTape } from '../events/tapeCodec';
+import { enforceCap, IndexedDbReplayStore, MemoryReplayStore, type ReplayMeta, type ReplayStore } from '../records/replayStore';
+import { Renderer, type DebugLayers, type DotMode, type RenderCar, type RenderOfficials } from '../render/renderer';
 import { SIGNATURE_BINS } from '../sim/car';
 import { G, PHYSICS as P } from '../sim/constants';
 import { Track } from '../sim/track';
@@ -148,7 +153,12 @@ const WEEKEND_PRACTICE_ROUNDS = 9;
 let weekendPractice: { roundsLeft: number } | null = null;
 const NEXT_RACE_DELAY = 10; // real seconds of results on screen before moving on
 let raceDoneAt = NaN;
+/** Viewing speed, and paused (the attached event runs at 0 then; the speed is kept for resuming). */
 let speed = 1;
+let paused = false;
+const SPEEDS: Array<[string, number]> = [['0.25×', 0.25], ['0.5×', 0.5], ['1×', 1], ['4×', 4], ['16×', 16], ['64×', 64]];
+const speedText = () => (paused ? 'paused' : SPEEDS.find(([, v]) => v === speed)?.[0] ?? `${speed}×`)
+  + (replay ? (reverse ? ' backwards · replay' : ' · replay') : '');
 let zoom = 1;
 let selected: TeamEntry | null = null;
 let focus: [number, number] | null = null;
@@ -179,9 +189,27 @@ const metas = new Map<EventHandle, EventMeta>();
 /** The event the field is in (on screen or not). */
 let fieldEvent: EventHandle | null = null;
 
+/** The attached event's frames, played back smoothly (its marks are stamped as playback reaches them). */
+const playback = new Playback();
+let playing: EventHandle | null = null;
+/**
+ * Watching from tape: rewound, or replaying a race that has ended. The event
+ * on screen waits (runs at 0) until the playhead is back at live. Null: live.
+ */
+let replay: Replay | null = null;
+/** The replay runs backwards; the timeline is being dragged. */
+let reverse = false;
+let scrubbing = false;
+/** The tape frame at or before the playhead (what the tower and HUD show while replaying). */
+let tapeSnap: SessionSnapshot | null = null;
+/** Sim time the tire marks on screen run up to; a replay rebuilding them from tape, and the frame it's up to. */
+let marksTime = 0;
+let marksJob: { next: number } | null = null;
+
 const host = new EventHost({
-  frame(handle, _snapshot, strokes, radio) {
-    renderer.stampStrokes(strokes);
+  frame(handle, snapshot, strokes, radio) {
+    if (handle !== playing) { playback.reset(); playing = handle; }
+    playback.push(snapshot, strokes);
     addRadio(handle, radio);
   },
   progress() { /* the events panel refreshes on its own timer */ },
@@ -193,7 +221,10 @@ const host = new EventHost({
       renderRoster();
       renderSchool();
     }
-    if (meta.mode === 'race' && !meta.recorded) finishRace(handle);
+    if (meta.mode === 'race' && !meta.recorded) {
+      finishRace(handle);
+      saveRace(handle);
+    }
     // Watched: give the result a moment on screen. In the background: straight on.
     if (handle.attachedTo) raceDoneAt = performance.now() / 1000;
     else if (handle === fieldEvent) carryOn(handle);
@@ -206,11 +237,15 @@ const host = new EventHost({
     if (handle.attachedTo) {
       renderer.setTrack(meta.track);
       renderer.clearMarks();
+      playback.reset();
       focus = null;
     }
   },
   rounds(handle, reports) {
     lessonRounds(handle, reports);
+  },
+  roundTapes(handle, tapes) {
+    for (const t of tapes) saveRound(handle, t);
   },
   learned(handle, steps) {
     // Drivers learned mid-race: the roster gets their new driving, the log a line each.
@@ -221,7 +256,10 @@ const host = new EventHost({
       if (!d) continue;
       d.weights.set(st.weights);
       d.rounds++;
-      activity.record({ kind: 'learning', agent: d.id, role: 'driver', event: handle.ref, brain: d.rounds, data: { source: 'race', track: meta?.trackName ?? '', step: st.steps } });
+      activity.record({
+        kind: 'learning', agent: d.id, role: 'driver', event: handle.ref, brain: d.rounds, replay: { id: handle.ref.id, at: st.time },
+        data: { source: 'race', track: meta?.trackName ?? '', step: st.steps },
+      });
     }
   },
 });
@@ -229,10 +267,10 @@ const host = new EventHost({
 /** The event on screen and its latest snapshot. */
 const shown = () => host.attached;
 const shownMeta = () => { const h = shown(); return h ? metas.get(h) ?? null : null; };
-const snap = (): SessionSnapshot | null => shown()?.snapshot ?? null;
+const snap = (): SessionSnapshot | null => tapeSnap ?? shown()?.snapshot ?? null;
 const teamOfKey = (key: number) => shownMeta()?.teams.get(key);
 const liveryOf = (car: RenderCar) => shownMeta()?.liveries?.get((car as CarView).key) ?? teamOfKey((car as CarView).key)?.livery;
-const carOf = (entry: TeamEntry | null) => (entry && shownMeta()?.mode !== 'class' ? snap()?.cars.find((c) => c.key === entry.id) ?? null : null);
+const carOf = (entry: TeamEntry | null, cars = snap()?.cars) => (entry && shownMeta()?.mode !== 'class' ? cars?.find((c) => c.key === entry.id) ?? null : null);
 /** Driving school: draw each student's practice variations (faint) too. */
 let showVariations = true;
 
@@ -260,6 +298,7 @@ function entrantSpec(t: TeamEntry): EntrantSpec {
   return {
     key: t.id,
     fill: t.livery.fill,
+    number: t.livery.number,
     driver: { id: driver.id, weights: driver.weights, roadWeights: driver.roadCourse?.weights, nerve: driver.nerve, pits: (driver.pitLicensed && driver.pitTrafficLicensed) ?? false, cautions: driver.cautionLicensed ?? false },
     spotter: { id: spotter.id, skill: spotter.skill },
     chief: { id: chief.id, brain: chief.brain },
@@ -313,10 +352,18 @@ function showEvent(handle: EventHandle): void {
   const meta = metas.get(handle)!;
   renderer.setTrack(meta.track);
   renderer.clearMarks();
+  playback.reset();
+  playing = handle;
+  leaveReplay();
   radioFeed.length = 0;
   technique.clear();
   focus = null;
   if (handle.snapshot === null) $('hud').innerHTML = `<b>${meta.trackName}</b> · starting…`;
+  // Over, with nothing running: watch it from tape (at the end; scrub or Home to go back).
+  if (!handle.alive && handle.tape && handle.tape.length > 1) {
+    paused = true;
+    toReplay();
+  }
 }
 
 /** After a race: the next race, or the next weekend, in the background if this one was. */
@@ -346,7 +393,7 @@ const technique = new Map<number, number[]>();
 function addRadio(handle: EventHandle, lines: SessionRadio[]): void {
   const teams = metas.get(handle)?.teams;
   for (const l of lines) radioFeed.unshift({ time: l.time, team: l.key === null ? null : teams?.get(l.key) ?? null, text: l.text });
-  if (radioFeed.length > 80) radioFeed.length = 80;
+  if (radioFeed.length > 2000) radioFeed.length = 2000; // enough to rewind through
 }
 
 const news = (text: string) => radioFeed.unshift({ time: snap()?.time ?? 0, team: null, text });
@@ -354,7 +401,8 @@ const dotHtml = (l: Livery) => `<span class="dot" style="background:${l.fill};bo
 const carLabel = (t: TeamEntry) => `${dotHtml(t.livery)}#${t.livery.number}`;
 
 function drawRadio(): void {
-  const lines = (selected ? radioFeed.filter((l) => l.team === selected) : radioFeed).slice(0, 12);
+  const upTo = replay ? replay.time : Infinity; // replaying: what had been said by then
+  const lines = radioFeed.filter((l) => l.time <= upTo && (!selected || l.team === selected)).slice(0, 12);
   $('radio').innerHTML = lines.map((l) => {
     const clock = `${Math.floor(l.time / 60)}:${Math.floor(l.time % 60).toString().padStart(2, '0')}`;
     return l.team ? `<div><span class="muted">${clock}</span> ${carLabel(l.team)} ${l.text}</div>`
@@ -367,11 +415,12 @@ function drawRadio(): void {
 /** ?focusS=<metres from the line> parks the zoomed camera on a spot (e.g. 0 = pit road). */
 const fixedFocusS = new URLSearchParams(location.search).get('focusS');
 
-function leaderView(s: SessionSnapshot): CarView | undefined {
-  return s.cars.find((c) => c.id === s.order[0]);
+function leaderView(s: SessionSnapshot, cars: CarView[]): CarView | undefined {
+  return cars.find((c) => c.id === s.order[0]);
 }
 
-function updateCamera(s: SessionSnapshot | null, t: Track): void {
+/** cars: as drawn this frame (played back between snapshots). */
+function updateCamera(s: SessionSnapshot | null, cars: CarView[], t: Track): void {
   if (zoom === 1 || !s) {
     renderer.setView(1, 0, 0);
     return;
@@ -381,7 +430,7 @@ function updateCamera(s: SessionSnapshot | null, t: Track): void {
     renderer.setView(zoom, x, y);
     return;
   }
-  const target = carOf(selected) ?? leaderView(s);
+  const target = carOf(selected, cars) ?? leaderView(s, cars);
   if (!target) return;
   if (!focus) focus = [target.x, target.y];
   focus[0] += (target.x - focus[0]) * 0.2;
@@ -389,24 +438,437 @@ function updateCamera(s: SessionSnapshot | null, t: Track): void {
   renderer.setView(zoom, focus[0], focus[1]);
 }
 
+let lastFrameAt = NaN;
+
 function frame(): void {
+  const now = performance.now();
+  const dt = Number.isNaN(lastFrameAt) ? 0 : Math.min(0.1, (now - lastFrameAt) / 1000);
+  lastFrameAt = now;
   const h = shown();
   const meta = shownMeta();
-  const s = snap();
+  // The tape moved on under the replay (a class's next round): back to live.
+  if (replay && replay.tape !== h?.tape) leaveReplay();
   if (h && meta) {
-    updateCamera(s, meta.track);
-    const cars = s?.cars ?? [];
-    renderer.render(showVariations ? cars : cars.filter((c) => !c.variant), liveryOf, carOf(selected), {
+    let cars: CarView[], officials: RenderOfficials | undefined, time: number;
+    if (replay) {
+      advanceReplay(replay, h, dt);
+    }
+    if (replay) {
+      // From tape, at the playhead.
+      const view = replay.view();
+      tapeSnap = view.snap;
+      cars = view.cars;
+      officials = view.officials;
+      time = replay.time;
+      rebuildMarks(replay);
+    } else {
+      // Live: between the worker's snapshots where it's streaming; else the last one it sent.
+      tapeSnap = null;
+      const view = h === playing && !playback.empty ? playback.tick(meta.track) : null;
+      for (const strokes of view?.strokes ?? []) renderer.stampStrokes(strokes);
+      cars = view?.cars ?? h.snapshot?.cars ?? [];
+      officials = view?.officials;
+      time = view ? playback.time : h.snapshot?.time ?? 0;
+      marksTime = time;
+    }
+    const s = snap();
+    renderer.effectsPaused = !!replay && (reverse || scrubbing);
+    updateCamera(s, cars, meta.track);
+    renderer.render(showVariations ? cars : cars.filter((c) => !c.variant), liveryOf, carOf(selected, cars), officials ?? {
       paceCar: s?.race?.paceCar ?? null,
       wreckers: s?.race?.wreckers ?? [],
     });
-    // A finished race on screen: after a moment of results, carry on.
-    if (h === fieldEvent && !Number.isNaN(raceDoneAt) && performance.now() / 1000 - raceDoneAt > NEXT_RACE_DELAY) carryOn(h);
+    updateTimeline(s, cars, time, meta.track, h);
+    updateMarks(h.timeline, meta, timelineShown.live);
+    updateTransport(h);
+    // A finished race on screen: after a moment of results, carry on (not while it's being replayed).
+    if (h === fieldEvent && !replay && !Number.isNaN(raceDoneAt) && performance.now() / 1000 - raceDoneAt > NEXT_RACE_DELAY) carryOn(h);
   } else {
     renderer.render([], liveryOf);
+    updateTimeline(null, [], 0, null, null);
+    updateMarks([], null, 0);
+    updateTransport(null);
   }
   requestAnimationFrame(frame);
 }
+
+// ---------- Replays: watching from tape ----------
+
+/** Watch from tape (at sim time t, or where the view is now). False if there's no tape yet. The event waits meanwhile. */
+function toReplay(t?: number): boolean {
+  const h = shown(), meta = shownMeta();
+  if (!h || !meta || !h.tape || h.tape.length < 2) return false;
+  if (!replay || replay.tape !== h.tape) {
+    replay = new Replay(h.tape, meta.track);
+    replay.seek(h === playing && !playback.empty && !Number.isNaN(playback.time) ? playback.time : replay.end);
+  }
+  if (t !== undefined) replay.seek(t);
+  applySpeed();
+  return true;
+}
+
+/** Back to live, if the event is still running: the marks catch up to the end of the tape and the event carries on. */
+function goLive(): void {
+  const h = shown();
+  if (!replay || !h?.alive) return;
+  if (marksJob) stampTape(replay.tape, replay.tape.end - 1, Infinity);
+  playback.dropStrokes(); // already drawn from the tape
+  leaveReplay();
+}
+
+/** Forget the replay (a new event on screen, or live again). */
+function leaveReplay(): void {
+  replay = null;
+  reverse = false;
+  scrubbing = false;
+  tapeSnap = null;
+  marksJob = null;
+  applySpeed();
+}
+
+/** Move the playhead on by this much real time; at the end of the tape, live again (or stop, if the event is over). */
+function advanceReplay(r: Replay, h: EventHandle, dt: number): void {
+  if (paused || scrubbing) return;
+  r.seek(r.time + dt * speed * (reverse ? -1 : 1));
+  if (!reverse && r.time >= r.end) {
+    if (h.alive) goLive();
+    else { paused = true; applySpeed(); }
+  } else if (reverse && r.time <= r.start) {
+    reverse = false;
+    paused = true;
+    applySpeed();
+  }
+}
+
+/**
+ * Replays: the tire marks as they were at the playhead. Marks showing what
+ * hasn't happened yet are wiped and rebuilt from the tape, a few hundred
+ * frames per screen frame; playing on, they're laid as the playhead goes.
+ * Not while running backwards or scrubbing: once the playhead settles.
+ */
+function rebuildMarks(r: Replay): void {
+  if (scrubbing || reverse) return;
+  if (marksTime > r.time + 0.25) {
+    renderer.clearMarks();
+    marksJob = { next: r.tape.first };
+  }
+  marksJob ??= { next: r.tape.indexAt(marksTime) };
+  stampTape(r.tape, r.index, 6);
+}
+
+/** Lay the tape's marks up to frame `to`, for at most this long (ms). */
+function stampTape(tape: Tape, to: number, budgetMs: number): void {
+  const job = marksJob ?? (marksJob = { next: tape.indexAt(marksTime) });
+  const until = performance.now() + budgetMs;
+  while (job.next < to && performance.now() < until) {
+    const next = Math.min(to, job.next + 100);
+    renderer.stampStrokes(tape.strokes(job.next, next));
+    job.next = next;
+  }
+  marksTime = tape.timeAt(job.next);
+}
+
+// ---------- Control bar: transport, timeline, speed, camera, display ----------
+
+const clockText = (t: number) => {
+  const s = Math.max(0, Math.floor(t));
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+};
+/** What the timeline last showed, so the DOM is only touched on a change. */
+const timelineShown = { label: '', ticks: '', fill: '', liveFill: '', progress: 0, live: 0 };
+/** Driving school: a round's length is the time left when it was first seen. */
+let schoolRound = { round: -1, length: 1 };
+
+/**
+ * Where a moment sits on the timeline (0..1): races by the leader's share of
+ * the distance; classes by the time into the round; open sessions by the time
+ * on tape.
+ */
+function barPosition(s: SessionSnapshot | null, cars: CarView[], time: number, t: Track, h: EventHandle): number {
+  const r = s?.race;
+  if (s && r) {
+    const leader = cars.find((c) => c.id === s.order[0]);
+    return r.state !== 'green' ? 1 : r.started && leader ? Math.min(1, (leader.laps + t.wrapS(leader.s) / t.length) / r.laps) : 0;
+  }
+  const tape = h.tape;
+  if (!tape || tape.length < 1) return 0;
+  const start = tape.timeAt(tape.first);
+  if (metas.get(h)?.mode === 'class') return (time - start) / schoolRound.length;
+  const end = tape.timeAt(tape.end - 1);
+  return end > start ? (time - start) / (end - start) : 1;
+}
+
+/** The timeline: the playhead (as drawn), how far the event has got when rewound, and the lap or round and time. */
+function updateTimeline(s: SessionSnapshot | null, cars: CarView[], time: number, t: Track | null, h: EventHandle | null): void {
+  let progress = 0, live = 0, label = '', laps = 0;
+  const r = s?.race, sc = h?.snapshot?.school;
+  if (sc && sc.round !== schoolRound.round) schoolRound = { round: sc.round, length: Math.max(1, sc.remaining) };
+  if (s && t && h) {
+    progress = barPosition(s, cars, time, t, h);
+    live = replay && h.snapshot ? barPosition(h.snapshot, h.snapshot.cars, h.snapshot.time, t, h) : progress;
+    if (r) {
+      const leader = cars.find((c) => c.id === s.order[0]);
+      const lap = leader ? Math.min(r.laps, leader.laps + 1) : 1;
+      label = `${!r.started ? 'Start' : r.state !== 'green' ? 'Finish' : `Lap <b>${lap}</b> / ${r.laps}`} · ${clockText(time)}`;
+      laps = r.laps;
+    } else if (sc) {
+      label = `Round <b>${sc.round + 1}</b> · ${clockText(time)}`;
+    } else {
+      label = `Practice · ${clockText(time)}`;
+    }
+  }
+  const clamp = (x: number) => Math.max(0, Math.min(1, x));
+  timelineShown.progress = clamp(progress);
+  timelineShown.live = clamp(live);
+  const fill = `${(timelineShown.progress * 100).toFixed(2)}%`;
+  if (fill !== timelineShown.fill) {
+    $('tlFill').style.width = timelineShown.fill = fill;
+    $('tlHead').style.left = fill;
+  }
+  const liveFill = replay ? `${(timelineShown.live * 100).toFixed(2)}%` : '0%';
+  if (liveFill !== timelineShown.liveFill) $('tlLive').style.width = timelineShown.liveFill = liveFill;
+  if (label !== timelineShown.label) $('tlLabel').innerHTML = timelineShown.label = label;
+  const tickKey = String(laps);
+  if (tickKey !== timelineShown.ticks) {
+    timelineShown.ticks = tickKey;
+    // Lap marks: every lap on short races, every 5 or 10 on longer ones.
+    const every = laps <= 25 ? 1 : laps <= 125 ? 5 : 10;
+    const marks: string[] = [];
+    for (let lap = every; lap < laps; lap += every) marks.push(`<i style="left:${((lap / laps) * 100).toFixed(3)}%"></i>`);
+    $('tlTicks').innerHTML = marks.join('');
+  }
+}
+
+/**
+ * Markers on the timeline: colour, drawn shorter (minor), and rank (events
+ * close together share a marker in the top-ranked colour). Cautions also
+ * shade the bar until the green.
+ */
+const MARKS: Partial<Record<TimelineEvent['kind'], { color: string; minor?: boolean; rank: number }>> = {
+  caution: { color: '#f5c518', rank: 3 },
+  retired: { color: '#ff5a5a', rank: 2 },
+  steward: { color: '#ff9f1a', minor: true, rank: 1 },
+  lead: { color: '#b9b9c2', minor: true, rank: 0 },
+};
+/** Events closer than this (share of the race) share a marker. */
+const MARK_MERGE = 0.002;
+/** The timeline the markers were drawn from, and the caution still out (its shading grows with the race). */
+const marksShown: { events: TimelineEvent[] | null; count: number; open: HTMLElement | null; openAt: number } = { events: null, count: 0, open: null, openAt: 0 };
+
+/** Race timelines: a marker per notable event (hover for what happened), and the cautions shaded. */
+function updateMarks(events: TimelineEvent[], meta: EventMeta | null, progress: number): void {
+  if (events !== marksShown.events || events.length !== marksShown.count) {
+    marksShown.events = events;
+    marksShown.count = events.length;
+    marksShown.open = null;
+    const pct = (at: number) => `${(at * 100).toFixed(3)}%`;
+    const who = (key: number | null) => {
+      const t = key === null ? undefined : meta?.teams.get(key);
+      return t ? `#${t.livery.number} ` : '';
+    };
+    const groups: Array<{ at: number; time: number; style: { color: string; minor?: boolean; rank: number }; minor: boolean; lines: string[] }> = [];
+    const spans: string[] = [];
+    let cautionAt: number | null = null;
+    for (const e of events) {
+      if (e.at === undefined) continue; // open sessions: no race distance to place them on
+      if (e.kind === 'caution' && cautionAt === null) cautionAt = e.at;
+      if ((e.kind === 'green' || e.kind === 'checkered') && cautionAt !== null) {
+        spans.push(`<span style="left:${pct(cautionAt)};width:${pct(e.at - cautionAt)}"></span>`);
+        cautionAt = null;
+      }
+      const style = MARKS[e.kind];
+      if (!style) continue;
+      const line = `Lap ${e.lap} · ${clockText(e.time)} · ${who(e.key)}${e.text}`;
+      const last = groups[groups.length - 1];
+      if (last && e.at - last.at < MARK_MERGE) {
+        last.lines.push(line);
+        if (style.rank > last.style.rank) last.style = style;
+        last.minor &&= !!style.minor;
+      } else groups.push({ at: e.at, time: e.time, style, minor: !!style.minor, lines: [line] });
+    }
+    const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const marks = groups.map((g) => `<i class="${g.minor ? 'minor' : ''}" data-t="${g.time}" style="left:${pct(g.at)};--c:${g.style.color}" title="${esc([...g.lines, 'Click to watch'].join('\n'))}"></i>`);
+    if (cautionAt !== null) spans.push(`<span data-open style="left:${pct(cautionAt)}"></span>`);
+    $('tlMarks').innerHTML = marks.join('');
+    $('tlCautions').innerHTML = spans.join('');
+    marksShown.open = $('tlCautions').querySelector<HTMLElement>('[data-open]');
+    marksShown.openAt = cautionAt ?? 0;
+  }
+  // A caution still out: shaded up to where the leader is now.
+  if (marksShown.open) marksShown.open.style.width = `${(Math.max(0, progress - marksShown.openAt) * 100).toFixed(3)}%`;
+}
+
+const PLAY_ICON = '<svg viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5z"/></svg>';
+const PAUSE_ICON = '<svg viewBox="0 0 16 16"><rect x="3.5" y="2.5" width="3" height="11"/><rect x="9.5" y="2.5" width="3" height="11"/></svg>';
+
+/** Tell the attached event (and playback) the speed it should run at now: none while paused or replaying. */
+function applySpeed(): void {
+  const run = paused || replay ? 0 : speed;
+  host.setSpeed(run);
+  playback.setSpeed(run);
+  const b = $('playPause');
+  b.innerHTML = paused ? PLAY_ICON : PAUSE_ICON;
+  b.title = paused ? 'Play (Space or K)' : 'Pause (Space or K)';
+  b.setAttribute('aria-label', paused ? 'Play' : 'Pause');
+  $('reverse').classList.toggle('on', reverse && !paused);
+  renderSpeedButtons();
+}
+
+/** What the transport last showed. */
+let transportShown = '';
+
+/** LIVE (red when live; a way back when rewound; hidden when the event is over), and what can be rewound. */
+function updateTransport(h: EventHandle | null): void {
+  const canRewind = !!h?.tape && h.tape.length > 1;
+  const key = `${!!replay}|${h?.alive}|${canRewind}`;
+  if (key === transportShown) return;
+  transportShown = key;
+  const live = $('goLive');
+  live.hidden = !h?.alive;
+  live.classList.toggle('live', !replay);
+  live.title = replay ? 'Back to live (End)' : 'Live';
+  $('tlBar').classList.toggle('replay', !!replay);
+  for (const id of ['stepBack', 'reverse']) ($(id) as HTMLButtonElement).disabled = !canRewind;
+}
+
+function togglePause(): void {
+  paused = !paused;
+  applySpeed();
+}
+
+/** Play backwards (from where the view is), or forwards again. */
+function toggleReverse(): void {
+  if (reverse) reverse = false;
+  else {
+    if (!toReplay()) return;
+    reverse = true;
+    paused = false;
+  }
+  applySpeed();
+}
+
+/** A tenth of a second back, paused. */
+function stepBack(): void {
+  paused = true;
+  if (toReplay()) replay!.seek(replay!.time - 0.1);
+  applySpeed();
+}
+
+/** Jump the playhead by this many sim seconds (forward to the end of the tape is live again). */
+function jump(seconds: number): void {
+  if (seconds < 0) {
+    if (toReplay()) replay!.seek(replay!.time + seconds);
+  } else if (replay) {
+    replay.seek(replay.time + seconds);
+    if (replay.time >= replay.end) goLive();
+  }
+}
+
+/** One step up or down the speed list (resumes if paused). */
+function nudgeSpeed(dir: 1 | -1): void {
+  const i = SPEEDS.findIndex(([, v]) => v === speed);
+  speed = SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, (i < 0 ? 2 : i) + dir))][1];
+  paused = false;
+  applySpeed();
+}
+
+/** A tenth of a second on, paused. */
+function stepAhead(): void {
+  if (!paused) togglePause();
+  if (replay) {
+    replay.seek(replay.time + 0.1);
+    if (replay.time >= replay.end) goLive();
+    return;
+  }
+  host.step(0.1);
+}
+
+const ZOOMS: Array<[string, number]> = [['Full', 1], ['2×', 2], ['4×', 4], ['8×', 8]];
+function setZoom(z: number): void {
+  zoom = z;
+  focus = null;
+  renderZoomButtons();
+}
+
+$('playPause').onclick = togglePause;
+$('stepAhead').onclick = stepAhead;
+$('stepBack').onclick = stepBack;
+$('reverse').onclick = toggleReverse;
+$('goLive').onclick = () => {
+  if (!replay) return;
+  replay.seek(replay.end);
+  goLive();
+};
+
+// The timeline: drag to scrub (rewinds; dropped at the end, live again); click a marker to watch it from just before.
+{
+  const bar = $('tlBar');
+  const scrub = (e: PointerEvent) => {
+    const h = shown(), meta = shownMeta();
+    if (!h || !meta || !toReplay()) return;
+    const rect = bar.getBoundingClientRect();
+    const p = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    replay!.seek(replay!.timeWhere(p, (f) => barPosition(f, f.cars, f.time, meta.track, h)));
+  };
+  bar.addEventListener('pointerdown', (e) => {
+    const mark = (e.target as HTMLElement).closest<HTMLElement>('#tlMarks i');
+    if (mark?.dataset.t) {
+      toReplay(Number(mark.dataset.t) - 5);
+      return;
+    }
+    if (!toReplay()) return;
+    scrubbing = true;
+    bar.setPointerCapture(e.pointerId);
+    scrub(e);
+  });
+  bar.addEventListener('pointermove', (e) => { if (scrubbing) scrub(e); });
+  const release = () => {
+    if (!scrubbing) return;
+    scrubbing = false;
+    if (replay && replay.time >= replay.end - 0.05) goLive();
+  };
+  bar.addEventListener('pointerup', release);
+  bar.addEventListener('pointercancel', release);
+}
+
+// Display options: a popover from the bar; closes on a click elsewhere or Escape.
+{
+  const toggle = $('displayToggle'), pop = $('displayPop');
+  const show = (open: boolean) => { pop.hidden = !open; toggle.classList.toggle('on', open); toggle.setAttribute('aria-expanded', String(open)); };
+  toggle.onclick = () => show(pop.hidden);
+  document.addEventListener('pointerdown', (e) => {
+    if (!pop.hidden && !(e.target as HTMLElement).closest('.popwrap')) show(false);
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') show(false); });
+}
+
+// Keyboard: Space/K pause, J/L slower/faster, R backwards, ←/→ 5 s (Shift: 30 s), ,/. step, Home/End start/live,
+// Z camera. Not while typing, or over the history page.
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey || (e.repeat && e.key === ' ')) return;
+  if ((e.target as HTMLElement).closest('input, select, textarea, [contenteditable]')) return;
+  if (!$('agentPage').hidden) return;
+  switch (e.key.toLowerCase()) {
+    case ' ': case 'k': togglePause(); break;
+    case 'j': nudgeSpeed(-1); break;
+    case 'l': nudgeSpeed(1); break;
+    case '.': stepAhead(); break;
+    case ',': stepBack(); break;
+    case 'r': toggleReverse(); break;
+    case 'arrowleft': jump(e.shiftKey ? -30 : -5); break;
+    case 'arrowright': jump(e.shiftKey ? 30 : 5); break;
+    case 'home': toReplay(-Infinity); break;
+    case 'end': if (replay) { replay.seek(replay.end); goLive(); } break;
+    case 'z': setZoom(ZOOMS[(ZOOMS.findIndex(([, v]) => v === zoom) + 1) % ZOOMS.length][1]); break;
+    default: return;
+  }
+  e.preventDefault();
+});
+// Space on a focused button would also click it.
+document.addEventListener('keyup', (e) => {
+  if (e.key === ' ' && (e.target as HTMLElement).closest('button')) e.preventDefault();
+});
 
 // ---------- Timing tower & HUD ----------
 
@@ -486,7 +948,7 @@ function updateTower(): void {
     const next = Number.isNaN(raceDoneAt) || loop === 'stop' ? ''
       : ` · ${loop === 'weekend' ? 'practice' : 'next race'} in ${Math.max(0, Math.ceil(NEXT_RACE_DELAY - (performance.now() / 1000 - raceDoneAt)))} s`;
     const learning = (handle: EventHandle | null) => {
-      const spec = handle?.event.what === 'session' ? handle.event.spec : null;
+      const spec = handle?.event?.what === 'session' ? handle.event.spec : null;
       return spec?.learn ? ` · drivers learning (${meta.learnedSteps ?? 0} steps)` : '';
     };
     status = r.state === 'green' ? `${flagText} <b>Lap ${lap} / ${r.laps}</b> · ${status}${learning(shown())}`
@@ -496,7 +958,7 @@ function updateTower(): void {
     status = `<b>Practice</b> · ${weekendPractice.roundsLeft} practice rounds until the race · drivers and crew chiefs learning`;
   }
   const drivers = readOnly() ? ` · ${bundleOf(source)?.name} drivers` : '';
-  $('hud').innerHTML = `<b>${meta.trackName}</b> · ${meta.track.length.toFixed(0)} m · ${s.cars.length} cars${drivers} · ${session} · ${speed}×${following}<br>${status}`
+  $('hud').innerHTML = `<b>${meta.trackName}</b> · ${meta.track.length.toFixed(0)} m · ${s.cars.length} cars${drivers} · ${session} · ${speedText()}${following}<br>${status}`
     + (renderer.debug.banking || renderer.debug.forces ? `<br>${bankReadout(carOf(followed), meta)}` : '');
 }
 
@@ -547,6 +1009,11 @@ function renderEvents(): void {
     return `<tr class="${h.attachedTo ? 'sel' : ''}"><td class="name">${h.ref.label}</td><td class="muted">${eventStatus(h)}</td><td class="act">${buttons}</td></tr>`;
   }).join('');
   $('events').innerHTML = rows || '<tr><td class="muted">No events</td></tr>';
+  // What's on tape (as far as the page has it): sim time and memory.
+  const tapes = host.events.flatMap((h) => [...(h.tape ? [h.tape] : []), ...h.roundTapes.map((r) => r.tape)]);
+  const bytes = tapes.reduce((a, t) => a + ('frameBytes' in t ? t.bytes : t.bytes.byteLength), 0);
+  const seconds = tapes.reduce((a, t) => a + ('frameBytes' in t ? t.length : t.count), 0) / TAPE_HZ;
+  $('tapeNote').textContent = tapes.length ? `On tape: ${clockText(seconds)} of sim time, ${(bytes / 1e6).toFixed(1)} MB` : '';
 }
 
 $('events').onclick = (e) => {
@@ -564,6 +1031,104 @@ $('clearEvents').onclick = () => {
   for (const h of host.events) if (h.state !== 'running' && !h.attachedTo) metas.delete(h);
   host.prune();
   renderEvents();
+};
+
+// ---------- Saved replays ----------
+
+const replays: ReplayStore = typeof indexedDB !== 'undefined' ? new IndexedDbReplayStore() : new MemoryReplayStore();
+const REPLAY_CAP_KEY = 'dotgp.v2.replayCapMB';
+const REPLAY_CAPS: Array<[string, number]> = [['100 MB', 100], ['250 MB', 250], ['500 MB', 500], ['1 GB', 1000]];
+let replayCapMB = (() => { try { return Number(localStorage.getItem(REPLAY_CAP_KEY)) || 250; } catch { return 250; } })();
+/** The saved replays' descriptions, newest first (refreshed after every change). */
+let savedReplays: ReplayMeta[] = [];
+
+/** Pack and keep a replay, then trim to the cap. */
+async function keepReplay(meta: Omit<ReplayMeta, 'saved' | 'duration' | 'bytes' | 'pinned'>, seg: TapeSegment): Promise<void> {
+  try {
+    const packed = await packTape(seg);
+    await replays.save({ ...meta, saved: Date.now(), duration: seg.count / TAPE_HZ, bytes: packed.byteLength, pinned: false }, packed);
+    await enforceCap(replays, replayCapMB * 1e6);
+  } catch (e) {
+    console.warn('could not save the replay', e);
+  }
+  await refreshReplays();
+}
+
+const replayTeams = (meta: EventMeta) => [...meta.teams.values()].map((t) => ({
+  id: t.id, livery: t.livery, driver: t.driver, spotter: t.spotter, chief: t.chief, driverName: roster.drivers.get(t.driver)?.name ?? '',
+}));
+
+/** A finished race: kept as a replay. */
+function saveRace(handle: EventHandle): void {
+  const meta = metas.get(handle);
+  if (!meta || !handle.tape || handle.tape.length < 2) return;
+  void keepReplay({
+    id: handle.ref.id, label: handle.ref.label, event: handle.ref, kind: 'race', track: meta.trackName, layout: meta.track.layout,
+    teams: replayTeams(meta), timeline: handle.timeline, results: handle.results ?? undefined,
+  }, handle.tape.segment());
+}
+
+/** A driving-school round that was watched or earned a license: kept as a replay. */
+function saveRound(handle: EventHandle, t: RoundTape): void {
+  const meta = metas.get(handle);
+  if (!meta) return;
+  void keepReplay({
+    id: `${handle.ref.id}:r${t.round}`, label: `${handle.ref.label} · round ${t.round + 1}`, event: handle.ref, kind: 'class',
+    track: t.track, layout: t.layout, teams: [], liveries: [...(meta.liveries ?? new Map())], timeline: [],
+    round: t.round, graduated: t.graduated,
+  }, t.tape);
+}
+
+/** Open a saved replay like an event, and play it from the start (or from just before `at`). */
+async function watchSaved(m: ReplayMeta, at?: number): Promise<void> {
+  const packed = await replays.tape(m.id);
+  if (!packed) { news('That replay has been cleared.'); await refreshReplays(); return; }
+  const tape = Tape.from(await unpackTape(packed));
+  const handle = host.open(m.event, tape, m.timeline, m.results ?? null);
+  const track = new Track(m.layout);
+  metas.set(handle, {
+    mode: m.kind === 'class' ? 'class' : 'race', trackName: m.track, track, recorded: true, round: !!m.event.parent,
+    teams: new Map(m.teams.map((t) => [t.id, { id: t.id, livery: t.livery, driver: t.driver, spotter: t.spotter, chief: t.chief }])),
+    liveries: m.liveries ? new Map(m.liveries) : undefined,
+  });
+  showEvent(handle);
+  if (replay) replay.seek(at === undefined ? replay.start : at - 5);
+  if (at !== undefined) speed = 1; // a moment is watched at real speed
+  paused = false;
+  applySpeed();
+  showView('watch');
+  renderEvents();
+}
+
+async function refreshReplays(): Promise<void> {
+  try { savedReplays = await replays.list(); } catch { savedReplays = []; }
+  renderReplays();
+}
+
+/** Settings → Replays: space used against the cap, and every saved replay (watch, pin to keep, delete). */
+function renderReplays(): void {
+  const used = savedReplays.reduce((a, m) => a + m.bytes, 0);
+  $('replayUsage').textContent = `${savedReplays.length} saved · ${(used / 1e6).toFixed(1)} MB of ${replayCapMB >= 1000 ? `${replayCapMB / 1000} GB` : `${replayCapMB} MB`}`;
+  ($('replayUsageBar') as HTMLElement).style.width = `${Math.min(100, (used / (replayCapMB * 1e6)) * 100).toFixed(1)}%`;
+  const when = (ms: number) => new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  $('replayList').innerHTML = savedReplays.map((m, i) => {
+    const winner = m.results?.[0], team = winner && m.teams.find((t) => t.id === winner.key);
+    const what = m.kind === 'race'
+      ? (team ? `won by #${team.livery.number} ${team.driverName ?? ''}` : 'race')
+      : `${m.graduated?.length ? `${m.graduated.length} licensed` : 'watched'}`;
+    return `<tr><td class="name">${m.pinned ? '<span title="Pinned: kept past the cap">●</span> ' : ''}${m.label}<div class="muted">${m.track} · ${what} · ${clockText(m.duration)} · ${(m.bytes / 1e6).toFixed(1)} MB · ${when(m.saved)}</div></td>`
+      + `<td class="act"><button data-rp="${i}" data-act="watch">Watch</button><button data-rp="${i}" data-act="pin">${m.pinned ? 'Unpin' : 'Pin'}</button>`
+      + `<button data-rp="${i}" data-act="delete" title="Delete this replay">×</button></td></tr>`;
+  }).join('') || '<tr><td class="muted">Finished races are saved here, and driving-school rounds that were watched or earned a license.</td></tr>';
+}
+
+$('replayList').onclick = async (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('button[data-rp]');
+  const m = b && savedReplays[Number(b.dataset.rp)];
+  if (!b || !m) return;
+  if (b.dataset.act === 'watch') await watchSaved(m);
+  else if (b.dataset.act === 'pin') { await replays.setPinned(m.id, !m.pinned); await refreshReplays(); }
+  else if (b.dataset.act === 'delete') { await replays.remove(m.id); await refreshReplays(); }
 };
 
 // ---------- Teams panel (mix and match) ----------
@@ -739,8 +1304,15 @@ buttonGroup('fieldButtons', FIELD_SIZES.map((n) => [String(n), n] as [string, nu
   startSession();
   if (practising && mode === 'practice') startPractice();
 });
-buttonGroup('speedButtons', [['1×', 1], ['4×', 4], ['16×', 16], ['64×', 64]], () => speed, (s) => { speed = s; host.setSpeed(s); });
-buttonGroup('zoomButtons', [['Full', 1], ['2×', 2], ['4×', 4], ['8×', 8]], () => zoom, (z) => { zoom = z; focus = null; });
+const renderSpeedButtons = buttonGroup('speedButtons', SPEEDS, () => (paused ? null : speed), (s) => { speed = s; paused = false; applySpeed(); });
+const renderZoomButtons = buttonGroup('zoomButtons', ZOOMS, () => zoom, setZoom);
+// Settings → Replays: how much to keep.
+buttonGroup('replayCapButtons', REPLAY_CAPS, () => replayCapMB, async (mb) => {
+  replayCapMB = mb;
+  try { localStorage.setItem(REPLAY_CAP_KEY, String(mb)); } catch { /* the cap holds for this visit */ }
+  await enforceCap(replays, mb * 1e6);
+  await refreshReplays();
+});
 buttonGroup('dotButtons', [['Real size', 'real'], ['Legible', 'legible']] as Array<[string, DotMode]>,
   () => renderer.dotMode, (m) => { renderer.dotMode = m; });
 buttonGroup('effectButtons', [['Show', true], ['Hide', false]] as Array<[string, boolean]>,
@@ -811,7 +1383,7 @@ function finishRace(handle: EventHandle): void {
   const meta = metas.get(handle)!;
   const results = handle.results!;
   meta.recorded = true;
-  const laps = (handle.event.spec as SessionSpec).laps;
+  const laps = (handle.event!.spec as SessionSpec).laps;
   const round = !!meta.round;
   if (round) {
     recordRace(season, meta.trackName, laps, results.map((r) => ({
@@ -827,9 +1399,10 @@ function finishRace(handle: EventHandle): void {
       disqualified: r.disqualified,
       ...(round ? { points: pointsFor(r.position, results.length, r.status), season: season.number, round: season.races.length } : {}),
     };
-    activity.record({ kind: 'race', agent: r.driver, role: 'driver', event: handle.ref, brain: roster.drivers.get(r.driver)?.rounds, data });
-    activity.record({ kind: 'race', agent: r.chief, role: 'chief', event: handle.ref, brain: roster.chiefs.get(r.chief)?.rounds, data });
-    activity.record({ kind: 'race', agent: r.spotter, role: 'spotter', event: handle.ref, data });
+    const replay = { id: handle.ref.id };
+    activity.record({ kind: 'race', agent: r.driver, role: 'driver', event: handle.ref, brain: roster.drivers.get(r.driver)?.rounds, data, replay });
+    activity.record({ kind: 'race', agent: r.chief, role: 'chief', event: handle.ref, brain: roster.chiefs.get(r.chief)?.rounds, data, replay });
+    activity.record({ kind: 'race', agent: r.spotter, role: 'spotter', event: handle.ref, data, replay });
   }
   recordInjuries(handle, meta.trackName, results);
   if (round && seasonComplete(season)) {
@@ -860,7 +1433,7 @@ function recordInjuries(handle: EventHandle, trackName: string, results: Entrant
     if (!d || !injury) continue;
     const kmh = Math.round(r.worstHitSpeed * 3.6);
     activity.record({
-      kind: 'injury', agent: d.id, role: 'driver', event: handle.ref,
+      kind: 'injury', agent: d.id, role: 'driver', event: handle.ref, replay: { id: handle.ref.id, at: r.worstHitTime ?? undefined },
       data: { severity: injury.severity, races: injury.races, track: trackName, hit: r.worstHit, speed: r.worstHitSpeed },
     });
     if (injury.severity === 'career') {
@@ -1053,7 +1626,14 @@ $<HTMLInputElement>('loadFile').onchange = async (e) => {
 
 // ---------- Roster: everyone in the organisation, seated or in the academy ----------
 
-const agentPage = new AgentPage({ roster: () => roster, occupancy, log: activity });
+const agentPage = new AgentPage({
+  roster: () => roster, occupancy, log: activity,
+  replays: () => new Set(savedReplays.map((m) => m.id)),
+  watch: (id, at) => {
+    const m = savedReplays.find((x) => x.id === id);
+    if (m) void watchSaved(m, at);
+  },
+});
 let rosterRole: AgentRole = 'driver';
 
 function renderRoster(): void {
@@ -1212,14 +1792,15 @@ function lessonRounds(handle: EventHandle, reports: RoundReport[]): void {
     d.pitTrafficLicensed = r.pitTrafficLicensed;
     d.cautionLicensed = r.cautionLicensed;
     const variations = 2 * LESSONS[meta?.lesson ?? 'rookie'].pairs;
+    const replay = { id: `${handle.ref.id}:r${r.round}` };
     activity.record({
-      kind: 'lesson', agent: d.id, role: 'driver', event: handle.ref, brain: r.rounds,
+      kind: 'lesson', agent: d.id, role: 'driver', event: handle.ref, brain: r.rounds, replay,
       data: { lesson: meta?.lesson ?? 'rookie', track: r.track, fitness: r.fitness, laps: r.laps, bestLap: r.bestLap, health: r.health, walls: r.walls, beaten: r.beaten, variations },
     });
     if (r.graduated) {
       const license = meta?.lesson === 'pits' ? 'pit' : meta?.lesson === 'pitTraffic' ? 'pitTraffic' : meta?.lesson === 'cautions' ? 'caution'
         : meta?.lesson === 'circuits' ? 'roadCourse' : 'driving';
-      activity.record({ kind: 'licensed', agent: d.id, role: 'driver', event: handle.ref, brain: r.rounds, data: { lessons: r.rounds, license } });
+      activity.record({ kind: 'licensed', agent: d.id, role: 'driver', event: handle.ref, brain: r.rounds, replay, data: { lessons: r.rounds, license } });
       news(license === 'pit' ? `${d.name} passed the pit stop lesson: next, pit road in traffic`
         : license === 'pitTraffic' ? `${d.name} passed pit road in traffic: does their own stops in races from now on`
         : license === 'caution' ? `${d.name} passed the caution lesson: drives their own cautions and restarts from now on`
@@ -1267,7 +1848,7 @@ function schoolTower(s: SessionSnapshot, meta: EventMeta): void {
       <td>${sc.lesson === 'circuits' ? (st.roadLicensed ? 'road' : '') : sc.lesson === 'pits' ? (st.pitLicensed ? 'pits' : '') : sc.lesson === 'pitTraffic' ? (st.pitTrafficLicensed ? 'pit road' : '') : sc.lesson === 'cautions' ? (st.cautionLicensed ? 'cautions' : '') : st.licensed ? 'licensed' : ''}</td></tr>`;
   }).join('');
   const students = sc.students.length;
-  $('hud').innerHTML = `<b>Driving school</b> · ${L.name} · ${students} student${students > 1 ? 's' : ''} · ${speed}×<br>`
+  $('hud').innerHTML = `<b>Driving school</b> · ${L.name} · ${students} student${students > 1 ? 's' : ''} · ${speedText()}<br>`
     + `round ${sc.round + 1} · <b>${meta.trackName}</b> · ${Math.ceil(sc.remaining)} s left in the round`
     + (sc.walls < 1 ? ` · walls ×${sc.walls.toFixed(2)} (soft)` : '')
     + ` · ${showVariations ? `faint dots: each student's ${variations} variations` : 'variations hidden'}`;
@@ -1382,7 +1963,7 @@ async function boot(): Promise<void> {
   watchRoster(roster);
   roster.ensureTeams(fieldSize);
   persist();
-  host.setSpeed(speed);
+  applySpeed();
   // ?warm=N fast-forwards the first session N seconds (handy for screenshots and jumping in).
   startSession(true, Number(params.get('warm') ?? 0));
   // ?roster=house (or the last choice) puts a bundle's drivers on track: exactly what the tests race.
@@ -1395,7 +1976,17 @@ async function boot(): Promise<void> {
   renderSchool();
   drawTechniques();
   drawRadio();
-  window.addEventListener('resize', () => renderer.resize());
+  void refreshReplays();
+  // The view follows the stage's size on screen (window, sidebar, browser zoom) and keeps the track out from under the HUD.
+  const hud = $('hud');
+  const fitView = () => {
+    renderer.setInsets({ top: hud.offsetHeight ? hud.offsetTop + hud.offsetHeight : 0 });
+    renderer.resize();
+  };
+  const sizes = new ResizeObserver(fitView);
+  try { sizes.observe(canvas, { box: 'device-pixel-content-box' }); } catch { sizes.observe(canvas); } // also sees display scale changes
+  sizes.observe(hud);
+  window.addEventListener('resize', fitView);
   setInterval(updateTower, 200);
   setInterval(() => {
     // A finished race whose results were on screen, but you looked away: the season carries on.
