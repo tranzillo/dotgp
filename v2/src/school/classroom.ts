@@ -1,7 +1,7 @@
 import { Tape, TAPE_STEPS, type TapeSegment } from '../events/tape';
 import { adaptWeights } from '../ai/drivers';
 import {
-  adamStep, centeredRanks, DEFAULT_ES, FULL_DAMAGE_PENALTY, LICENSE_HEALTH, rookieDamagePenalty, rookieDamageScale,
+  adamStep, centeredRanks, DEFAULT_ES, LICENSE_HEALTH, rookieDamageScale, rookieDamageSeconds,
 } from '../ai/es';
 import { Trial, type TrialOptions, type TrialResult } from '../ai/evaluate';
 import { apprenticePitStops, cleanStop, PitTrial, REFRESHER_ROUNDS, type PitTrialResult } from './pitLesson';
@@ -12,6 +12,7 @@ import { bestValidLap } from '../sim/limits';
 import { PACK_SIZE, RacecraftTrial, randomLayout, type PackLayout, type RacecraftResult } from './racecraftLesson';
 import { apprenticePitTraffic, cleanTrafficStop, PitTrafficTrial, TRAFFIC_BASELINE_MARGIN, trafficBaseline, type PitTrafficResult } from './pitTrafficLesson';
 import { CAUTION_WEIGHTS, apprenticeCautions, BASELINE_MARGIN, CautionTrial, DRILL_FIELD, scriptBaseline, type CautionResult } from './cautionLesson';
+import { COSTS, lapSeconds, trackPace } from '../ai/costs';
 import { genomeSize } from '../ai/network';
 import { Rng } from '../ai/rng';
 import { DRIVER_LAYERS } from '../ai/drivers';
@@ -178,6 +179,8 @@ export interface RoadcraftRound {
   nerves: Array<number | undefined>;
   /** Each student as it drove when the class began (the solo anchor). */
   references: Float32Array[];
+  /** The track's own pace (m/s): progress converts to seconds at it. */
+  pace: number;
 }
 
 /**
@@ -484,8 +487,8 @@ export class Classroom {
     } else if (this.roadcraftRound) {
       const r = this.roadcraftRound;
       const drills = await runner.roadcraft(r);
-      const solo = await runner.ghost(r.layout, [...r.candidates, ...r.references], SOLO_OPTIONS);
-      this.finishRound(anchored(drills.results, solo.results, r.perStudent, r.candidates.length, this.track.length), drills.time);
+      const solo = await runner.ghost(r.layout, [...r.candidates, ...r.references], { ...SOLO_OPTIONS, pace: r.pace });
+      this.finishRound(anchored(drills.results, solo.results, r.perStudent, r.candidates.length, this.track.length, r.pace), drills.time);
     } else {
       throw new Error(`${this.lesson.id} rounds can't be run elsewhere`);
     }
@@ -557,7 +560,7 @@ export class Classroom {
       this.roadcraftRound = {
         layout: this.track.layout, slot: this.round % PACK_SIZE, pack: roadcraftLayout(this.track, straightStart(this.track, this.rng), this.rng),
         candidates, perStudent: 1 + 2 * lesson.pairs, classmates: this.students.map((s) => s.weights.slice()),
-        nerves: this.students.map((s) => s.nerve), references: this.students.map((s) => s.reference),
+        nerves: this.students.map((s) => s.nerve), references: this.students.map((s) => s.reference), pace: trackPace(this.track),
       };
     }
     const r = this.roadcraftRound;
@@ -580,7 +583,8 @@ export class Classroom {
         seconds: lesson.seconds,
         startS: lesson.id === 'circuits' ? straightStart(this.track, this.rng) : undefined,
         damageScale: this.walls,
-        damagePenaltyLaps: lesson.id === 'rookie' ? rookieDamagePenalty(lessons, DEFAULT_ES.curriculumRounds) : FULL_DAMAGE_PENALTY,
+        damageSeconds: lesson.id === 'rookie' ? rookieDamageSeconds(lessons, DEFAULT_ES.curriculumRounds) : COSTS.damage,
+        pace: trackPace(this.track),
         validLaps: lesson.validLaps,
       };
       this.trial = new Trial(this.track, candidates, opts);
@@ -644,7 +648,7 @@ export class Classroom {
       // The pit-in-traffic license: a clean stop in traffic, at least as good as the veteran's, on each preset track.
       if (!s.pitTrafficLicensed && this.lesson.id === 'pitTraffic') {
         const p = own as PitTrafficResult;
-        if (cleanTrafficStop(p) && p.fitness >= trafficBaseline(this.track, s.weights).fitness - TRAFFIC_BASELINE_MARGIN
+        if (cleanTrafficStop(p) && p.fitness >= trafficBaseline(this.track, s.weights).fitness - TRAFFIC_BASELINE_MARGIN * lapSeconds(this.track)
           && racingKept(this.track, s.weights, s.reference)) {
           if (!s.passed.has(this.track.name)) {
             s.passed.add(this.track.name);
@@ -661,7 +665,7 @@ export class Classroom {
       if (!s.cautionLicensed && this.lesson.id === 'cautions') {
         const c = own as CautionResult;
         if (c.health >= 0.95 && c.harm < 0.05 && racingKept(this.track, s.weights, s.reference)
-          && c.fitness >= scriptBaseline(this.track, this.drillSlot, s.weights, this.drillSpread, this.packWeights).fitness - BASELINE_MARGIN) {
+          && c.fitness >= scriptBaseline(this.track, this.drillSlot, s.weights, this.drillSpread, this.packWeights).fitness - BASELINE_MARGIN * lapSeconds(this.track)) {
           if (!s.passed.has(this.track.name)) {
             s.passed.add(this.track.name);
             this.say(`${s.name} drove a clean caution drill at ${this.track.name} (${s.passed.size} of ${this.presets.length})`);

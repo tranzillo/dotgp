@@ -20,7 +20,7 @@ export interface Injury {
 }
 
 /** Below this much health lost in one hit nobody gets hurt. */
-const SAFE_HIT = 0.4;
+export const SAFE_HIT = 0.4;
 /** Chance of injury rises with the hit past SAFE_HIT, to at most MAX_CHANCE. */
 const CHANCE_SLOPE = 1 / 1.6;
 const MAX_CHANCE = 0.4;

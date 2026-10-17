@@ -1,6 +1,6 @@
 import { bestValidLap } from '../sim/limits';
 import { DRIVER_LAYERS, NeuralDriver, neuralTeam, Team } from '../ai/drivers';
-import { FULL_DAMAGE_PENALTY } from '../ai/es';
+import { COSTS, lapSeconds } from '../ai/costs';
 import { trainSupervised, type Example } from '../ai/network';
 import type { Rng } from '../ai/rng';
 import { TowerSpotter } from '../ai/spotter';
@@ -150,7 +150,8 @@ export class PitTrial {
     return this.world.cars.map((car, k) => {
       const laps = (car.dist - this.startDist[k]) / this.track.length;
       return {
-        fitness: laps - FULL_DAMAGE_PENALTY * (1 - car.health) - this.stops[k].penalty(),
+        // Seconds: the stop's penalties are in laps of the track, converted at its own pace.
+        fitness: (laps - this.stops[k].penalty()) * lapSeconds(this.track) - COSTS.damage * (1 - car.health),
         laps,
         bestLap: bestValidLap(car),
         health: car.health,

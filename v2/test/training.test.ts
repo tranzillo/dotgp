@@ -55,7 +55,7 @@ describe('headless training', () => {
       ghost: splitRunner(2),
       roadcraft: async (r: RoadcraftRound) => {
         const track = new Track(r.layout);
-        const drills = r.candidates.map((g, i) => roadcraftDrill(track, r.slot, g, Math.floor(i / r.perStudent), r.classmates, r.pack, r.nerves[Math.floor(i / r.perStudent)]));
+        const drills = r.candidates.map((g, i) => roadcraftDrill(track, r.slot, g, Math.floor(i / r.perStudent), r.classmates, r.pack, r.nerves[Math.floor(i / r.perStudent)], r.pace));
         for (const d of drills) while (!d.done) d.step();
         return { results: drills.map((d) => d.result()), time: drills[0].world.time };
       },

@@ -1,6 +1,7 @@
 import type { Flag } from '../sim/raceControl';
 import { bestValidLap } from '../sim/limits';
 import { NeuralDriver, Team } from '../ai/drivers';
+import { COSTS } from '../ai/costs';
 import { danger, fearScale } from '../ai/fear';
 import { PaceCarDriver, formationTraits } from '../ai/formation';
 import { NeuralCrewChief } from '../ai/neuralChief';
@@ -179,17 +180,6 @@ export interface EntrantResult {
 }
 
 const RADIO_REPEAT = 4; // seconds before the same call from the same team is repeated
-/** Seconds a lap is charged per unit of health lost on it, when comparing laps: contact never pays. */
-const DAMAGE_SECONDS = 120;
-/** ... and per unit of damage done to others (by its share of the fault). */
-const HARM_SECONDS = 120;
-/**
- * Fear and trauma, for a driver of middling nerve (scaled by fearScale): seconds
- * a lap is charged per second spent in danger (a collision imminent, of its
- * own making), and per unit of trauma beyond the damage itself (big hits).
- */
-const FEAR_SECONDS = 1;
-const TRAUMA_SECONDS = 120;
 /** A lap on which a driver did itself or others this much harm counts, even if spoiled (caution, wreck). */
 const FAULT_COUNTS = 0.02;
 const RESPAWN_DELAY = 3; // s a wreck sits before an open session puts the car back out
@@ -371,8 +361,9 @@ export class Session {
       return;
     }
     const extraTrauma = Math.max(0, car.selfTrauma - l.trauma - self);
-    const score = -l.ref - DAMAGE_SECONDS * Math.max(0, l.health - car.health) - HARM_SECONDS * harm
-      - l.fearScale * (FEAR_SECONDS * l.fear + TRAUMA_SECONDS * extraTrauma);
+    // Seconds of race time, priced as every lesson prices them (COSTS); fear and trauma scaled by nerve.
+    const score = -l.ref - COSTS.damage * Math.max(0, l.health - car.health) - COSTS.harm * harm
+      - l.fearScale * (COSTS.fear * l.fear + COSTS.trauma * extraTrauma);
     if (l.learner.lapDone(score)) {
       this.learned.push({ driverId: l.driverId, weights: l.learner.weights.slice(), steps: l.learner.updates, time: this.world.time });
     }

@@ -1,25 +1,46 @@
 import { PHYSICS as P } from '../sim/constants';
 import type { Car } from '../sim/car';
 import type { World } from '../sim/world';
+import { SAFE_HIT } from '../events/injury';
+import { trauma } from '../sim/car';
 
 /**
- * Fear: what makes a driver back off before anything has happened. Real
- * drivers rarely learn not to crash by crashing; they feel the gap closing
- * too fast, the car alongside drifting in, the wall coming at them with the
- * car sliding, and lift. Crashes are rare (so learning from them alone is
- * noise); these moments are constant, so fear is a steady signal.
+ * Fear: a driver's anticipation of getting hurt. Real drivers rarely learn
+ * not to crash by crashing; they feel a hit coming (the gap closing too fast,
+ * the car alongside drifting in, the barrier coming at them) and lift. Crashes
+ * are rare, so learning from them alone is noise; these moments are constant.
  *
- * danger() is 0 when nothing is threatening and rises to 1 as a collision
- * gets imminent (time to contact running out). Only threats the driver makes
- * count: closing on the car ahead, moving across into a car alongside or
- * toward a wall. Being closed on from behind is the other driver's fear.
+ * danger() is how soon a hit is coming times how badly it would hurt, for the
+ * worst threat in sight, 0..1. How soon: time to contact running out (1.2 s
+ * on the car ahead, 0.6 s sideways). How badly: the trauma of an impact at
+ * that closing speed, by the sim's own damage model, against the hit at which
+ * drivers start getting injured (SAFE_HIT); worse than that is all the same
+ * terror. So rubbing at a walking pace is nothing, and a 14 m/s closing is
+ * the most there is to fear. Any cause counts, since self-preservation
+ * doesn't ask whose fault it is: closing on the car ahead, being closed on
+ * from behind (a hit there barely hurts: push damage), cars alongside,
+ * barriers. Fault is elsewhere (damage done to others, the stewards).
  */
 
-/** Seconds to contact at which fear starts: closing on the car ahead, and sideways (cars, walls). */
-const TTC_AHEAD = 1.2;
+/** Seconds to contact at which fear starts: along the track (ahead, behind), and sideways (cars, walls). */
+const TTC_ALONG = 1.2;
 const TTC_SIDE = 0.6;
 /** Only cars this close along the track are considered (m). */
 const RANGE = 40;
+
+/** How badly an impact at this closing speed would hurt (0 nothing .. 1 a hit that could injure); push: hit from behind. */
+export function hurt(closing: number, push = false): number {
+  const thr = P.DAMAGE_SPEED_THRESHOLD;
+  const damage = Math.max(0, closing * closing - thr * thr) * P.DAMAGE_PER_ENERGY * (push ? P.PUSH_DAMAGE_MULT : 1);
+  return Math.min(1, trauma(damage) / INJURING);
+}
+const INJURING = trauma(SAFE_HIT);
+
+/** Imminence of contact: 0 at the window's edge, 1 at contact. */
+function imminence(gap: number, closing: number, window: number, touching: number): number {
+  if (gap <= touching) return 1;
+  return closing > 0 ? Math.max(0, 1 - gap / closing / window) : 0;
+}
 
 export function danger(car: Car, world: World): number {
   if (car.retired || car.cleared) return 0;
@@ -40,22 +61,18 @@ export function danger(car: Car, world: World): number {
     const dd = other.d - car.d;
     const oAlong = other.vx * tx + other.vy * ty;
     const oAcross = other.vx * lx + other.vy * ly;
-    if (ds > 0 && Math.abs(dd) < r2 + 0.5) {
-      // In our path ahead: time until we're on its bumper.
-      const gap = ds - r2;
-      const closing = along - oAlong;
-      if (gap <= 0.3) fear = Math.max(fear, 1);
-      else if (closing > 0) fear = Math.max(fear, 1 - gap / closing / TTC_AHEAD);
+    if (Math.abs(dd) < r2 + 0.5) {
+      // In line, ahead or behind: time until nose meets tail.
+      const closing = ds > 0 ? along - oAlong : oAlong - along;
+      fear = Math.max(fear, imminence(Math.abs(ds) - r2, closing, TTC_ALONG, 0.3) * hurt(closing, ds < 0));
     } else if (Math.abs(ds) < r2 + 1) {
       // Alongside: time until we're door to door.
-      const gap = Math.abs(dd) - r2;
       const closing = (across - oAcross) * Math.sign(dd);
-      if (gap <= 0.2) fear = Math.max(fear, 1);
-      else if (closing > 0) fear = Math.max(fear, 1 - gap / closing / TTC_SIDE);
+      fear = Math.max(fear, imminence(Math.abs(dd) - r2, closing, TTC_SIDE, 0.2) * hurt(closing));
     }
   }
 
-  // Walls: time until we hit one we're moving toward.
+  // Walls: time until we hit one we're moving toward, and how hard.
   for (const wall of track.walls) {
     if (wall.faces === 'both' || !track.inRange(car.s, wall.range)) continue;
     const mid = typeof wall.d === 'number' ? wall.d : track.edgeAt(wall.d, car.s);
@@ -63,13 +80,12 @@ export function danger(car: Car, world: World): number {
     const gap = wall.faces === 'in' ? car.d - P.CAR_RADIUS - (mid + half) : mid - half - (car.d + P.CAR_RADIUS);
     if (gap < -1) continue; // the other side of it
     const toward = wall.faces === 'in' ? -across : across;
-    if (gap <= 0.1 && toward > 0) fear = Math.max(fear, 1);
-    else if (toward > 0) fear = Math.max(fear, 1 - gap / toward / TTC_SIDE);
+    if (toward > 0) fear = Math.max(fear, imminence(gap, toward, TTC_SIDE, 0.1) * hurt(toward));
   }
-  return Math.max(0, fear);
+  return fear;
 }
 
-export { trauma } from '../sim/car';
+export { trauma };
 
 /**
  * Nerve: a driver's appetite for risk, its personality's main dial. 0 is

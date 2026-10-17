@@ -1,6 +1,6 @@
 import { bestValidLap } from '../sim/limits';
 import { DRIVER_LAYERS, NeuralDriver, Team } from '../ai/drivers';
-import { FULL_DAMAGE_PENALTY } from '../ai/es';
+import { COSTS, lapSeconds } from '../ai/costs';
 import { trainSupervised, type Example } from '../ai/network';
 import type { Rng } from '../ai/rng';
 import { TowerSpotter } from '../ai/spotter';
@@ -25,7 +25,6 @@ import { Apprentice, inLapStart, START_SPEED, startInLap, StopTracker, type PitT
 /** Seconds a drill runs: time for the stop, the queue and the merge. */
 const DRILL_SECONDS = 100;
 /** Laps of score per unit of health the rest of the field lost in contact with the student. */
-const HARM_PENALTY = 2;
 
 /** The field around the student (m ahead of it at the start, lane). */
 const PITTERS: Array<[number, number]> = [[40, 2], [90, -1]];
@@ -88,7 +87,8 @@ export class PitTrafficDrill implements Drill<PitTrafficResult> {
     const car = this.student;
     const laps = (car.dist - this.startDist) / this.world.track.length;
     return {
-      fitness: laps - FULL_DAMAGE_PENALTY * (1 - car.health) - this.stop.penalty() - HARM_PENALTY * car.harmDone,
+      // Seconds: the stop's penalties are in laps of the track, converted at its own pace.
+      fitness: (laps - this.stop.penalty()) * lapSeconds(this.world.track) - COSTS.damage * (1 - car.health) - COSTS.harm * car.harmDone,
       laps,
       bestLap: bestValidLap(car),
       health: car.health,
@@ -121,7 +121,7 @@ export function trafficBaseline(track: Track, weights: Float32Array): PitTraffic
   return drill.result();
 }
 
-/** Margin (laps of score) by which a student may trail the script and still pass. */
+/** Margin (laps of the track; times lapSeconds for seconds of score) by which a student may trail the script and still pass. */
 export const TRAFFIC_BASELINE_MARGIN = 0.15;
 
 export const TRAFFIC_APPRENTICE_ROUNDS = 4;

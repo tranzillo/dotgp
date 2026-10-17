@@ -1,5 +1,6 @@
 import { bestValidLap, ValidProgress } from '../sim/limits';
 import { NeuralDriver, Team } from '../ai/drivers';
+import { COSTS, trackPace } from '../ai/costs';
 import { danger, fearScale } from '../ai/fear';
 import type { Rng } from '../ai/rng';
 import { TowerSpotter } from '../ai/spotter';
@@ -65,22 +66,6 @@ export function randomLayout(track: Track, rng: Rng): PackLayout {
   }
   return { frontS: restart ? track.length - 15 : rng.next() * track.length, spots };
 }
-/**
- * Laps of score per unit of damage taken, and done to others. Heavier than
- * practice's: in a race a wreck costs far more than the distance it loses
- * (often the race), and cheap contact made faster but dirtier drivers win.
- */
-const DAMAGE_PENALTY = 8;
-const HARM_PENALTY = 8;
-/**
- * Fear and trauma, for a driver of middling nerve (scaled by fearScale):
- * laps of score per second spent in danger of its own making (about a
- * second of lap time per second, as in race learning), and per unit of
- * trauma beyond the damage itself. Crashes are rare enough in a 40 s drill
- * that scoring them alone is mostly luck; danger is there every drill.
- */
-const FEAR_LAPS = 0.03;
-const TRAUMA_LAPS = 8;
 
 export interface RacecraftResult {
   fitness: number;
@@ -111,6 +96,8 @@ export class RacecraftDrill implements Drill<RacecraftResult> {
   private steps = 0;
   private dangerSeconds = 0;
   private readonly seconds: number;
+  /** The track's own pace (m/s): progress converts to seconds at it. */
+  private readonly pace: number;
   /** Valid-lap scoring: the student's progress on spoilt laps is thrown away. */
   private readonly progress: ValidProgress | null;
 
@@ -122,9 +109,10 @@ export class RacecraftDrill implements Drill<RacecraftResult> {
     track: Track, slot: number, student: Float32Array, pack: (k: number) => Float32Array, layout = restartLayout(track),
     private readonly fear = fearScale(),
     /** Drill length (default the oval drill's 40 s), and whether only valid laps count (road circuits). */
-    opts: { seconds?: number; validLaps?: boolean } = {},
+    opts: { seconds?: number; validLaps?: boolean; pace?: number } = {},
   ) {
     this.seconds = opts.seconds ?? DRILL_SECONDS;
+    this.pace = opts.pace ?? trackPace(track);
     this.world = new World(track, { collisions: true, drafting: true });
     for (let k = 0; k < PACK_SIZE; k++) {
       const car = new Car(k);
@@ -160,10 +148,12 @@ export class RacecraftDrill implements Drill<RacecraftResult> {
 
   result(): RacecraftResult {
     const car = this.student;
-    const laps = (car.dist - this.startDist - (this.progress?.thrownAway ?? 0)) / this.world.track.length;
+    const progress = car.dist - this.startDist - (this.progress?.thrownAway ?? 0);
+    const laps = progress / this.world.track.length;
+    // Seconds of race time, priced as race learning prices them (COSTS).
     return {
-      fitness: laps - DAMAGE_PENALTY * (1 - car.health) - HARM_PENALTY * car.harmDone
-        - this.fear * (FEAR_LAPS * this.dangerSeconds + TRAUMA_LAPS * Math.max(0, car.selfTrauma - car.selfInflicted)),
+      fitness: progress / this.pace - COSTS.damage * (1 - car.health) - COSTS.harm * car.harmDone
+        - this.fear * (COSTS.fear * this.dangerSeconds + COSTS.trauma * Math.max(0, car.selfTrauma - car.selfInflicted)),
       laps,
       bestLap: bestValidLap(car),
       health: car.health,

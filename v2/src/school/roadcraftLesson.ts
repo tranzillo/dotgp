@@ -67,10 +67,10 @@ export function roadcraftLayout(track: Track, straightS: number, rng: Rng): Pack
 
 /** One student's drill in a circuit racecraft round: the same pack around every candidate. */
 export function roadcraftDrill(
-  track: Track, slot: number, candidate: Float32Array, own: number, classmates: Float32Array[], layout: PackLayout, nerve?: number,
+  track: Track, slot: number, candidate: Float32Array, own: number, classmates: Float32Array[], layout: PackLayout, nerve?: number, pace?: number,
 ): RacecraftDrill {
   return new RacecraftDrill(track, slot, candidate, (k) => classmates[(own + k) % classmates.length], layout, fearScale(nerve),
-    { seconds: ROADCRAFT_SECONDS, validLaps: true });
+    { seconds: ROADCRAFT_SECONDS, validLaps: true, pace });
 }
 
 /**

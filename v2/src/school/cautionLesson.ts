@@ -1,6 +1,6 @@
 import { bestValidLap } from '../sim/limits';
 import { DRIVER_LAYERS, NeuralDriver, ScriptedDriver, Team } from '../ai/drivers';
-import { FULL_DAMAGE_PENALTY } from '../ai/es';
+import { COSTS, lapSeconds } from '../ai/costs';
 import { FormationDriver, PaceCarDriver } from '../ai/formation';
 import { inputWeightMask, trainSupervised, type Example } from '../ai/network';
 import { CAUTION_SIZE, OBS_SIZE, PIT_SIZE } from '../ai/observe';
@@ -38,13 +38,16 @@ const SPREAD_SPEED = 32;
 /** Longest a drill can run (s). */
 const DRILL_LIMIT = 320;
 
-/** Score weights: laps per metre of place error, per metre of lane error, per pass under caution, per unit of damage done to others. */
+/**
+ * Score weights, in laps of the track (converted to seconds at its own pace,
+ * lapSeconds): per metre of place error, per metre of lane error, per pass
+ * under caution. Damage taken and done are priced as everywhere (COSTS).
+ */
 const PLACE_ERROR = 1 / 30;
 /** Place error counted per moment, at most (m). */
 const PLACE_CAP = 30;
 const LANE_ERROR = 1 / 4;
 const PASS_PENALTY = 0.5;
-const HARM_PENALTY = 2;
 
 export interface CautionResult {
   fitness: number;
@@ -166,8 +169,8 @@ export class CautionDrill implements Drill<CautionResult> {
     const laneError = this.samples ? this.laneSum / this.samples : 99;
     const laps = this.greenDist / this.world.track.length;
     return {
-      fitness: laps - PLACE_ERROR * placeError - LANE_ERROR * laneError - PASS_PENALTY * this.passes
-        - FULL_DAMAGE_PENALTY * (1 - car.health) - HARM_PENALTY * harm,
+      fitness: (laps - PLACE_ERROR * placeError - LANE_ERROR * laneError - PASS_PENALTY * this.passes) * lapSeconds(this.world.track)
+        - COSTS.damage * (1 - car.health) - COSTS.harm * harm,
       laps,
       bestLap: bestValidLap(car),
       health: car.health,
@@ -313,7 +316,7 @@ export function scriptBaseline(
   return drill.result();
 }
 
-/** Margin (laps of score) by which a student may trail the script and still pass. */
+/** Margin (laps of the track; times lapSeconds for seconds of score) by which a student may trail the script and still pass. */
 export const BASELINE_MARGIN = 0.25;
 
 /** Teach a student caution and restart driving by imitating the formation script. Trains its weights in place. */

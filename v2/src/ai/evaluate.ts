@@ -3,6 +3,7 @@ import { PHYSICS as P } from '../sim/constants';
 import type { Track } from '../sim/track';
 import { placeOnGrid, ROLLING_START_SPEED } from '../sim/grid';
 import { bestValidLap, ValidProgress } from '../sim/limits';
+import { COSTS, trackPace } from './costs';
 import { World } from '../sim/world';
 import { neuralTeam } from './drivers';
 import { Rng } from './rng';
@@ -14,8 +15,10 @@ export interface TrialOptions {
   startS?: number;
   /** Damage multiplier for curriculum training. */
   damageScale?: number;
-  /** Laps of progress a fully wrecked car gives up (default DAMAGE_PENALTY_LAPS). */
-  damagePenaltyLaps?: number;
+  /** Seconds of race time each unit of health lost costs (default COSTS.damage; less only in curricula). */
+  damageSeconds?: number;
+  /** The track's own pace (m/s) progress converts at (default trackPace(track); pass it to save working it out). */
+  pace?: number;
   /**
    * Per-heat seeds for starting conditions (tire wear, fuel load). Heats with
    * the same seed start every grid slot in the same state, so antithetic twins
@@ -35,6 +38,7 @@ const TIRE_RANGE: [number, number] = [0.15, 1];
 const FUEL_RANGE: [number, number] = [8, P.FUEL_CAPACITY];
 
 export interface TrialResult {
+  /** Seconds of race time: progress at the track's pace, less what damage (and spoilt laps) cost. */
   fitness: number;
   distance: number;
   laps: number;
@@ -66,7 +70,8 @@ export class Trial {
   private readonly steps: number;
   private readonly checkEvery: number;
   private readonly lastDist: number[];
-  private readonly damagePenaltyLaps: number | undefined;
+  private readonly damageSeconds: number;
+  private readonly pace: number;
   private readonly validLaps: boolean;
   /** Per car: excursions past the limits, and progress on spoilt laps. */
   private readonly progress: ValidProgress[];
@@ -88,7 +93,8 @@ export class Trial {
     this.steps = Math.round(opts.seconds / P.DT);
     this.checkEvery = Math.round(STALL_WINDOW / P.DT);
     this.lastDist = this.world.cars.map((c) => c.dist);
-    this.damagePenaltyLaps = opts.damagePenaltyLaps;
+    this.damageSeconds = opts.damageSeconds ?? COSTS.damage;
+    this.pace = opts.pace ?? trackPace(track);
     this.validLaps = opts.validLaps ?? false;
     this.progress = this.world.cars.map((c) => new ValidProgress(c));
   }
@@ -145,9 +151,9 @@ export class Trial {
 
   results(): TrialResult[] {
     return this.world.cars.map((car, k) => {
-      const r = scoreCar(car, this.track, 0, this.damagePenaltyLaps);
+      const r = scoreCar(car, this.track, 0, this.damageSeconds, this.pace);
       r.trackLimits = this.progress[k].excursions;
-      if (this.validLaps) r.fitness -= this.progress[k].thrownAway / this.track.length;
+      if (this.validLaps) r.fitness -= this.progress[k].thrownAway / this.pace;
       return r;
     });
   }
@@ -207,13 +213,10 @@ function simulate(world: World, seconds: number): void {
   }
 }
 
-/** Laps of progress a fully wrecked car gives up. Stands in for the long-race cost of damage. */
-const DAMAGE_PENALTY_LAPS = 3;
-
-export function scoreCar(car: Car, track: Track, startDist = 0, damagePenaltyLaps = DAMAGE_PENALTY_LAPS): TrialResult {
+/** A car's trial in seconds of race time: progress at the track's own pace, less what its damage costs. */
+export function scoreCar(car: Car, track: Track, startDist = 0, damageSeconds: number = COSTS.damage, pace = trackPace(track)): TrialResult {
   const distance = car.dist - startDist;
-  // Progress in laps, so tracks of different length weigh the same.
-  const fitness = distance / track.length - (1 - car.health) * damagePenaltyLaps;
+  const fitness = distance / pace - (1 - car.health) * damageSeconds;
   const total = car.signature.reduce((a, b) => a + b, 0) || 1;
   return {
     fitness,
