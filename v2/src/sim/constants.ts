@@ -93,16 +93,19 @@ export const PHYSICS = {
  * pavement beyond the track limits.
  */
 export const SURFACES = {
-  track: { grip: 1.0, rolling: 0.015, bump: 0 },
-  apron: { grip: 0.9, rolling: 0.015, bump: 0 },
-  pit: { grip: 0.9, rolling: 0.015, bump: 0 },
-  garage: { grip: 0.9, rolling: 0.02, bump: 0 },
-  road: { grip: 0.85, rolling: 0.02, bump: 0 },
-  grass: { grip: 0.45, rolling: 0.2, bump: 0.06 },
-  kerb: { grip: 0.9, rolling: 0.02, bump: 0.025 },
-  runoff: { grip: 0.9, rolling: 0.015, bump: 0 },
-  gravel: { grip: 0.35, rolling: 0.7, bump: 0.08 },
+  track: { grip: 1.0, rolling: 0.015, bump: 0, plough: 0 },
+  apron: { grip: 0.9, rolling: 0.015, bump: 0, plough: 0 },
+  pit: { grip: 0.9, rolling: 0.015, bump: 0, plough: 0 },
+  garage: { grip: 0.9, rolling: 0.02, bump: 0, plough: 0 },
+  road: { grip: 0.85, rolling: 0.02, bump: 0, plough: 0 },
+  grass: { grip: 0.45, rolling: 0.2, bump: 0.06, plough: 0 },
+  kerb: { grip: 0.9, rolling: 0.02, bump: 0.025, plough: 0 },
+  runoff: { grip: 0.9, rolling: 0.015, bump: 0, plough: 0 },
+  // Gravel's drag is ploughing: huge at speed, small at walking pace (rolling plus plough, by speed, below).
+  gravel: { grip: 0.35, rolling: 0.12, bump: 0.08, plough: 0.6 },
 } as const;
+/** Speed (m/s) at which gravel's ploughing reaches its full drag: a car can crawl out of a trap. */
+export const PLOUGH_SPEED = 20;
 /** Pit road and pit service. */
 export const PIT_SERVICE = {
   SPEED_LIMIT: 22, // m/s (~80 km/h); the pit limiter cuts drive above this on pit road

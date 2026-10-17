@@ -22,7 +22,7 @@ import { generateLayout, hashSeed } from '../trackgen';
  */
 
 /** Rounds of the apprenticeship (the first with the teacher driving), and per round: circuits, lanes, seconds each. */
-export const ROAD_APPRENTICE_ROUNDS = 4;
+export const ROAD_APPRENTICE_ROUNDS = 12;
 const CIRCUITS = 6;
 const LANES = [-2, 0, 2];
 const SECONDS = 120;

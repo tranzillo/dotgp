@@ -1,4 +1,4 @@
-import { BUMP_SCALE, G, PHYSICS as P, PIT_SERVICE, SURFACES } from './constants';
+import { BUMP_SCALE, G, PHYSICS as P, PIT_SERVICE, PLOUGH_SPEED, SURFACES } from './constants';
 import { valueNoise } from './noise';
 import type { Surface, Track } from './track';
 
@@ -293,7 +293,8 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1): void
   // --- Resistance ---
   const cda = P.CDA * (1 + P.AERO_DAMAGE_DRAG * car.damageAero) * car.draftFactor;
   const dragAcc = (0.5 * P.AIR_DENSITY * cda * speed * speed) / car.mass;
-  const rolling = surface.rolling * G;
+  // Rolling resistance, plus ploughing on loose ground (it grows with speed: a car can still crawl out).
+  const rolling = (surface.rolling + surface.plough * Math.min(1, speed / PLOUGH_SPEED)) * G;
   const resist = Math.min(speed / dt, dragAcc + rolling);
 
   // --- Integrate (semi-implicit Euler) ---
