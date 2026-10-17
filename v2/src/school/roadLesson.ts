@@ -26,6 +26,12 @@ export const ROAD_APPRENTICE_ROUNDS = 12;
 const CIRCUITS = 6;
 const LANES = [-2, 0, 2];
 const SECONDS = 120;
+/**
+ * Passes over everything recorded, per round after the first. 4 drives as
+ * well as 12 did after a class (lab, 2026-10-17: three seeds, solo on held-out
+ * club and GP circuits) at a third of the training.
+ */
+export const ROAD_APPRENTICE_EPOCHS = 4;
 /** Share of the decisions recorded. */
 const SAMPLE = 0.3;
 
@@ -93,8 +99,21 @@ function apprenticeCircuits(seed: number): Track[] {
   })));
 }
 
+export interface ApprenticeOptions {
+  rounds?: number;
+  /**
+   * Moments trained on per round after the first: a fresh random sample of
+   * everything recorded so far, so training stops growing with the rounds.
+   * Default: all of them (each round's training is longer than the last).
+   */
+  maxExamples?: number;
+  /** Passes over each round's training set after the first (default ROAD_APPRENTICE_EPOCHS). */
+  epochs?: number;
+}
+
 /** Teach a road-course skill (weights, trained in place) by imitating the scripted line follower on circuits. */
-export function apprenticeRoadCourses(weights: Float32Array, seed: number, rounds = ROAD_APPRENTICE_ROUNDS): { examples: number; loss: number } {
+export function apprenticeRoadCourses(weights: Float32Array, seed: number, opts: ApprenticeOptions = {}): { examples: number; loss: number } {
+  const { rounds = ROAD_APPRENTICE_ROUNDS, maxExamples = Infinity, epochs = ROAD_APPRENTICE_EPOCHS } = opts;
   const rng = new Rng(seed);
   const tracks = apprenticeCircuits(seed);
   const examples: Example[] = [];
@@ -114,7 +133,18 @@ export function apprenticeRoadCourses(weights: Float32Array, seed: number, round
         for (let k = 0; k < SECONDS / P.DT && !car.retired; k++) world.step();
       }
     }
-    loss = trainSupervised(DRIVER_LAYERS, weights, examples, round === 0 ? 30 : 12, 0.01, () => rng.next());
+    const set = round === 0 || examples.length <= maxExamples ? examples : sample(examples, maxExamples, rng);
+    loss = trainSupervised(DRIVER_LAYERS, weights, set, round === 0 ? 30 : epochs, 0.01, () => rng.next());
   }
   return { examples: examples.length, loss };
+}
+
+/** n of the items, drawn at random without replacement. */
+function sample<T>(items: T[], n: number, rng: Rng): T[] {
+  const pool = items.slice();
+  for (let i = 0; i < n; i++) {
+    const j = i + rng.int(pool.length - i);
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, n);
 }

@@ -14,10 +14,10 @@ import { isMainThread, parentPort, Worker, workerData } from 'node:worker_thread
 import { Trial, type TrialOptions, type TrialResult } from '../src/ai/evaluate';
 import type { TrackLayout } from '../src/sim/layout';
 import { Track } from '../src/sim/track';
-import { apprenticeRoadCourses } from '../src/school/roadLesson';
+import { apprenticeRoadCourses, type ApprenticeOptions } from '../src/school/roadLesson';
 
 type Task =
-  | { kind: 'apprenticeRoad'; weights: Float32Array; seed: number }
+  | { kind: 'apprenticeRoad'; weights: Float32Array; seed: number; opts?: ApprenticeOptions }
   | { kind: 'drive'; layout: TrackLayout; genomes: Float32Array[]; opts: TrialOptions }
   | { kind: 'finish'; steps: number };
 type Reply = { id: number; ok: true; value: unknown } | { id: number; ok: false; error: string };
@@ -67,8 +67,8 @@ export class SchoolPool {
   }
 
   /** A road-course skill's apprenticeship (apprenticeRoadCourses); resolves to the trained weights. */
-  apprenticeRoad(weights: Float32Array, seed: number): Promise<{ weights: Float32Array; examples: number; loss: number }> {
-    return this.any({ kind: 'apprenticeRoad', weights, seed });
+  apprenticeRoad(weights: Float32Array, seed: number, opts?: ApprenticeOptions): Promise<{ weights: Float32Array; examples: number; loss: number }> {
+    return this.any({ kind: 'apprenticeRoad', weights, seed, opts });
   }
 
   /**
@@ -100,7 +100,7 @@ if (!isMainThread && workerData?.schoolPool) {
     try {
       let value: unknown;
       if (task.kind === 'apprenticeRoad') {
-        const { examples, loss } = apprenticeRoadCourses(task.weights, task.seed);
+        const { examples, loss } = apprenticeRoadCourses(task.weights, task.seed, task.opts);
         value = { weights: task.weights, examples, loss };
       } else if (task.kind === 'drive') {
         trial = new Trial(new Track(task.layout), task.genomes, task.opts);

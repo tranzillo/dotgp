@@ -8,6 +8,7 @@
  * thread). Road-course apprenticeships run one per thread, and rounds of
  * ghost laps (road courses, rookie school, track variety) are split across
  * them; the results are the same as on one thread.
+ * --apprentice-epochs: passes over the recorded moments per apprenticeship round (road courses; default ROAD_APPRENTICE_EPOCHS).
  *
  * Drivers keep their licenses (caution, pit) from the input file; the output
  * records the ones they earned. Lessons that end (licenses) stop when everyone
@@ -33,6 +34,7 @@ const maxRounds = Number(args.get('rounds') ?? 100);
 const summaryFile = args.get('summary');
 const seed = Number(args.get('seed') ?? 7);
 const jobs = Math.max(1, Number(args.get('jobs') ?? cpus().length - 1));
+const apprenticeship = args.has('apprentice-epochs') ? { epochs: Number(args.get('apprentice-epochs')) } : undefined;
 
 interface DriverEntry {
   weights: number[];
@@ -57,9 +59,9 @@ const students = file.drivers.map((d, k) => ({
 }));
 // New road-course skills study the line follower one per thread (the classroom would do them one after another).
 const apprenticed = pool && road
-  ? await Promise.all(students.map((s) => (s.rounds > 0 ? undefined : pool.apprenticeRoad(s.weights.slice(), hashSeed(seed, s.id)))))
+  ? await Promise.all(students.map((s) => (s.rounds > 0 ? undefined : pool.apprenticeRoad(s.weights.slice(), hashSeed(seed, s.id), apprenticeship))))
   : undefined;
-const c = new Classroom({ lesson, presets: Object.keys(PRESETS).map(presetLayout), seed, students, apprenticed });
+const c = new Classroom({ lesson, presets: Object.keys(PRESETS).map(presetLayout), seed, students, apprenticed, apprenticeship });
 console.log(`${lesson}: ${file.drivers.length} students, apprenticeship ${((Date.now() - t0) / 1000).toFixed(0)} s, ${jobs} thread${jobs > 1 ? 's' : ''}`);
 c.takeRadio();
 while (c.round < maxRounds && !c.finished) {

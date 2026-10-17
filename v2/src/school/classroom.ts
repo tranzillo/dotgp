@@ -5,7 +5,7 @@ import {
 import { Trial, type TrialOptions, type TrialResult } from '../ai/evaluate';
 import { apprenticePitStops, cleanStop, PitTrial, REFRESHER_ROUNDS, type PitTrialResult } from './pitLesson';
 import { DrillTrial, racingKept } from './drill';
-import { apprenticeRoadCourses, roadLicenseTest } from './roadLesson';
+import { apprenticeRoadCourses, roadLicenseTest, type ApprenticeOptions } from './roadLesson';
 import { PACK_SIZE, RacecraftTrial, randomLayout, type RacecraftResult } from './racecraftLesson';
 import { apprenticePitTraffic, cleanTrafficStop, PitTrafficTrial, TRAFFIC_BASELINE_MARGIN, trafficBaseline, type PitTrafficResult } from './pitTrafficLesson';
 import { CAUTION_WEIGHTS, apprenticeCautions, BASELINE_MARGIN, CautionTrial, DRILL_FIELD, scriptBaseline, type CautionResult } from './cautionLesson';
@@ -60,7 +60,7 @@ export const LESSONS: Record<LessonId, Lesson> = {
   circuits: {
     id: 'circuits', name: 'Road courses', seconds: 150, pairs: 8, learningRate: 0.02,
     eligible: (d) => d.licensed && !d.roadLicensed, audience: "licensed drivers without a road-course license",
-    description: "Learn road courses: flat corners from sweepers to hairpins, braking hard off long straights. Trains the driver's road-course skill (a second network used only on circuits, starting as a copy of its oval driving), so oval racing is never touched. A new skill first copies the line follower's laps of circuits, then practises. A new club circuit every round, starting on a random straight. The corners start no tighter than an oval's and the barriers soft; each round the class drives cleanly the corners tighten and the barriers harden, down to real hairpins. The license: a test on three new circuits from the line, a clean lap on each.",
+    description: "Learn road courses: flat corners from sweepers to hairpins, braking hard off long straights. Trains the driver's road-course skill (a second network used only on circuits, starting as a copy of its oval driving), so oval racing is never touched. A new skill first copies the line follower's laps of circuits, then practises at full tightness (real hairpins, full barriers). A new club circuit every round, starting on a random straight. Skills from before the apprenticeship carry on with the old curriculum: corners no tighter than an oval's and soft barriers at first, tightening and hardening each round the class drives cleanly. The license: a test on three new circuits from the line, a clean lap on each.",
   },
   racecraft: {
     id: 'racecraft', name: 'Racecraft', seconds: 0, pairs: 8, learningRate: 0.01,
@@ -130,6 +130,8 @@ export interface ClassSpec {
    * the skill's weights after it and the moments studied. Students without one study here.
    */
   apprenticed?: Array<{ weights: Float32Array; examples: number } | undefined>;
+  /** Road courses: how new skills study the line follower (default: the lesson's usual apprenticeship). */
+  apprenticeship?: ApprenticeOptions;
 }
 
 /**
@@ -286,8 +288,12 @@ export class Classroom {
         if (s.rounds > 0) continue;
         const done = spec.apprenticed?.[k];
         if (done) s.weights.set(done.weights);
-        const { examples } = done ?? apprenticeRoadCourses(s.weights, hashSeed(this.seed, s.id));
+        const { examples } = done ?? apprenticeRoadCourses(s.weights, hashSeed(this.seed, s.id), spec.apprenticeship);
         this.say(`${s.name} studied the line follower's laps of road circuits (${examples} moments)`);
+        // The line follower drives real hairpins, so its apprentice starts at full tightness. Practising first on
+        // gentle corners and soft barriers made apprenticed drivers worse on GP circuits (lab, 2026-10-17: solo
+        // crashes 6-7% -> 13-15% over three seeds), and starting tight did better on club circuits (24% -> 18%).
+        s.roadRadius = ROAD_FULL_RADIUS;
       }
       // Carry on where the class got to: the least advanced student's stage.
       this.roadRadius = Math.max(ROAD_FULL_RADIUS, ...this.students.map((s) => s.roadRadius ?? ROAD_START_RADIUS));
