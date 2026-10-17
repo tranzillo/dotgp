@@ -87,12 +87,18 @@ describe('road circuit surfaces', () => {
     expect(lost('grass')).toBeGreaterThan(2 * lost('track'));
   });
 
-  it('kerbs and run-off brake nearly like the track; gravel and grass far worse', () => {
+  it('kerbs brake nearly like the track, run-off less well, grass worse', () => {
     const braked = (surface: Parameters<typeof strip>[0]) => 50 - run(strip(surface), -1).speed;
     expect(braked('kerb')).toBeGreaterThan(0.85 * braked('track'));
-    expect(braked('runoff')).toBeGreaterThan(0.85 * braked('track'));
+    expect(braked('runoff')).toBeLessThan(braked('track'));
+    expect(braked('runoff')).toBeGreaterThan(braked('grass'));
     // Braking on loose ground: less grip, though the drag helps (gravel's drag more than makes up for it).
     expect(braked('grass')).toBeLessThan(braked('track'));
+  });
+
+  it('running wide onto run-off costs speed: it is safe, not free', () => {
+    const lost = (surface: Parameters<typeof strip>[0]) => 50 - run(strip(surface), 0).speed;
+    expect(lost('runoff')).toBeGreaterThan(lost('track') + 0.3); // ~0.25 m/s² more drag (grip, 80%, costs more at a traction-limited exit)
   });
 
   it('kerbs unsettle a car; run-off does not', () => {

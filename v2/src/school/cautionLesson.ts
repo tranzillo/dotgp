@@ -1,3 +1,4 @@
+import { bestValidLap } from '../sim/limits';
 import { DRIVER_LAYERS, NeuralDriver, ScriptedDriver, Team } from '../ai/drivers';
 import { FULL_DAMAGE_PENALTY } from '../ai/es';
 import { FormationDriver, PaceCarDriver } from '../ai/formation';
@@ -168,7 +169,7 @@ export class CautionDrill implements Drill<CautionResult> {
       fitness: laps - PLACE_ERROR * placeError - LANE_ERROR * laneError - PASS_PENALTY * this.passes
         - FULL_DAMAGE_PENALTY * (1 - car.health) - HARM_PENALTY * harm,
       laps,
-      bestLap: car.lapTimes.length ? Math.min(...car.lapTimes) : Infinity,
+      bestLap: bestValidLap(car),
       health: car.health,
       placeError,
       laneError,

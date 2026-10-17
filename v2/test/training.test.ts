@@ -7,7 +7,7 @@ import { Rng } from '../src/ai/rng';
 import { Classroom, type ClassSpec, type GhostRunner } from '../src/school/classroom';
 import type { TrackLayout } from '../src/sim/layout';
 import { Track } from '../src/sim/track';
-import { PRESETS, presetLayout } from '../src/trackgen';
+import { generateLayout, PRESETS, presetLayout } from '../src/trackgen';
 
 /** Headless training's speed-ups must not change what drivers learn. */
 
@@ -40,6 +40,32 @@ describe('headless training', () => {
     expect(b.map((r) => [r.fitness, r.laps, r.health])).toEqual(a.map((r) => [r.fitness, r.laps, r.health]));
     split.students.forEach((s, k) => expect(Array.from(s.weights)).toEqual(Array.from(one.students[k].weights)));
     expect(split.time).toBeCloseTo(one.time, 9);
+  });
+
+  it('scores valid laps only when asked: a lap past the track limits is thrown away', () => {
+    const track = new Track(generateLayout({ type: 'circuit', seed: 3, variant: 'club' }));
+    const genomes = [0, 1, 2, 3, 4, 5].map((k) => initialWeights(new Rng(k + 1)));
+    const run = (validLaps: boolean) => { const t = new Trial(track, genomes, { seconds: 60, validLaps }); while (!t.done) t.step(); return t.results(); };
+    const all = run(false), valid = run(true);
+    expect(valid.some((r) => r.trackLimits > 0)).toBe(true);
+    valid.forEach((r, k) => {
+      expect(r.trackLimits).toBe(all[k].trackLimits);
+      if (r.trackLimits === 0) expect(r.fitness).toBe(all[k].fitness);
+      else expect(r.fitness).toBeLessThan(all[k].fitness);
+    });
+  });
+
+  it('keeps road-course students practising after their license', () => {
+    const c = new Classroom({
+      lesson: 'circuits', presets: Object.keys(PRESETS).map(presetLayout), seed: 5,
+      students: [0, 1].map((k) => ({
+        key: k, id: `D${k}`, name: `D${k}`, weights: initialWeights(new Rng(k + 1)), rounds: 1, licensed: true, roadLicensed: true, roadRadius: 13,
+      })),
+    });
+    expect(c.finished).toBe(false);
+    const before = c.students[0].weights.slice();
+    while (c.round < 1) c.step();
+    expect(c.students[0].weights.some((w, i) => w !== before[i])).toBe(true);
   });
 
   it('trains supervised exactly as the plain textbook loop does, zero inputs and all', () => {

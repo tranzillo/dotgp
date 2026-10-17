@@ -36,8 +36,8 @@ const KINDS: Record<string, (k: number) => Track> = {
 export interface SoloReport {
   files: string[];
   seconds: number;
-  /** Per file, per kind: mean distance (m), share of drives that crashed out, and mean laps. */
-  results: Array<Record<string, { distance: number; crashed: number; laps: number }>>;
+  /** Per file, per kind: mean distance (m), share of drives that crashed out, mean laps, valid laps (within the track limits), excursions. */
+  results: Array<Record<string, { distance: number; crashed: number; laps: number; validLaps: number; trackLimits: number }>>;
 }
 
 const report: SoloReport = { files, seconds, results: [] };
@@ -49,25 +49,28 @@ for (const file of files) {
     // Road circuits are driven by the road-course skill where a driver has one, as in races.
     const road = kind === 'club' || kind === 'gp' || kind === 'club40';
     const genomes = drivers.map((d) => adaptWeights(Float32Array.from(road ? d.roadCourse?.weights ?? d.weights : d.weights)));
-    let distance = 0, crashed = 0, laps = 0, n = 0;
+    let distance = 0, crashed = 0, laps = 0, validLaps = 0, trackLimits = 0, n = 0;
     for (const track of list) {
       const trial = new Trial(track, genomes, { seconds });
       while (!trial.done) trial.step();
-      for (const car of trial.world.cars) {
+      const results = trial.results();
+      trial.world.cars.forEach((car, k) => {
         distance += Math.max(0, car.dist + 20);
         crashed += car.retired ? 1 : 0;
         laps += car.lapTimes.length;
+        validLaps += car.lapValid.filter(Boolean).length;
+        trackLimits += results[k].trackLimits;
         n++;
-      }
+      });
     }
-    out[kind] = { distance: distance / n, crashed: crashed / n, laps: laps / n };
+    out[kind] = { distance: distance / n, crashed: crashed / n, laps: laps / n, validLaps: validLaps / n, trackLimits: trackLimits / n };
   }
   report.results.push(out);
 }
 
 console.log(`solo, ${seconds} s from the line, ${perKind} tracks of each kind; ${files.map((f, i) => `${'AB'[i] ?? i}: ${f.split(/[\\/]/).pop()}`).join(', ')}`);
 for (const kind of Object.keys(KINDS)) {
-  const cells = report.results.map((r) => `${(r[kind].distance / 1000).toFixed(2)} km, ${(100 * r[kind].crashed).toFixed(0)}% crashed`);
+  const cells = report.results.map((r) => `${(r[kind].distance / 1000).toFixed(2)} km, ${(100 * r[kind].crashed).toFixed(0)}% crashed, ${r[kind].validLaps.toFixed(2)}/${r[kind].laps.toFixed(2)} laps valid`);
   console.log(`  ${kind.padEnd(9)} ${cells.join('   |   ')}`);
 }
 const json = args.get('json');

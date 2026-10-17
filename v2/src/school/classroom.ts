@@ -7,6 +7,7 @@ import { Trial, type TrialOptions, type TrialResult } from '../ai/evaluate';
 import { apprenticePitStops, cleanStop, PitTrial, REFRESHER_ROUNDS, type PitTrialResult } from './pitLesson';
 import { DrillTrial, racingKept } from './drill';
 import { apprenticeRoadCourses, ROAD_WEIGHTS, roadLicenseTest, type ApprenticeOptions } from './roadLesson';
+import { bestValidLap } from '../sim/limits';
 import { PACK_SIZE, RacecraftTrial, randomLayout, type RacecraftResult } from './racecraftLesson';
 import { apprenticePitTraffic, cleanTrafficStop, PitTrafficTrial, TRAFFIC_BASELINE_MARGIN, trafficBaseline, type PitTrafficResult } from './pitTrafficLesson';
 import { CAUTION_WEIGHTS, apprenticeCautions, BASELINE_MARGIN, CautionTrial, DRILL_FIELD, scriptBaseline, type CautionResult } from './cautionLesson';
@@ -47,6 +48,8 @@ export interface Lesson {
   withdrawn?: string;
   /** Licensed students keep practising, and the class runs until stopped: the license marks a stage, not the end. */
   practisesOn?: boolean;
+  /** Practice scores progress on valid laps only (a lap past the track limits is thrown away). */
+  validLaps?: boolean;
 }
 
 export const LESSONS: Record<LessonId, Lesson> = {
@@ -65,8 +68,12 @@ export const LESSONS: Record<LessonId, Lesson> = {
     id: 'circuits', name: 'Road courses', seconds: 150, pairs: 8, learningRate: 0.002, trains: ROAD_WEIGHTS,
     // Practice keeps improving road-course skills long after the license (lab, 2026-10-17), so it doesn't stop there.
     practisesOn: true,
+    // Valid laps are the measure: a lap past the track limits doesn't count. In races this cut track limits by
+    // 60% and all but ended corner cutting, for laps ~2% slower (lab, 2026-10-17); slower run-off alone changed
+    // nothing the drivers learned.
+    validLaps: true,
     eligible: (d) => d.licensed, audience: 'licensed drivers',
-    description: "Learn road courses: flat corners from sweepers to hairpins, braking hard off long straights. Trains the driver's road-course skill (a second network used only on circuits, starting as a copy of its oval driving), so oval racing is never touched. A new skill first copies the line follower's laps of circuits, then practises at full tightness (real hairpins, full barriers). A new club circuit every round, starting on a random straight. Skills from before the apprenticeship carry on with the old curriculum: corners no tighter than an oval's and soft barriers at first, tightening and hardening each round the class drives cleanly. The license (a test on three new circuits from the line, a clean lap on each) marks a stage: practice carries on after it, and the drivers keep getting better. Runs until stopped.",
+    description: "Learn road courses: flat corners from sweepers to hairpins, braking hard off long straights. Trains the driver's road-course skill (a second network used only on circuits, starting as a copy of its oval driving), so oval racing is never touched. A new skill first copies the line follower's laps of circuits, then practises at full tightness (real hairpins, full barriers). A new club circuit every round, starting on a random straight. Skills from before the apprenticeship carry on with the old curriculum: corners no tighter than an oval's and soft barriers at first, tightening and hardening each round the class drives cleanly. Running past the track limits invalidates the lap, and only valid laps count. The license (a test on three new circuits from the line, a valid lap on each) marks a stage: practice carries on after it, and the drivers keep getting better. Runs until stopped.",
   },
   racecraft: {
     id: 'racecraft', name: 'Racecraft', seconds: 0, pairs: 8, learningRate: 0.01,
@@ -141,7 +148,7 @@ export interface ClassSpec {
   /** Students keep practising after earning the lesson's license, and the class runs until stopped. */
   practiseOn?: boolean;
   /** Practice settings other than the lesson's own (experiments). */
-  practice?: Partial<Pick<Lesson, 'learningRate' | 'pairs' | 'seconds' | 'trains'>>;
+  practice?: Partial<Pick<Lesson, 'learningRate' | 'pairs' | 'seconds' | 'trains' | 'validLaps'>>;
 }
 
 /**
@@ -516,6 +523,7 @@ export class Classroom {
         startS: lesson.id === 'circuits' ? straightStart(this.track, this.rng) : undefined,
         damageScale: this.walls,
         damagePenaltyLaps: lesson.id === 'rookie' ? rookieDamagePenalty(lessons, DEFAULT_ES.curriculumRounds) : FULL_DAMAGE_PENALTY,
+        validLaps: lesson.validLaps,
       };
       this.trial = new Trial(this.track, candidates, opts);
       this.ghostRound = { genomes: candidates, opts };
@@ -699,7 +707,7 @@ export class Classroom {
         surface: car.surface, groove: car.groove, skid: car.skid,
         tireLife: car.tireLife, fuel: car.fuel, health: car.health,
         pitPhase: car.pit.phase, pitTimer: car.pit.timer, stops: car.pit.stops,
-        laps: car.lapsCompleted, bestLap: car.lapTimes.length ? Math.min(...car.lapTimes) : null,
+        laps: car.lapsCompleted, bestLap: Number.isFinite(bestValidLap(car)) ? bestValidLap(car) : null,
         penalty: null, timePenalty: 0, disqualified: false,
       };
     });

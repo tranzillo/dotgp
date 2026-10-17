@@ -1,4 +1,5 @@
 import type { Flag } from '../sim/raceControl';
+import { bestValidLap } from '../sim/limits';
 import { NeuralDriver, Team } from '../ai/drivers';
 import { danger, fearScale } from '../ai/fear';
 import { PaceCarDriver, formationTraits } from '../ai/formation';
@@ -424,7 +425,7 @@ export class Session {
       return {
         key: e.key, driver: e.driver.id, spotter: e.spotter.id, chief: e.chief.id,
         position: st.position, status: st.status, laps: st.laps || car.lapsCompleted, time: st.time,
-        bestLap: laps.length ? Math.min(...laps) : null,
+        bestLap: Number.isFinite(bestValidLap(car)) ? bestValidLap(car) : null, // laps past the track limits don't count
         avgLap: laps.length ? laps.reduce((a, b) => a + b, 0) / laps.length : null,
         stops: car.pit.stops, wallHits: car.wallHits, health: car.health,
         worstHit: car.worstHit?.severity ?? 0, worstHitSpeed: car.worstHit?.speed ?? 0, worstHitTime: this.worstHitAt.get(car.id)?.time ?? null,
@@ -446,7 +447,7 @@ export class Session {
       surface: car.surface, groove: car.groove, skid: car.skid,
       tireLife: car.tireLife, fuel: car.fuel, health: car.health,
       pitPhase: car.pit.phase, pitTimer: car.pit.timer, stops: car.pit.stops,
-      laps: car.lapsCompleted, bestLap: car.lapTimes.length ? Math.min(...car.lapTimes) : null,
+      laps: car.lapsCompleted, bestLap: Number.isFinite(bestValidLap(car)) ? bestValidLap(car) : null,
       penalty: car.pendingPenalty?.kind ?? null, timePenalty: car.timePenalty, disqualified: car.disqualified,
     };
   }
@@ -470,6 +471,7 @@ export class Session {
         const fresh = new Car(car.id, car.color);
         this.rollingStart(fresh);
         fresh.lapTimes.push(...car.lapTimes);
+        fresh.lapValid.push(...car.lapValid);
         this.world.replaceCar(k, fresh);
         return;
       }

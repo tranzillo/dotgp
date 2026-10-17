@@ -87,6 +87,7 @@ export class Race {
     this.startTime = this.world.time;
     for (const car of this.world.cars) {
       car.lapTimes.length = 0;
+      car.lapValid.length = 0;
       car.lapStartTime = -1;
     }
   }
@@ -98,6 +99,7 @@ export class Race {
     this.startTime = leader.lapStartTime;
     for (const car of this.world.cars) {
       car.lapTimes.length = 0;
+      car.lapValid.length = 0;
       if (car !== leader) car.lapStartTime = -1;
     }
   }

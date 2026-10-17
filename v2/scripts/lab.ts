@@ -17,6 +17,7 @@
  *       { "kind": "season", "in": "trained.json", "out": "seasoned.json", "races": 9, "nerve": 0.5 },
  *       { "kind": "bench", "a": "$house", "b": "trained.json", "seeds": 8 },
  *       { "kind": "solo", "a": "$house", "b": "trained.json" },        (solo driving on circuits and mirrored ovals)
+ *       { "kind": "circuits", "a": "$house", "b": "trained.json" },    (races on road circuits: 6 circuits x 3 seeds by default)
  *       { "kind": "promote", "candidate": "trained.json" } ] }
  * File names are in the experiment's results folder; $house is the house drivers (lab/house.json), $bundled
  * the drivers shipped with the commit. Promotion replaces the house drivers only if the last benchmark says
@@ -45,6 +46,7 @@ type Step =
   | { kind: 'season'; in: string; out: string; races?: number; nerve?: number; tracks?: string }
   | { kind: 'bench'; a: string; b?: string; seeds?: number; tracks?: string; laps?: number }
   | { kind: 'solo'; a: string; b?: string; tracks?: number; seconds?: number }
+  | { kind: 'circuits'; a: string; b?: string; tracks?: number; seeds?: number }
   | { kind: 'promote'; candidate: string };
 interface Spec { note?: string; steps: Step[] }
 
@@ -164,6 +166,13 @@ async function runExperiment(file: string): Promise<void> {
           '--seconds', String(step.seconds ?? 120), '--json', json], log);
         const r = JSON.parse(readFileSync(json, 'utf8')) as SoloReport;
         notes.push(`solo ${Object.keys(r.results[0]).map((k) => `${k} ${r.results.map((x) => `${(100 * x[k].crashed).toFixed(0)}%`).join('→')} crashed`).join(', ')}`);
+      } else if (step.kind === 'circuits') {
+        const json = join(dir, 'circuits.json');
+        await runScript('circuits', [path(step.a), ...(step.b ? [path(step.b)] : []), '--tracks', String(step.tracks ?? 6),
+          '--seeds', String(step.seeds ?? 3), '--jobs', String(BENCH_JOBS), '--json', json], log);
+        const m = JSON.parse(readFileSync(json, 'utf8')).metrics as Record<string, { values: Array<{ mean: number }>; verdict?: string }>;
+        notes.push(`circuits ${(['retirements', 'trackLimits', 'bestLapPerKm'] as const).map((k) =>
+          `${k} ${m[k].values.map((v) => v.mean.toFixed(1)).join('→')}${m[k].verdict ? ` (${m[k].verdict})` : ''}`).join(', ')}`);
       } else if (step.kind === 'promote') {
         notes.push(promote(path(step.candidate), bench, name));
       }

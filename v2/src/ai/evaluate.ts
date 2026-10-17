@@ -2,6 +2,7 @@ import { Car, SIGNATURE_BINS } from '../sim/car';
 import { PHYSICS as P } from '../sim/constants';
 import type { Track } from '../sim/track';
 import { placeOnGrid, ROLLING_START_SPEED } from '../sim/grid';
+import { bestValidLap, pastTrackLimits } from '../sim/limits';
 import { World } from '../sim/world';
 import { neuralTeam } from './drivers';
 import { Rng } from './rng';
@@ -21,6 +22,12 @@ export interface TrialOptions {
    * stay comparable. Omit for fresh tires and a full tank.
    */
   conditionSeeds?: number[];
+  /**
+   * Score progress on valid laps only: a lap that goes past the track limits
+   * is thrown away (from the line, or the trial's start, to the line), as its
+   * lap time would be. Default: all progress counts.
+   */
+  validLaps?: boolean;
 }
 
 /** Worn-tire and fuel-load range drivers practise with, so stints don't surprise them. */
@@ -31,6 +38,7 @@ export interface TrialResult {
   fitness: number;
   distance: number;
   laps: number;
+  /** Fastest valid lap (laps past the track limits don't count). */
   bestLap: number;
   wallHits: number;
   health: number;
@@ -38,7 +46,10 @@ export interface TrialResult {
   retired: boolean;
   /** Normalised share of tire work by direction relative to travel. */
   signature: number[];
+  /** Excursions past the track limits (ghost trials count them; races leave them to race control). */
+  trackLimits: number;
 }
+
 
 const STALL_WINDOW = 8; // seconds
 const STALL_DISTANCE = 10; // metres
@@ -56,6 +67,15 @@ export class Trial {
   private readonly checkEvery: number;
   private readonly lastDist: number[];
   private readonly damagePenaltyLaps: number | undefined;
+  private readonly validLaps: boolean;
+  /** Per car: past the limits now, and excursions so far. */
+  private readonly off: boolean[];
+  private readonly excursions: number[];
+  /** Per car (valid-lap scoring): where the lap in progress began, whether it's been invalidated, progress thrown away. */
+  private readonly lapFrom: number[];
+  private readonly lapSpoilt: boolean[];
+  private readonly thrown: number[];
+  private readonly nextLine: number[];
   private stepIndex = 0;
   private allStalled = false;
 
@@ -75,6 +95,13 @@ export class Trial {
     this.checkEvery = Math.round(STALL_WINDOW / P.DT);
     this.lastDist = this.world.cars.map((c) => c.dist);
     this.damagePenaltyLaps = opts.damagePenaltyLaps;
+    this.validLaps = opts.validLaps ?? false;
+    this.off = this.world.cars.map(() => false);
+    this.excursions = this.world.cars.map(() => 0);
+    this.lapFrom = this.world.cars.map((c) => c.dist);
+    this.lapSpoilt = this.world.cars.map(() => false);
+    this.thrown = this.world.cars.map(() => 0);
+    this.nextLine = this.world.cars.map((c) => c.nextLineDist);
   }
 
   get done(): boolean {
@@ -90,6 +117,7 @@ export class Trial {
     if (this.done) return;
     this.world.step();
     this.stepIndex++;
+    this.countExcursions();
     if (this.stepIndex % this.checkEvery === 0) {
       let anyAlive = false;
       this.world.cars.forEach((c, k) => {
@@ -100,6 +128,28 @@ export class Trial {
         anyAlive ||= !c.retired;
       });
       if (!anyAlive) this.allStalled = true;
+    }
+  }
+
+  /** Each excursion counts once, as it begins; with valid-lap scoring, it spoils the lap. */
+  private countExcursions(): void {
+    const cars = this.world.cars;
+    for (let k = 0; k < cars.length; k++) {
+      const car = cars[k];
+      if (this.validLaps && car.nextLineDist !== this.nextLine[k]) {
+        // Crossed the line: the lap that just ended is kept or thrown away.
+        const line = this.nextLine[k];
+        if (this.lapSpoilt[k]) this.thrown[k] += line - this.lapFrom[k];
+        this.lapFrom[k] = line;
+        this.lapSpoilt[k] = false;
+        this.nextLine[k] = car.nextLineDist;
+      }
+      const off = pastTrackLimits(car, this.track);
+      if (off && !this.off[k]) {
+        this.excursions[k]++;
+        this.lapSpoilt[k] = true;
+      }
+      this.off[k] = off;
     }
   }
 
@@ -118,11 +168,20 @@ export class Trial {
     while (this.stepIndex < steps) {
       this.world.step();
       this.stepIndex++;
+      this.countExcursions();
     }
   }
 
   results(): TrialResult[] {
-    return this.world.cars.map((car) => scoreCar(car, this.track, 0, this.damagePenaltyLaps));
+    return this.world.cars.map((car, k) => {
+      const r = scoreCar(car, this.track, 0, this.damagePenaltyLaps);
+      r.trackLimits = this.excursions[k];
+      if (this.validLaps) {
+        const thrown = this.thrown[k] + (this.lapSpoilt[k] ? Math.max(0, car.dist - this.lapFrom[k]) : 0);
+        r.fitness -= thrown / this.track.length;
+      }
+      return r;
+    });
   }
 }
 
@@ -192,12 +251,13 @@ export function scoreCar(car: Car, track: Track, startDist = 0, damagePenaltyLap
     fitness,
     distance,
     laps: car.lapsCompleted,
-    bestLap: car.lapTimes.length ? Math.min(...car.lapTimes) : Infinity,
+    bestLap: bestValidLap(car),
     wallHits: car.wallHits,
     health: car.health,
     tireLife: car.tireLife,
     retired: car.retired && car.health <= 0,
     signature: Array.from({ length: SIGNATURE_BINS }, (_, b) => car.signature[b] / total),
+    trackLimits: 0,
   };
 }
 

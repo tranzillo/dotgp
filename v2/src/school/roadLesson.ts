@@ -6,6 +6,7 @@ import { TowerSpotter } from '../ai/spotter';
 import { Car } from '../sim/car';
 import { PHYSICS as P } from '../sim/constants';
 import { ROLLING_START_SPEED } from '../sim/grid';
+import { pastTrackLimits } from '../sim/limits';
 import { Track } from '../sim/track';
 import { World, type Controller } from '../sim/world';
 import { generateLayout, hashSeed } from '../trackgen';
@@ -83,8 +84,9 @@ class RoadApprentice implements Controller {
 
 /**
  * The road-course license test: three new club circuits at full tightness,
- * from the line as a race starts, 120 s each: a full lap's distance on every
- * one without crashing (or badly hurting the car).
+ * from the line as a race starts, 120 s each: a valid lap on every one (a full
+ * lap's distance within the track limits, without crashing or badly hurting
+ * the car).
  */
 export function roadLicenseTest(weights: Float32Array, seed: number, minHealth: number): boolean {
   for (let k = 0; k < 3; k++) {
@@ -95,8 +97,12 @@ export function roadLicenseTest(weights: Float32Array, seed: number, minHealth: 
     car.placeOnTrack(track, track.length - 20, 0);
     car.vx = track.tx[car.trackIdx] * ROLLING_START_SPEED;
     car.vy = track.ty[car.trackIdx] * ROLLING_START_SPEED;
-    for (let i = 0; i < SECONDS / P.DT && !car.retired && car.dist < track.length; i++) world.step();
-    if (car.retired || car.health < minHealth || car.dist < track.length) return false;
+    let valid = true;
+    for (let i = 0; i < SECONDS / P.DT && !car.retired && car.dist < track.length && valid; i++) {
+      world.step();
+      valid = !pastTrackLimits(car, track);
+    }
+    if (!valid || car.retired || car.health < minHealth || car.dist < track.length) return false;
   }
   return true;
 }

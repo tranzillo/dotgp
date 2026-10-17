@@ -16,6 +16,12 @@ import type { TrackLayout } from '../src/sim/layout';
 import { Track } from '../src/sim/track';
 import { apprenticeRoadCourses, type ApprenticeOptions } from '../src/school/roadLesson';
 
+/** A worker thread running a TypeScript module (workers don't inherit tsx's loader: each registers it first). */
+export function tsWorker(moduleUrl: string, data: unknown): Worker {
+  const boot = `import('tsx/esm/api').then((m) => { m.register(); return import(${JSON.stringify(moduleUrl)}); })`;
+  return new Worker(boot, { eval: true, workerData: data });
+}
+
 type Task =
   | { kind: 'apprenticeRoad'; weights: Float32Array; seed: number; opts?: ApprenticeOptions }
   | { kind: 'drive'; layout: TrackLayout; genomes: Float32Array[]; opts: TrialOptions }
@@ -30,10 +36,8 @@ export class SchoolPool {
   private nextId = 0;
 
   constructor(readonly size: number) {
-    // Workers don't inherit tsx's loader: each registers it, then loads this file.
-    const boot = `import('tsx/esm/api').then((m) => { m.register(); return import(${JSON.stringify(import.meta.url)}); })`;
     this.workers = Array.from({ length: size }, () => {
-      const w = new Worker(boot, { eval: true, workerData: { schoolPool: true } });
+      const w = tsWorker(import.meta.url, { schoolPool: true });
       w.on('message', (r: Reply) => {
         const p = this.pending.get(r.id)!;
         this.pending.delete(r.id);

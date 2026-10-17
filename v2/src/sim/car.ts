@@ -90,6 +90,12 @@ export class Car {
   /** Took the checkered flag. */
   finished = false;
   /**
+   * Out of the session for now, standing still where it was put (qualifying:
+   * waiting in its pit box for its turn, or done with its run). Nobody drives
+   * it and the physics leaves it alone.
+   */
+  waiting = false;
+  /**
    * The last thing that hurt the car: a wall or another car (by id), how
    * hard (health lost), the impact speed, and (car contact) this car's share
    * of the fault. For incident analysis now, stewards' blame later.
@@ -140,6 +146,10 @@ export class Car {
   nextLineDist = 0;
   lapStartTime = -1;
   lapTimes: number[] = [];
+  /** Per lap in lapTimes: run within the track limits (an excursion invalidates the lap's time, not the car's place). */
+  lapValid: boolean[] = [];
+  /** The lap in progress has stayed within the track limits so far. */
+  lapClean = true;
 
   // Stats
   wallHits = 0;

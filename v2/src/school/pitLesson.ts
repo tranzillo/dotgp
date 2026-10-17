@@ -1,3 +1,4 @@
+import { bestValidLap } from '../sim/limits';
 import { DRIVER_LAYERS, NeuralDriver, neuralTeam, Team } from '../ai/drivers';
 import { FULL_DAMAGE_PENALTY } from '../ai/es';
 import { trainSupervised, type Example } from '../ai/network';
@@ -151,7 +152,7 @@ export class PitTrial {
       return {
         fitness: laps - FULL_DAMAGE_PENALTY * (1 - car.health) - this.stops[k].penalty(),
         laps,
-        bestLap: car.lapTimes.length ? Math.min(...car.lapTimes) : Infinity,
+        bestLap: bestValidLap(car),
         health: car.health,
         ...this.stops[k].marks(),
       };

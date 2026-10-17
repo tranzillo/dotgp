@@ -10,7 +10,8 @@
  * them; the results are the same as on one thread.
  * --practise-on: licensed students keep practising; the class runs all --rounds.
  * --checkpoint-every N: also write the drivers every N rounds (out file with -r<round> before .json).
- * --lr X, --pairs N: practice settings other than the lesson's (experiments).
+ * --lr X, --pairs N, --valid-laps: practice settings other than the lesson's (experiments; --valid-laps scores
+ * progress on valid laps only).
  * --apprentice-epochs: passes over the recorded moments per apprenticeship round (road courses; default ROAD_APPRENTICE_EPOCHS).
  *
  * Drivers keep their licenses (caution, pit) from the input file; the output
@@ -38,10 +39,12 @@ const maxRounds = Number(args.get('rounds') ?? 100);
 const summaryFile = args.get('summary');
 const seed = Number(args.get('seed') ?? 7);
 const jobs = Math.max(1, Number(args.get('jobs') ?? cpus().length - 1));
-const practiseOn = args.has('practise-on');
+// Unset unless asked for, so the lesson's own default (road courses practise on) holds.
+const practiseOn = args.has('practise-on') ? true : undefined;
 const practice = {
   ...(args.has('lr') ? { learningRate: Number(args.get('lr')) } : {}),
   ...(args.has('pairs') ? { pairs: Number(args.get('pairs')) } : {}),
+  ...(args.has('valid-laps') ? { validLaps: true } : {}),
 };
 const checkpointEvery = Number(args.get('checkpoint-every') ?? 0);
 const apprenticeship = args.has('apprentice-epochs') ? { epochs: Number(args.get('apprentice-epochs')) } : undefined;

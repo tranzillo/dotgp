@@ -100,7 +100,8 @@ export const SURFACES = {
   road: { grip: 0.85, rolling: 0.02, bump: 0, plough: 0 },
   grass: { grip: 0.45, rolling: 0.2, bump: 0.06, plough: 0 },
   kerb: { grip: 0.9, rolling: 0.02, bump: 0.025, plough: 0 },
-  runoff: { grip: 0.9, rolling: 0.015, bump: 0, plough: 0 },
+  // Run-off is safe, not free: dusty, unswept (astroturf in places), so running wide onto it costs grip and speed.
+  runoff: { grip: 0.8, rolling: 0.04, bump: 0, plough: 0 },
   // Gravel's drag is ploughing: huge at speed, small at walking pace (rolling plus plough, by speed, below).
   gravel: { grip: 0.35, rolling: 0.12, bump: 0.08, plough: 0.6 },
 } as const;

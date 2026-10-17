@@ -1,3 +1,4 @@
+import { bestValidLap } from '../sim/limits';
 import { NeuralDriver, Team } from '../ai/drivers';
 import { danger, fearScale } from '../ai/fear';
 import type { Rng } from '../ai/rng';
@@ -156,7 +157,7 @@ export class RacecraftDrill implements Drill<RacecraftResult> {
       fitness: laps - DAMAGE_PENALTY * (1 - car.health) - HARM_PENALTY * car.harmDone
         - this.fear * (FEAR_LAPS * this.dangerSeconds + TRAUMA_LAPS * Math.max(0, car.selfTrauma - car.selfInflicted)),
       laps,
-      bestLap: car.lapTimes.length ? Math.min(...car.lapTimes) : Infinity,
+      bestLap: bestValidLap(car),
       health: car.health,
       harm: car.harmDone,
       gained: this.startPlace - this.place(),

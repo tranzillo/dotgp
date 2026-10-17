@@ -2,6 +2,7 @@ import { PHYSICS as P, PIT_SERVICE } from './constants';
 import { applyService, serviceTime, stepCar, type Car } from './car';
 import { computeDraft, resolveCarCollisions, resolveWalls } from './collisions';
 import type { RaceControl } from './raceControl';
+import { pastTrackLimits } from './limits';
 import type { Track } from './track';
 
 /** Whatever controls a car (usually a team: spotter + driver). Sets car.inputX / car.inputY. */
@@ -80,13 +81,14 @@ export class World {
     if (this.tick % P.CONTROL_EVERY === 0) {
       for (let k = 0; k < cars.length; k++) {
         const controller = controllers[k];
-        if (controller && !cars[k].retired) controller.decide(cars[k], this);
+        if (controller && !cars[k].retired && !cars[k].waiting) controller.decide(cars[k], this);
       }
       for (const o of this.officials) o.controller.decide(o.car, this);
     }
     if (this.opts.drafting) computeDraft(cars, track);
 
     for (const car of cars) {
+      if (car.waiting) continue;
       const wasRetired = car.retired;
       stepCar(car, track, dt, this.opts.wearScale);
       reproject(car, track);
@@ -114,6 +116,8 @@ export class World {
 
     this.time += dt;
     for (const car of cars) {
+      if (car.waiting) continue;
+      if (car.lapClean && pastTrackLimits(car, track)) car.lapClean = false;
       updateTiming(car, track, this.time, dt);
       this.updatePit(car, dt);
     }
@@ -197,7 +201,11 @@ function updateTiming(car: Car, track: Track, time: number, dt: number): void {
   // Interpolate the crossing time within the step.
   const along = Math.max(1e-6, car.vx * track.tx[car.trackIdx] + car.vy * track.ty[car.trackIdx]);
   const crossTime = Math.max(time - dt, time - (car.dist - car.nextLineDist) / along);
-  if (car.lapStartTime >= 0) car.lapTimes.push(crossTime - car.lapStartTime);
+  if (car.lapStartTime >= 0) {
+    car.lapTimes.push(crossTime - car.lapStartTime);
+    car.lapValid.push(car.lapClean);
+  }
   car.lapStartTime = crossTime;
+  car.lapClean = true;
   car.nextLineDist += track.length;
 }
