@@ -52,6 +52,8 @@ export interface Lesson {
   practisesOn?: boolean;
   /** Practice scores progress on valid laps only (a lap past the track limits is thrown away). */
   validLaps?: boolean;
+  /** Circuit racecraft: the share of drills that are situations (braking packs, chicanes); default SITUATION_SHARE. */
+  situations?: number;
 }
 
 export const LESSONS: Record<LessonId, Lesson> = {
@@ -156,7 +158,7 @@ export interface ClassSpec {
   /** Students keep practising after earning the lesson's license, and the class runs until stopped. */
   practiseOn?: boolean;
   /** Practice settings other than the lesson's own (experiments). */
-  practice?: Partial<Pick<Lesson, 'learningRate' | 'pairs' | 'seconds' | 'trains' | 'validLaps'>>;
+  practice?: Partial<Pick<Lesson, 'learningRate' | 'pairs' | 'seconds' | 'trains' | 'validLaps' | 'situations'>>;
 }
 
 /**
@@ -558,10 +560,11 @@ export class Classroom {
     this.roadcraftRound = null;
     if (lesson.id === 'roadcraft') {
       this.roadcraftRound = {
-        layout: this.track.layout, slot: this.round % PACK_SIZE, pack: roadcraftLayout(this.track, straightStart(this.track, this.rng), this.rng),
+        layout: this.track.layout, pack: roadcraftLayout(this.track, straightStart(this.track, this.rng), this.rng, lesson.situations), slot: 0,
         candidates, perStudent: 1 + 2 * lesson.pairs, classmates: this.students.map((s) => s.weights.slice()),
         nerves: this.students.map((s) => s.nerve), references: this.students.map((s) => s.reference), pace: trackPace(this.track),
       };
+      this.roadcraftRound.slot = this.round % this.roadcraftRound.pack.spots.length;
     }
     const r = this.roadcraftRound;
     const drill: LessonTrial | null = r

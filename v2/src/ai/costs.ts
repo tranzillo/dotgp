@@ -22,27 +22,41 @@ export const COSTS = {
   trauma: 120,
 } as const;
 
-const paces = new WeakMap<Track, number>();
+interface ReferenceLap { pace: number; speed: Float32Array }
+const laps = new WeakMap<Track, ReferenceLap>();
 
 /**
- * A track's own pace (m/s): the scripted line follower's lap, at the margin it
- * teaches road courses with. It depends on the track alone, so progress on a
- * short oval, a club circuit and a GP circuit converts to seconds alike.
+ * The scripted line follower's lap of a track, at the margin it teaches road
+ * courses with: its pace, and its speed at each centerline sample (where it
+ * first passed it). It depends on the track alone.
  */
-export function trackPace(track: Track): number {
-  const known = paces.get(track);
-  if (known !== undefined) return known;
+export function referenceLap(track: Track): ReferenceLap {
+  const known = laps.get(track);
+  if (known) return known;
   const world = new World(track, { collisions: false, drafting: false });
   const car = new Car(0);
   world.addCar(car, new ScriptedDriver(0, 0.9));
   car.placeOnTrack(track, track.length - 20, 0);
   car.vx = track.tx[car.trackIdx] * ROLLING_START_SPEED;
   car.vy = track.ty[car.trackIdx] * ROLLING_START_SPEED;
+  const speed = new Float32Array(track.n).fill(NaN);
   const limit = 900 / P.DT;
-  for (let i = 0; i < limit && !car.lapTimes.length && !car.retired; i++) world.step();
+  for (let i = 0; i < limit && !car.lapTimes.length && !car.retired; i++) {
+    world.step();
+    if (Number.isNaN(speed[car.trackIdx])) speed[car.trackIdx] = car.speed;
+  }
+  // Samples the car stepped over: the last speed seen before them.
+  let last = speed.find((v) => !Number.isNaN(v)) ?? 0;
+  for (let i = 0; i < speed.length; i++) { if (Number.isNaN(speed[i])) speed[i] = last; else last = speed[i]; }
   const pace = car.lapTimes.length ? track.length / car.lapTimes[0] : Math.max(1, car.dist) / Math.max(1, world.time);
-  paces.set(track, pace);
-  return pace;
+  const lap = { pace, speed };
+  laps.set(track, lap);
+  return lap;
+}
+
+/** A track's own pace (m/s): the reference lap's. Progress on a short oval, a club circuit and a GP circuit converts to seconds alike. */
+export function trackPace(track: Track): number {
+  return referenceLap(track).pace;
 }
 
 /** Seconds a track's lap takes at its own pace: what a lap-denominated weight is worth in seconds. */

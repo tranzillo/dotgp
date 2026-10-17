@@ -26,7 +26,7 @@ import { Track } from '../src/sim/track';
 import { World } from '../src/sim/world';
 import { CIRCUIT_RULES } from '../src/rules/rulebook';
 import { generateLayout, hashSeed } from '../src/trackgen';
-import { tsWorker } from './pool';
+import { ask, tsWorker } from './pool';
 
 interface DriverEntry {
   weights: number[];
@@ -160,7 +160,7 @@ async function main(): Promise<void> {
     const w = tsWorker(import.meta.url, { circuitRaces: true });
     for (let job = todo.shift(); job; job = todo.shift()) {
       const j = job;
-      results.set(j, await new Promise<CircuitRace>((ok, fail) => { w.once('message', ok); w.once('error', fail); w.postMessage(j); }));
+      results.set(j, await ask<CircuitRace>(w, j));
       process.stderr.write(`\r${results.size}/${queue.length} races (${((Date.now() - t0) / 1000).toFixed(0)} s)`);
     }
     await w.terminate();

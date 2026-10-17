@@ -26,6 +26,17 @@ export function tsWorker(moduleUrl: string, data: unknown): Worker {
   return new Worker(boot, { eval: true, workerData: data });
 }
 
+/** Send a worker one message and wait for its one reply (listeners removed after, so a worker can take many). */
+export function ask<T>(worker: Worker, message: unknown): Promise<T> {
+  return new Promise<T>((ok, fail) => {
+    const done = (r: T) => { worker.off('error', failed); ok(r); };
+    const failed = (e: Error) => { worker.off('message', done); fail(e); };
+    worker.once('message', done);
+    worker.once('error', failed);
+    worker.postMessage(message);
+  });
+}
+
 type Task =
   | { kind: 'apprenticeRoad'; weights: Float32Array; seed: number; opts?: ApprenticeOptions }
   | { kind: 'drive'; layout: TrackLayout; genomes: Float32Array[]; opts: TrialOptions }

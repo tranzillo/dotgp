@@ -29,8 +29,8 @@ const FILE_D = 2.6;
 
 /** Where each car in a drill starts: metres behind the front of the pack, lane, speed, tire life. */
 export interface PackSpot { back: number; lane: number; speed: number; tire: number }
-/** A drill's pack: where on the track its front starts, and each car's spot. */
-export interface PackLayout { frontS: number; spots: PackSpot[] }
+/** A drill's pack: where on the track its front starts, and each car's spot (as many cars as spots); how long it runs, if not the drill's own. */
+export interface PackLayout { frontS: number; spots: PackSpot[]; seconds?: number }
 
 /** The restart: two-wide rows just before the line, fresh tires. */
 export function restartLayout(track: Track): PackLayout {
@@ -111,10 +111,10 @@ export class RacecraftDrill implements Drill<RacecraftResult> {
     /** Drill length (default the oval drill's 40 s), and whether only valid laps count (road circuits). */
     opts: { seconds?: number; validLaps?: boolean; pace?: number } = {},
   ) {
-    this.seconds = opts.seconds ?? DRILL_SECONDS;
+    this.seconds = layout.seconds ?? opts.seconds ?? DRILL_SECONDS;
     this.pace = opts.pace ?? trackPace(track);
     this.world = new World(track, { collisions: true, drafting: true });
-    for (let k = 0; k < PACK_SIZE; k++) {
+    for (let k = 0; k < layout.spots.length; k++) {
       const car = new Car(k);
       const spot = layout.spots[k];
       car.placeOnTrack(track, track.wrapS(layout.frontS - spot.back), spot.lane);
