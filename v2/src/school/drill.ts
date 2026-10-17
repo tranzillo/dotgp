@@ -1,5 +1,5 @@
 import { FULL_DAMAGE_PENALTY } from '../ai/es';
-import { Trial } from '../ai/evaluate';
+import { Trial, type TrialOptions, type TrialResult } from '../ai/evaluate';
 import type { Car } from '../sim/car';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
@@ -35,6 +35,26 @@ export interface SoloAnchor {
 /** Seconds of solo laps per round, and laps of score per solo lap lost (losing pace is never worth it). */
 export const SOLO_SECONDS = 60;
 const SOLO_PACE = 8;
+/** The anchor's solo laps: ghosts of [...candidates, ...references]. */
+export const SOLO_OPTIONS: TrialOptions = { seconds: SOLO_SECONDS, damagePenaltyLaps: FULL_DAMAGE_PENALTY };
+
+/**
+ * Drill results less any solo pace and cleanliness lost against each
+ * student's reference. solo: the anchor's results, candidates first (in
+ * order), then one per student's reference.
+ */
+export function anchored<R extends { fitness: number }>(
+  drills: R[], solo: TrialResult[], perStudent: number, candidates: number, lapLength: number,
+): Array<R & { soloLaps: number }> {
+  return drills.map((r, i) => {
+    const ref = solo[candidates + Math.floor(i / perStudent)], mine = solo[i];
+    // Distance, not laps completed: in 60 s most drivers complete one lap, fast or slow, and a
+    // check on whole laps let 10% of pace slip by unseen.
+    const lostLaps = Math.max(0, ref.distance - mine.distance) / lapLength;
+    const lost = SOLO_PACE * lostLaps + FULL_DAMAGE_PENALTY * Math.max(0, ref.health - mine.health);
+    return { ...r, fitness: r.fitness - lost, soloLaps: mine.distance / lapLength };
+  });
+}
 
 /**
  * One round of a drill lesson: every candidate (each student and its
@@ -59,7 +79,7 @@ export class DrillTrial<R extends { fitness: number }> {
     this.candidates = candidates.length;
     this.lapLength = anchor?.track.length ?? 1;
     this.solo = anchor && candidates.length
-      ? new Trial(anchor.track, [...candidates, ...anchor.references], { seconds: SOLO_SECONDS, damagePenaltyLaps: FULL_DAMAGE_PENALTY })
+      ? new Trial(anchor.track, [...candidates, ...anchor.references], SOLO_OPTIONS)
       : null;
   }
 
@@ -89,15 +109,7 @@ export class DrillTrial<R extends { fitness: number }> {
   results(): Array<R & { soloLaps?: number }> {
     const out = this.drills.map((d) => d.result());
     if (!this.solo) return out;
-    const solo = this.solo.results();
-    return out.map((r, i) => {
-      const ref = solo[this.candidates + Math.floor(i / this.perStudent)], mine = solo[i];
-      // Distance, not laps completed: in 60 s most drivers complete one lap, fast or slow, and a
-      // check on whole laps let 10% of pace slip by unseen.
-      const lostLaps = Math.max(0, ref.distance - mine.distance) / this.lapLength;
-      const lost = SOLO_PACE * lostLaps + FULL_DAMAGE_PENALTY * Math.max(0, ref.health - mine.health);
-      return { ...r, fitness: r.fitness - lost, soloLaps: mine.distance / this.lapLength };
-    });
+    return anchored(out, this.solo.results(), this.perStudent, this.candidates, this.lapLength);
   }
 }
 

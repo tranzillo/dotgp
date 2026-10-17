@@ -19,3 +19,46 @@ export function bestValidLap(car: Car): number {
   for (let k = 0; k < car.lapTimes.length; k++) if (car.lapValid[k] && car.lapTimes[k] < best) best = car.lapTimes[k];
   return best;
 }
+
+/**
+ * Progress on valid laps, for scoring: an excursion spoils the lap in
+ * progress, and a spoilt lap's progress (from the line, or wherever the car
+ * started, to the line) is thrown away, as its time is. Step it after each
+ * world step.
+ */
+export class ValidProgress {
+  /** Excursions past the limits so far (each counted once, as it begins). */
+  excursions = 0;
+  private off = false;
+  private lapFrom: number;
+  private spoilt = false;
+  private thrown = 0;
+  private nextLine: number;
+
+  constructor(private readonly car: Car) {
+    this.lapFrom = car.dist;
+    this.nextLine = car.nextLineDist;
+  }
+
+  step(track: Track): void {
+    const car = this.car;
+    if (car.nextLineDist !== this.nextLine) {
+      // Crossed the line: the lap that just ended is kept or thrown away.
+      if (this.spoilt) this.thrown += this.nextLine - this.lapFrom;
+      this.lapFrom = this.nextLine;
+      this.spoilt = false;
+      this.nextLine = car.nextLineDist;
+    }
+    const off = pastTrackLimits(car, track);
+    if (off && !this.off) {
+      this.excursions++;
+      this.spoilt = true;
+    }
+    this.off = off;
+  }
+
+  /** Metres of progress on spoilt laps (the one in progress included). */
+  get thrownAway(): number {
+    return this.thrown + (this.spoilt ? Math.max(0, this.car.dist - this.lapFrom) : 0);
+  }
+}

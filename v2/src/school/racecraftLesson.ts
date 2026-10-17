@@ -1,4 +1,4 @@
-import { bestValidLap } from '../sim/limits';
+import { bestValidLap, ValidProgress } from '../sim/limits';
 import { NeuralDriver, Team } from '../ai/drivers';
 import { danger, fearScale } from '../ai/fear';
 import type { Rng } from '../ai/rng';
@@ -110,6 +110,9 @@ export class RacecraftDrill implements Drill<RacecraftResult> {
   private readonly startPlace: number;
   private steps = 0;
   private dangerSeconds = 0;
+  private readonly seconds: number;
+  /** Valid-lap scoring: the student's progress on spoilt laps is thrown away. */
+  private readonly progress: ValidProgress | null;
 
   /**
    * pack(k): the weights the car in slot k drives with (the student's slot is ignored);
@@ -118,7 +121,10 @@ export class RacecraftDrill implements Drill<RacecraftResult> {
   constructor(
     track: Track, slot: number, student: Float32Array, pack: (k: number) => Float32Array, layout = restartLayout(track),
     private readonly fear = fearScale(),
+    /** Drill length (default the oval drill's 40 s), and whether only valid laps count (road circuits). */
+    opts: { seconds?: number; validLaps?: boolean } = {},
   ) {
+    this.seconds = opts.seconds ?? DRILL_SECONDS;
     this.world = new World(track, { collisions: true, drafting: true });
     for (let k = 0; k < PACK_SIZE; k++) {
       const car = new Car(k);
@@ -130,6 +136,7 @@ export class RacecraftDrill implements Drill<RacecraftResult> {
       this.world.addCar(car, new Team(new NeuralDriver(k === slot ? student : pack(k)), new TowerSpotter(), null));
     }
     this.student = this.world.cars[slot];
+    this.progress = opts.validLaps ? new ValidProgress(this.student) : null;
     this.startDist = this.student.dist;
     this.startPlace = this.place();
   }
@@ -140,19 +147,20 @@ export class RacecraftDrill implements Drill<RacecraftResult> {
   }
 
   get done(): boolean {
-    return this.steps * P.DT >= DRILL_SECONDS;
+    return this.steps * P.DT >= this.seconds;
   }
 
   step(): void {
     if (this.done) return;
     this.world.step();
     this.steps++;
+    this.progress?.step(this.world.track);
     if (this.steps % P.CONTROL_EVERY === 0) this.dangerSeconds += danger(this.student, this.world) * P.CONTROL_EVERY * P.DT;
   }
 
   result(): RacecraftResult {
     const car = this.student;
-    const laps = (car.dist - this.startDist) / this.world.track.length;
+    const laps = (car.dist - this.startDist - (this.progress?.thrownAway ?? 0)) / this.world.track.length;
     return {
       fitness: laps - DAMAGE_PENALTY * (1 - car.health) - HARM_PENALTY * car.harmDone
         - this.fear * (FEAR_LAPS * this.dangerSeconds + TRAUMA_LAPS * Math.max(0, car.selfTrauma - car.selfInflicted)),

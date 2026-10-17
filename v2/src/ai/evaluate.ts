@@ -2,7 +2,7 @@ import { Car, SIGNATURE_BINS } from '../sim/car';
 import { PHYSICS as P } from '../sim/constants';
 import type { Track } from '../sim/track';
 import { placeOnGrid, ROLLING_START_SPEED } from '../sim/grid';
-import { bestValidLap, pastTrackLimits } from '../sim/limits';
+import { bestValidLap, ValidProgress } from '../sim/limits';
 import { World } from '../sim/world';
 import { neuralTeam } from './drivers';
 import { Rng } from './rng';
@@ -68,14 +68,8 @@ export class Trial {
   private readonly lastDist: number[];
   private readonly damagePenaltyLaps: number | undefined;
   private readonly validLaps: boolean;
-  /** Per car: past the limits now, and excursions so far. */
-  private readonly off: boolean[];
-  private readonly excursions: number[];
-  /** Per car (valid-lap scoring): where the lap in progress began, whether it's been invalidated, progress thrown away. */
-  private readonly lapFrom: number[];
-  private readonly lapSpoilt: boolean[];
-  private readonly thrown: number[];
-  private readonly nextLine: number[];
+  /** Per car: excursions past the limits, and progress on spoilt laps. */
+  private readonly progress: ValidProgress[];
   private stepIndex = 0;
   private allStalled = false;
 
@@ -96,12 +90,7 @@ export class Trial {
     this.lastDist = this.world.cars.map((c) => c.dist);
     this.damagePenaltyLaps = opts.damagePenaltyLaps;
     this.validLaps = opts.validLaps ?? false;
-    this.off = this.world.cars.map(() => false);
-    this.excursions = this.world.cars.map(() => 0);
-    this.lapFrom = this.world.cars.map((c) => c.dist);
-    this.lapSpoilt = this.world.cars.map(() => false);
-    this.thrown = this.world.cars.map(() => 0);
-    this.nextLine = this.world.cars.map((c) => c.nextLineDist);
+    this.progress = this.world.cars.map((c) => new ValidProgress(c));
   }
 
   get done(): boolean {
@@ -131,26 +120,8 @@ export class Trial {
     }
   }
 
-  /** Each excursion counts once, as it begins; with valid-lap scoring, it spoils the lap. */
   private countExcursions(): void {
-    const cars = this.world.cars;
-    for (let k = 0; k < cars.length; k++) {
-      const car = cars[k];
-      if (this.validLaps && car.nextLineDist !== this.nextLine[k]) {
-        // Crossed the line: the lap that just ended is kept or thrown away.
-        const line = this.nextLine[k];
-        if (this.lapSpoilt[k]) this.thrown[k] += line - this.lapFrom[k];
-        this.lapFrom[k] = line;
-        this.lapSpoilt[k] = false;
-        this.nextLine[k] = car.nextLineDist;
-      }
-      const off = pastTrackLimits(car, this.track);
-      if (off && !this.off[k]) {
-        this.excursions[k]++;
-        this.lapSpoilt[k] = true;
-      }
-      this.off[k] = off;
-    }
+    for (const p of this.progress) p.step(this.track);
   }
 
   /** Physics steps run so far. */
@@ -175,11 +146,8 @@ export class Trial {
   results(): TrialResult[] {
     return this.world.cars.map((car, k) => {
       const r = scoreCar(car, this.track, 0, this.damagePenaltyLaps);
-      r.trackLimits = this.excursions[k];
-      if (this.validLaps) {
-        const thrown = this.thrown[k] + (this.lapSpoilt[k] ? Math.max(0, car.dist - this.lapFrom[k]) : 0);
-        r.fitness -= thrown / this.track.length;
-      }
+      r.trackLimits = this.progress[k].excursions;
+      if (this.validLaps) r.fitness -= this.progress[k].thrownAway / this.track.length;
       return r;
     });
   }

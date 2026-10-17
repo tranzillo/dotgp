@@ -6,6 +6,7 @@
  *   const pool = new SchoolPool(6);
  *   await pool.apprenticeRoad(weights, seed)        one student's road apprenticeship, on a free worker
  *   await pool.ghostRound(layout, genomes, opts)    a round's ghost laps, split across every worker
+ *   await pool.roadcraftRound(round)                a circuit racecraft round's drills, split across every worker
  *   pool.close()
  *
  * This file is also the workers' entry (with workerData.schoolPool set).
@@ -15,6 +16,9 @@ import { Trial, type TrialOptions, type TrialResult } from '../src/ai/evaluate';
 import type { TrackLayout } from '../src/sim/layout';
 import { Track } from '../src/sim/track';
 import { apprenticeRoadCourses, type ApprenticeOptions } from '../src/school/roadLesson';
+import type { RoadcraftRound } from '../src/school/classroom';
+import type { RacecraftResult } from '../src/school/racecraftLesson';
+import { roadcraftDrill } from '../src/school/roadcraftLesson';
 
 /** A worker thread running a TypeScript module (workers don't inherit tsx's loader: each registers it first). */
 export function tsWorker(moduleUrl: string, data: unknown): Worker {
@@ -25,7 +29,8 @@ export function tsWorker(moduleUrl: string, data: unknown): Worker {
 type Task =
   | { kind: 'apprenticeRoad'; weights: Float32Array; seed: number; opts?: ApprenticeOptions }
   | { kind: 'drive'; layout: TrackLayout; genomes: Float32Array[]; opts: TrialOptions }
-  | { kind: 'finish'; steps: number };
+  | { kind: 'finish'; steps: number }
+  | { kind: 'roadcraft'; round: RoadcraftRound; from: number; to: number };
 type Reply = { id: number; ok: true; value: unknown } | { id: number; ok: false; error: string };
 
 export class SchoolPool {
@@ -92,6 +97,16 @@ export class SchoolPool {
     return { results: done.flatMap((d) => d.results), time: done[0].time };
   }
 
+  /** A circuit racecraft round's drills (each candidate's own small world), split across every worker. */
+  async roadcraftRound(round: RoadcraftRound): Promise<{ results: RacecraftResult[]; time: number }> {
+    if (this.idle.length !== this.size) throw new Error('roadcraftRound needs the whole pool');
+    const n = round.candidates.length, per = Math.ceil(n / this.size);
+    const parts = Array.from({ length: this.size }, (_, i) => [i * per, Math.min(n, (i + 1) * per)]).filter(([a, b]) => b > a);
+    const done = await Promise.all(parts.map(([from, to], i) =>
+      this.call<{ results: RacecraftResult[]; time: number }>(i, { kind: 'roadcraft', round, from, to })));
+    return { results: done.flatMap((d) => d.results), time: done[0].time };
+  }
+
   close(): Promise<number[]> {
     return Promise.all(this.workers.map((w) => w.terminate()));
   }
@@ -110,6 +125,16 @@ if (!isMainThread && workerData?.schoolPool) {
         trial = new Trial(new Track(task.layout), task.genomes, task.opts);
         while (!trial.done) trial.step();
         value = trial.stepsRun;
+      } else if (task.kind === 'roadcraft') {
+        const r = task.round;
+        const track = new Track(r.layout);
+        const drills = [];
+        for (let i = task.from; i < task.to; i++) {
+          const own = Math.floor(i / r.perStudent);
+          drills.push(roadcraftDrill(track, r.slot, r.candidates[i], own, r.classmates, r.pack, r.nerves[own]));
+        }
+        for (const d of drills) while (!d.done) d.step();
+        value = { results: drills.map((d) => d.result()), time: drills[0].world.time };
       } else {
         trial!.continueTo(task.steps);
         value = { results: trial!.results(), time: trial!.world.time };

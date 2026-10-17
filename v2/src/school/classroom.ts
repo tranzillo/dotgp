@@ -5,10 +5,11 @@ import {
 } from '../ai/es';
 import { Trial, type TrialOptions, type TrialResult } from '../ai/evaluate';
 import { apprenticePitStops, cleanStop, PitTrial, REFRESHER_ROUNDS, type PitTrialResult } from './pitLesson';
-import { DrillTrial, racingKept } from './drill';
+import { anchored, DrillTrial, racingKept, SOLO_OPTIONS } from './drill';
+import { ROADCRAFT_WEIGHTS, roadcraftLayout, RoadcraftTrial } from './roadcraftLesson';
 import { apprenticeRoadCourses, ROAD_WEIGHTS, roadLicenseTest, type ApprenticeOptions } from './roadLesson';
 import { bestValidLap } from '../sim/limits';
-import { PACK_SIZE, RacecraftTrial, randomLayout, type RacecraftResult } from './racecraftLesson';
+import { PACK_SIZE, RacecraftTrial, randomLayout, type PackLayout, type RacecraftResult } from './racecraftLesson';
 import { apprenticePitTraffic, cleanTrafficStop, PitTrafficTrial, TRAFFIC_BASELINE_MARGIN, trafficBaseline, type PitTrafficResult } from './pitTrafficLesson';
 import { CAUTION_WEIGHTS, apprenticeCautions, BASELINE_MARGIN, CautionTrial, DRILL_FIELD, scriptBaseline, type CautionResult } from './cautionLesson';
 import { genomeSize } from '../ai/network';
@@ -28,7 +29,7 @@ import type { CarView, RadioLine, SessionSnapshot } from '../events/session';
  * training as headless practice, one visible track per round.
  */
 
-export type LessonId = 'rookie' | 'variety' | 'circuits' | 'racecraft' | 'pits' | 'pitTraffic' | 'cautions';
+export type LessonId = 'rookie' | 'variety' | 'circuits' | 'roadcraft' | 'racecraft' | 'pits' | 'pitTraffic' | 'cautions';
 
 export interface Lesson {
   id: LessonId;
@@ -74,6 +75,12 @@ export const LESSONS: Record<LessonId, Lesson> = {
     validLaps: true,
     eligible: (d) => d.licensed, audience: 'licensed drivers',
     description: "Learn road courses: flat corners from sweepers to hairpins, braking hard off long straights. Trains the driver's road-course skill (a second network used only on circuits, starting as a copy of its oval driving), so oval racing is never touched. A new skill first copies the line follower's laps of circuits, then practises at full tightness (real hairpins, full barriers). A new club circuit every round, starting on a random straight. Skills from before the apprenticeship carry on with the old curriculum: corners no tighter than an oval's and soft barriers at first, tightening and hardening each round the class drives cleanly. Running past the track limits invalidates the lap, and only valid laps count. The license (a test on three new circuits from the line, a valid lap on each) marks a stage: practice carries on after it, and the drivers keep getting better. Runs until stopped.",
+  },
+  roadcraft: {
+    id: 'roadcraft', name: 'Circuit racecraft', seconds: 0, pairs: 8, learningRate: 0.002, trains: ROADCRAFT_WEIGHTS,
+    withdrawn: 'headless for now: the driving school hands lessons the oval network, not the road-course skill',
+    eligible: (d) => d.licensed && !!d.roadLicensed, audience: 'drivers with a road-course license',
+    description: "Race in traffic on road circuits without wrecking anyone. Every round drops the class into a pack on a new circuit: a standing start from a staggered grid into the first corners, or a pack strung out on a straight into the corners after it, against the class's own driving, for 50 s. Scored as racecraft is on ovals (distance, damage taken and done by fault, fear by nerve; solo driving held to how the student drove when the class began), on valid laps. Trains the road-course skill. Runs until stopped.",
   },
   racecraft: {
     id: 'racecraft', name: 'Racecraft', seconds: 0, pairs: 8, learningRate: 0.01,
@@ -157,6 +164,32 @@ export interface ClassSpec {
  * order, and the simulated time the round took.
  */
 export type GhostRunner = (layout: TrackLayout, genomes: Float32Array[], opts: TrialOptions) => Promise<{ results: TrialResult[]; time: number }>;
+
+/** A circuit racecraft round as data: what a worker needs to build each candidate's drill. */
+export interface RoadcraftRound {
+  layout: TrackLayout;
+  slot: number;
+  pack: PackLayout;
+  /** Per student, [own, +e1, -e1, ...]. */
+  candidates: Float32Array[];
+  perStudent: number;
+  /** The pack's drivers: each student's current skill. */
+  classmates: Float32Array[];
+  nerves: Array<number | undefined>;
+  /** Each student as it drove when the class began (the solo anchor). */
+  references: Float32Array[];
+}
+
+/**
+ * Runs a round somewhere else (headless: worker threads), with the results
+ * the in-process trial would have had: ghost laps (every car's result, in
+ * order, and the simulated time), and circuit racecraft drills (every
+ * candidate's drill result, before the solo anchor, and the drill's time).
+ */
+export interface RoundRunner {
+  ghost: GhostRunner;
+  roadcraft(round: RoadcraftRound): Promise<{ results: RacecraftResult[]; time: number }>;
+}
 
 /** One student's round. */
 export interface RoundReport {
@@ -253,10 +286,10 @@ export function roadWalls(minRadius: number): number {
 }
 
 /** A new club circuit with corners no tighter than minRadius (the next seed if one can't be laid out). */
-export function roadCourseTrack(seed: number, minRadius: number): Track {
+export function roadCourseTrack(seed: number, minRadius: number, variant: 'club' | 'gp' = 'club'): Track {
   for (let k = 0; ; k++) {
     try {
-      return new Track(generateLayout({ type: 'circuit', seed: hashSeed(seed, `try${k}`), variant: 'club', params: { minRadius } }));
+      return new Track(generateLayout({ type: 'circuit', seed: hashSeed(seed, `try${k}`), variant, params: { minRadius } }));
     } catch (e) {
       if (k >= 5) throw e;
     }
@@ -294,6 +327,8 @@ export class Classroom {
   private noise: Float32Array[][] = [];
   /** This round's ghost laps (lessons that drive plain ghost trials), for a GhostRunner. */
   private ghostRound: { genomes: Float32Array[]; opts: TrialOptions } | null = null;
+  /** This round's circuit racecraft drills, for a RoundRunner. */
+  private roadcraftRound: RoadcraftRound | null = null;
   private reports: RoundReport[] = [];
   private radio: RadioLine[] = [];
   private timeOffset = 0;
@@ -431,21 +466,29 @@ export class Classroom {
     return out;
   }
 
-  /** Does this lesson's round drive plain ghost laps (so a GhostRunner can drive it elsewhere)? */
-  get ghostRounds(): boolean {
-    return this.ghostRound !== null;
+  /** Can a RoundRunner drive this lesson's rounds elsewhere (ghost laps, circuit racecraft)? */
+  get runnerRounds(): boolean {
+    return this.ghostRound !== null || this.roadcraftRound !== null;
   }
 
   /**
-   * One whole round, its ghost laps driven by the runner (the same results
-   * as stepping it here). Headless classes use this to spread a round over
-   * threads; the viewer steps the round in front of it instead.
+   * One whole round, driven by the runner (the same results as stepping it
+   * here). Headless classes use this to spread a round over threads; the
+   * viewer steps the round in front of it instead.
    */
-  async runRound(runner: GhostRunner): Promise<void> {
+  async runRound(runner: RoundRunner): Promise<void> {
     if (this.finished) return;
-    if (!this.ghostRound) throw new Error(`${this.lesson.id} rounds aren't plain ghost laps`);
-    const { results, time } = await runner(this.track.layout, this.ghostRound.genomes, this.ghostRound.opts);
-    this.finishRound(results, time);
+    if (this.ghostRound) {
+      const { results, time } = await runner.ghost(this.track.layout, this.ghostRound.genomes, this.ghostRound.opts);
+      this.finishRound(results, time);
+    } else if (this.roadcraftRound) {
+      const r = this.roadcraftRound;
+      const drills = await runner.roadcraft(r);
+      const solo = await runner.ghost(r.layout, [...r.candidates, ...r.references], SOLO_OPTIONS);
+      this.finishRound(anchored(drills.results, solo.results, r.perStudent, r.candidates.length, this.track.length), drills.time);
+    } else {
+      throw new Error(`${this.lesson.id} rounds can't be run elsewhere`);
+    }
     if (!this.finished) this.startRound();
   }
 
@@ -464,7 +507,11 @@ export class Classroom {
   private startRound(): void {
     const lesson = this.lesson;
     const prevTrack = this.track;
-    if (lesson.id !== 'variety' && lesson.id !== 'circuits') {
+    if (lesson.id === 'roadcraft') {
+      // A new circuit every round, club and GP in turn, at full tightness.
+      this.track = roadCourseTrack(hashSeed(this.seed, `round${this.round}`), ROAD_FULL_RADIUS, this.round % 2 ? 'gp' : 'club');
+      this.walls = 1;
+    } else if (lesson.id !== 'variety' && lesson.id !== 'circuits') {
       this.track = this.presets[this.round % this.presets.length];
       // One world, so one wall softness: the class's average experience sets it.
       const lessons = this.students.reduce((a, s) => a + s.rounds, 0) / this.students.length;
@@ -505,7 +552,18 @@ export class Classroom {
     // Every other round the caution finds the field strung out round the lap, as in a race.
     this.drillSpread = this.round % 2 === 1 ? hashSeed(this.seed, `spread${this.round}`) : undefined;
     this.packWeights = this.students.map((s) => s.weights.slice()); // the classmates in this round's packs
-    const drill: LessonTrial | null = lesson.id === 'cautions'
+    this.roadcraftRound = null;
+    if (lesson.id === 'roadcraft') {
+      this.roadcraftRound = {
+        layout: this.track.layout, slot: this.round % PACK_SIZE, pack: roadcraftLayout(this.track, straightStart(this.track, this.rng), this.rng),
+        candidates, perStudent: 1 + 2 * lesson.pairs, classmates: this.students.map((s) => s.weights.slice()),
+        nerves: this.students.map((s) => s.nerve), references: this.students.map((s) => s.reference),
+      };
+    }
+    const r = this.roadcraftRound;
+    const drill: LessonTrial | null = r
+      ? new RoadcraftTrial(this.track, r.candidates, r.perStudent, r.slot, r.classmates, this.round % this.students.length, r.pack, r.nerves, r.references)
+      : lesson.id === 'cautions'
       ? new CautionTrial(this.track, candidates, 1 + 2 * lesson.pairs, this.drillSlot, this.round % this.students.length,
         this.students.map((s) => s.reference), this.drillSpread, this.students.map((s) => s.weights))
       : lesson.id === 'racecraft'
@@ -636,7 +694,7 @@ export class Classroom {
         const c = own as CautionResult;
         report.caution = { placeError: c.placeError, passes: c.passes, harm: c.harm };
       }
-      if (this.lesson.id === 'racecraft') {
+      if (this.lesson.id === 'racecraft' || this.lesson.id === 'roadcraft') {
         const r = own as RacecraftResult;
         report.pack = { harm: r.harm, gained: r.gained };
       }

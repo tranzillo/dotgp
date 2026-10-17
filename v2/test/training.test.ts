@@ -4,7 +4,8 @@ import { Trial, type TrialOptions } from '../src/ai/evaluate';
 import { genomeSize, Network, trainSupervised, type Example } from '../src/ai/network';
 import { Centerline } from '../src/sim/centerline';
 import { Rng } from '../src/ai/rng';
-import { Classroom, type ClassSpec, type GhostRunner } from '../src/school/classroom';
+import { Classroom, type ClassSpec, type GhostRunner, type RoadcraftRound } from '../src/school/classroom';
+import { roadcraftDrill } from '../src/school/roadcraftLesson';
 import type { TrackLayout } from '../src/sim/layout';
 import { Track } from '../src/sim/track';
 import { generateLayout, PRESETS, presetLayout } from '../src/trackgen';
@@ -31,15 +32,38 @@ describe('headless training', () => {
     });
     const one = new Classroom(spec());
     const split = new Classroom(spec());
-    expect(split.ghostRounds).toBe(true);
+    expect(split.runnerRounds).toBe(true);
     for (let round = 0; round < 2; round++) {
       while (one.round === round) one.step();
-      await split.runRound(splitRunner(3));
+      await split.runRound({ ghost: splitRunner(3), roadcraft: () => { throw new Error('no drills here'); } });
     }
     const a = one.takeReports(), b = split.takeReports();
     expect(b.map((r) => [r.fitness, r.laps, r.health])).toEqual(a.map((r) => [r.fitness, r.laps, r.health]));
     split.students.forEach((s, k) => expect(Array.from(s.weights)).toEqual(Array.from(one.students[k].weights)));
     expect(split.time).toBeCloseTo(one.time, 9);
+  });
+
+  it('runs a circuit racecraft round through a runner exactly as in one thread', async () => {
+    const spec = (): ClassSpec => ({
+      lesson: 'roadcraft', presets: Object.keys(PRESETS).map(presetLayout), seed: 9, practice: { pairs: 2 },
+      students: [0, 1].map((k) => ({ key: k, id: `D${k}`, name: `D${k}`, weights: initialWeights(new Rng(k + 3)), rounds: 1, licensed: true, roadLicensed: true })),
+    });
+    const one = new Classroom(spec()), split = new Classroom(spec());
+    expect(split.runnerRounds).toBe(true);
+    // Drills built one by one as the pool's workers build them; the solo anchor split into parts.
+    const runner = {
+      ghost: splitRunner(2),
+      roadcraft: async (r: RoadcraftRound) => {
+        const track = new Track(r.layout);
+        const drills = r.candidates.map((g, i) => roadcraftDrill(track, r.slot, g, Math.floor(i / r.perStudent), r.classmates, r.pack, r.nerves[Math.floor(i / r.perStudent)]));
+        for (const d of drills) while (!d.done) d.step();
+        return { results: drills.map((d) => d.result()), time: drills[0].world.time };
+      },
+    };
+    while (one.round === 0) one.step();
+    await split.runRound(runner);
+    split.students.forEach((s, k) => expect(Array.from(s.weights)).toEqual(Array.from(one.students[k].weights)));
+    expect(split.takeReports().map((r) => r.fitness)).toEqual(one.takeReports().map((r) => r.fitness));
   });
 
   it('scores valid laps only when asked: a lap past the track limits is thrown away', () => {

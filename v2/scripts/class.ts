@@ -59,7 +59,8 @@ interface DriverEntry {
   /** The road-course skill (Road courses trains this, not `weights`). */
   roadCourse?: { weights: number[]; rounds?: number; licensed?: boolean; radius?: number };
 }
-const road = lesson === 'circuits';
+// Road-course lessons train the road-course skill, not the oval network.
+const road = lesson === 'circuits' || lesson === 'roadcraft';
 const file = JSON.parse(readFileSync(inFile, 'utf8')) as { drivers: DriverEntry[] };
 const t0 = Date.now();
 const pool = jobs > 1 ? new SchoolPool(jobs) : null;
@@ -71,15 +72,16 @@ const students = file.drivers.map((d, k) => ({
   cautionLicensed: d.cautionLicensed, roadLicensed: d.roadCourse?.licensed, roadRadius: d.roadCourse?.radius, nerve: d.nerve,
 }));
 // New road-course skills study the line follower one per thread (the classroom would do them one after another).
-const apprenticed = pool && road
+const apprenticed = pool && lesson === 'circuits'
   ? await Promise.all(students.map((s) => (s.rounds > 0 ? undefined : pool.apprenticeRoad(s.weights.slice(), hashSeed(seed, s.id), apprenticeship))))
   : undefined;
 const c = new Classroom({ lesson, presets: Object.keys(PRESETS).map(presetLayout), seed, students, apprenticed, apprenticeship, practiseOn, practice });
 console.log(`${lesson}: ${file.drivers.length} students, apprenticeship ${((Date.now() - t0) / 1000).toFixed(0)} s, ${jobs} thread${jobs > 1 ? 's' : ''}`);
 c.takeRadio();
 while (c.round < maxRounds && !c.finished) {
-  if (pool && c.ghostRounds) await c.runRound((layout, genomes, opts) => pool.ghostRound(layout, genomes, opts));
-  else c.step();
+  if (pool && c.runnerRounds) {
+    await c.runRound({ ghost: (layout, genomes, opts) => pool.ghostRound(layout, genomes, opts), roadcraft: (round) => pool.roadcraftRound(round) });
+  } else c.step();
   c.takeReports();
   for (const l of c.takeRadio()) if (/now|went back|license|tighten|cleanly/.test(l.text)) console.log(`round ${c.round}: ${l.text}`);
   if (checkpointEvery && c.round % checkpointEvery === 0) save(outFile.replace(/\.json$/, `-r${c.round}.json`));
@@ -94,7 +96,7 @@ function save(path: string): void {
     ...file,
     drivers: file.drivers.map((d, k) => {
       const s = c.students[k];
-      if (road) return { ...d, roadCourse: { weights: Array.from(s.weights), rounds: s.rounds, licensed: s.roadLicensed, radius: c.roadRadius } };
+      if (road) return { ...d, roadCourse: { weights: Array.from(s.weights), rounds: s.rounds, licensed: s.roadLicensed, radius: lesson === 'circuits' ? c.roadRadius : d.roadCourse?.radius } };
       return {
         ...d, weights: Array.from(s.weights), licensed: s.licensed, pitLicensed: s.pitLicensed,
         pitTrafficLicensed: s.pitTrafficLicensed, cautionLicensed: s.cautionLicensed,
