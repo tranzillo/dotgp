@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { FLAT_TRACK, SHORT_TRACK, SPEEDWAY, Track } from '../sim/track';
+import { PRESETS, presetTrack } from '../trackgen';
 import { ChiefTrainer } from './chiefTraining';
 import { adaptWeights } from './drivers';
 import { EsTrainer } from './es';
@@ -33,7 +33,7 @@ export interface PracticeRound {
 /** A crew chief strategy round runs every few driver rounds (they cost more). */
 const CHIEF_EVERY = 3;
 
-const tracks = [new Track(SPEEDWAY), new Track(SHORT_TRACK), new Track(FLAT_TRACK)];
+const tracks = Object.keys(PRESETS).map(presetTrack);
 let trainer: EsTrainer | null = null;
 let chiefTrainer: ChiefTrainer | null = null;
 let chiefIndex: number[] = [];

@@ -1,16 +1,16 @@
 import { PHYSICS as P } from './constants';
-import { applyImpact, type Car } from './car';
-import { PIT, type Track } from './track';
+import { applyImpact, trauma, type Car } from './car';
+import type { Track } from './track';
 
 /**
- * Walls are analytic lines in track space (constant d), so there are no
- * segment seams. The response keeps tangential speed apart from Coulomb
- * friction proportional to the normal impulse: a shallow hit becomes a
- * scrape along the wall, a steep one bounces off and hurts.
+ * Walls are analytic lines in track space (constant d over an s range), so
+ * there are no segment seams. The response keeps tangential speed apart from
+ * Coulomb friction proportional to the normal impulse: a shallow hit becomes
+ * a scrape along the wall, a steep one bounces off and hurts.
  *
- * Two barriers exist: the outer wall all the way round, and the pit wall
- * along the front straight (two-sided, with solid ends that can be hit
- * nose-first). The infield has no wall; it is grass.
+ * The track's layout says where the walls are (on ovals: the outer wall all
+ * the way round, and the pit wall along the front straight, two-sided with
+ * solid ends that can be hit nose-first).
  */
 export function resolveWalls(car: Car, track: Track, damageScale = 1): void {
   const r = P.CAR_RADIUS;
@@ -19,23 +19,31 @@ export function resolveWalls(car: Car, track: Track, damageScale = 1): void {
   const wasInContact = car.wallContact;
   car.wallContact = false;
 
-  const outerPen = track.outerWallD - (car.d - r);
-  if (outerPen > 0) wallImpact(car, nx, ny, outerPen, 1, wasInContact, damageScale);
-
-  const half = PIT.WALL_THICKNESS / 2;
-  if (track.inPitWallZone(car.s)) {
-    const gap = car.d - track.pitWallD;
-    const pen = r + half - Math.abs(gap);
-    if (pen > 0) {
-      const side = gap >= 0 ? 1 : -1; // push back to whichever side the car is on
-      wallImpact(car, nx * side, ny * side, pen, side, wasInContact, damageScale);
+  for (const wall of track.walls) {
+    if (!track.inRange(car.s, wall.range)) continue;
+    const mid = typeof wall.d === 'number' ? wall.d : track.edgeAt(wall.d, car.s);
+    const half = wall.thickness / 2;
+    if (wall.faces === 'in') {
+      // Keeps cars on its +d side.
+      const pen = mid + half - (car.d - r);
+      if (pen > 0) wallImpact(car, nx, ny, pen, 1, wasInContact, damageScale);
+    } else if (wall.faces === 'out') {
+      const pen = car.d + r - (mid - half);
+      if (pen > 0) wallImpact(car, -nx, -ny, pen, -1, wasInContact, damageScale);
+    } else {
+      const gap = car.d - mid;
+      const pen = r + half - Math.abs(gap);
+      if (pen > 0) {
+        const side = gap >= 0 ? 1 : -1; // push back to whichever side the car is on
+        wallImpact(car, nx * side, ny * side, pen, side, wasInContact, damageScale);
+      }
     }
   }
-  // The wall ends: a car arriving head-on hits the end, not the face.
-  for (const [ex, ey] of track.pitWallEnds) {
-    const dx = car.x - ex, dy = car.y - ey;
+  // Wall ends: a car arriving head-on hits the end, not the face.
+  for (const cap of track.wallCaps) {
+    const dx = car.x - cap.x, dy = car.y - cap.y;
     const dist = Math.hypot(dx, dy);
-    const pen = r + half - dist;
+    const pen = r + cap.radius - dist;
     if (pen > 0 && dist > 1e-9) {
       const Nx = dx / dist, Ny = dy / dist;
       wallImpact(car, Nx, Ny, pen, Nx * nx + Ny * ny, wasInContact, damageScale);
@@ -69,8 +77,31 @@ function wallImpact(
   if (!car.retired) applyImpact(car, dvx, dvy, -vn, friction * vtMag, damageScale);
 }
 
-/** Circle-circle impulses between every overlapping pair. */
-export function resolveCarCollisions(cars: Car[]): void {
+/**
+ * Each car's share of the fault for contact between A and B (A's share; B's
+ * is the rest), in the track frame: closing along the track is the car
+ * behind's fault, moving across into the other car is the mover's. Neither
+ * (touching at the same speed, side by side): shared.
+ */
+export function faultShare(A: Car, B: Car, track: Track): number {
+  const i = A.trackIdx;
+  const tx = track.tx[i], ty = track.ty[i];
+  const lx = -ty, ly = tx;
+  const dx = B.x - A.x, dy = B.y - A.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  const along = (dx * tx + dy * ty) / dist; // > 0: B is ahead of A
+  const across = (dx * lx + dy * ly) / dist;
+  const closing = Math.max(0, ((A.vx - B.vx) * tx + (A.vy - B.vy) * ty) * Math.sign(along)) * Math.abs(along);
+  const side = Math.sign(across);
+  const latA = Math.max(0, (A.vx * lx + A.vy * ly) * side) * Math.abs(across);
+  const latB = Math.max(0, -(B.vx * lx + B.vy * ly) * side) * Math.abs(across);
+  const wA = (along > 0 ? closing : 0) + latA;
+  const wB = (along < 0 ? closing : 0) + latB;
+  return wA + wB < 0.05 ? 0.5 : wA / (wA + wB);
+}
+
+/** Circle-circle impulses between every overlapping pair; damage done is charged by fault (with a track). */
+export function resolveCarCollisions(cars: Car[], track?: Track): void {
   const r2 = 2 * P.CAR_RADIUS;
   for (let a = 0; a < cars.length; a++) {
     const A = cars[a];
@@ -97,6 +128,8 @@ export function resolveCarCollisions(cars: Car[]): void {
       const rvx = B.vx - A.vx, rvy = B.vy - A.vy;
       const vrel = rvx * nx + rvy * ny;
       if (vrel >= 0) continue;
+      // Who caused it, judged on the velocities going in.
+      const fault = track ? faultShare(A, B, track) : 0.5;
       const j = (-(1 + P.CAR_RESTITUTION) * vrel) / invSum;
 
       // Tangential friction (rubbing), capped by Coulomb.
@@ -110,8 +143,17 @@ export function resolveCarCollisions(cars: Car[]): void {
       B.vx += ix * invB; B.vy += iy * invB;
 
       const closing = -vrel;
-      if (!A.retired) applyImpact(A, -ix * invA, -iy * invA, closing, jt * invA * tvm);
-      if (!B.retired) applyImpact(B, ix * invB, iy * invB, closing, jt * invB * tvm);
+      const hA = A.health, hB = B.health;
+      if (!A.retired) applyImpact(A, -ix * invA, -iy * invA, closing, jt * invA * tvm, 1, { kind: 'car', other: B.id });
+      if (!B.retired) applyImpact(B, ix * invB, iy * invB, closing, jt * invB * tvm, 1, { kind: 'car', other: A.id });
+      A.harmDone += (hB - B.health) * fault;
+      B.harmDone += (hA - A.health) * (1 - fault);
+      A.selfInflicted += (hA - A.health) * fault;
+      B.selfInflicted += (hB - B.health) * (1 - fault);
+      A.selfTrauma += trauma(hA - A.health) * fault;
+      B.selfTrauma += trauma(hB - B.health) * (1 - fault);
+      if (A.lastImpact?.other === B.id && hA !== A.health) A.lastImpact.fault = fault;
+      if (B.lastImpact?.other === A.id && hB !== B.health) B.lastImpact.fault = 1 - fault;
     }
   }
 }

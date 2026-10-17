@@ -4,7 +4,7 @@ import { initialChiefWeights } from '../ai/neuralChief';
 import { randomTraits, type CrewChiefTraits } from '../ai/pitting';
 import type { Rng } from '../ai/rng';
 import { PERFECT_SPOTTER, randomSpotterSkill, type SpotterSkill } from '../ai/spotter';
-import { randomLivery, type Livery } from '../render/livery';
+import { randomLivery, withLegibleBorder, type Livery } from '../render/livery';
 
 /**
  * The people behind the cars. Drivers, spotters and crew chiefs are separate
@@ -22,7 +22,28 @@ export interface DriverAgent {
   mentor: string | null;
   /** Has passed rookie school (can complete clean laps). */
   licensed: boolean;
+  /** Has passed the pit stop lesson: drives its own pit stops instead of the scripted maneuver. */
+  pitLicensed?: boolean;
+  /** Has also passed pit road in traffic: with both, drives its own stops in races. */
+  pitTrafficLicensed?: boolean;
+  /** Has passed the caution lesson: drives its own cautions and restarts instead of the formation script. */
+  cautionLicensed?: boolean;
+  /** The road-course skill: a second network for road circuits, its training rounds, and the license. */
+  roadCourse?: { weights: Float32Array; rounds: number; licensed: boolean; radius?: number };
+  /**
+   * Nerve: appetite for risk, 0 timid to 1 fearless (unset: middling). It
+   * sets what the driver learns to care about: how much fear of an imminent
+   * collision and big hits cost it, next to lap time.
+   */
+  nerve?: number;
+  /** Hurt in a crash: sits out this many more races (a stand-in has the seat). */
+  injury?: { severity: 'minor' | 'serious'; racesLeft: number };
+  /** A crash ended this driver's career: retired from racing, history kept. */
+  careerOver?: { season: number; track: string };
 }
+
+/** Fit to race: not injured, career not over. */
+export const fitToRace = (d: DriverAgent) => !d.injury && !d.careerOver;
 
 export interface SpotterAgent {
   id: string;
@@ -46,7 +67,14 @@ export interface TeamEntry {
   driver: string;
   spotter: string;
   chief: string;
+  /** The team's own driver while a stand-in has the seat (they're injured). */
+  regular?: string;
 }
+
+/** Something that happened to the roster, for the activity log. */
+export type RosterChange =
+  | { type: 'joined'; role: Role; agent: string; name: string; origin: 'rookie' | 'descendant' | 'protege' | 'recruit'; mentor: string | null }
+  | { type: 'seat'; role: Role; agent: string; action: 'signed' | 'released'; team: number; car: number };
 
 /** How far a descendant's weights stray from its mentor's. */
 const DESCENT_NOISE = { driver: 0.02, chief: 0.05 };
@@ -64,6 +92,8 @@ export class Roster {
   readonly chiefs = new Map<string, ChiefAgent>();
   /** Trained crew chiefs that new teams' chiefs can descend from. */
   chiefTemplates: Float32Array[] = [];
+  /** Told about every arrival and seat change (the activity log listens). */
+  onChange: ((change: RosterChange) => void) | null = null;
   private counter = 0;
 
   constructor(private readonly rng: Rng) {}
@@ -85,9 +115,17 @@ export class Roster {
 
   // ---------- creating agents ----------
 
+  private joined(role: Role, agent: { id: string; name: string }, origin: 'rookie' | 'descendant' | 'protege' | 'recruit', mentor: string | null): void {
+    this.onChange?.({ type: 'joined', role, agent: agent.id, name: agent.name, origin, mentor });
+  }
+
   freshDriver(): DriverAgent {
-    const d = { id: this.uid('D'), name: this.uniqueName(), weights: initialWeights(this.rng), rounds: 0, mentor: null, licensed: false };
+    const d = {
+      id: this.uid('D'), name: this.uniqueName(), weights: initialWeights(this.rng), rounds: 0, mentor: null, licensed: false,
+      nerve: 0.15 + 0.7 * this.rng.next(),
+    };
     this.drivers.set(d.id, d);
+    this.joined('driver', d, 'rookie', null);
     return d;
   }
 
@@ -96,14 +134,27 @@ export class Roster {
     const weights = mentor.weights.slice();
     for (let i = 0; i < weights.length; i++) weights[i] += this.rng.gaussian() * DESCENT_NOISE.driver;
     // Inherits a working driving style, so no rookie school needed.
-    const d = { id: this.uid('D'), name: this.uniqueName(), weights, rounds: 0, mentor: mentor.name, licensed: true };
+    // Something of the mentor's nerve too.
+    const nerve = Math.max(0, Math.min(1, (mentor.nerve ?? 0.5) + 0.15 * this.rng.gaussian()));
+    const d = { id: this.uid('D'), name: this.uniqueName(), weights, rounds: 0, mentor: mentor.name, licensed: true, nerve };
     this.drivers.set(d.id, d);
+    this.joined('driver', d, 'descendant', mentor.name);
     return d;
+  }
+
+  /**
+   * A new driver for the academy (no seat): descended from a licensed driver
+   * if there is one, otherwise a raw rookie for driving school.
+   */
+  recruitDriver(): DriverAgent {
+    const experienced = [...this.drivers.values()].filter((d) => d.licensed);
+    return experienced.length ? this.descendantDriver(experienced[this.rng.int(experienced.length)]) : this.freshDriver();
   }
 
   newSpotter(): SpotterAgent {
     const s = { id: this.uid('S'), name: this.uniqueName(), skill: randomSpotterSkill(this.random) };
     this.spotters.set(s.id, s);
+    this.joined('spotter', s, 'recruit', null);
     return s;
   }
 
@@ -124,6 +175,7 @@ export class Roster {
     }
     const c = { id: this.uid('C'), name: this.uniqueName(), rounds: 0, mentor, brain };
     this.chiefs.set(c.id, c);
+    this.joined('chief', c, 'recruit', mentor);
     return c;
   }
 
@@ -148,6 +200,7 @@ export class Roster {
     }
     const c = { id: this.uid('C'), name: this.uniqueName(), rounds: 0, mentor: mentor.name, brain };
     this.chiefs.set(c.id, c);
+    this.joined('chief', c, 'protege', mentor.name);
     return c;
   }
 
@@ -187,16 +240,77 @@ export class Roster {
   /** Grow to n teams. New drivers descend from drivers who can already drive. */
   ensureTeams(n: number): void {
     while (this.teams.length < n) {
-      const experienced = [...this.drivers.values()].filter((d) => d.licensed);
-      const driver = experienced.length ? this.descendantDriver(experienced[this.rng.int(experienced.length)]) : this.freshDriver();
-      this.teams.push({
+      const driver = this.recruitDriver();
+      const team: TeamEntry = {
         id: this.teams.reduce((m, t) => Math.max(m, t.id), -1) + 1,
         livery: randomLivery(this.teams.map((t) => t.livery.number), this.random),
         driver: driver.id,
         spotter: this.newSpotter().id,
         chief: this.newChief().id,
-      });
+      };
+      this.teams.push(team);
+      for (const role of ['driver', 'spotter', 'chief'] as const) this.seatChange(team, role, team[role], 'signed');
     }
+  }
+
+  /** The team an agent has a seat with, or null: in the academy (or between seats). */
+  teamOf(role: Role, agentId: string): TeamEntry | null {
+    return this.teams.find((t) => t[role] === agentId) ?? null;
+  }
+
+  private seatChange(team: TeamEntry, role: Role, agent: string, action: 'signed' | 'released'): void {
+    this.onChange?.({ type: 'seat', role, agent, action, team: team.id, car: team.livery.number });
+  }
+
+  /** Give a team's seat to an agent; whoever had it goes to the academy. */
+  seat(team: TeamEntry, role: Role, agentId: string): void {
+    if (team[role] === agentId) return;
+    this.seatChange(team, role, team[role], 'released');
+    team[role] = agentId;
+    this.seatChange(team, role, agentId, 'signed');
+  }
+
+  /**
+   * Before a session: a recovered regular gets their seat back; an injured or
+   * retired driver's seat goes to a stand-in from the academy (a licensed,
+   * fit driver who's free; a new recruit if there's none). Returns news lines.
+   */
+  fillSeats(teams: TeamEntry[], isFree: (id: string) => boolean): string[] {
+    const lines: string[] = [];
+    for (const t of teams) {
+      const regular = t.regular ? this.drivers.get(t.regular) : undefined;
+      if (t.regular && (!regular || regular.careerOver || (this.teamOf('driver', regular.id) && t.driver !== regular.id))) {
+        t.regular = undefined; // gone, retired, or seated elsewhere since
+      } else if (regular && fitToRace(regular) && t.driver !== regular.id && isFree(regular.id)) {
+        const standIn = this.driverOf(t);
+        this.seat(t, 'driver', regular.id);
+        t.regular = undefined;
+        lines.push(`${regular.name} is back in the #${t.livery.number} (${standIn.name} returns to the academy)`);
+      }
+      const d = this.driverOf(t);
+      if (fitToRace(d)) continue;
+      const standIn = [...this.drivers.values()].find((x) => x.licensed && fitToRace(x) && !this.teamOf('driver', x.id) && isFree(x.id))
+        ?? this.recruitDriver();
+      if (d.injury) t.regular ??= d.id;
+      this.seat(t, 'driver', standIn.id);
+      lines.push(d.injury
+        ? `${standIn.name} stands in for the injured ${d.name} in the #${t.livery.number}`
+        : `${standIn.name} takes over the #${t.livery.number} from ${d.name}, whose career is over`);
+    }
+    return lines;
+  }
+
+  /** A race was run: injured drivers are a race nearer recovery. Returns the drivers who recovered. */
+  raceRun(): DriverAgent[] {
+    const recovered: DriverAgent[] = [];
+    for (const d of this.drivers.values()) {
+      if (!d.injury) continue;
+      if (--d.injury.racesLeft <= 0) {
+        d.injury = undefined;
+        recovered.push(d);
+      }
+    }
+    return recovered;
   }
 
   driverOf(t: TeamEntry): DriverAgent { return this.drivers.get(t.driver)!; }
@@ -206,15 +320,21 @@ export class Roster {
   /** Put an agent in a team's seat; if another team had them, the two teams swap. */
   assign(team: TeamEntry, role: Role, agentId: string): void {
     const other = this.teams.find((t) => t !== team && t[role] === agentId);
-    if (other) other[role] = team[role];
-    team[role] = agentId;
+    const previous = team[role];
+    this.seat(team, role, agentId);
+    if (other) {
+      this.seatChange(other, role, agentId, 'released');
+      other[role] = previous;
+      this.seatChange(other, role, previous, 'signed');
+    }
   }
 
   /** Replace every team's driver with a brand-new rookie who has never driven. */
   freshDriversForAll(): void {
     for (const t of this.teams) {
-      this.drivers.delete(t.driver);
-      t.driver = this.freshDriver().id;
+      const old = t.driver;
+      this.seat(t, 'driver', this.freshDriver().id);
+      this.drivers.delete(old);
     }
   }
 
@@ -225,13 +345,54 @@ export class Roster {
       version: 3,
       counter: this.counter,
       teams: this.teams,
-      drivers: [...this.drivers.values()].map((d) => ({ ...d, weights: Array.from(d.weights) })),
+      drivers: [...this.drivers.values()].map((d) => ({
+        ...d, weights: Array.from(d.weights),
+        ...(d.roadCourse ? { roadCourse: { ...d.roadCourse, weights: Array.from(d.roadCourse.weights) } } : {}),
+      })),
       spotters: [...this.spotters.values()],
       chiefs: [...this.chiefs.values()].map((c) => ({
         ...c,
         brain: c.brain.kind === 'neural' ? { kind: 'neural', weights: Array.from(c.brain.weights) } : c.brain,
       })),
     };
+  }
+
+  /**
+   * A bundle of drivers exactly as shipped (no variation), seated round the
+   * field in turn, with scripted crew chiefs and perfect spotters: the field
+   * the benchmarks race. Agents get stable ids, so their history pages build
+   * up across visits.
+   */
+  static fromBundle(
+    bundle: { id: string; name: string },
+    drivers: Array<{ weights: number[]; rounds?: number; nerve?: number; cautionLicensed?: boolean; roadCourse?: { weights: number[]; rounds?: number; licensed?: boolean } }>,
+    fieldSize: number,
+    rng: Rng,
+  ): Roster | null {
+    if (!drivers.length) return null;
+    const r = new Roster(rng);
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    for (let k = 0; k < fieldSize; k++) {
+      const i = k % drivers.length, copy = Math.floor(k / drivers.length) + 1;
+      const src = drivers[i];
+      const driver: DriverAgent = {
+        id: `${bundle.id}-${i}-${copy}`, name: `${bundle.name} ${letters[i % 26]}${copy > 1 ? copy : ''}`,
+        weights: adaptWeights(Float32Array.from(src.weights)), rounds: src.rounds ?? 0, mentor: null, licensed: true,
+        nerve: src.nerve, cautionLicensed: src.cautionLicensed,
+        roadCourse: src.roadCourse
+          ? { weights: adaptWeights(Float32Array.from(src.roadCourse.weights)), rounds: src.roadCourse.rounds ?? 0, licensed: !!src.roadCourse.licensed }
+          : undefined,
+      };
+      r.drivers.set(driver.id, driver);
+      const spotter: SpotterAgent = { id: `${bundle.id}-S${k}`, name: `Spotter ${k + 1}`, skill: PERFECT_SPOTTER };
+      r.spotters.set(spotter.id, spotter);
+      const chief: ChiefAgent = { id: `${bundle.id}-C${k}`, name: `Chief ${k + 1}`, rounds: 0, mentor: null, brain: { kind: 'scripted', traits: randomTraits(r.random) } };
+      r.chiefs.set(chief.id, chief);
+      r.teams.push({
+        id: k, livery: randomLivery(r.teams.map((t) => t.livery.number), r.random), driver: driver.id, spotter: spotter.id, chief: chief.id,
+      });
+    }
+    return r;
   }
 
   /**
@@ -244,9 +405,10 @@ export class Roster {
     const d = data as Record<string, unknown>;
     if (d && d.version === 3) {
       r.counter = Number(d.counter) || 0;
-      for (const x of d.drivers as Array<DriverAgent & { weights: number[] }>) {
+      for (const x of d.drivers as Array<Omit<DriverAgent, 'roadCourse'> & { weights: number[]; roadCourse?: { weights: number[]; rounds: number; licensed: boolean } }>) {
         r.drivers.set(x.id, {
           ...x, weights: adaptWeights(Float32Array.from(x.weights)), licensed: x.licensed ?? (x.rounds > 0 || x.mentor !== null),
+          roadCourse: x.roadCourse ? { ...x.roadCourse, weights: adaptWeights(Float32Array.from(x.roadCourse.weights)) } : undefined,
         });
       }
       for (const x of d.spotters as SpotterAgent[]) r.spotters.set(x.id, x);
@@ -256,7 +418,7 @@ export class Roster {
           : { kind: 'scripted', traits: x.brain.traits! };
         r.chiefs.set(x.id, { ...x, brain });
       }
-      r.teams = d.teams as TeamEntry[];
+      r.teams = (d.teams as TeamEntry[]).map((t) => ({ ...t, livery: withLegibleBorder(t.livery) }));
       return r.teams.length ? r : null;
     }
     // Older formats: one team per listed driver.
@@ -277,7 +439,7 @@ export class Roster {
       r.teams.push({
         id: r.teams.length,
         livery: x.number && x.fill && x.border
-          ? { number: x.number, fill: x.fill, border: x.border }
+          ? withLegibleBorder({ number: x.number, fill: x.fill, border: x.border })
           : randomLivery(r.teams.map((t) => t.livery.number), r.random),
         driver: driver.id,
         spotter: r.newSpotter().id,

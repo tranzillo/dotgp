@@ -1,22 +1,31 @@
-import { NeuralDriver, Team } from '../ai/drivers';
-import { PaceCarDriver } from '../ai/formation';
-import { NeuralCrewChief } from '../ai/neuralChief';
-import { StrategistCrewChief, type CrewChief } from '../ai/pitting';
 import type { PracticeRequest, PracticeRound } from '../ai/practice.worker';
 import { Rng } from '../ai/rng';
-import { describeRadio, RADIO_SIZE, TowerSpotter } from '../ai/spotter';
+import { EventHost, type EventHandle } from '../events/host';
+import type { CarView, EntrantResult, EntrantSpec, RadioLine as SessionRadio, SessionSnapshot, SessionSpec } from '../events/session';
+import { injuryFrom } from '../events/injury';
+import { OFFENCE_NAMES } from '../rules/rulebook';
+import { PENALTY_NAMES } from '../rules/desk';
+import { LESSONS, type ClassSpec, type LessonId, type RoundReport } from '../school/classroom';
+import { ActivityLog, MemoryActivityStore, type AgentRole, type EventRef } from '../records/activity';
+import { IndexedDbActivityStore } from '../records/idbStore';
+import { Occupancy } from '../records/occupancy';
 import type { Livery } from '../render/livery';
-import { Renderer, type DotMode } from '../render/renderer';
-import { Car, SIGNATURE_BINS } from '../sim/car';
-import { PHYSICS as P } from '../sim/constants';
-import { placeOnGrid, ROLLING_START_SPEED } from '../sim/grid';
-import { Race } from '../sim/race';
-import { FLAT_TRACK, SHORT_TRACK, SPEEDWAY, Track, type OvalSpec } from '../sim/track';
-import { World } from '../sim/world';
-import { Roster, type ChiefAgent, type Role, type TeamEntry } from './roster';
+import { Renderer, type DebugLayers, type DotMode, type RenderCar } from '../render/renderer';
+import { SIGNATURE_BINS } from '../sim/car';
+import { G, PHYSICS as P } from '../sim/constants';
+import { Track } from '../sim/track';
+import { generateTrack, PRESETS, presetLayout, presetTrack } from '../trackgen';
+import { AgentPage } from './agentPage';
+import { Roster, type Role, type TeamEntry } from './roster';
 import {
-  driverStandings, newSeason, nextTrack, offSeason, recordRace, seasonComplete, type SeasonState,
+  driverStandings, newSeason, nextTrack, offSeason, pointsFor, recordRace, seasonComplete, type SeasonState,
 } from './season';
+
+/**
+ * The viewer. Sessions run as events in workers (events/); this page decides
+ * what to run, shows whichever event is attached, keeps the roster, the
+ * season and the records, and runs practice training.
+ */
 
 // ---------- Roster ----------
 
@@ -25,10 +34,46 @@ const FIELD_SIZES = [4, 8, 12, 16, 24, 32, 40];
 
 const rng = new Rng((Math.random() * 2 ** 32) >>> 0);
 let roster = new Roster(rng);
+
+/**
+ * Whose drivers are on screen: your own roster (it grows, learns, races the
+ * championship, and is saved), or a bundle shipped with the game, exactly as
+ * Claude's tests race it (read-only: no learning, classes or points).
+ */
+interface Bundle { id: string; name: string; file: string; note: string }
+let bundles: Bundle[] = [{ id: 'house', name: 'House', file: 'default.json', note: 'The house drivers.' }];
+/** 'mine', or a bundle id. */
+let source = 'mine';
+/** Your roster, kept aside while a bundle is on screen. */
+let myRoster: Roster | null = null;
+const bundleDrivers = new Map<string, Array<{ weights: number[]; rounds?: number; nerve?: number; cautionLicensed?: boolean }>>();
+const readOnly = () => source !== 'mine';
+const bundleOf = (id: string) => bundles.find((b) => b.id === id);
 let fieldSize = 8;
 const field = () => roster.teams.slice(0, fieldSize);
 
+// ---------- Records: who is where, and everything they do ----------
+
+/** The permanent activity log (IndexedDB; in memory where that's unavailable). */
+const activity = new ActivityLog(typeof indexedDB !== 'undefined' ? new IndexedDbActivityStore() : new MemoryActivityStore());
+/** Which event each agent is in: an agent is in at most one at a time. */
+const occupancy = new Occupancy();
+let eventCounter = 0;
+
+/** Log every arrival and seat change on the roster. */
+function watchRoster(r: Roster): void {
+  r.onChange = (c) => {
+    if (c.type === 'joined') {
+      activity.record({ kind: 'joined', agent: c.agent, role: c.role, data: { name: c.name, origin: c.origin, mentor: c.mentor } });
+    } else {
+      activity.record({ kind: 'seat', agent: c.agent, role: c.role, event: fieldEvent?.ref, data: { action: c.action, team: c.team, car: c.car } });
+    }
+  };
+}
+watchRoster(roster);
+
 function persist(): void {
+  if (readOnly()) return; // a bundle is never saved over your roster
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ fieldSize, roster: roster.toJSON(), season }));
   } catch { /* storage unavailable: the roster just won't survive a reload */ }
@@ -56,165 +101,255 @@ async function fetchJson(url: string): Promise<unknown | null> {
   }
 }
 
-function makeChief(agent: ChiefAgent): CrewChief {
-  return agent.brain.kind === 'neural' ? new NeuralCrewChief(agent.brain.weights) : new StrategistCrewChief(agent.brain.traits);
-}
+// ---------- Session settings ----------
 
-// ---------- Session state ----------
-
-const TRACKS: Record<string, OvalSpec> = { Speedway: SPEEDWAY, 'Short track': SHORT_TRACK, 'Flat track': FLAT_TRACK };
+/** Tracks by name: the presets (the season's calendar), plus any generated this session. */
+const TRACKS = new Map<string, Track>(Object.keys(PRESETS).map((id) => [presetTrack(id).name, presetTrack(id)]));
+const SEASON_TRACKS = [...TRACKS.keys()];
 /** Each track appears this many times per season. */
 const ROUNDS_PER_TRACK = 2;
-let season: SeasonState = newSeason(Object.keys(TRACKS), ROUNDS_PER_TRACK);
-let raceRecorded = false;
-let trackName = 'Speedway';
-let track = new Track(TRACKS[trackName]);
+let season: SeasonState = newSeason(SEASON_TRACKS, ROUNDS_PER_TRACK);
+/** The track and kind of the next session started (and of the field's current one). */
+let trackName = SEASON_TRACKS[0];
+let track = TRACKS.get(trackName)!;
+
+/** Generate a track (an oval or a road circuit) and add it to the track list (seed and variant random unless given). */
+function addGeneratedTrack(type: 'oval' | 'circuit' = 'oval', seed = Math.floor(Math.random() * 1e9), variant?: string): Track {
+  const t = generateTrack({ type, seed, variant });
+  const label = `${t.name} (${t.layout.params.variant})`;
+  TRACKS.set(label, t);
+  trackOptions.push([label, label]);
+  return t;
+}
+const trackOptions: Array<[string, string]> = SEASON_TRACKS.map((k) => [k, k]);
 /** race: laps, pits, DNFs. practice: open session, wrecks respawn. ghost: no contact. */
 type Mode = 'race' | 'practice' | 'ghost';
 let mode: Mode = 'race';
 let raceLaps = 50;
 /** Race pace: tire wear and fuel burn multiplier. */
 let pace = 4;
+/** Drivers learn as they race (lap against lap). */
+let learnInRaces = true;
 /**
  * What happens after a race: another race straight away, a race weekend
  * (practice where drivers and crew chiefs learn, then the next race on the
- * next track), or nothing.
+ * next track), or nothing. A race finishing in the background carries on in
+ * the background.
  */
 type Loop = 'races' | 'weekend' | 'stop';
 let loop: Loop = 'weekend';
-/** Practice rounds (in the worker) between races in the weekend loop. */
+/**
+ * Whether the field's races are championship rounds (on the calendar's next
+ * track) or exhibitions (any track, picked by hand: no points).
+ */
+let championship = true;
+/** Practice rounds (in the trainer) between races in the weekend loop. */
 const WEEKEND_PRACTICE_ROUNDS = 9;
 let weekendPractice: { roundsLeft: number } | null = null;
-let race: Race | null = null;
+const NEXT_RACE_DELAY = 10; // real seconds of results on screen before moving on
 let raceDoneAt = NaN;
-const NEXT_RACE_DELAY = 10; // real seconds of results before moving on
 let speed = 1;
 let zoom = 1;
-let world: World;
-let carEntry = new Map<Car, TeamEntry>();
-let carTeam = new Map<Car, Team>();
 let selected: TeamEntry | null = null;
-const technique = new Map<string, Float64Array>(); // driver id -> decaying histogram
 let focus: [number, number] | null = null;
 
 const canvas = document.getElementById('track') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const liveryOf = (car: Car) => carEntry.get(car)?.livery;
-const carOf = (entry: TeamEntry | null) => (entry ? world.cars.find((c) => carEntry.get(c) === entry) ?? null : null);
 
-/** Released at pace speed behind the start line, as on real ovals. */
-function rollingRestart(car: Car): void {
-  car.placeOnTrack(track, track.length - 20, 0);
-  car.vx = track.tx[car.trackIdx] * ROLLING_START_SPEED;
-  car.vy = track.ty[car.trackIdx] * ROLLING_START_SPEED;
+// ---------- Events ----------
+
+/** What the page keeps about an event it started. */
+interface EventMeta {
+  mode: Mode | 'class';
+  trackName: string;
+  track: Track;
+  /** Teams by entrant key (the team id). Empty for classes. */
+  teams: Map<number, TeamEntry>;
+  recorded: boolean;
+  /** Learning steps drivers have taken during this race. */
+  learnedSteps?: number;
+  /** Driving school: each student's colours and initials, by student key. */
+  liveries?: Map<number, Livery>;
+  lesson?: LessonId;
+  /** A championship round (scores points), not an exhibition. */
+  round?: boolean;
+}
+const metas = new Map<EventHandle, EventMeta>();
+/** The event the field is in (on screen or not). */
+let fieldEvent: EventHandle | null = null;
+
+const host = new EventHost({
+  frame(handle, _snapshot, strokes, radio) {
+    renderer.stampStrokes(strokes);
+    addRadio(handle, radio);
+  },
+  progress() { /* the events panel refreshes on its own timer */ },
+  finished(handle) {
+    const meta = metas.get(handle)!;
+    if (meta.mode === 'class') {
+      occupancy.release(handle.ref.id);
+      news(`${handle.ref.label}: everyone has a license. Class dismissed.`);
+      renderRoster();
+      renderSchool();
+    }
+    if (meta.mode === 'race' && !meta.recorded) finishRace(handle);
+    // Watched: give the result a moment on screen. In the background: straight on.
+    if (handle.attachedTo) raceDoneAt = performance.now() / 1000;
+    else if (handle === fieldEvent) carryOn(handle);
+    renderEvents();
+  },
+  track(handle, layout) {
+    const meta = metas.get(handle)!;
+    meta.track = new Track(layout);
+    meta.trackName = meta.track.name;
+    if (handle.attachedTo) {
+      renderer.setTrack(meta.track);
+      renderer.clearMarks();
+      focus = null;
+    }
+  },
+  rounds(handle, reports) {
+    lessonRounds(handle, reports);
+  },
+  learned(handle, steps) {
+    // Drivers learned mid-race: the roster gets their new driving, the log a line each.
+    const meta = metas.get(handle);
+    if (meta) meta.learnedSteps = (meta.learnedSteps ?? 0) + steps.length;
+    for (const st of steps) {
+      const d = roster.drivers.get(st.driverId);
+      if (!d) continue;
+      d.weights.set(st.weights);
+      d.rounds++;
+      activity.record({ kind: 'learning', agent: d.id, role: 'driver', event: handle.ref, brain: d.rounds, data: { source: 'race', track: meta?.trackName ?? '', step: st.steps } });
+    }
+  },
+});
+
+/** The event on screen and its latest snapshot. */
+const shown = () => host.attached;
+const shownMeta = () => { const h = shown(); return h ? metas.get(h) ?? null : null; };
+const snap = (): SessionSnapshot | null => shown()?.snapshot ?? null;
+const teamOfKey = (key: number) => shownMeta()?.teams.get(key);
+const liveryOf = (car: RenderCar) => shownMeta()?.liveries?.get((car as CarView).key) ?? teamOfKey((car as CarView).key)?.livery;
+const carOf = (entry: TeamEntry | null) => (entry && shownMeta()?.mode !== 'class' ? snap()?.cars.find((c) => c.key === entry.id) ?? null : null);
+/** Driving school: draw each student's practice variations (faint) too. */
+let showVariations = true;
+
+function newEventRef(round: boolean): EventRef {
+  const type = mode === 'ghost' ? 'ghost' : mode;
+  const label = round
+    ? `Season ${season.number} round ${Math.min(season.races.length + 1, season.schedule.length)} · ${trackName}`
+    : mode === 'race' ? `Exhibition · ${trackName}`
+    : mode === 'practice' ? `Practice · ${trackName}` : `Ghost laps · ${trackName}`;
+  return {
+    id: `${type}-${Date.now().toString(36)}-${++eventCounter}`, type, label, track: trackName,
+    parent: round ? `season-${season.number}` : undefined,
+  };
 }
 
-function buildWorld(): void {
-  const contact = mode !== 'ghost';
-  world = new World(track, { collisions: contact, drafting: contact, wearScale: mode === 'ghost' ? 1 : pace });
-  race = null;
-  raceDoneAt = NaN;
-  raceRecorded = false;
-  eventsSeen = 0;
-  carEntry = new Map();
-  carTeam = new Map();
-  // Shuffle the grid so starting order isn't always roster order.
-  const entrants = field().map((t) => ({ t, key: rng.next() })).sort((a, b) => a.key - b.key).map((e) => e.t);
-  entrants.forEach((entry, k) => {
-    const car = new Car(k, entry.livery.fill);
-    if (contact) placeOnGrid(car, track, k, true);
-    else rollingRestart(car); // ghosts share one spot
-    const team = new Team(
-      new NeuralDriver(roster.driverOf(entry).weights),
-      new TowerSpotter(roster.spotterOf(entry).skill),
-      contact ? makeChief(roster.chiefOf(entry)) : null,
-    );
-    world.addCar(car, team);
-    carEntry.set(car, entry);
-    carTeam.set(car, team);
-  });
-  // Races run under race control: pace laps, green at the line, cautions with the wrecker crew.
-  if (mode === 'race') race = new Race(world, raceLaps, new PaceCarDriver());
-  radioFeed.length = 0;
-  prevRadio.clear();
-  focus = null;
-  renderer.clearMarks();
+/** The championship's next round goes on its calendar track. */
+function toNextRound(): void {
+  championship = true;
+  trackName = nextTrack(season);
+  track = TRACKS.get(trackName) ?? TRACKS.get(SEASON_TRACKS[0])!;
 }
 
-/** Practice/ghosts: a wrecked car returns after a pause. Ghosts get instant top-ups (no crew chief). */
-const retiredAt = new Map<Car, number>();
-function serviceCars(): void {
-  if (mode === 'race') return; // in a race, wrecks are out and the crew chiefs handle stops
-  world.cars.forEach((car, k) => {
-    if (car.retired) {
-      if (!retiredAt.has(car)) retiredAt.set(car, world.time);
-      if (world.time - retiredAt.get(car)! < 3) return;
-      retiredAt.delete(car);
-      const fresh = new Car(car.id, car.color);
-      rollingRestart(fresh);
-      fresh.lapTimes.push(...car.lapTimes);
-      world.replaceCar(k, fresh);
-      carEntry.set(fresh, carEntry.get(car)!);
-      carEntry.delete(car);
-      carTeam.set(fresh, carTeam.get(car)!);
-      carTeam.delete(car);
-      renderer.forget(car);
-      return;
-    }
-    if (mode === 'ghost' && (car.tireLife < 0.5 || car.fuel < 3)) {
-      car.tireLife = 1;
-      car.fuel = P.FUEL_CAPACITY;
-    }
-  });
+function entrantSpec(t: TeamEntry): EntrantSpec {
+  const driver = roster.driverOf(t), spotter = roster.spotterOf(t), chief = roster.chiefOf(t);
+  return {
+    key: t.id,
+    fill: t.livery.fill,
+    driver: { id: driver.id, weights: driver.weights, roadWeights: driver.roadCourse?.weights, nerve: driver.nerve, pits: (driver.pitLicensed && driver.pitTrafficLicensed) ?? false, cautions: driver.cautionLicensed ?? false },
+    spotter: { id: spotter.id, skill: spotter.skill },
+    chief: { id: chief.id, brain: chief.brain },
+  };
 }
 
-function recordTechnique(): void {
-  for (const car of world.cars) {
-    const entry = carEntry.get(car);
-    if (!entry || car.retired) continue;
-    let h = technique.get(entry.driver);
-    if (!h) technique.set(entry.driver, (h = new Float64Array(SIGNATURE_BINS)));
-    const mag = Math.hypot(car.tireLon, car.tireLat);
-    for (let b = 0; b < SIGNATURE_BINS; b++) h[b] *= 0.9997;
-    if (mag > 0.1) {
-      const ang = Math.atan2(car.tireLat, car.tireLon);
-      h[Math.floor(((ang + Math.PI) / (2 * Math.PI)) * SIGNATURE_BINS) % SIGNATURE_BINS] += mag * P.DT;
-    }
+/**
+ * Start a session for the field (the field's previous session ends). It
+ * claims every agent in the field; if any is busy in another event, nothing
+ * starts. Races keep running in the background; open sessions pause there.
+ */
+function startSession(attach = true, warm = 0): EventHandle | null {
+  if (fieldEvent) endEvent(fieldEvent);
+  const round = mode === 'race' && championship;
+  const ref = newEventRef(round);
+  // Injured or retired drivers' seats go to stand-ins; recovered regulars get theirs back.
+  for (const line of roster.fillSeats(field(), (id) => occupancy.isFree(id))) news(line);
+  const teams = field();
+  const conflicts = occupancy.claim(ref, teams.flatMap((t) => [t.driver, t.spotter, t.chief]));
+  if (conflicts.length) {
+    $('teamsNote').textContent = `Can't start: ${conflicts.length} agents are busy in ${conflicts[0].event.label}.`;
+    return null;
   }
+  const spec: SessionSpec = {
+    kind: mode, layout: track.layout, entrants: teams.map(entrantSpec), laps: raceLaps, pace,
+    seed: (rng.next() * 2 ** 32) >>> 0, learn: learnInRaces && !readOnly(),
+  };
+  const handle = host.start(ref, { what: 'session', spec }, { attach, runDetached: mode === 'race', warm });
+  metas.set(handle, { mode, trackName, track, teams: new Map(teams.map((t) => [t.id, t])), recorded: false, round });
+  fieldEvent = handle;
+  raceDoneAt = NaN;
+  if (attach) showEvent(handle);
+  renderRoster();
+  renderEvents();
+  return handle;
+}
+
+/** An event is over for the page: its worker stops and its agents are free. */
+function endEvent(handle: EventHandle): void {
+  host.stop(handle);
+  occupancy.release(handle.ref.id);
+  if (handle === fieldEvent && metas.get(handle)?.mode === 'practice') {
+    weekendPractice = null;
+    stopPractice();
+  }
+}
+
+/** Put an event on screen. */
+function showEvent(handle: EventHandle): void {
+  host.attach(handle);
+  const meta = metas.get(handle)!;
+  renderer.setTrack(meta.track);
+  renderer.clearMarks();
+  radioFeed.length = 0;
+  technique.clear();
+  focus = null;
+  if (handle.snapshot === null) $('hud').innerHTML = `<b>${meta.trackName}</b> · starting…`;
+}
+
+/** After a race: the next race, or the next weekend, in the background if this one was. */
+function carryOn(prev: EventHandle): void {
+  const attach = prev.attachedTo;
+  raceDoneAt = NaN;
+  if (readOnly()) {
+    // A bundle doesn't race the championship or practise: another exhibition race where this one was.
+    if (loop !== 'stop') { mode = 'race'; startSession(attach); }
+  } else if (loop === 'races') {
+    mode = 'race';
+    toNextRound();
+    startSession(attach);
+  } else if (loop === 'weekend') {
+    startWeekendPractice(attach);
+  }
+  buttonGroups.forEach((render) => render());
 }
 
 // ---------- Team radio ----------
 
 interface RadioLine { time: number; team: TeamEntry | null; text: string }
 const radioFeed: RadioLine[] = [];
-const prevRadio = new Map<Car, Float32Array>();
-const RADIO_REPEAT = 4; // seconds before the same call from the same team shows again
-let eventsSeen = 0;
+/** Technique histograms (by team id) from the attached event. */
+const technique = new Map<number, number[]>();
 
-function pollRadio(): void {
-  // Crew chief calls and pit/retirement events go on the same feed.
-  for (; eventsSeen < world.events.length; eventsSeen++) {
-    const e = world.events[eventsSeen];
-    const team = carEntry.get(e.car) ?? null;
-    if (e.kind === 'flag') radioFeed.unshift({ time: e.time, team: null, text: e.text });
-    else if (team) radioFeed.unshift({ time: e.time, team, text: e.kind === 'crew' ? `Crew: ${e.text}` : e.text });
-  }
-  for (const car of world.cars) {
-    const controller = carTeam.get(car);
-    const team = carEntry.get(car);
-    if (!controller || !team || car.retired) continue;
-    let prev = prevRadio.get(car);
-    if (!prev) prevRadio.set(car, (prev = new Float32Array(RADIO_SIZE)));
-    for (const text of describeRadio(controller.radio, prev)) {
-      const dup = radioFeed.some((l) => l.team === team && l.text === text && world.time - l.time < RADIO_REPEAT);
-      if (!dup) radioFeed.unshift({ time: world.time, team, text });
-    }
-    prev.set(controller.radio);
-  }
+function addRadio(handle: EventHandle, lines: SessionRadio[]): void {
+  const teams = metas.get(handle)?.teams;
+  for (const l of lines) radioFeed.unshift({ time: l.time, team: l.key === null ? null : teams?.get(l.key) ?? null, text: l.text });
   if (radioFeed.length > 80) radioFeed.length = 80;
 }
 
+const news = (text: string) => radioFeed.unshift({ time: snap()?.time ?? 0, team: null, text });
 const dotHtml = (l: Livery) => `<span class="dot" style="background:${l.fill};border-color:${l.border}"></span>`;
 const carLabel = (t: TeamEntry) => `${dotHtml(t.livery)}#${t.livery.number}`;
 
@@ -227,138 +362,209 @@ function drawRadio(): void {
   }).join('') || '<div class="muted">quiet on the radio</div>';
 }
 
-// ---------- Main loop ----------
-
-const leaderCar = () => world.cars.reduce((a, b) => (b.dist > a.dist && !b.retired ? b : a), world.cars[0]);
+// ---------- Main loop: draw whatever is attached ----------
 
 /** ?focusS=<metres from the line> parks the zoomed camera on a spot (e.g. 0 = pit road). */
 const fixedFocusS = new URLSearchParams(location.search).get('focusS');
 
-function updateCamera(): void {
-  if (zoom === 1) {
+function leaderView(s: SessionSnapshot): CarView | undefined {
+  return s.cars.find((c) => c.id === s.order[0]);
+}
+
+function updateCamera(s: SessionSnapshot | null, t: Track): void {
+  if (zoom === 1 || !s) {
     renderer.setView(1, 0, 0);
     return;
   }
   if (fixedFocusS !== null && !selected) {
-    const [x, y] = track.toWorld(Number(fixedFocusS), track.halfWidth + 6);
+    const [x, y] = t.toWorld(Number(fixedFocusS), t.innerEdgeAt(Number(fixedFocusS)) + 6);
     renderer.setView(zoom, x, y);
     return;
   }
-  const target = carOf(selected) ?? leaderCar();
+  const target = carOf(selected) ?? leaderView(s);
+  if (!target) return;
   if (!focus) focus = [target.x, target.y];
   focus[0] += (target.x - focus[0]) * 0.2;
   focus[1] += (target.y - focus[1]) * 0.2;
   renderer.setView(zoom, focus[0], focus[1]);
 }
 
-let lastFrame = performance.now();
-let simDebt = 0;
-function frame(now: number): void {
-  const realDt = Math.min(0.1, (now - lastFrame) / 1000);
-  lastFrame = now;
-  simDebt += realDt * speed;
-  let steps = 0;
-  while (simDebt >= P.DT && steps < 4000) {
-    simulateStep();
-    simDebt -= P.DT;
-    steps++;
+function frame(): void {
+  const h = shown();
+  const meta = shownMeta();
+  const s = snap();
+  if (h && meta) {
+    updateCamera(s, meta.track);
+    const cars = s?.cars ?? [];
+    renderer.render(showVariations ? cars : cars.filter((c) => !c.variant), liveryOf, carOf(selected), {
+      paceCar: s?.race?.paceCar ?? null,
+      wreckers: s?.race?.wreckers ?? [],
+    });
+    // A finished race on screen: after a moment of results, carry on.
+    if (h === fieldEvent && !Number.isNaN(raceDoneAt) && performance.now() / 1000 - raceDoneAt > NEXT_RACE_DELAY) carryOn(h);
+  } else {
+    renderer.render([], liveryOf);
   }
-  if (steps === 4000) simDebt = 0;
-  serviceCars();
-  if (race?.state === 'finished') {
-    if (!raceRecorded) finishRaceForSeason();
-    if (Number.isNaN(raceDoneAt)) raceDoneAt = now / 1000;
-    else if (now / 1000 - raceDoneAt > NEXT_RACE_DELAY) {
-      if (loop === 'races') buildWorld();
-      else if (loop === 'weekend') startWeekendPractice();
-    }
-  }
-  updateCamera();
-  const ctl = race?.control;
-  renderer.render(world.cars, liveryOf, carOf(selected), {
-    paceCar: ctl?.paceCarOut ? ctl.paceCar : null,
-    wreckers: ctl?.wreckers ?? [],
-  });
   requestAnimationFrame(frame);
-}
-
-function simulateStep(): void {
-  if (race) race.step();
-  else world.step();
-  recordTechnique();
-  renderer.stampMarks(world.cars);
-  if (world.tick % P.CONTROL_EVERY === 1) pollRadio();
 }
 
 // ---------- Timing tower & HUD ----------
 
-const fmt = (t: number) => (Number.isFinite(t) ? t.toFixed(2) : '–');
+const fmt = (t: number | null) => (t !== null && Number.isFinite(t) ? t.toFixed(2) : '–');
+const pitStatus = (car: CarView) => ({ none: '', in: 'IN', service: `PIT ${car.pitTimer.toFixed(0)}s`, out: 'EXIT' })[car.pitPhase];
+const FLAG = '<span class="flag"></span>';
+/** Stewards' marks in the tower: a penalty still to serve (DT, SG), seconds added to the race time. */
+const penaltyMarks = (car: CarView) => {
+  const mark = (text: string, title: string) => ` <span title="${title}" style="color:#e5a00d;font-size:10px;font-weight:600">${text}</span>`;
+  return (car.penalty ? mark(car.penalty === 'stop-go' ? 'SG' : 'DT', `${car.penalty} to serve`) : '')
+    + (car.timePenalty ? mark(`+${car.timePenalty}s`, 'time penalty') : '');
+};
 
-/** Classification order: the race's standings, or distance covered in open sessions. */
-function runningOrder(): Car[] {
-  if (race) return race.standings().map((st) => st.car);
-  return [...world.cars].sort((a, b) => Number(a.retired) - Number(b.retired) || b.dist - a.dist);
+/** Cars in classification order. */
+function runningOrder(s: SessionSnapshot): CarView[] {
+  const byId = new Map(s.cars.map((c) => [c.id, c]));
+  return s.order.map((id) => byId.get(id)!).filter(Boolean);
 }
 
-const pitStatus = (car: Car) => ({
-  none: '', in: 'IN', service: `PIT ${car.pit.timer.toFixed(0)}s`, out: 'EXIT',
-})[car.pit.phase];
-
-const FLAG = '<span class="flag"></span>';
-
 function updateTower(): void {
-  const cars = runningOrder();
+  const s = snap();
+  const meta = shownMeta();
+  if (!s || !meta) {
+    $('tower').innerHTML = '';
+    const running = host.running.length;
+    $('hud').innerHTML = `<b>Nothing on screen</b>${running ? ` · ${running} event${running > 1 ? 's' : ''} running in the background (Events: Watch)` : ''}`;
+    return;
+  }
+  if (s.school) {
+    schoolTower(s, meta);
+    return;
+  }
+  $('towerHead').innerHTML = TOWER_HEAD;
+  const cars = runningOrder(s);
   const leader = cars[0];
-  const standings = race?.standings();
+  const standings = s.standings;
   const winner = standings?.[0];
   $('tower').innerHTML = cars.map((car, p) => {
-    const t = carEntry.get(car)!;
+    const t = meta.teams.get(car.key)!;
     const st = standings?.[p];
     const finished = st?.status === 'finished';
     let gap: string;
-    if (car.retired) gap = 'OUT';
+    if (car.retired) gap = car.disqualified ? 'DQ' : 'OUT';
     else if (finished && winner) {
       // At the flag: laps down, or time behind the winner.
       gap = p === 0 ? 'WIN' : st!.laps < winner.laps ? `+${winner.laps - st!.laps}L` : `+${(st!.time - winner.time).toFixed(2)}`;
     } else {
-      const lapsDown = Math.floor((leader.dist - car.dist) / track.length);
+      const lapsDown = Math.floor((leader.dist - car.dist) / meta.track.length);
       // Behind the pace car only the order matters; time gaps would balloon at caution speed.
-      const pacing = race?.control?.pacing ?? false;
       gap = pitStatus(car) || (p === 0 ? 'Leader'
         : lapsDown >= 1 ? `+${lapsDown}L`
-        : pacing ? '–'
+        : s.race?.pacing ? '–'
         : `+${((leader.dist - car.dist) / Math.max(20, leader.speed)).toFixed(2)}`);
     }
-    const best = car.lapTimes.length ? Math.min(...car.lapTimes) : NaN;
-    return `<tr data-team="${t.id}" title="${roster.driverOf(t).name}" class="${selected === t ? 'sel' : ''}${car.retired ? ' out' : ''}">
-      <td>${p + 1}</td><td>${carLabel(t)}${finished ? FLAG : ''}</td>
-      <td>${gap}</td><td>${fmt(best)}</td>
+    return `<tr data-team="${t.id}" title="${roster.drivers.get(t.driver)?.name ?? ''}" class="${selected === t ? 'sel' : ''}${car.retired ? ' out' : ''}">
+      <td>${p + 1}</td><td>${carLabel(t)}${finished ? FLAG : ''}${penaltyMarks(car)}</td>
+      <td>${gap}</td><td>${fmt(car.bestLap)}</td>
       <td>${Math.round(car.tireLife * 100)}</td><td>${Math.round((car.fuel / P.FUEL_CAPACITY) * 100)}</td>
-      <td>${car.pit.stops}</td><td>${Math.round(car.health * 100)}</td></tr>`;
+      <td>${car.stops}</td><td>${Math.round(car.health * 100)}</td></tr>`;
   }).join('');
-  const followed = selected ?? carEntry.get(leader)!;
+  const followed = (selected && meta.teams.has(selected.id) ? selected : null) ?? meta.teams.get(leader.key)!;
   const following = zoom === 1 ? '' : fixedFocusS !== null && !selected ? ' · camera parked'
-    : ` · following #${followed.livery.number} ${roster.driverOf(followed).name}`;
-  const session = mode === 'race' ? `race · ${pace}× pace` : mode === 'practice' ? `practice · ${pace}× pace` : 'ghosts';
-  let status = `leader ${(leader.speed * 3.6).toFixed(0)} km/h · t ${world.time.toFixed(0)}s`;
-  if (race) {
-    const lap = Math.min(race.laps, Math.max(1, leader.lapsCompleted + 1));
-    const w = carEntry.get(cars[0])!;
-    const who = `#${w.livery.number} ${roster.driverOf(w).name}`;
-    const flag = race.control?.flag ?? 'green';
-    const flagText = !race.started ? '<span class="flagtag pace">PACE LAPS</span>'
-      : flag === 'caution' ? `<span class="flagtag caution">CAUTION</span>${race.control!.oneToGo ? ' one to go' : ''}`
-      : flag === 'restart' ? '<span class="flagtag caution">RESTART</span> leader to the line'
+    : ` · following #${followed.livery.number} ${roster.drivers.get(followed.driver)?.name ?? ''}`;
+  const session = meta.mode === 'race' ? `${meta.round ? 'championship' : 'exhibition'} race · ${pace}× pace` : meta.mode === 'practice' ? `practice · ${pace}× pace` : 'ghosts';
+  let status = `leader ${(leader.speed * 3.6).toFixed(0)} km/h · t ${s.time.toFixed(0)}s`;
+  const r = s.race;
+  if (r) {
+    const lap = Math.min(r.laps, Math.max(1, leader.laps + 1));
+    const w = meta.teams.get(cars[0].key)!;
+    const who = `#${w.livery.number} ${roster.drivers.get(w.driver)?.name ?? ''}`;
+    const flagText = r.flag === 'formation' ? '<span class="flagtag pace">FORMATION LAP</span>'
+      : r.flag === 'grid' ? (r.lights ? `<span style="color:#e5484d;letter-spacing:2px">${'●'.repeat(r.lights)}</span> lights` : '<span class="flagtag pace">GRID</span> forming up')
+      : !r.started ? '<span class="flagtag pace">PACE LAPS</span>'
+      : r.flag === 'caution' ? (r.safetyCar ? `<span class="flagtag caution">SAFETY CAR</span>${r.oneToGo ? ' in this lap' : ''}` : `<span class="flagtag caution">CAUTION</span>${r.oneToGo ? ' one to go' : ''}`)
+      : r.flag === 'restart' ? '<span class="flagtag caution">RESTART</span> leader to the line'
       : '<span class="flagtag green">GREEN</span>';
-    status = race.state === 'green' ? `${flagText} <b>Lap ${lap} / ${race.laps}</b> · ${status}`
-      : race.state === 'checkered' ? `${FLAG} <b>Checkered flag</b> · ${who} wins · others finishing`
-      : `${FLAG} <b>Final</b> · ${who} wins` + (loop !== 'stop'
-        ? ` · ${loop === 'weekend' ? 'practice' : 'next race'} in ${Math.max(0, Math.ceil(NEXT_RACE_DELAY - (performance.now() / 1000 - raceDoneAt)))} s` : '');
-  } else if (weekendPractice) {
+    const next = Number.isNaN(raceDoneAt) || loop === 'stop' ? ''
+      : ` · ${loop === 'weekend' ? 'practice' : 'next race'} in ${Math.max(0, Math.ceil(NEXT_RACE_DELAY - (performance.now() / 1000 - raceDoneAt)))} s`;
+    const learning = (handle: EventHandle | null) => {
+      const spec = handle?.event.what === 'session' ? handle.event.spec : null;
+      return spec?.learn ? ` · drivers learning (${meta.learnedSteps ?? 0} steps)` : '';
+    };
+    status = r.state === 'green' ? `${flagText} <b>Lap ${lap} / ${r.laps}</b> · ${status}${learning(shown())}`
+      : r.state === 'checkered' ? `${FLAG} <b>Checkered flag</b> · ${who} wins · others finishing`
+      : `${FLAG} <b>Final</b> · ${who} wins${next}`;
+  } else if (weekendPractice && shown() === fieldEvent) {
     status = `<b>Practice</b> · ${weekendPractice.roundsLeft} practice rounds until the race · drivers and crew chiefs learning`;
   }
-  $('hud').innerHTML = `<b>${trackName}</b> · ${track.length.toFixed(0)} m · ${world.cars.length} cars · ${session} · ${speed}×${following}<br>${status}`;
+  const drivers = readOnly() ? ` · ${bundleOf(source)?.name} drivers` : '';
+  $('hud').innerHTML = `<b>${meta.trackName}</b> · ${meta.track.length.toFixed(0)} m · ${s.cars.length} cars${drivers} · ${session} · ${speed}×${following}<br>${status}`
+    + (renderer.debug.banking || renderer.debug.forces ? `<br>${bankReadout(carOf(followed), meta)}` : '');
 }
+
+/**
+ * How the banking is working for one car: the angle under it, how much of the
+ * turn the banking carries (its push toward the infield) against what the
+ * tires add, and the neutral speed where the banking alone would do it.
+ */
+function bankReadout(car: CarView | null, meta: EventMeta): string {
+  if (!car || car.retired) return '';
+  const t = meta.track;
+  const g = (a: number) => `${(a / G).toFixed(2)} g`;
+  const bankDeg = (car.bank * 180) / Math.PI;
+  const kappa = t.curvatureAt(car.s) / Math.max(0.2, 1 - t.curvatureAt(car.s) * car.d);
+  const neutral = kappa > 1e-5 ? Math.sqrt((G * Math.tan(car.bank)) / kappa) : NaN;
+  const turning = car.speed * car.speed * kappa;
+  return `#${meta.teams.get(car.key)?.livery.number ?? ''} · banking <b>${bankDeg.toFixed(1)}°</b> · load ${g(car.normalAcc)}`
+    + ` · <span style="color:#f5c518">banking pushes ${g(car.bankAcc)}</span>`
+    + ` · <span style="color:#4fd1ff">tires ${g(Math.hypot(car.tireLat, car.tireLon))} (${Math.round(car.tireUse * 100)}% of grip)</span>`
+    + (Number.isFinite(neutral) ? ` · turn needs ${g(turning)} · neutral ${neutral.toFixed(0)} m/s at ${car.speed.toFixed(0)} m/s` : ' · straight');
+}
+
+// ---------- Events panel ----------
+
+function eventStatus(h: EventHandle): string {
+  const meta = metas.get(h);
+  if (h.state === 'stopped') return h.error ? `failed: ${h.error}` : 'stopped';
+  if (h.state === 'finished') {
+    const winner = h.results?.[0];
+    const t = winner && meta?.teams.get(winner.key);
+    return `finished${t ? ` · won by #${t.livery.number}` : ''}`;
+  }
+  if (h.attachedTo) return 'on screen';
+  const p = h.progress;
+  if (!h.runDetached) return 'paused (open sessions run while watched)';
+  if (!p) return 'starting…';
+  if (p.round !== null) return `round ${p.round}`;
+  return p.lap !== null ? `lap ${p.lap} / ${p.laps}${p.flag && p.flag !== 'green' ? ` · ${p.flag}` : ''}` : `${p.time.toFixed(0)} s`;
+}
+
+function renderEvents(): void {
+  const rows = host.events.map((h, i) => {
+    const buttons = [
+      !h.attachedTo && (h.state === 'running' || h.snapshot) ? `<button data-ev="${i}" data-act="watch">Watch</button>` : '',
+      h.attachedTo && h.state === 'running' ? `<button data-ev="${i}" data-act="background" title="Keep it running off screen${h.runDetached ? ' at full speed' : ''}">Background</button>` : '',
+      h.state === 'running' ? `<button data-ev="${i}" data-act="stop">Stop</button>` : '',
+    ].join('');
+    return `<tr class="${h.attachedTo ? 'sel' : ''}"><td class="name">${h.ref.label}</td><td class="muted">${eventStatus(h)}</td><td class="act">${buttons}</td></tr>`;
+  }).join('');
+  $('events').innerHTML = rows || '<tr><td class="muted">No events</td></tr>';
+}
+
+$('events').onclick = (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('button[data-ev]');
+  if (!b) return;
+  const h = host.events[Number(b.dataset.ev)];
+  if (!h) return;
+  if (b.dataset.act === 'watch') showEvent(h);
+  else if (b.dataset.act === 'background') host.detach(h);
+  else if (b.dataset.act === 'stop') endEvent(h);
+  renderEvents();
+  renderRoster();
+};
+$('clearEvents').onclick = () => {
+  for (const h of host.events) if (h.state !== 'running' && !h.attachedTo) metas.delete(h);
+  host.prune();
+  renderEvents();
+};
 
 // ---------- Teams panel (mix and match) ----------
 
@@ -398,7 +604,7 @@ $('teams').onchange = (e) => {
   roster.assign(team, sel.dataset.role as Role, sel.value);
   persist();
   renderTeams();
-  $('teamsNote').textContent = 'Changes take effect at the next start (Restart applies them now).';
+  $('teamsNote').textContent = 'Changes take effect at the next start (Series: Restart applies them now).';
 };
 
 // ---------- Technique roses ----------
@@ -407,23 +613,28 @@ const TECHNIQUE_SLOTS = 6;
 
 /** Technique roses for the selected team's driver and the front of the field. */
 function drawTechniques(): void {
+  const s = snap();
+  const meta = shownMeta();
+  for (const [key, h] of s?.technique ?? []) technique.set(key, h);
   const host = $('techniques');
-  const shown: TeamEntry[] = [];
-  if (selected) shown.push(selected);
-  for (const car of runningOrder()) {
-    const t = carEntry.get(car)!;
-    if (shown.length >= TECHNIQUE_SLOTS) break;
-    if (!shown.includes(t)) shown.push(t);
+  const shownTeams: TeamEntry[] = [];
+  if (selected && meta?.teams.has(selected.id)) shownTeams.push(selected);
+  if (s && meta && meta.mode !== 'class') {
+    for (const car of runningOrder(s)) {
+      const t = meta.teams.get(car.key)!;
+      if (shownTeams.length >= TECHNIQUE_SLOTS) break;
+      if (!shownTeams.includes(t)) shownTeams.push(t);
+    }
   }
-  const key = shown.map((t) => `${t.id}:${t.driver}`).join(',');
+  const key = shownTeams.map((t) => `${t.id}:${t.driver}`).join(',');
   if (host.dataset.key !== key) {
     host.dataset.key = key;
-    host.innerHTML = shown.map(() => '<div class="tech"><canvas width="240" height="240"></canvas><div></div></div>').join('');
+    host.innerHTML = shownTeams.map(() => '<div class="tech"><canvas width="240" height="240"></canvas><div></div></div>').join('');
   }
   host.querySelectorAll<HTMLCanvasElement>('canvas').forEach((cv, i) => {
-    const t = shown[i];
-    const driver = roster.driverOf(t);
-    const h = technique.get(driver.id);
+    const t = shownTeams[i];
+    const driver = roster.drivers.get(t.driver);
+    const h = technique.get(t.id);
     const ctx = cv.getContext('2d')!;
     const W = cv.width, c = W / 2, R = W * 0.44;
     ctx.clearRect(0, 0, W, W);
@@ -468,9 +679,9 @@ function drawTechniques(): void {
       h.forEach((v, b) => { const a = -Math.PI + (b + 0.5) * width; wx += Math.cos(a) * v; wy += Math.sin(a) * v; });
       caption = `${((Math.atan2(wy, wx) * 180) / Math.PI).toFixed(0)}°`;
     }
-    const lineage = driver.mentor ? ` · from ${driver.mentor}` : '';
+    const lineage = driver?.mentor ? ` · from ${driver.mentor}` : '';
     (cv.nextElementSibling as HTMLElement).innerHTML =
-      `${carLabel(t)} ${driver.name}<br>${caption} · ${driver.rounds}r${lineage}`;
+      `${carLabel(t)} ${driver?.name ?? ''}<br>${caption} · ${driver?.rounds ?? 0}r${lineage}`;
   });
 }
 
@@ -479,16 +690,16 @@ function drawTechniques(): void {
 /** Re-render callbacks for every button group, so state loaded at boot shows correctly. */
 const buttonGroups: Array<() => void> = [];
 
-function buttonGroup<T>(hostId: string, options: Array<[string, T]>, current: () => T, onPick: (v: T) => void): () => void {
-  const host = $(hostId);
+function buttonGroup<T>(hostId: string, options: Array<[string, T]>, current: () => T | null, onPick: (v: T) => void): () => void {
+  const hostEl = $(hostId);
   const render = () => {
-    host.innerHTML = '';
+    hostEl.innerHTML = '';
     for (const [label, value] of options) {
       const b = document.createElement('button');
       b.textContent = label;
       b.className = current() === value ? 'on' : '';
       b.onclick = () => { onPick(value); render(); };
-      host.appendChild(b);
+      hostEl.appendChild(b);
     }
   };
   render();
@@ -496,40 +707,95 @@ function buttonGroup<T>(hostId: string, options: Array<[string, T]>, current: ()
   return render;
 }
 
-buttonGroup('trackButtons', Object.keys(TRACKS).map((k) => [k, k] as [string, string]), () => trackName, (name) => {
+/** Every track races to its own rulebook (ovals: rolling start, pace car; circuits: standing start, safety car). */
+const racesOn = (_t: Track) => true;
+
+function selectTrack(name: string): void {
+  championship = false;
   trackName = name;
-  track = new Track(TRACKS[name]);
-  renderer.setTrack(track);
-  buildWorld();
-});
+  track = TRACKS.get(name)!;
+  if (mode === 'race' && !racesOn(track)) mode = 'practice';
+  startSession();
+  buttonGroups.forEach((render) => render());
+}
+const renderTrackButtons = buttonGroup('trackButtons', trackOptions, () => (championship ? null : trackName), selectTrack);
+const newTrack = (type: 'oval' | 'circuit') => {
+  const t = addGeneratedTrack(type);
+  selectTrack(trackOptions[trackOptions.length - 1][0]);
+  renderTrackButtons();
+  news(`New track: ${t.name}, ${t.length.toFixed(0)} m (${type}, seed ${t.layout.seed}). Open it again with ?track=${type}:${t.layout.seed}`
+    + (type === 'circuit' ? ". Drivers without a road-course license (Academy: Road courses) haven't learned circuits' tight corners yet: expect wrecks." : ''));
+};
+$('newTrack').onclick = () => newTrack('oval');
+$('newCircuit').onclick = () => newTrack('circuit');
 buttonGroup('fieldButtons', FIELD_SIZES.map((n) => [String(n), n] as [string, number]), () => fieldSize, (n) => {
+  const practising = !!trainer;
   fieldSize = n;
-  roster.ensureTeams(n);
+  if (readOnly()) roster = Roster.fromBundle(bundleOf(source)!, bundleDrivers.get(source)!, n, rng)!;
+  else roster.ensureTeams(n);
   if (selected && !field().includes(selected)) selected = null;
   persist();
   renderTeams();
-  buildWorld();
-  if (worker) { stopPractice(); startPractice(); }
+  startSession();
+  if (practising && mode === 'practice') startPractice();
 });
-buttonGroup('speedButtons', [['1×', 1], ['4×', 4], ['16×', 16], ['64×', 64]], () => speed, (s) => { speed = s; });
+buttonGroup('speedButtons', [['1×', 1], ['4×', 4], ['16×', 16], ['64×', 64]], () => speed, (s) => { speed = s; host.setSpeed(s); });
 buttonGroup('zoomButtons', [['Full', 1], ['2×', 2], ['4×', 4], ['8×', 8]], () => zoom, (z) => { zoom = z; focus = null; });
 buttonGroup('dotButtons', [['Real size', 'real'], ['Legible', 'legible']] as Array<[string, DotMode]>,
   () => renderer.dotMode, (m) => { renderer.dotMode = m; });
+buttonGroup('effectButtons', [['Show', true], ['Hide', false]] as Array<[string, boolean]>,
+  () => renderer.effects, (v) => { renderer.effects = v; });
+buttonGroup('variationButtons', [['Show', true], ['Hide', false]] as Array<[string, boolean]>,
+  () => showVariations, (v) => { showVariations = v; });
 buttonGroup('modeButtons', [['Race', 'race'], ['Practice', 'practice'], ['Ghosts', 'ghost']] as Array<[string, Mode]>,
-  () => mode, (m) => { mode = m; weekendPractice = null; buildWorld(); });
+  () => (championship ? null : mode), (m) => {
+    if (m === 'race' && !racesOn(track)) { news(`No races on road circuits yet (standing starts and the safety car come with the circuit rulebook): practice or ghosts.`); return; }
+    mode = m;
+    championship = false;
+    weekendPractice = null;
+    startSession(); // ends the field's previous session (and its practice training)
+  });
 buttonGroup('lapButtons', [['20', 20], ['50', 50], ['100', 100], ['200', 200]], () => raceLaps, (n) => {
   raceLaps = n;
-  if (mode === 'race') buildWorld();
+  if (mode === 'race') startSession();
 });
-buttonGroup('paceButtons', [['Real', 1], ['4×', 4], ['8×', 8]], () => pace, (p) => { pace = p; buildWorld(); });
-buttonGroup('autoButtons', [['Weekends', 'weekend'], ['Race after race', 'races'], ['Stop', 'stop']] as Array<[string, Loop]>,
+buttonGroup('paceButtons', [['Real', 1], ['4×', 4], ['8×', 8]], () => pace, (p) => { pace = p; startSession(); });
+buttonGroup('learnButtons', [['On', true], ['Off', false]] as Array<[string, boolean]>, () => learnInRaces, (v) => { learnInRaces = v; });
+buttonGroup('autoButtons', [['Race weekend', 'weekend'], ['Next round', 'races'], ['Stop', 'stop']] as Array<[string, Loop]>,
   () => loop, (l) => { loop = l; });
-$('toggleInputs').onclick = (e) => {
-  renderer.showInputs = !renderer.showInputs;
-  (e.target as HTMLElement).className = renderer.showInputs ? 'on' : '';
+$('nextRound').onclick = () => {
+  if (readOnly()) { news('The championship is for your own roster: switch back to it under Paddock.'); return; }
+  weekendPractice = null;
+  mode = 'race';
+  toNextRound();
+  startSession();
+  buttonGroups.forEach((render) => render());
 };
+// Debug overlays: independent toggles.
+{
+  const hostEl = $('debugButtons');
+  const layers: Array<[string, keyof DebugLayers, string]> = [
+    ['Inputs', 'inputs', 'Each driver\'s acceleration request'],
+    ['Forces', 'forces', 'Banking push toward the infield (amber) and tire force (cyan), 1 g = 26 px'],
+    ['Banking', 'banking', 'Banking heatmap, inside → outside angles, and a readout for the followed car'],
+  ];
+  // ?debug=banking,forces switches layers on from the URL.
+  const fromUrl = new URLSearchParams(location.search).get('debug')?.split(',');
+  for (const [label, layer, title] of layers) {
+    if (fromUrl) renderer.setDebug(layer, fromUrl.includes(layer));
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.title = title;
+    b.className = renderer.debug[layer] ? 'on' : '';
+    b.onclick = () => {
+      renderer.setDebug(layer, !renderer.debug[layer]);
+      b.className = renderer.debug[layer] ? 'on' : '';
+    };
+    hostEl.appendChild(b);
+  }
+}
 $('clearMarks').onclick = () => renderer.clearMarks();
-$('restart').onclick = () => { $('teamsNote').textContent = ''; buildWorld(); };
+$('restart').onclick = () => { $('teamsNote').textContent = ''; startSession(); };
 $('tower').onclick = (e) => {
   const row = (e.target as HTMLElement).closest('tr');
   if (!row) return;
@@ -538,28 +804,83 @@ $('tower').onclick = (e) => {
   focus = null;
 };
 
-// ---------- Practice worker ----------
+// ---------- Races: results, records, the championship ----------
 
-let worker: Worker | null = null;
-let lastPersist = 0;
-
-/** Championship bookkeeping when a race ends; runs the off-season after the final round. */
-function finishRaceForSeason(): void {
-  if (!race) return;
-  raceRecorded = true;
-  const results = race.standings().map((st) => {
-    const t = carEntry.get(st.car)!;
-    return { team: t.id, driver: t.driver, chief: t.chief, spotter: t.spotter, position: st.position, status: st.status, laps: st.laps };
-  });
-  recordRace(season, trackName, race.laps, results);
-  if (seasonComplete(season)) {
-    const news = offSeason(season, roster, field());
-    radioFeed.unshift(...news.reverse().map((text) => ({ time: world.time, team: null, text })));
-    season = newSeason(Object.keys(TRACKS), ROUNDS_PER_TRACK, season);
+/** Championship bookkeeping and records when a race ends; runs the off-season after the final round. */
+function finishRace(handle: EventHandle): void {
+  const meta = metas.get(handle)!;
+  const results = handle.results!;
+  meta.recorded = true;
+  const laps = (handle.event.spec as SessionSpec).laps;
+  const round = !!meta.round;
+  if (round) {
+    recordRace(season, meta.trackName, laps, results.map((r) => ({
+      team: r.key, driver: r.driver, chief: r.chief, spotter: r.spotter, position: r.position, status: r.status, laps: r.laps,
+    })));
+  }
+  // Every agent in the race gets its result in the log: drivers, crew chiefs and spotters alike.
+  for (const r of results) {
+    const data = {
+      track: meta.trackName, raceLaps: laps, starters: results.length, position: r.position, status: r.status, laps: r.laps,
+      bestLap: r.bestLap, avgLap: r.avgLap, stops: r.stops, wallHits: r.wallHits, health: r.health,
+      penalties: r.penalties.filter((p) => p.penalty !== 'none').map((p) => `${PENALTY_NAMES[p.penalty]} for ${OFFENCE_NAMES[p.offence]}`),
+      disqualified: r.disqualified,
+      ...(round ? { points: pointsFor(r.position, results.length, r.status), season: season.number, round: season.races.length } : {}),
+    };
+    activity.record({ kind: 'race', agent: r.driver, role: 'driver', event: handle.ref, brain: roster.drivers.get(r.driver)?.rounds, data });
+    activity.record({ kind: 'race', agent: r.chief, role: 'chief', event: handle.ref, brain: roster.chiefs.get(r.chief)?.rounds, data });
+    activity.record({ kind: 'race', agent: r.spotter, role: 'spotter', event: handle.ref, data });
+  }
+  recordInjuries(handle, meta.trackName, results);
+  if (round && seasonComplete(season)) {
+    recordSeasonActivity();
+    const lines = offSeason(season, roster, field());
+    lines.reverse().forEach(news);
+    season = newSeason(SEASON_TRACKS, ROUNDS_PER_TRACK, season);
     renderTeams();
   }
+  occupancy.release(handle.ref.id);
   persist();
   renderSeason();
+  renderRoster();
+}
+
+/**
+ * After a race: injured drivers are a race nearer recovery, then everyone's
+ * hardest hit in this one is rolled for an injury (injury.ts).
+ */
+function recordInjuries(handle: EventHandle, trackName: string, results: EntrantResult[]): void {
+  for (const d of roster.raceRun()) {
+    activity.record({ kind: 'recovered', agent: d.id, role: 'driver', data: {} });
+    news(`${d.name} has recovered from injury and is fit to race`);
+  }
+  for (const r of results) {
+    const d = roster.drivers.get(r.driver);
+    const injury = d ? injuryFrom(r.worstHit, () => rng.next()) : null;
+    if (!d || !injury) continue;
+    const kmh = Math.round(r.worstHitSpeed * 3.6);
+    activity.record({
+      kind: 'injury', agent: d.id, role: 'driver', event: handle.ref,
+      data: { severity: injury.severity, races: injury.races, track: trackName, hit: r.worstHit, speed: r.worstHitSpeed },
+    });
+    if (injury.severity === 'career') {
+      d.careerOver = { season: season.number, track: trackName };
+      news(`${d.name}'s career is over after a ${kmh} km/h crash at ${trackName}`);
+    } else {
+      d.injury = { severity: injury.severity, racesLeft: injury.races };
+      news(`${d.name} is hurt (${injury.severity}) after a ${kmh} km/h crash at ${trackName}: out for ${injury.races} race${injury.races === 1 ? '' : 's'}`);
+    }
+  }
+}
+
+/** Final championship positions for drivers and crew chiefs. */
+function recordSeasonActivity(): void {
+  driverStandings(season).forEach((e, i) => activity.record({
+    kind: 'season', agent: e.driver, role: 'driver', data: { season: season.number, position: i + 1, points: e.points, champion: i === 0 },
+  }));
+  Object.entries(season.chiefPoints).sort((a, b) => b[1] - a[1]).forEach(([chief, points], i) => activity.record({
+    kind: 'season', agent: chief, role: 'chief', data: { season: season.number, position: i + 1, points, champion: i === 0 },
+  }));
 }
 
 function renderSeason(): void {
@@ -578,54 +899,79 @@ function renderSeason(): void {
     ${champs ? `<div class="muted">Champions: ${champs}</div>` : ''}`;
 }
 
+// ---------- Practice: the field learns (in its practice session) ----------
+
 /** Race weekend: practice on the season's next track, then race there. */
-function startWeekendPractice(): void {
-  trackName = nextTrack(season);
-  track = new Track(TRACKS[trackName]);
-  renderer.setTrack(track);
+function startWeekendPractice(attach: boolean): void {
+  toNextRound();
   mode = 'practice';
-  buildWorld();
-  buttonGroups.forEach((render) => render());
+  if (!startSession(attach)) return;
   weekendPractice = { roundsLeft: WEEKEND_PRACTICE_ROUNDS };
-  if (!worker) startPractice();
+  startPractice();
 }
 
 function finishWeekendPractice(): void {
+  const attach = fieldEvent?.attachedTo ?? true;
   weekendPractice = null;
   stopPractice();
   mode = 'race';
-  buildWorld();
+  startSession(attach);
   buttonGroups.forEach((render) => render());
 }
 
+/** The trainer: practice heats in a worker. Improved weights reach the roster and the cars in the practice session. */
+let trainer: Worker | null = null;
+let lastPersist = 0;
+
 function startPractice(): void {
-  const drivers = field().map((t) => roster.driverOf(t));
+  stopPractice();
   const teams = field();
+  const drivers = teams.map((t) => roster.driverOf(t));
   const chiefs = teams.map((t) => roster.chiefOf(t));
-  worker = new Worker(new URL('../ai/practice.worker.ts', import.meta.url), { type: 'module' });
-  worker.onmessage = (e: MessageEvent<PracticeRound>) => {
+  const practiceEvent = fieldEvent;
+  trainer = new Worker(new URL('../ai/practice.worker.ts', import.meta.url), { type: 'module' });
+  const trackNames = Object.keys(PRESETS).map((id) => presetTrack(id).name);
+  trainer.onmessage = (e: MessageEvent<PracticeRound>) => {
     const r = e.data;
+    const event = practiceEvent?.ref;
+    const updates: Array<{ id: string; weights: Float32Array }> = [];
     const lines = r.drivers.map((d) => {
       const driver = drivers[d.index];
       driver.weights.set(d.weights);
       driver.rounds = d.rounds;
       driver.licensed = d.licensed;
+      updates.push({ id: driver.id, weights: d.weights });
+      activity.record({
+        kind: 'practice', agent: driver.id, role: 'driver', event, brain: d.rounds,
+        data: {
+          tracks: trackNames, bestLaps: d.bestLaps.map((t) => (Number.isFinite(t) ? t : null)), fitness: d.fitness,
+          rookie: d.rookie, walls: d.rookie ? r.damageScale : 1,
+        },
+      });
       if (d.graduated) {
-        radioFeed.unshift({ time: world.time, team: null, text: `${driver.name} (#${teams[d.index].livery.number}) earned a license after ${d.rounds} lessons` });
+        activity.record({ kind: 'licensed', agent: driver.id, role: 'driver', event, brain: d.rounds, data: { lessons: d.rounds } });
+        news(`${driver.name} (#${teams[d.index].livery.number}) earned a license after ${d.rounds} lessons`);
       }
       const school = d.rookie ? ` <span class="muted">rookie school, lesson ${d.rounds}, walls ×${r.damageScale.toFixed(2)}</span>` : '';
-      return `${carLabel(teams[d.index])} ${driver.name}: ${d.bestLaps.map(fmt).join(' / ')}${school}`;
+      return `${carLabel(teams[d.index])} ${driver.name}: ${d.bestLaps.map((t) => fmt(t)).join(' / ')}${school}`;
     });
+    if (practiceEvent) host.updateDrivers(practiceEvent, updates);
     for (const c of r.chiefs) {
       const chief = chiefs[c.index];
       if (chief.brain.kind !== 'neural') continue;
       chief.brain.weights.set(c.weights);
       chief.rounds = c.rounds;
+      activity.record({ kind: 'strategy', agent: chief.id, role: 'chief', event, brain: c.rounds, data: { relativeTime: c.relativeTime } });
       lines.push(`${carLabel(teams[c.index])} crew chief ${chief.name}: strategy race ${((c.relativeTime - 1) * 100).toFixed(1)}% off the best`);
     }
     $('practiceStatus').innerHTML = `round ${r.round} · walls ×${r.damageScale.toFixed(2)} · ${(r.elapsedMs / 1000).toFixed(1)}s/round<br>`
-      + `practising now (best laps speedway / short / flat):<br>${lines.join('<br>')}`;
-    if (performance.now() - lastPersist > 5000) { persist(); lastPersist = performance.now(); }
+      + `practising now (best laps ${trackNames.join(' / ')}):<br>${lines.join('<br>')}`;
+    if (performance.now() - lastPersist > 5000) {
+      persist();
+      lastPersist = performance.now();
+      renderRoster();
+      agentPage.refresh();
+    }
     if (weekendPractice && --weekendPractice.roundsLeft <= 0) finishWeekendPractice();
   };
   const msg: PracticeRequest = {
@@ -635,33 +981,44 @@ function startPractice(): void {
     drivers: drivers.map((d) => ({ weights: Array.from(d.weights), rounds: d.rounds, licensed: d.licensed })),
     chiefs: chiefs.flatMap((c, index) => (c.brain.kind === 'neural' ? [{ index, weights: Array.from(c.brain.weights), rounds: c.rounds }] : [])),
   };
-  worker.postMessage(msg);
+  trainer.postMessage(msg);
   $('practice').textContent = 'Stop practice';
   $('practice').className = 'on';
 }
 
 function stopPractice(): void {
-  worker?.terminate();
-  worker = null;
+  if (!trainer) return;
+  trainer.terminate();
+  trainer = null;
   persist();
   $('practice').textContent = 'Start practice';
   $('practice').className = '';
 }
 
 $('practice').onclick = () => {
+  if (readOnly()) { news(`The ${bundleOf(source)?.name} drivers are read-only (as tested): practice is for your own roster.`); return; }
   weekendPractice = null; // manual control takes over from the weekend loop
-  if (worker) stopPractice(); else startPractice();
+  if (trainer) { stopPractice(); return; }
+  // Training happens in a practice session (the field can't practise and race at once).
+  if (mode !== 'practice' || metas.get(fieldEvent!)?.mode !== 'practice' || fieldEvent?.state !== 'running') {
+    mode = 'practice';
+    if (!startSession()) return;
+    buttonGroups.forEach((render) => render());
+  }
+  startPractice();
 };
 $('newDrivers').onclick = () => {
+  if (readOnly()) { news('Switch to your own roster (Paddock) to replace its drivers.'); return; }
+  if (!confirm(`Replace all ${fieldSize} drivers in the field with raw rookies? The current drivers are deleted.`)) return;
   stopPractice();
   roster.freshDriversForAll();
   technique.clear();
   persist();
   renderTeams();
-  buildWorld();
+  startSession();
 };
 $('saveFile').onclick = () => {
-  const blob = new Blob([JSON.stringify({ fieldSize, roster: roster.toJSON() })], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ fieldSize, roster: roster.toJSON(), season })], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'dotgp-roster.json';
@@ -671,20 +1028,322 @@ $('saveFile').onclick = () => {
 $<HTMLInputElement>('loadFile').onchange = async (e) => {
   const file = (e.target as HTMLInputElement).files?.[0];
   if (!file) return;
-  const data = JSON.parse(await file.text());
+  if (readOnly()) { $('dataNote').textContent = 'Switch to your own roster (Paddock) before loading one over it.'; (e.target as HTMLInputElement).value = ''; return; }
+  (e.target as HTMLInputElement).value = ''; // the same file can be loaded again
+  let data: { roster?: unknown; season?: SeasonState };
+  try { data = JSON.parse(await file.text()); } catch { data = {}; }
   const loaded = Roster.load(data.roster ?? data, rng, roster.chiefTemplates);
-  if (!loaded) return;
-  const wasPracticing = !!worker;
+  if (!loaded) { $('dataNote').textContent = `${file.name} isn't a roster file.`; return; }
+  $('dataNote').textContent = `Loaded ${file.name}.`;
+  if (data.season?.schedule) season = data.season;
+  renderSeason();
+  const wasPracticing = !!trainer;
   stopPractice();
+  if (fieldEvent) endEvent(fieldEvent);
   roster = loaded;
+  watchRoster(roster);
   roster.ensureTeams(fieldSize);
   selected = null;
   technique.clear();
   persist();
   renderTeams();
-  buildWorld();
-  if (wasPracticing) startPractice();
+  startSession();
+  if (wasPracticing && mode === 'practice') startPractice();
 };
+
+// ---------- Roster: everyone in the organisation, seated or in the academy ----------
+
+const agentPage = new AgentPage({ roster: () => roster, occupancy, log: activity });
+let rosterRole: AgentRole = 'driver';
+
+function renderRoster(): void {
+  const hostEl = document.getElementById('roster');
+  if (!hostEl) return;
+  const pool = rosterRole === 'driver' ? roster.drivers : rosterRole === 'spotter' ? roster.spotters : roster.chiefs;
+  const rows = [...pool.values()].map((a) => {
+    const team = roster.teamOf(rosterRole, a.id);
+    const busy = occupancy.of(a.id);
+    let detail = '';
+    if (rosterRole === 'driver') {
+      const d = roster.drivers.get(a.id)!;
+      detail = `${d.careerOver ? 'retired · ' : d.injury ? `injured (${d.injury.racesLeft}) · ` : ''}${d.licensed ? '' : 'school · '}${d.rounds}r`;
+    } else if (rosterRole === 'chief') {
+      const c = roster.chiefs.get(a.id)!;
+      detail = c.brain.kind === 'neural' ? `${c.rounds}r` : 'scripted';
+    }
+    return { a, team, busy, detail };
+  }).sort((x, y) => (x.team ? x.team.livery.number : 1e4) - (y.team ? y.team.livery.number : 1e4));
+  hostEl.innerHTML = rows.map(({ a, team, busy, detail }) => `<tr>
+    <td>${team ? carLabel(team) : '<span class="muted">academy</span>'}</td>
+    <td class="name"><a data-agent="${a.id}" data-role="${rosterRole}">${a.name}</a></td>
+    <td class="muted">${busy ? busy.type : 'free'}</td>
+    <td class="muted">${detail}</td></tr>`).join('');
+  renderSchool(); // who is free to take a class changes with the roster
+}
+
+buttonGroup('rosterTabs', [['Drivers', 'driver'], ['Chiefs', 'chief'], ['Spotters', 'spotter']] as Array<[string, AgentRole]>,
+  () => rosterRole, (r) => { rosterRole = r; renderRoster(); });
+$('roster').onclick = (e) => {
+  const link = (e.target as HTMLElement).closest<HTMLElement>('[data-agent]');
+  if (link) void agentPage.open(link.dataset.agent!, link.dataset.role as AgentRole);
+};
+$('recruitRookie').onclick = () => {
+  const d = roster.freshDriver();
+  persist();
+  renderRoster();
+  renderTeams();
+  renderSchool();
+  news(`${d.name} joins the academy as a raw rookie (driving school first)`);
+};
+$('recruit').onclick = () => {
+  const a = rosterRole === 'driver' ? roster.recruitDriver() : rosterRole === 'chief' ? roster.newChief() : roster.newSpotter();
+  persist();
+  renderRoster();
+  renderTeams();
+  renderSchool();
+  news(`${a.name} joins the academy`);
+};
+// Double-click a driver in the timing tower for their history.
+$('tower').ondblclick = (e) => {
+  const row = (e.target as HTMLElement).closest('tr');
+  const t = row ? roster.teams.find((x) => x.id === Number(row.dataset.team)) : undefined;
+  if (t) void agentPage.open(t.driver, 'driver');
+};
+
+// ---------- Driving school: classes of drivers taking lessons ----------
+
+/** Student colours (categorical, dark steps) and how many students a class takes. */
+const STUDENT_COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#9085e9', '#e66767', '#4fd1ff'];
+const MAX_STUDENTS = STUDENT_COLORS.length;
+/** Student keys start here, clear of team ids. */
+const STUDENT_KEY = 10000;
+let lesson: LessonId = 'rookie';
+const picked = new Set<string>();
+let lastSchoolPersist = 0;
+
+const initials = (name: string) => name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+
+/** Free drivers the lesson is for. */
+function eligible(id: string): boolean {
+  const d = roster.drivers.get(id)!;
+  return occupancy.isFree(id) && !d.careerOver && LESSONS[lesson].eligible({ ...d, roadLicensed: d.roadCourse?.licensed });
+}
+
+function renderSchool(): void {
+  const L = LESSONS[lesson];
+  $('lessonNote').textContent = L.description;
+  const free = [...roster.drivers.values()].filter((d) => eligible(d.id));
+  for (const id of [...picked]) if (!eligible(id)) picked.delete(id);
+  $('studentPicker').innerHTML = free.length
+    ? free.map((d) => `<label class="pick"><input type="checkbox" data-student="${d.id}"${picked.has(d.id) ? ' checked' : ''}> ${d.name} <span class="muted">${d.rounds}r${roster.teamOf('driver', d.id) ? '' : ' · academy'}</span></label>`).join('')
+    : `<div class="muted">No free ${L.audience}. ${L.id === 'rookie' ? 'Recruit a raw rookie under Paddock: Roster.' : 'Drivers in a running session are busy: stop it, or recruit to the academy.'}</div>`;
+  ($('startClass') as HTMLButtonElement).disabled = picked.size === 0;
+}
+
+buttonGroup('lessonButtons', Object.values(LESSONS).filter((l) => !l.withdrawn).map((l) => [l.name, l.id] as [string, LessonId]), () => lesson, (l) => {
+  lesson = l;
+  picked.clear();
+  renderSchool();
+});
+$('studentPicker').onchange = (e) => {
+  const box = e.target as HTMLInputElement;
+  const id = box.dataset.student;
+  if (!id) return;
+  if (box.checked && picked.size >= MAX_STUDENTS) { box.checked = false; return; }
+  if (box.checked) picked.add(id); else picked.delete(id);
+  renderSchool();
+};
+$('startClass').onclick = () => startClass();
+
+/** Start a class with the picked students, on screen (whatever was there goes to the background). */
+function startClass(): void {
+  if (readOnly()) { news(`The ${bundleOf(source)?.name} drivers are read-only (as tested): classes are for your own roster.`); return; }
+  const L = LESSONS[lesson];
+  const students = [...picked].map((id) => roster.drivers.get(id)!).slice(0, MAX_STUDENTS);
+  if (!students.length) return;
+  const ref: EventRef = {
+    id: `school-${Date.now().toString(36)}-${++eventCounter}`, type: 'school',
+    label: `${L.name} · ${students.map((d) => d.name.split(' ')[0]).join(', ')}`,
+  };
+  const conflicts = occupancy.claim(ref, students.map((d) => d.id));
+  if (conflicts.length) { news(`Can't start the class: ${conflicts.length} students are busy in ${conflicts[0].event.label}`); return; }
+  const spec: ClassSpec = {
+    lesson,
+    // Road courses trains the road-course skill (starting as a copy of the driver's oval driving); everything else the driver.
+    students: students.map((d, i) => ({
+      key: STUDENT_KEY + i, id: d.id, name: d.name,
+      weights: lesson === 'circuits' ? (d.roadCourse?.weights ?? d.weights).slice() : d.weights,
+      rounds: lesson === 'circuits' ? d.roadCourse?.rounds ?? 0 : d.rounds,
+      licensed: d.licensed, pitLicensed: d.pitLicensed, pitTrafficLicensed: d.pitTrafficLicensed, cautionLicensed: d.cautionLicensed,
+      roadLicensed: d.roadCourse?.licensed, roadRadius: d.roadCourse?.radius, nerve: d.nerve,
+    })),
+    presets: Object.keys(PRESETS).map(presetLayout),
+    seed: (rng.next() * 2 ** 32) >>> 0,
+  };
+  const handle = host.start(ref, { what: 'class', spec }, { attach: true, runDetached: true });
+  const first = presetTrack(Object.keys(PRESETS)[0]);
+  metas.set(handle, {
+    mode: 'class', trackName: first.name, track: first, teams: new Map(), recorded: false, lesson,
+    liveries: new Map(students.map((d, i) => [STUDENT_KEY + i, { number: i + 1, fill: STUDENT_COLORS[i], border: '#f8f9fa', label: initials(d.name) }])),
+  });
+  showEvent(handle);
+  picked.clear();
+  renderSchool();
+  renderRoster();
+  renderEvents();
+  news(`${L.name} starts: ${students.map((d) => d.name).join(', ')}`);
+}
+
+/** A round of a class ended: the students' new driving goes to the roster and their records. */
+function lessonRounds(handle: EventHandle, reports: RoundReport[]): void {
+  const meta = metas.get(handle);
+  for (const r of reports) {
+    const d = roster.drivers.get(r.id);
+    if (!d) continue;
+    if (meta?.lesson === 'circuits') {
+      // The road-course skill learned; the driver's oval driving is untouched.
+      d.roadCourse = { weights: r.weights.slice(), rounds: r.rounds, licensed: r.roadLicensed, radius: r.roadRadius };
+    } else {
+      d.weights.set(r.weights);
+      d.rounds = r.rounds;
+    }
+    d.licensed = r.licensed;
+    d.pitLicensed = r.pitLicensed;
+    d.pitTrafficLicensed = r.pitTrafficLicensed;
+    d.cautionLicensed = r.cautionLicensed;
+    const variations = 2 * LESSONS[meta?.lesson ?? 'rookie'].pairs;
+    activity.record({
+      kind: 'lesson', agent: d.id, role: 'driver', event: handle.ref, brain: r.rounds,
+      data: { lesson: meta?.lesson ?? 'rookie', track: r.track, fitness: r.fitness, laps: r.laps, bestLap: r.bestLap, health: r.health, walls: r.walls, beaten: r.beaten, variations },
+    });
+    if (r.graduated) {
+      const license = meta?.lesson === 'pits' ? 'pit' : meta?.lesson === 'pitTraffic' ? 'pitTraffic' : meta?.lesson === 'cautions' ? 'caution'
+        : meta?.lesson === 'circuits' ? 'roadCourse' : 'driving';
+      activity.record({ kind: 'licensed', agent: d.id, role: 'driver', event: handle.ref, brain: r.rounds, data: { lessons: r.rounds, license } });
+      news(license === 'pit' ? `${d.name} passed the pit stop lesson: next, pit road in traffic`
+        : license === 'pitTraffic' ? `${d.name} passed pit road in traffic: does their own stops in races from now on`
+        : license === 'caution' ? `${d.name} passed the caution lesson: drives their own cautions and restarts from now on`
+        : license === 'roadCourse' ? `${d.name} earned a road-course license`
+        : `${d.name} earned a license after ${r.rounds} lessons`);
+    }
+  }
+  if (performance.now() - lastSchoolPersist > 5000) {
+    lastSchoolPersist = performance.now();
+    persist();
+    renderRoster();
+    agentPage.refresh();
+  }
+}
+
+/** How a student's own pit stop went, for the class table. */
+const stopText = (st: { serviced: boolean; completed: boolean; speeding: number; harm?: number }) =>
+  !st.serviced ? 'no stop' : !st.completed ? "stopped, didn't merge" : st.speeding >= 1 ? 'speeding'
+    : (st.harm ?? 0) >= 0.05 ? 'stopped, with contact' : 'clean stop';
+
+/** How a student's own racecraft drill went, for the class table. */
+const packText = (p: { harm: number; gained: number }) =>
+  `${p.gained > 0 ? `+${p.gained}` : p.gained} place${Math.abs(p.gained) === 1 ? '' : 's'}${p.harm >= 0.02 ? ', caused contact' : ''}`;
+
+/** How a student's own caution drill went, for the class table. */
+const cautionText = (c: { placeError: number; passes: number; harm: number }) =>
+  `${c.placeError.toFixed(0)} m off${c.passes ? `, ${c.passes} pass${c.passes > 1 ? 'es' : ''}` : ''}${c.harm >= 0.05 ? ', contact' : ''}`;
+
+const TOWER_HEAD = '<tr><th>P</th><th>Driver</th><th>Gap</th><th>Best</th><th>Tire</th><th>Fuel</th><th>Pit</th><th>Hlth</th></tr>';
+const SCHOOL_HEAD = '<tr><th>P</th><th>Student</th><th>Lessons</th><th>Last round</th><th>Best</th><th>Beaten by</th><th>Tests</th><th></th></tr>';
+
+/** The timing tower during a class: students ranked by their last round, and the HUD for the lesson. */
+function schoolTower(s: SessionSnapshot, meta: EventMeta): void {
+  const sc = s.school!;
+  const L = LESSONS[sc.lesson];
+  $('towerHead').innerHTML = SCHOOL_HEAD;
+  const ranked = [...sc.students].sort((a, b) => (b.last?.fitness ?? -Infinity) - (a.last?.fitness ?? -Infinity));
+  const variations = 2 * L.pairs;
+  $('tower').innerHTML = ranked.map((st, p) => {
+    const lv = meta.liveries?.get(st.key);
+    const last = st.last;
+    return `<tr><td>${p + 1}</td><td><span class="dot" style="background:${lv?.fill};border-color:${lv?.fill}"></span><a data-agent="${st.id}" data-role="driver">${st.name}</a></td>
+      <td>${st.rounds}</td><td>${!last ? '–' : last.stop ? stopText(last.stop) : last.caution ? cautionText(last.caution) : last.pack ? packText(last.pack) : `${last.laps} laps`}</td><td>${fmt(last?.bestLap ?? null)}</td>
+      <td>${last ? `${last.beaten}/${variations}` : '–'}</td><td>${sc.lesson === 'variety' ? '–' : `${st.passed.length}/3`}</td>
+      <td>${sc.lesson === 'circuits' ? (st.roadLicensed ? 'road' : '') : sc.lesson === 'pits' ? (st.pitLicensed ? 'pits' : '') : sc.lesson === 'pitTraffic' ? (st.pitTrafficLicensed ? 'pit road' : '') : sc.lesson === 'cautions' ? (st.cautionLicensed ? 'cautions' : '') : st.licensed ? 'licensed' : ''}</td></tr>`;
+  }).join('');
+  const students = sc.students.length;
+  $('hud').innerHTML = `<b>Driving school</b> · ${L.name} · ${students} student${students > 1 ? 's' : ''} · ${speed}×<br>`
+    + `round ${sc.round + 1} · <b>${meta.trackName}</b> · ${Math.ceil(sc.remaining)} s left in the round`
+    + (sc.walls < 1 ? ` · walls ×${sc.walls.toFixed(2)} (soft)` : '')
+    + ` · ${showVariations ? `faint dots: each student's ${variations} variations` : 'variations hidden'}`;
+}
+$('tower').addEventListener('click', (e) => {
+  const link = (e.target as HTMLElement).closest<HTMLElement>('[data-agent]');
+  if (link) void agentPage.open(link.dataset.agent!, 'driver');
+});
+
+// ---------- Roster source: yours, or a bundle as tested ----------
+
+async function useRoster(next: string): Promise<void> {
+  if (next === source) return;
+  try { localStorage.setItem('dotgp.v2.source', next); } catch { /* remembered for this visit only */ }
+  if (next !== 'mine' && !bundleDrivers.has(next)) {
+    const b = bundleOf(next);
+    const data = b && await fetchJson(`/drivers/${b.file}`) as { drivers?: Array<{ weights: number[] }> } | null;
+    if (!data?.drivers?.length) { news(`Couldn't load the ${b?.name ?? next} drivers.`); return; }
+    bundleDrivers.set(next, data.drivers);
+  }
+  stopPractice();
+  weekendPractice = null;
+  if (fieldEvent) endEvent(fieldEvent);
+  if (source === 'mine') myRoster = roster;
+  source = next;
+  if (next === 'mine') {
+    roster = myRoster ?? roster;
+    myRoster = null;
+    roster.ensureTeams(fieldSize);
+  } else {
+    roster = Roster.fromBundle(bundleOf(next)!, bundleDrivers.get(next)!, fieldSize, rng)!;
+    championship = false;
+    if (mode === 'race' || !racesOn(track)) mode = racesOn(track) ? 'race' : 'practice';
+  }
+  selected = null;
+  technique.clear();
+  renderRosterSource();
+  renderTeams();
+  renderRoster();
+  renderSeason();
+  renderSchool();
+  startSession();
+  buttonGroups.forEach((render) => render());
+}
+
+function renderRosterSource(): void {
+  const host = $('rosterSource');
+  host.innerHTML = '';
+  for (const [label, id] of [['My roster', 'mine'], ...bundles.map((b) => [`${b.name} drivers`, b.id])]) {
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.className = source === id ? 'on' : '';
+    btn.onclick = () => void useRoster(id);
+    host.appendChild(btn);
+  }
+  $('recruit').hidden = readOnly();
+  $('recruitRookie').hidden = readOnly();
+  $('rosterSourceNote').textContent = readOnly()
+    ? bundleOf(source)?.note ?? ''
+    : 'Your own drivers: they learn, race the championship and are saved in this browser.';
+}
+
+// ---------- Views ----------
+
+const VIEW_KEY = 'dotgp.v2.view';
+
+function showView(view: string): void {
+  document.querySelectorAll<HTMLElement>('aside section[data-view]').forEach((el) => { el.hidden = el.dataset.view !== view; });
+  document.querySelectorAll<HTMLElement>('#views button').forEach((b) => { b.className = b.dataset.view === view ? 'on' : ''; });
+  try { localStorage.setItem(VIEW_KEY, view); } catch { /* remembered for this visit only */ }
+}
+$('views').onclick = (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('button[data-view]');
+  if (b) showView(b.dataset.view!);
+};
+showView((() => { try { return localStorage.getItem(VIEW_KEY) ?? 'watch'; } catch { return 'watch'; } })());
 
 // ---------- Boot ----------
 
@@ -698,32 +1357,55 @@ async function boot(): Promise<void> {
     ?? Roster.load(await fetchJson('/drivers/default.json'), rng, templates)
     ?? new Roster(rng);
   roster.chiefTemplates = templates;
+  const index = await fetchJson('/drivers/index.json') as { bundles?: Bundle[] } | null;
+  if (index?.bundles?.length) bundles = index.bundles;
+  renderRosterSource();
   // Rosters saved before trained crew chiefs existed: bring their chiefs up to date.
   const upgraded = roster.upgradeScriptedChiefs();
-  if (upgraded) radioFeed.unshift({ time: 0, team: null, text: `${upgraded} crew chiefs switched to learned strategy (descended from the trained chiefs)` });
+  if (upgraded) news(`${upgraded} crew chiefs switched to learned strategy (descended from the trained chiefs)`);
   if (params.has('field')) fieldSize = Number(params.get('field'));
   if (params.has('zoom')) zoom = Number(params.get('zoom'));
   if (params.has('laps')) raceLaps = Number(params.get('laps'));
   if (params.has('pace')) pace = Number(params.get('pace'));
+  if (params.has('speed')) speed = Number(params.get('speed'));
+  // ?track=oval:<seed>[:<variant>] or ?track=circuit:<seed>[:club|gp] opens a generated track.
+  const [kind, seedText, variant] = (params.get('track') ?? '').split(':');
+  if ((kind === 'oval' || kind === 'circuit') && seedText) {
+    addGeneratedTrack(kind, Number(seedText), variant || undefined);
+    championship = false;
+    trackName = trackOptions[trackOptions.length - 1][0];
+    track = TRACKS.get(trackName)!;
+    if (!racesOn(track)) mode = 'practice';
+  } else {
+    toNextRound();
+  }
+  watchRoster(roster);
   roster.ensureTeams(fieldSize);
   persist();
-  renderer.setTrack(track);
-  buildWorld();
-  // ?warm=N pre-simulates N seconds (handy for screenshots and jumping into a session).
-  const warm = Number(params.get('warm') ?? 0);
-  for (let k = 0; k < warm / P.DT; k++) {
-    simulateStep();
-    if (k % 120 === 0) serviceCars();
-  }
+  host.setSpeed(speed);
+  // ?warm=N fast-forwards the first session N seconds (handy for screenshots and jumping in).
+  startSession(true, Number(params.get('warm') ?? 0));
+  // ?roster=house (or the last choice) puts a bundle's drivers on track: exactly what the tests race.
+  const savedSource = (() => { try { return localStorage.getItem('dotgp.v2.source'); } catch { return null; } })();
+  const wanted = params.get('roster') ?? savedSource ?? 'mine';
+  if (wanted !== 'mine' && bundleOf(wanted)) await useRoster(wanted);
   buttonGroups.forEach((render) => render());
   renderTeams();
   renderSeason();
-  updateCamera();
-  updateTower();
+  renderSchool();
   drawTechniques();
   drawRadio();
   window.addEventListener('resize', () => renderer.resize());
   setInterval(updateTower, 200);
+  setInterval(() => {
+    // A finished race whose results were on screen, but you looked away: the season carries on.
+    if (fieldEvent?.state === 'finished' && !fieldEvent.attachedTo && !Number.isNaN(raceDoneAt)) carryOn(fieldEvent);
+    renderEvents();
+  }, 500);
+  // The log buffers records; write them out every couple of seconds and when the page is hidden or closed.
+  setInterval(() => void activity.flush(), 2000);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) void activity.flush(); });
+  window.addEventListener('pagehide', () => void activity.flush());
   setInterval(drawTechniques, 500);
   setInterval(drawRadio, 250);
   requestAnimationFrame(frame);

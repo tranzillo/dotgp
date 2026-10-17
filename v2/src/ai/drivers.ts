@@ -1,31 +1,37 @@
 import type { Car } from '../sim/car';
 import type { Controller, World } from '../sim/world';
-import { FormationDriver } from './formation';
+import { FormationDriver, type FormationTraits } from './formation';
 import { followLine } from './lineFollower';
 import { genomeSize, Network, widenNetwork } from './network';
-import { PitAutopilot, pitDecisionS, type CrewChief } from './pitting';
-import { OBS_SIZE, observe } from './observe';
+import { PIT_SERVICE } from '../sim/constants';
+import { PitAutopilot, pitDecisionS, pitRoute, type CrewChief } from './pitting';
+import { CAUTION_SIZE, LOOKAHEAD, OBS_SIZE, observe, observeCaution, observePit, PIT_LOOKAHEAD, PIT_SIZE } from './observe';
 import { Rng } from './rng';
-import { RADIO_SIZE, TowerSpotter, type Spotter } from './spotter';
+import { RADIO, RADIO_SIZE, TowerSpotter, type Spotter } from './spotter';
+import type { Track } from '../sim/track';
 
-/** Driver network: own-car observations + the spotter's radio -> acceleration request. */
-export const DRIVER_LAYERS = [OBS_SIZE + RADIO_SIZE, 24, 16, 2] as const;
-/** Solo-era drivers (no radio), still loadable via adaptWeights. */
+/** Driver network: own-car observations + the spotter's radio + a pit stop in progress + a caution -> acceleration request. */
+export const DRIVER_LAYERS = [OBS_SIZE + RADIO_SIZE + PIT_SIZE + CAUTION_SIZE, 32, 24, 2] as const;
+/** Earlier drivers, still loadable via adaptWeights: before caution inputs, before pit inputs, and solo-era (no radio). */
+export const PIT_DRIVER_LAYERS = [OBS_SIZE + RADIO_SIZE + PIT_SIZE, 32, 24, 2] as const;
+export const RADIO_DRIVER_LAYERS = [OBS_SIZE + RADIO_SIZE, 24, 16, 2] as const;
 export const LEGACY_DRIVER_LAYERS = [OBS_SIZE, 16, 12, 2] as const;
 
-/** Upgrade saved weights to the current driver network, preserving behaviour. */
+/** Upgrade saved weights to the current driver network, preserving behaviour (new inputs start ignored). */
 export function adaptWeights(w: Float32Array): Float32Array {
   if (w.length === genomeSize(DRIVER_LAYERS)) return w;
-  if (w.length === genomeSize(LEGACY_DRIVER_LAYERS)) {
-    const rng = new Rng(w.length);
-    return widenNetwork(LEGACY_DRIVER_LAYERS, w, DRIVER_LAYERS, () => rng.next());
+  for (const old of [PIT_DRIVER_LAYERS, RADIO_DRIVER_LAYERS, LEGACY_DRIVER_LAYERS]) {
+    if (w.length === genomeSize(old)) {
+      const rng = new Rng(w.length);
+      return widenNetwork(old, w, DRIVER_LAYERS, () => rng.next());
+    }
   }
   throw new Error(`unrecognised driver genome (${w.length} weights)`);
 }
 
-/** The driver's seat of a team: reads its own car plus the radio. */
+/** The driver's seat of a team: reads its own car, the radio, a pit stop in progress, and a caution. */
 export interface DriverBrain {
-  decide(car: Car, world: World, radio: Float32Array): void;
+  decide(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array): void;
 }
 
 /**
@@ -35,60 +41,173 @@ export interface DriverBrain {
  */
 export class Team implements Controller {
   readonly radio = new Float32Array(RADIO_SIZE);
-  private readonly autopilot = new PitAutopilot();
-  private readonly formation = new FormationDriver();
+  readonly pitInputs = new Float32Array(PIT_SIZE);
+  readonly cautionInputs = new Float32Array(CAUTION_SIZE);
+  readonly autopilot = new PitAutopilot();
+  private readonly formation: FormationDriver;
+  /** Whether race control had the field pacing at this driver's last look, and when that last changed. */
+  private flagPacing: boolean | null = null;
+  private flagChangedAt = -Infinity;
   private lastS = NaN;
+  /** Who drove the car on the last decision: the learned driver, or a script (pit maneuver, formation). */
+  mode: 'driver' | 'pit' | 'formation' = 'driver';
 
   constructor(
     readonly driver: DriverBrain,
     readonly spotter: Spotter = new TowerSpotter(),
     readonly crewChief: CrewChief | null = null,
-  ) {}
+    /** The driver drives its own pit stops (it has learned to); otherwise the scripted maneuver does. */
+    readonly driverPits = false,
+    /** The driver drives its own cautions and restarts (it has learned to); otherwise the formation script does. */
+    readonly driverCautions = false,
+    /** How this driver drives a caution with the formation script (default: drawn for the car). */
+    formationTraits?: FormationTraits,
+  ) {
+    this.formation = new FormationDriver(formationTraits);
+  }
 
   decide(car: Car, world: World): void {
     const track = world.track;
     const r = track.signedS(car.s);
-    if (this.crewChief && car.pit.phase === 'none') {
+    if (car.pit.phase === 'none' && (this.crewChief || car.pendingPenalty)) {
       const dp = pitDecisionS(track);
       if (this.lastS < dp && r >= dp && r - this.lastS < 50) {
-        const call = this.crewChief.decide(car, world);
+        // A penalty to serve comes first, under green (stewards' orders); otherwise the chief decides.
+        const p = car.pendingPenalty;
+        const serve = p && (!world.control || world.control.flag === 'green');
+        const call = serve
+          ? { tires: false, fuel: 0, repair: false, penalty: p.kind, penaltySeconds: p.seconds }
+          : this.crewChief?.decide(car, world) ?? null;
         if (call) {
           car.pit.phase = 'in';
           car.pit.call = call;
           this.autopilot.begin(car);
-          world.announce(car, 'crew', this.crewChief.lastMessage);
+          world.announce(car, 'crew', serve ? `Serve the ${p.kind === 'stop-go' ? `${p.seconds} s stop-and-go` : 'drive-through'} this lap` : this.crewChief!.lastMessage);
         }
       }
     }
     this.lastS = r;
     this.spotter.call(car, world, this.radio);
-    if (car.pit.phase !== 'none') this.autopilot.decide(car, world, this.spotter);
-    else if (world.control?.pacing && !car.finished) this.formation.decide(car, world);
-    else this.driver.decide(car, world, this.radio);
+    this.observePit(car, world);
+    observeCaution(car, world, this.cautionInputs);
+    if (!this.driverPits && (car.pit.phase !== 'none' || this.autopilot.aborting)) { this.mode = 'pit'; this.autopilot.decide(car, world, this.spotter); }
+    else if (!this.driverCautions && this.inFormation(car, world)) { this.mode = 'formation'; this.formation.decide(car, world); }
+    else { this.mode = car.pit.phase === 'none' ? 'driver' : 'pit'; this.driver.decide(car, world, this.radio, this.pitInputs, this.cautionInputs); }
+  }
+
+  /**
+   * Formation driving, with this driver's own reaction: the caution flag (or
+   * the green) takes it a moment to react to, so it keeps doing what it was
+   * doing until it has: racing on into a caution, holding station into a green.
+   */
+  private inFormation(car: Car, world: World): boolean {
+    const pacing = !!world.control?.pacing;
+    if (this.flagPacing === null) this.flagPacing = pacing; // first look: already reacted
+    else if (pacing !== this.flagPacing) {
+      this.flagPacing = pacing;
+      this.flagChangedAt = world.time;
+    }
+    if (car.finished || car.pit.phase !== 'none' || !world.control) return false;
+    const reacted = world.time - this.flagChangedAt >= this.formation.traitsFor(car).reaction;
+    return pacing ? reacted : !reacted;
+  }
+
+  /** The pit stop as the driver sees it (zeros when not pitting). */
+  observePit(car: Car, world: World): void {
+    if (car.pit.phase === 'none') {
+      this.pitInputs.fill(0);
+      return;
+    }
+    const route = pitRoute(world.track, car.pit, this.autopilot.fromLane);
+    // No traffic in ghost sessions: always clear to merge.
+    const clear = car.pit.phase === 'out' && (!world.opts.collisions || this.spotter.clearToMerge(car, world));
+    observePit(car, world.track, route, clear, PIT_SERVICE.SPEED_LIMIT, this.pitInputs);
   }
 }
 
-/** Raw-control driver: network outputs the acceleration request in the travel frame. */
+/** How far ahead a driver looks for the next corner's direction (m): its curvature lookahead. */
+const CORNER_HORIZON = LOOKAHEAD[LOOKAHEAD.length - 1];
+
+/** Direction of the next corner within the horizon: +1 left, -1 right, 0 none in sight. */
+export function nextCornerDirection(track: Track, s: number): number {
+  for (let a = 0; a <= CORNER_HORIZON; a += 5) {
+    const k = track.curvatureAt(s + a);
+    if (Math.abs(k) > 1e-4) return Math.sign(k);
+  }
+  return 0;
+}
+
+/**
+ * The same moment seen in mirror image: everything lateral changes sign
+ * (heading against the track, lane, sideways speed, the banking's push, the
+ * last steering command, curvature ahead; traffic on the inside and outside
+ * swap; lateral offsets of cars, the hazard, the pit route and the caution
+ * slot flip). The physics has no handedness, so this is exact.
+ */
+export function mirrorDriverInputs(x: Float32Array): void {
+  for (const i of [1, 3, 4, 6, 10]) x[i] = -x[i];
+  for (let j = 0; j < LOOKAHEAD.length; j++) x[11 + j] = -x[11 + j];
+  const r = OBS_SIZE;
+  const lowProx = x[r + RADIO.LOW_PROX], lowRel = x[r + RADIO.LOW_REL];
+  x[r + RADIO.LOW_PROX] = x[r + RADIO.HIGH_PROX];
+  x[r + RADIO.LOW_REL] = x[r + RADIO.HIGH_REL];
+  x[r + RADIO.HIGH_PROX] = lowProx;
+  x[r + RADIO.HIGH_REL] = lowRel;
+  for (const i of [RADIO.AHEAD_LANE, RADIO.AHEAD2_LANE, RADIO.BEHIND_LANE, RADIO.HAZARD_LANE]) x[r + i] = -x[r + i];
+  const p = OBS_SIZE + RADIO_SIZE;
+  for (let j = 2; j < 2 + PIT_LOOKAHEAD.length; j++) x[p + j] = -x[p + j];
+  x[p + PIT_SIZE + 3] = -x[p + PIT_SIZE + 3];
+}
+
+/**
+ * Raw-control driver: network outputs the acceleration request in the travel frame.
+ *
+ * Every corner is driven as a left-hander: when the next corner turns right
+ * the driver sees the world in mirror image and its steering is mirrored back.
+ * A right-hander is exactly a mirrored left-hander, so on ovals (all left)
+ * nothing changes, and an oval run the other way round drives exactly like
+ * the original. Between corners the view follows the coming one.
+ */
 export class NeuralDriver implements DriverBrain {
   readonly net: Network;
-  private readonly input = new Float32Array(OBS_SIZE + RADIO_SIZE);
+  /** The road-course skill: a second network that drives on road circuits (ovals are the main network's). */
+  readonly roadNet: Network | null;
+  private readonly input = new Float32Array(OBS_SIZE + RADIO_SIZE + PIT_SIZE + CAUTION_SIZE);
   private readonly obs = new Float32Array(OBS_SIZE);
+  /** The last inputs were mirrored (the coming corner turns right): labels for them must be mirrored too. */
+  mirrored = false;
 
-  constructor(weights: Float32Array) {
+  constructor(weights: Float32Array, roadWeights?: Float32Array) {
     this.net = new Network(DRIVER_LAYERS, weights);
+    this.roadNet = roadWeights ? new Network(DRIVER_LAYERS, roadWeights) : null;
   }
 
-  decide(car: Car, world: World, radio: Float32Array): void {
+  /** The network that drives this track: the road-course skill on road circuits (if the driver has one). */
+  netFor(track: Track): Network {
+    return this.roadNet && track.layout.type === 'circuit' ? this.roadNet : this.net;
+  }
+
+  /** The network's input for this moment (also what an apprentice is shown), mirrored when the next corner turns right. */
+  inputs(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array): Float32Array {
     this.input.set(observe(car, world.track, this.obs), 0);
     this.input.set(radio, OBS_SIZE);
-    const out = this.net.forward(this.input);
+    this.input.set(pit, OBS_SIZE + RADIO_SIZE);
+    this.input.set(caution, OBS_SIZE + RADIO_SIZE + PIT_SIZE);
+    const dir = nextCornerDirection(world.track, car.s);
+    if (dir !== 0) this.mirrored = dir < 0; // nothing in sight: keep the last view
+    if (this.mirrored) mirrorDriverInputs(this.input);
+    return this.input;
+  }
+
+  decide(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array): void {
+    const out = this.netFor(world.track).forward(this.inputs(car, world, radio, pit, caution));
     car.inputX = out[0];
-    car.inputY = out[1];
+    car.inputY = this.mirrored ? -out[1] : out[1];
   }
 }
 
-export function neuralTeam(weights: Float32Array, crewChief: CrewChief | null = null): Team {
-  return new Team(new NeuralDriver(weights), new TowerSpotter(), crewChief);
+export function neuralTeam(weights: Float32Array, crewChief: CrewChief | null = null, driverPits = false, driverCautions = false): Team {
+  return new Team(new NeuralDriver(weights), new TowerSpotter(), crewChief, driverPits, driverCautions);
 }
 
 /**

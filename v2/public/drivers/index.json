@@ -1,0 +1,16 @@
+{
+  "bundles": [
+    {
+      "id": "house",
+      "name": "House",
+      "file": "default.json",
+      "note": "The house drivers: what the benchmarks and Claude's tests race (cars cycle through them). Read-only: they don't learn, take classes or score championship points. They have no road-course skill: on circuits they crash in the first tight corner."
+    },
+    {
+      "id": "road",
+      "name": "Road apprentice",
+      "file": "road-apprentice.json",
+      "note": "The house drivers plus a road-course skill learned by copying the scripted line follower round circuits (12 rounds, no practice, no license yet). Ovals: exactly the house drivers. Circuits: solo they get round (13% of club runs and 8% of GP runs end off the track); in races they run wide often (about 10 track-limits calls each per race) and contact is common: nobody has taught them circuit racecraft or the white line yet. Read-only."
+    }
+  ]
+}

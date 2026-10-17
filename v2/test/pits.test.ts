@@ -6,7 +6,7 @@ import { Car, type PitCall } from '../src/sim/car';
 import { PIT_SERVICE } from '../src/sim/constants';
 import { placeOnGrid } from '../src/sim/grid';
 import { Race } from '../src/sim/race';
-import { FLAT_TRACK, SHORT_TRACK, SPEEDWAY, Track } from '../src/sim/track';
+import { FLAT_TRACK, ovalTrack, SHORT_TRACK, SPEEDWAY } from '../src/trackgen';
 import { World } from '../src/sim/world';
 
 class CallOnce implements CrewChief {
@@ -23,7 +23,7 @@ class CallOnce implements CrewChief {
 describe('pit stop', () => {
   for (const [name, spec] of [['speedway', SPEEDWAY], ['short', SHORT_TRACK], ['flat', FLAT_TRACK]] as const) {
     it(`completes a full cycle on the ${name}: in, stop, service, out, rejoin`, () => {
-      const track = new Track(spec);
+      const track = ovalTrack(spec);
       const world = new World(track, { collisions: false });
       const car = new Car(0);
       placeOnGrid(car, track, 0, true);
@@ -35,7 +35,7 @@ describe('pit stop', () => {
       let rejoinedOnTrack = false;
       while (world.time < 300) {
         world.step();
-        if (car.surface === 'pit' && car.pit.phase === 'in' && track.signedS(car.s) > track.pitWallStart + 30) {
+        if (car.surface === 'pit' && car.pit.phase === 'in' && track.signedS(car.s) > track.pit.wallStart + 30) {
           maxPitSpeed = Math.max(maxPitSpeed, car.speed);
         }
         if (car.pit.stops === 1 && car.pit.phase === 'none') {
@@ -60,7 +60,7 @@ describe('pit stop', () => {
 
 describe('crew chief', () => {
   it('calls the car in for fuel before it runs dry, and fuels only to the finish late on', () => {
-    const track = new Track(SPEEDWAY);
+    const track = ovalTrack(SPEEDWAY);
     const world = new World(track, { collisions: false, wearScale: 6 });
     world.raceLaps = 30;
     const car = new Car(0);
@@ -80,7 +80,7 @@ describe('crew chief', () => {
 
 describe('race', () => {
   it('waves the checkered flag and classifies everyone', () => {
-    const track = new Track(SHORT_TRACK);
+    const track = ovalTrack(SHORT_TRACK);
     const world = new World(track, { collisions: false });
     const cars = [0, 1, 2].map((k) => {
       const car = new Car(k);
@@ -99,7 +99,7 @@ describe('race', () => {
   });
 
   it('classifies lead-lap finishers ahead of lapped cars that flag first', () => {
-    const track = new Track(SHORT_TRACK);
+    const track = ovalTrack(SHORT_TRACK);
     const world = new World(track, { collisions: false });
     const fast = new Car(0), slow = new Car(1), mid = new Car(2);
     for (const [k, car] of [fast, slow, mid].entries()) {
@@ -116,15 +116,15 @@ describe('race', () => {
 
 describe('pit exit merge', () => {
   it('waits on the apron while a car is alongside, then merges once clear', () => {
-    const track = new Track(SPEEDWAY);
+    const track = ovalTrack(SPEEDWAY);
     const world = new World(track, { collisions: true, drafting: false });
     // A: leaving the pits, on the apron just inside the merge zone.
     const a = new Car(0);
     world.addCar(a, new Team(new ScriptedDriver(0), new TowerSpotter(), null));
-    const startS = track.blendEnd - PIT_SERVICE.MERGE_ZONE + 5;
-    a.placeOnTrack(track, startS, track.halfWidth + track.spec.apronWidth / 2);
+    const startS = track.pit.blendEnd - PIT_SERVICE.MERGE_ZONE + 5;
+    a.placeOnTrack(track, startS, (track.halfWidth + track.apronEdgeAt(0)) / 2);
     a.pit.phase = 'out';
-    a.pit.boxS = track.pitWallStart + 25;
+    a.pit.boxS = track.pit.wallStart + 25;
     const ia = a.trackIdx;
     a.vx = track.tx[ia] * 40; a.vy = track.ty[ia] * 40;
     // B: on the racing surface, low line, right alongside and a touch quicker.
@@ -148,5 +148,28 @@ describe('pit exit merge', () => {
     expect(mergedWhileAlongside).toBe(false);
     expect(a.health).toBe(1);
     expect(b.health).toBe(1);
+  });
+
+  it('does not call for repairs lap after lap as a damaged car keeps scraping', () => {
+    const track = ovalTrack(SPEEDWAY);
+    const world = new World(track, { collisions: false });
+    world.raceLaps = 60;
+    const car = new Car(0);
+    placeOnGrid(car, track, 0, true);
+    const chief = new StrategistCrewChief({ fuelMarginLaps: 1, tireLimit: 0.3, repairBelow: 0.85, minLapsForTires: 5 });
+    let repairs = 0;
+    // Thirty laps of a car losing a little health every lap (and getting a repair whenever asked).
+    for (let lap = 0; lap < 30; lap++) {
+      car.lapTimes.push(35);
+      car.health = Math.max(0.2, car.health - 0.04);
+      const call = chief.decide(car, world);
+      if (call?.repair) {
+        repairs++;
+        car.pit.stops++;
+        car.health = 1 - (1 - car.health) * (1 - PIT_SERVICE.REPAIR_FRACTION) - 0.03; // a scrape on the way in
+      }
+    }
+    expect(repairs).toBeGreaterThan(0);
+    expect(repairs).toBeLessThanOrEqual(7); // about one per 5 laps of steady damage (the old rule called nearly every other lap)
   });
 });

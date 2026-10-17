@@ -178,7 +178,7 @@ export class TowerSpotter implements Spotter {
     const myAlong = alongSpeed(car, world);
     for (const other of world.cars) {
       if (other === car || other.retired || other.cleared || other.pit.phase !== 'none') continue;
-      if (other.d < track.halfWidth - 8) continue; // up high, well clear of the merge
+      if (other.d < track.innerEdge(other.trackIdx) - 8) continue; // up high, well clear of the merge
       let ds = other.s - car.s;
       if (ds > L / 2) ds -= L;
       else if (ds < -L / 2) ds += L;

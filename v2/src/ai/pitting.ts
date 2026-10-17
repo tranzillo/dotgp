@@ -1,6 +1,6 @@
 import { PHYSICS as P, PIT_SERVICE } from '../sim/constants';
-import type { Car, PitCall } from '../sim/car';
-import { PIT, type Track } from '../sim/track';
+import type { Car, PitCall, PitState } from '../sim/car';
+import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
 import { followLine } from './lineFollower';
 import type { Spotter } from './spotter';
@@ -10,7 +10,7 @@ import type { Spotter } from './spotter';
  * the car to get down to the apron for the pit entry at turn 4 exit.
  */
 export function pitDecisionS(track: Track): number {
-  return Math.max(-track.length / 2 + 10, track.pitWallStart - PIT.ENTRY_LENGTH - 300);
+  return Math.max(-track.length / 2 + 10, track.pit.entryStart - 300);
 }
 
 /** The crew chief: the team's strategist. */
@@ -24,7 +24,7 @@ export interface CrewChief {
 export interface CrewChiefTraits {
   /** Laps of fuel kept in reserve before calling the car in. */
   fuelMarginLaps: number;
-  /** Tire life below which fresh tires are worth a stop. */
+  /** Tire life the chief won't run below: comes in before it, and takes tires if the next run would. */
   tireLimit: number;
   /** Health below which repairs are worth the extra time. */
   repairBelow: number;
@@ -35,24 +35,39 @@ export interface CrewChiefTraits {
 export function randomTraits(random: () => number): CrewChiefTraits {
   return {
     fuelMarginLaps: 0.6 + random() * 1.8,
-    tireLimit: 0.35 + random() * 0.25,
+    tireLimit: 0.25 + random() * 0.2,
     repairBelow: 0.55 + random() * 0.3,
     minLapsForTires: 4 + Math.floor(random() * 8),
   };
 }
 
+/** Health lost since the last repair before another is worth calling. */
+const REPAIR_AGAIN = 0.15;
+/** Smallest health a repair must give back to be worth its time. */
+const MIN_REPAIR_GAIN = 0.12;
+
 /**
- * Scripted strategist with personality. It learns the car's fuel burn as the
- * race goes, pits when fuel, tires or damage demand it, and only fuels as
- * much as it needs to reach the finish (shorter stops late in the race).
+ * Scripted strategist with personality. It learns the car's fuel burn and
+ * tire wear as the race goes, pits when fuel, tires or damage demand it, only
+ * changes tires that won't last the next run (tires cost time; fuel hides
+ * inside a tire change), and only fuels as much as it needs to reach the
+ * finish (shorter stops late in the race).
  */
 export class StrategistCrewChief implements CrewChief {
   lastMessage = '';
   private burnPerLap = 0;
+  private wearPerLap = 0;
   private lastFuel = -1;
+  private lastTire = -1;
   private lastLap = -1;
-  /** Health after the last repair: only call for repairs again if there is new damage. */
+  /**
+   * Health measured after the last repair (at the first call after the
+   * stop): only call for repairs again if the car has been hurt clearly more
+   * since. Measured, not predicted: cars often take more damage on the way in.
+   */
   private repairedTo = -1;
+  private awaitingRepair = false;
+  private stopsSeen = 0;
 
   constructor(readonly traits: CrewChiefTraits) {}
 
@@ -62,7 +77,12 @@ export class StrategistCrewChief implements CrewChief {
       const burn = (this.lastFuel - car.fuel) / (car.lapsCompleted - this.lastLap);
       this.burnPerLap = this.burnPerLap ? this.burnPerLap * 0.6 + burn * 0.4 : burn;
     }
+    if (this.lastLap >= 0 && car.lapsCompleted > this.lastLap && car.tireLife < this.lastTire) {
+      const wear = (this.lastTire - car.tireLife) / (car.lapsCompleted - this.lastLap);
+      this.wearPerLap = this.wearPerLap ? this.wearPerLap * 0.6 + wear * 0.4 : wear;
+    }
     this.lastFuel = car.fuel;
+    this.lastTire = car.tireLife;
     this.lastLap = car.lapsCompleted;
 
     const t = this.traits;
@@ -72,21 +92,33 @@ export class StrategistCrewChief implements CrewChief {
     const burn = this.burnPerLap || P.FUEL_CAPACITY / 30;
     const fuelLaps = car.fuel / burn;
     const needFuel = this.burnPerLap > 0 && fuelLaps < Math.min(lapsLeft, 1 + t.fuelMarginLaps);
-    const wornTires = car.tireLife < t.tireLimit && lapsLeft > t.minLapsForTires;
-    const newDamage = this.repairedTo < 0 || car.health < this.repairedTo - 0.05;
-    const damaged = car.health < t.repairBelow && newDamage && lapsLeft > 5;
+    // Come in before the tires go past the limit (a lap from now is the next chance to call it).
+    const wornTires = car.tireLife - 1.5 * this.wearPerLap < t.tireLimit && lapsLeft > t.minLapsForTires;
+    if (this.awaitingRepair && car.pit.stops > this.stopsSeen) {
+      this.repairedTo = car.health;
+      this.awaitingRepair = false;
+    }
+    this.stopsSeen = car.pit.stops;
+    const newDamage = this.repairedTo < 0 || car.health < this.repairedTo - REPAIR_AGAIN;
+    // Worth the time only if the repair gives back a fair amount (it restores a share of what's missing).
+    const worthIt = (1 - car.health) * PIT_SERVICE.REPAIR_FRACTION >= MIN_REPAIR_GAIN;
+    const damaged = car.health < t.repairBelow && newDamage && worthIt && lapsLeft > 5;
     if (!needFuel && !wornTires && !damaged) return null;
 
     const tank = P.FUEL_CAPACITY - car.fuel;
     const fuelToFinish = Number.isFinite(lapsLeft) ? (lapsLeft + t.fuelMarginLaps) * burn - car.fuel : tank;
+    // Tires only if these won't last until the next stop (a full run on the fuel we're adding, or the finish).
+    const fuel = Math.max(0, Math.min(tank, fuelToFinish));
+    const nextRun = Math.min(lapsLeft, (car.fuel + fuel) / burn - t.fuelMarginLaps);
+    const lastTheRun = car.tireLife - nextRun * this.wearPerLap >= t.tireLimit;
     const call: PitCall = {
-      tires: wornTires || (car.tireLife < 0.85 && lapsLeft > t.minLapsForTires),
-      fuel: Math.max(0, Math.min(tank, fuelToFinish)),
+      tires: wornTires || (!lastTheRun && lapsLeft > t.minLapsForTires),
+      fuel,
       repair: damaged,
     };
     const parts = [call.tires ? 'four tires' : 'no tires', call.fuel > 0.5 ? (call.fuel >= tank - 0.5 ? 'fill it up' : 'fuel to the end') : '',
       call.repair ? 'fix the damage' : ''].filter(Boolean);
-    if (call.repair) this.repairedTo = 1 - (1 - car.health) * (1 - PIT_SERVICE.REPAIR_FRACTION);
+    if (call.repair) this.awaitingRepair = true;
     this.lastMessage = `Box this lap: ${parts.join(', ')}`;
     return call;
   }
@@ -97,77 +129,203 @@ export class StrategistCrewChief implements CrewChief {
  * road at the speed limit, stop in the box, then out through the blend lane
  * and back on track on the back straight. The world runs the stop itself.
  */
+/** The lanes a pit stop uses (lateral positions, d). */
+export interface PitLanes {
+  /** Middle of the apron at s. */
+  apronLaneAt: (s: number) => number;
+  /** Lines that pass the pit wall's ends clear them by this much. */
+  wallClear: number;
+  entryLane: number;
+  fastLane: number;
+  boxLane: number;
+}
+
+export function pitLanes(track: Track): PitLanes {
+  const apronLaneAt = (s: number) => track.innerEdgeAt(s) + track.apronWidth / 2;
+  const wallClear = track.pit.wallD + track.pit.wallThickness / 2 + P.CAR_RADIUS + 1.2;
+  return {
+    apronLaneAt,
+    wallClear,
+    entryLane: Math.max(apronLaneAt(track.pit.entryStart), wallClear),
+    fastLane: Math.max(track.pit.wallD + track.pit.wallThickness / 2 + 3, wallClear),
+    boxLane: track.pit.wallD + track.pit.wallThickness / 2 + 9.5,
+  };
+}
+
+const ramp = (r: number, r0: number, r1: number, a: number, b: number) =>
+  r <= r0 ? a : r >= r1 ? b : a + (b - a) * (r - r0) / (r1 - r0);
+
+/**
+ * The painted route through a pit stop, as a lateral position for each s:
+ * in (from the lane the call caught the car in, down to the apron, lined up
+ * for pit road well before the wall's nose, into the box) or out (from the
+ * box to the fast lane, clear of the wall's end, onto the apron, and back onto
+ * the racing surface from the merge zone on). The route is the path when the
+ * spotter says it's clear to merge; whether it is, is the driver's call.
+ */
+export function pitRoute(track: Track, pit: PitState, fromLane: number): (s: number) => number {
+  const lanes = pitLanes(track);
+  const { entryStart, exitEnd, wallStart, wallEnd } = track.pit;
+  if (pit.phase === 'out') {
+    const mergeFrom = track.distanceFrom(pit.boxS, track.pit.blendEnd) - PIT_SERVICE.MERGE_ZONE;
+    return (s: number) => {
+      const r = track.signedS(s);
+      const du = track.progressFrom(pit.boxS, s);
+      if (du < track.distanceFrom(pit.boxS, wallEnd)) return ramp(r, pit.boxS, pit.boxS + 25, lanes.boxLane, lanes.fastLane);
+      if (du < track.distanceFrom(pit.boxS, exitEnd)) return ramp(r, wallEnd + 15, exitEnd, lanes.fastLane, lanes.apronLaneAt(s));
+      return ramp(du, mergeFrom, mergeFrom + 90, lanes.apronLaneAt(s), track.innerEdgeAt(s) - 2.5);
+    };
+  }
+  return (s: number) => {
+    const r = track.signedS(s);
+    if (r < entryStart) return ramp(r, entryStart - 280, entryStart, fromLane, lanes.entryLane);
+    if (r < wallStart) return ramp(r, entryStart, wallStart - 50, lanes.entryLane, lanes.fastLane);
+    return ramp(r, pit.boxS - 40, pit.boxS - 8, lanes.fastLane, lanes.boxLane);
+  };
+}
+
+/** Braking pit-road traffic rules plan around (m/s^2), and the gap kept to the car ahead (m, bumper to bumper). */
+const PIT_DECEL = 4;
+const PIT_GAP = 3;
+/** How long a car waits in its box for the fast lane to clear before going anyway (s). */
+const BOX_WAIT_LIMIT = 10;
+/** Abort the pit entry if not lined up this far before the wall's nose (m). */
+const ABORT_DISTANCE = 140;
+/** ... but not before the car has had this far past the pit entry (m) to move over. */
+const ABORT_GRACE = 40;
+
 export class PitAutopilot {
-  private fromLane = 0;
+  /** The lane the car was in when the crew chief called it in (the route starts from there). */
+  fromLane = 0;
   /** Distance from the box (m) where the merge began, once the spotter cleared it. */
   private mergeFrom = NaN;
+  /** World time the car started waiting in its box for a gap. */
+  private waitingSince = NaN;
+  /**
+   * The pit entry was aborted: the maneuver keeps the wheel until the car is
+   * back on the racing surface past the pit wall's nose, rather than letting
+   * it coast into the wall end.
+   */
+  aborting = false;
 
   begin(car: Car): void {
     this.fromLane = car.d;
     this.mergeFrom = NaN;
+    this.waitingSince = NaN;
+    this.aborting = false;
+  }
+
+  /**
+   * The fastest this car may go and still stop behind whatever is ahead on its
+   * path (laneAt), within range: cars on pit road, a car being serviced in a
+   * shared box, the pace car on its way in.
+   */
+  private followLimit(car: Car, world: World, laneAt: (s: number) => number, range = 80): number {
+    const track = world.track;
+    let limit = Infinity;
+    const others = [...world.cars, ...world.officials.map((o) => o.car)];
+    for (const other of others) {
+      if (other === car || other.cleared) continue;
+      const gap = track.distanceFrom(car.s, other.s);
+      if (gap <= 0 || gap > range) continue;
+      // On our path (or right where we are now).
+      if (Math.abs(other.d - laneAt(other.s)) > 2.6 && Math.abs(other.d - car.d) > 2.6) continue;
+      const along = other.vx * track.tx[other.trackIdx] + other.vy * track.ty[other.trackIdx];
+      const room = Math.max(0, gap - 2 * P.CAR_RADIUS - PIT_GAP);
+      limit = Math.min(limit, Math.sqrt(Math.max(0, along) ** 2 + 2 * PIT_DECEL * room));
+    }
+    return limit;
   }
 
   decide(car: Car, world: World, spotter: Spotter): void {
     const track = world.track;
     const pit = car.pit;
-    const apronLane = track.halfWidth + track.spec.apronWidth / 2;
+    // Middle of the apron (wherever the inside edge is there).
+    const apronLaneAt = (s: number) => track.innerEdgeAt(s) + track.apronWidth / 2;
+    const apronLane = apronLaneAt(track.pit.entryStart);
     // Lines that pass the pit wall's ends must clear them with room to spare.
-    const wallClear = track.pitWallD + PIT.WALL_THICKNESS / 2 + P.CAR_RADIUS + 1.2;
+    const wallClear = track.pit.wallD + track.pit.wallThickness / 2 + P.CAR_RADIUS + 1.2;
     const entryLane = Math.max(apronLane, wallClear);
-    const fastLane = Math.max(track.pitWallD + PIT.WALL_THICKNESS / 2 + 3, wallClear);
-    const boxLane = track.pitWallD + PIT.WALL_THICKNESS / 2 + 9.5;
-    const entryStart = track.pitWallStart - PIT.ENTRY_LENGTH;
-    const exitEnd = track.pitWallEnd + PIT.EXIT_TAPER;
+    const fastLane = Math.max(track.pit.wallD + track.pit.wallThickness / 2 + 3, wallClear);
+    const boxLane = track.pit.wallD + track.pit.wallThickness / 2 + 9.5;
+    const entryStart = track.pit.entryStart;
+    const exitEnd = track.pit.exitEnd;
     const ramp = (r: number, r0: number, r1: number, a: number, b: number) =>
       r <= r0 ? a : r >= r1 ? b : a + (b - a) * (r - r0) / (r1 - r0);
 
-    if (pit.phase === 'in') {
+    if (this.aborting) {
+      // Back up onto the racing surface and past the wall's nose, then hand back.
       const r0 = track.signedS(car.s);
-      // Not lined up for pit road as the wall's nose approaches: abort and stay out.
-      if (r0 > track.pitWallStart - 40 && r0 < track.pitWallStart && car.d < wallClear - 0.8) {
-        pit.phase = 'none';
-        pit.call = null;
-        world.announce(car, 'missed-pit', 'Aborted pit entry, not lined up');
+      if (r0 > track.pit.wallStart + 10 || r0 < track.pit.wallStart - ABORT_DISTANCE - 60) {
+        this.aborting = false;
         car.inputX = 0;
         car.inputY = 0;
+        return;
+      }
+      followLine(car, world, (s) => track.innerEdgeAt(s) - 2.5, () => Infinity, 0.75);
+      return;
+    }
+    if (pit.phase === 'in') {
+      const r0 = track.signedS(car.s);
+      // Still on the track side of the wall's line close to its nose: abort and stay out. A car already
+      // past the line commits to pit road (turning back across the nose from there is what hits it).
+      const decideFrom = Math.max(track.pit.wallStart - ABORT_DISTANCE, entryStart + ABORT_GRACE);
+      if (r0 > decideFrom && r0 < track.pit.wallStart && car.d < track.pit.wallD) {
+        pit.phase = 'none';
+        pit.call = null;
+        this.aborting = true;
+        world.announce(car, 'missed-pit', 'Aborted pit entry, not lined up');
+        this.decide(car, world, spotter);
         return;
       }
       const lane = (s: number) => {
         const r = track.signedS(s);
         if (r < entryStart) return ramp(r, entryStart - 280, entryStart, this.fromLane, entryLane);
         // Lined up for pit road well before the wall's nose.
-        if (r < track.pitWallStart) return ramp(r, entryStart, track.pitWallStart - 50, entryLane, fastLane);
+        if (r < track.pit.wallStart) return ramp(r, entryStart, track.pit.wallStart - 50, entryLane, fastLane);
         return ramp(r, pit.boxS - 40, pit.boxS - 8, fastLane, boxLane);
       };
+      // Never faster than lets us stop behind the car ahead (or a car still in our box).
+      const follow = this.followLimit(car, world, lane);
       const cap = (s: number) => {
         const r = track.signedS(s);
-        if (r < track.pitWallStart - 5 || r > track.pitWallEnd + 5) return Infinity;
+        if (r < track.pit.wallStart - 5 || r > track.pit.wallEnd + 5) return follow;
         // Pit limiter speed, then a stop on the box.
-        return Math.min(PIT_SERVICE.SPEED_LIMIT - 1, Math.sqrt(2 * 3 * Math.max(0, pit.boxS - r)));
+        return Math.min(follow, PIT_SERVICE.SPEED_LIMIT - 1, Math.sqrt(2 * 3 * Math.max(0, pit.boxS - r)));
       };
       // Well under the cornering limit, leaving grip to work down the track.
       followLine(car, world, lane, cap, 0.75);
     } else if (pit.phase === 'out') {
       // Merge: from the merge zone on, wait on the apron for the spotter's "clear".
-      const blend = track.distanceFrom(pit.boxS, track.blendEnd);
-      const u = track.distanceFrom(pit.boxS, car.s);
+      const blend = track.distanceFrom(pit.boxS, track.pit.blendEnd);
+      const u = track.progressFrom(pit.boxS, car.s);
       if (Number.isNaN(this.mergeFrom) && u > blend - PIT_SERVICE.MERGE_ZONE
         && (spotter.clearToMerge(car, world) || u > blend + PIT_SERVICE.MERGE_GIVE_UP - 120)) {
         this.mergeFrom = u;
       }
       const mergeFrom = this.mergeFrom;
       const lane = (s: number) => {
-        const du = track.distanceFrom(pit.boxS, s);
+        const du = track.progressFrom(pit.boxS, s);
         if (du < blend - PIT_SERVICE.MERGE_ZONE || Number.isNaN(mergeFrom)) {
           const r = track.signedS(s);
-          if (du < track.distanceFrom(pit.boxS, track.pitWallEnd)) return ramp(r, pit.boxS, pit.boxS + 25, boxLane, fastLane);
+          if (du < track.distanceFrom(pit.boxS, track.pit.wallEnd)) return ramp(r, pit.boxS, pit.boxS + 25, boxLane, fastLane);
           // Clear of the wall's end before cutting across to the apron.
-          if (du < track.distanceFrom(pit.boxS, exitEnd)) return ramp(r, track.pitWallEnd + 15, exitEnd, fastLane, apronLane);
-          return apronLane;
+          if (du < track.distanceFrom(pit.boxS, exitEnd)) return ramp(r, track.pit.wallEnd + 15, exitEnd, fastLane, apronLaneAt(s));
+          return apronLaneAt(s);
         }
-        return ramp(du, mergeFrom, mergeFrom + 90, apronLane, track.halfWidth - 2.5);
+        return ramp(du, mergeFrom, mergeFrom + 90, apronLaneAt(s), track.innerEdgeAt(s) - 2.5);
       };
-      const cap = (s: number) => (track.signedS(s) < track.pitWallEnd ? PIT_SERVICE.SPEED_LIMIT - 1 : Infinity);
+      // Leaving the box: wait for a gap in the fast lane behind (cars coming down pit road), within reason.
+      let hold = false;
+      if (u < 20) {
+        if (Number.isNaN(this.waitingSince)) this.waitingSince = world.time;
+        const waited = world.time - this.waitingSince;
+        hold = waited < BOX_WAIT_LIMIT && world.cars.some((o) => o !== car && !o.cleared && !o.retired
+          && o.surface === 'pit' && o.d < boxLane - 4 && o.speed > 4
+          && track.distanceFrom(o.s, car.s) > 0 && track.distanceFrom(o.s, car.s) < 45);
+      }
+      const follow = hold ? 0 : this.followLimit(car, world, lane);
+      const cap = (s: number) => Math.min(follow, track.signedS(s) < track.pit.wallEnd ? PIT_SERVICE.SPEED_LIMIT - 1 : Infinity);
       followLine(car, world, lane, cap, 0.9);
     } else {
       car.inputX = 0;

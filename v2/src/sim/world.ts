@@ -21,6 +21,9 @@ export interface WorldOptions {
   autoClearWrecks: boolean;
 }
 
+/** A car stopped within this far of its box's centre is in the box (boxes are 12 m long). */
+const BOX_HALF_LENGTH = 5;
+
 /** Seconds a stopped wreck stays on track before the safety crew clears it. */
 export const WRECK_CLEAR_TIME = 4;
 
@@ -28,7 +31,7 @@ export const WRECK_CLEAR_TIME = 4;
 export interface WorldEvent {
   time: number;
   car: Car;
-  kind: 'pit-in' | 'pit-out' | 'missed-pit' | 'retired' | 'crew' | 'flag';
+  kind: 'pit-in' | 'pit-out' | 'missed-pit' | 'retired' | 'crew' | 'flag' | 'steward';
   text: string;
 }
 
@@ -54,9 +57,8 @@ export class World {
 
   addCar(car: Car, controller: Controller | null): void {
     // Pit boxes are handed out in entry order along pit road (shared on tracks with short pit roads).
-    const t = this.track;
-    const boxes = Math.max(1, Math.floor((t.pitWallEnd - t.pitWallStart - 40) / PIT_SERVICE.STALL_SPACING));
-    car.pit.boxS = t.pitWallStart + 25 + (this.cars.length % boxes) * PIT_SERVICE.STALL_SPACING;
+    const stalls = this.track.pit.stalls;
+    car.pit.boxS = stalls[this.cars.length % stalls.length];
     this.cars.push(car);
     this.controllers.push(controller);
   }
@@ -100,7 +102,7 @@ export class World {
     if (this.opts.collisions) {
       const all = this.officials.length ? [...cars, ...this.officials.map((o) => o.car)] : cars;
       const before = cars.map((c) => c.retired);
-      resolveCarCollisions(all);
+      resolveCarCollisions(all, track);
       cars.forEach((c, i) => { if (c.retired && !before[i]) this.announce(c, 'retired', 'Out of the race after contact'); });
       for (const car of all) reproject(car, track);
       for (const { car } of this.officials) { car.health = 1; car.retired = false; } // officials don't wreck
@@ -125,12 +127,12 @@ export class World {
     if (pit.phase === 'none' || car.retired) return;
     const r = this.track.signedS(car.s);
     if (pit.phase === 'in') {
-      const inPitLane = car.d > this.track.pitWallD;
-      if (r > this.track.pitWallStart + 5 && r < pit.boxS && !inPitLane) {
+      const inPitLane = car.d > this.track.pit.wallD;
+      if (r > this.track.pit.wallStart + 5 && r < pit.boxS && !inPitLane) {
         pit.phase = 'none';
         pit.call = null;
         this.announce(car, 'missed-pit', 'Missed the pit entry');
-      } else if (inPitLane && Math.abs(r - pit.boxS) < 3 && car.speed < 1.5) {
+      } else if (inPitLane && Math.abs(r - pit.boxS) < BOX_HALF_LENGTH && car.speed < 1.5) {
         pit.phase = 'service';
         pit.timer = serviceTime(car, pit.call!);
         pit.stops++;
@@ -152,9 +154,9 @@ export class World {
       // Done once the car has merged onto the racing surface past the blend
       // zone (or has given up waiting for a gap and been sent out anyway).
       const t = this.track;
-      const u = t.distanceFrom(pit.boxS, car.s);
-      const blend = t.distanceFrom(pit.boxS, t.blendEnd);
-      const merged = u > blend - PIT_SERVICE.MERGE_ZONE && car.d < t.halfWidth;
+      const u = t.progressFrom(pit.boxS, car.s);
+      const blend = t.distanceFrom(pit.boxS, t.pit.blendEnd);
+      const merged = u > blend - PIT_SERVICE.MERGE_ZONE && car.d < t.innerEdge(car.trackIdx);
       const giveUp = u > Math.min(blend + PIT_SERVICE.MERGE_GIVE_UP, t.length - 100);
       if (merged || giveUp) {
         pit.phase = 'none';
