@@ -1,5 +1,6 @@
 import { DRIVER_LAYERS, NeuralDriver, ScriptedDriver, Team } from '../ai/drivers';
-import { trainSupervised, type Example } from '../ai/network';
+import { inputWeightMask, trainSupervised, type Example } from '../ai/network';
+import { OBS_SIZE } from '../ai/observe';
 import { Rng } from '../ai/rng';
 import { TowerSpotter } from '../ai/spotter';
 import { Car } from '../sim/car';
@@ -20,6 +21,14 @@ import { generateLayout, hashSeed } from '../trackgen';
  * mistakes, not only the teacher's clean line). Practice (evolution
  * strategies) takes over from there to beat the teacher.
  */
+
+/**
+ * The weights road-course practice trains: all but the first layer's from the
+ * radio, pit and caution inputs. Those are zero in solo practice, so their
+ * gradient is pure noise (and Adam takes full-size steps on noise); left
+ * alone they keep the oval driving's answers for when traffic arrives.
+ */
+export const ROAD_WEIGHTS = inputWeightMask(DRIVER_LAYERS, OBS_SIZE, DRIVER_LAYERS[0]).map((v) => 1 - v);
 
 /** Rounds of the apprenticeship (the first with the teacher driving), and per round: circuits, lanes, seconds each. */
 export const ROAD_APPRENTICE_ROUNDS = 12;

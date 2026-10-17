@@ -8,6 +8,9 @@
  * thread). Road-course apprenticeships run one per thread, and rounds of
  * ghost laps (road courses, rookie school, track variety) are split across
  * them; the results are the same as on one thread.
+ * --practise-on: licensed students keep practising; the class runs all --rounds.
+ * --checkpoint-every N: also write the drivers every N rounds (out file with -r<round> before .json).
+ * --lr X, --pairs N: practice settings other than the lesson's (experiments).
  * --apprentice-epochs: passes over the recorded moments per apprenticeship round (road courses; default ROAD_APPRENTICE_EPOCHS).
  *
  * Drivers keep their licenses (caution, pit) from the input file; the output
@@ -23,7 +26,8 @@ import { SchoolPool } from './pool';
 
 const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i++) {
-  if (process.argv[i].startsWith('--')) args.set(process.argv[i].slice(2), process.argv[++i]);
+  // A flag followed by another flag (--practise-on) has no value.
+  if (process.argv[i].startsWith('--')) args.set(process.argv[i].slice(2), process.argv[i + 1]?.startsWith('--') ? '' : process.argv[++i]);
 }
 const lesson = args.get('lesson') as LessonId;
 if (!lesson || !LESSONS[lesson]) throw new Error(`--lesson one of ${Object.keys(LESSONS).join(', ')}`);
@@ -34,6 +38,12 @@ const maxRounds = Number(args.get('rounds') ?? 100);
 const summaryFile = args.get('summary');
 const seed = Number(args.get('seed') ?? 7);
 const jobs = Math.max(1, Number(args.get('jobs') ?? cpus().length - 1));
+const practiseOn = args.has('practise-on');
+const practice = {
+  ...(args.has('lr') ? { learningRate: Number(args.get('lr')) } : {}),
+  ...(args.has('pairs') ? { pairs: Number(args.get('pairs')) } : {}),
+};
+const checkpointEvery = Number(args.get('checkpoint-every') ?? 0);
 const apprenticeship = args.has('apprentice-epochs') ? { epochs: Number(args.get('apprentice-epochs')) } : undefined;
 
 interface DriverEntry {
@@ -61,7 +71,7 @@ const students = file.drivers.map((d, k) => ({
 const apprenticed = pool && road
   ? await Promise.all(students.map((s) => (s.rounds > 0 ? undefined : pool.apprenticeRoad(s.weights.slice(), hashSeed(seed, s.id), apprenticeship))))
   : undefined;
-const c = new Classroom({ lesson, presets: Object.keys(PRESETS).map(presetLayout), seed, students, apprenticed, apprenticeship });
+const c = new Classroom({ lesson, presets: Object.keys(PRESETS).map(presetLayout), seed, students, apprenticed, apprenticeship, practiseOn, practice });
 console.log(`${lesson}: ${file.drivers.length} students, apprenticeship ${((Date.now() - t0) / 1000).toFixed(0)} s, ${jobs} thread${jobs > 1 ? 's' : ''}`);
 c.takeRadio();
 while (c.round < maxRounds && !c.finished) {
@@ -69,22 +79,26 @@ while (c.round < maxRounds && !c.finished) {
   else c.step();
   c.takeReports();
   for (const l of c.takeRadio()) if (/now|went back|license|tighten|cleanly/.test(l.text)) console.log(`round ${c.round}: ${l.text}`);
+  if (checkpointEvery && c.round % checkpointEvery === 0) save(outFile.replace(/\.json$/, `-r${c.round}.json`));
 }
 await pool?.close();
 const seconds = (Date.now() - t0) / 1000;
 console.log(`${c.round} rounds, ${seconds.toFixed(0)} s, finished ${c.finished}`);
 
-writeFileSync(outFile, JSON.stringify({
-  ...file,
-  drivers: file.drivers.map((d, k) => {
-    const s = c.students[k];
-    if (road) return { ...d, roadCourse: { weights: Array.from(s.weights), rounds: s.rounds, licensed: s.roadLicensed, radius: c.roadRadius } };
-    return {
-      ...d, weights: Array.from(s.weights), licensed: s.licensed, pitLicensed: s.pitLicensed,
-      pitTrafficLicensed: s.pitTrafficLicensed, cautionLicensed: s.cautionLicensed,
-    };
-  }),
-}));
+save(outFile);
+function save(path: string): void {
+  writeFileSync(path, JSON.stringify({
+    ...file,
+    drivers: file.drivers.map((d, k) => {
+      const s = c.students[k];
+      if (road) return { ...d, roadCourse: { weights: Array.from(s.weights), rounds: s.rounds, licensed: s.roadLicensed, radius: c.roadRadius } };
+      return {
+        ...d, weights: Array.from(s.weights), licensed: s.licensed, pitLicensed: s.pitLicensed,
+        pitTrafficLicensed: s.pitTrafficLicensed, cautionLicensed: s.cautionLicensed,
+      };
+    }),
+  }));
+}
 if (summaryFile) {
   writeFileSync(summaryFile, JSON.stringify({
     lesson, rounds: c.round, seconds, finished: c.finished,
