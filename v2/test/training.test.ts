@@ -5,7 +5,8 @@ import { genomeSize, Network, trainSupervised, type Example } from '../src/ai/ne
 import { Centerline } from '../src/sim/centerline';
 import { Rng } from '../src/ai/rng';
 import { Classroom, type ClassSpec, type GhostRunner, type RoadcraftRound } from '../src/school/classroom';
-import { roadcraftDrill } from '../src/school/roadcraftLesson';
+import { roadcraftDrill, SITUATION_PACK } from '../src/school/roadcraftLesson';
+import { chicanes } from '../src/sim/features';
 import type { TrackLayout } from '../src/sim/layout';
 import { Track } from '../src/sim/track';
 import { generateLayout, PRESETS, presetLayout } from '../src/trackgen';
@@ -64,6 +65,27 @@ describe('headless training', () => {
     await split.runRound(runner);
     split.students.forEach((s, k) => expect(Array.from(s.weights)).toEqual(Array.from(one.students[k].weights)));
     expect(split.takeReports().map((r) => r.fitness)).toEqual(one.takeReports().map((r) => r.fitness));
+  });
+
+  it('focuses a circuit racecraft class on one situation, on circuits that have it', async () => {
+    const c = new Classroom({
+      lesson: 'roadcraft', presets: Object.keys(PRESETS).map(presetLayout), seed: 4, practice: { pairs: 1, focus: 'chicane' },
+      students: [0, 1].map((k) => ({ key: k, id: `D${k}`, name: `D${k}`, weights: initialWeights(new Rng(k + 5)), rounds: 1, licensed: true, roadLicensed: true })),
+    });
+    const runner = {
+      ghost: splitRunner(1),
+      roadcraft: async (r: RoadcraftRound) => {
+        expect(r.pack.spots.length).toBe(SITUATION_PACK); // a situation's pack every round
+        const track = new Track(r.layout);
+        const drills = r.candidates.map((g, i) => roadcraftDrill(track, r.slot, g, Math.floor(i / r.perStudent), r.classmates, r.pack, r.nerves[Math.floor(i / r.perStudent)], r.pace));
+        for (const d of drills) while (!d.done) d.step();
+        return { results: drills.map((d) => d.result()), time: drills[0].world.time };
+      },
+    };
+    for (let round = 0; round < 3; round++) {
+      expect(chicanes(c.track).length).toBeGreaterThan(0);
+      await c.runRound(runner);
+    }
   });
 
   it('scores valid laps only when asked: a lap past the track limits is thrown away', () => {

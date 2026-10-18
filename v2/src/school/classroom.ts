@@ -6,7 +6,7 @@ import {
 import { Trial, type TrialOptions, type TrialResult } from '../ai/evaluate';
 import { apprenticePitStops, cleanStop, PitTrial, REFRESHER_ROUNDS, type PitTrialResult } from './pitLesson';
 import { anchored, DrillTrial, racingKept, SOLO_OPTIONS } from './drill';
-import { ROADCRAFT_WEIGHTS, roadcraftLayout, RoadcraftTrial } from './roadcraftLesson';
+import { ROADCRAFT_WEIGHTS, roadcraftLayout, RoadcraftTrial, situationLayout, situationsOn, type Situation } from './roadcraftLesson';
 import { apprenticeRoadCourses, ROAD_WEIGHTS, roadLicenseTest, type ApprenticeOptions } from './roadLesson';
 import { bestValidLap } from '../sim/limits';
 import { PACK_SIZE, RacecraftTrial, randomLayout, type PackLayout, type RacecraftResult } from './racecraftLesson';
@@ -54,6 +54,8 @@ export interface Lesson {
   validLaps?: boolean;
   /** Circuit racecraft: the share of drills that are situations (braking packs, chicanes); default SITUATION_SHARE. */
   situations?: number;
+  /** Circuit racecraft: every round a drill of this situation, on a circuit that has one (a class focused on chicanes, say). */
+  focus?: Situation;
 }
 
 export const LESSONS: Record<LessonId, Lesson> = {
@@ -158,7 +160,7 @@ export interface ClassSpec {
   /** Students keep practising after earning the lesson's license, and the class runs until stopped. */
   practiseOn?: boolean;
   /** Practice settings other than the lesson's own (experiments). */
-  practice?: Partial<Pick<Lesson, 'learningRate' | 'pairs' | 'seconds' | 'trains' | 'validLaps' | 'situations'>>;
+  practice?: Partial<Pick<Lesson, 'learningRate' | 'pairs' | 'seconds' | 'trains' | 'validLaps' | 'situations' | 'focus'>>;
 }
 
 /**
@@ -509,12 +511,25 @@ export class Classroom {
     return out;
   }
 
+  /** This round's circuit racecraft pack: the focus's situation if the class has one (and the circuit too), else the usual mix. */
+  private roadcraftPack(): PackLayout {
+    const focus = this.lesson.focus;
+    const options = focus ? situationsOn(this.track, focus) : [];
+    return focus && options.length
+      ? situationLayout(this.track, options[this.rng.int(options.length)], focus, this.rng)
+      : roadcraftLayout(this.track, straightStart(this.track, this.rng), this.rng, this.lesson.situations);
+  }
+
   private startRound(): void {
     const lesson = this.lesson;
     const prevTrack = this.track;
     if (lesson.id === 'roadcraft') {
-      // A new circuit every round, club and GP in turn, at full tightness.
-      this.track = roadCourseTrack(hashSeed(this.seed, `round${this.round}`), ROAD_FULL_RADIUS, this.round % 2 ? 'gp' : 'club');
+      // A new circuit every round, club and GP in turn, at full tightness (with a focus: the next one that has it).
+      const variant = this.round % 2 ? 'gp' : 'club';
+      this.track = roadCourseTrack(hashSeed(this.seed, `round${this.round}`), ROAD_FULL_RADIUS, variant);
+      for (let k = 1; lesson.focus && k < 40 && !situationsOn(this.track, lesson.focus).length; k++) {
+        this.track = roadCourseTrack(hashSeed(this.seed, `round${this.round}-${lesson.focus}${k}`), ROAD_FULL_RADIUS, variant);
+      }
       this.walls = 1;
     } else if (lesson.id !== 'variety' && lesson.id !== 'circuits') {
       this.track = this.presets[this.round % this.presets.length];
@@ -560,7 +575,7 @@ export class Classroom {
     this.roadcraftRound = null;
     if (lesson.id === 'roadcraft') {
       this.roadcraftRound = {
-        layout: this.track.layout, pack: roadcraftLayout(this.track, straightStart(this.track, this.rng), this.rng, lesson.situations), slot: 0,
+        layout: this.track.layout, pack: this.roadcraftPack(), slot: 0,
         candidates, perStudent: 1 + 2 * lesson.pairs, classmates: this.students.map((s) => s.weights.slice()),
         nerves: this.students.map((s) => s.nerve), references: this.students.map((s) => s.reference), pace: trackPace(this.track),
       };

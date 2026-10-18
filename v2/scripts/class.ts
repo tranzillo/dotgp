@@ -11,6 +11,7 @@
  * --practise-on: licensed students keep practising; the class runs all --rounds.
  * --checkpoint-every N: also write the drivers every N rounds (out file with -r<round> before .json).
  * --situations X: circuit racecraft's share of situation drills (braking packs, chicanes).
+ * --focus chicane|braking: circuit racecraft drills only that situation, every round, on circuits that have one.
  * --lr X, --pairs N, --valid-laps: practice settings other than the lesson's (experiments; --valid-laps scores
  * progress on valid laps only).
  * --apprentice-epochs: passes over the recorded moments per apprenticeship round (road courses; default ROAD_APPRENTICE_EPOCHS).
@@ -47,6 +48,7 @@ const practice = {
   ...(args.has('pairs') ? { pairs: Number(args.get('pairs')) } : {}),
   ...(args.has('valid-laps') ? { validLaps: true } : {}),
   ...(args.has('situations') ? { situations: Number(args.get('situations')) } : {}),
+  ...(args.has('focus') ? { focus: args.get('focus') as 'braking' | 'chicane' } : {}),
 };
 const checkpointEvery = Number(args.get('checkpoint-every') ?? 0);
 const apprenticeship = args.has('apprentice-epochs') ? { epochs: Number(args.get('apprentice-epochs')) } : undefined;
