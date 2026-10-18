@@ -1,4 +1,4 @@
-import { DRIVER_LAYERS, NeuralDriver, ScriptedDriver, Team } from '../ai/drivers';
+import { DRIVER_LAYERS, NeuralDriver, PREVIEW_FROM, ScriptedDriver, Team } from '../ai/drivers';
 import { inputWeightMask, trainSupervised, type Example } from '../ai/network';
 import { OBS_SIZE } from '../ai/observe';
 import { Rng } from '../ai/rng';
@@ -27,9 +27,10 @@ import { generateLayout, hashSeed } from '../trackgen';
  * The weights road-course practice trains: all but the first layer's from the
  * radio, pit and caution inputs. Those are zero in solo practice, so their
  * gradient is pure noise (and Adam takes full-size steps on noise); left
- * alone they keep the oval driving's answers for when traffic arrives.
+ * alone they keep the oval driving's answers for when traffic arrives. (The
+ * preview of the road, after them, trains.)
  */
-export const ROAD_WEIGHTS = inputWeightMask(DRIVER_LAYERS, OBS_SIZE, DRIVER_LAYERS[0]).map((v) => 1 - v);
+export const ROAD_WEIGHTS = inputWeightMask(DRIVER_LAYERS, OBS_SIZE, PREVIEW_FROM).map((v) => 1 - v);
 
 /** Rounds of the apprenticeship (the first with the teacher driving), and per round: circuits, lanes, seconds each. */
 export const ROAD_APPRENTICE_ROUNDS = 12;
@@ -90,7 +91,7 @@ class RoadApprentice implements Controller {
  */
 export function roadLicenseTest(weights: Float32Array, seed: number, minHealth: number): boolean {
   for (let k = 0; k < 3; k++) {
-    const track = new Track(generateLayout({ type: 'circuit', seed: hashSeed(seed, `test${k}`), variant: 'club' }));
+    const track = circuitTrack(hashSeed(seed, `test${k}`), 'club');
     const world = new World(track, { collisions: false, drafting: false });
     const car = new Car(0);
     world.addCar(car, new Team(new NeuralDriver(weights), new TowerSpotter(), null));
@@ -107,11 +108,20 @@ export function roadLicenseTest(weights: Float32Array, seed: number, minHealth: 
   return true;
 }
 
+/** A circuit from a seed (the next seed, if one can't be laid out: a lesson mustn't die on a generator's bad day). */
+export function circuitTrack(seed: number, variant: 'club' | 'gp'): Track {
+  for (let k = 0; ; k++) {
+    try {
+      return new Track(generateLayout({ type: 'circuit', seed: k === 0 ? seed : hashSeed(seed, `retry${k}`), variant }));
+    } catch (e) {
+      if (k >= 5) throw e;
+    }
+  }
+}
+
 /** Circuits to learn on: club and GP, at full tightness. */
 function apprenticeCircuits(seed: number): Track[] {
-  return Array.from({ length: CIRCUITS }, (_, k) => new Track(generateLayout({
-    type: 'circuit', seed: hashSeed(seed, `apprentice${k}`), variant: k % 3 === 2 ? 'gp' : 'club',
-  })));
+  return Array.from({ length: CIRCUITS }, (_, k) => circuitTrack(hashSeed(seed, `apprentice${k}`), k % 3 === 2 ? 'gp' : 'club'));
 }
 
 export interface ApprenticeOptions {

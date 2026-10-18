@@ -38,6 +38,29 @@ export function observe(car: Car, track: Track, out: Float32Array): Float32Array
   return out;
 }
 
+/**
+ * The preview: the road ahead in windows (m), each the tightest curvature in
+ * it with its direction. The lookahead's point samples can fall between the
+ * corners of a chicane (10-20 m each, a few metres apart) and see a straight;
+ * a window can't miss a corner in it.
+ */
+export const PREVIEW = [[0, 15], [15, 30], [30, 50], [50, 80], [80, 120], [120, 170], [170, 250]] as const;
+export const PREVIEW_SIZE = PREVIEW.length;
+const PREVIEW_STEP = 2.5;
+
+export function observePreview(car: Car, track: Track, out: Float32Array): Float32Array {
+  for (let w = 0; w < PREVIEW_SIZE; w++) {
+    const [from, to] = PREVIEW[w];
+    let tightest = 0;
+    for (let a = from; a <= to; a += PREVIEW_STEP) {
+      const k = track.curvatureAt(car.s + a);
+      if (Math.abs(k) > Math.abs(tightest)) tightest = k;
+    }
+    out[w] = tightest * CURVATURE_SCALE;
+  }
+  return out;
+}
+
 /** Distances ahead (m) at which the driver sees where the pit route runs. */
 export const PIT_LOOKAHEAD = [0, 25, 50, 100] as const;
 export const PIT_SIZE = 8 + PIT_LOOKAHEAD.length;

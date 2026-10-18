@@ -1,4 +1,4 @@
-import { DRIVER_LAYERS } from '../ai/drivers';
+import { DRIVER_LAYERS, PREVIEW_FROM } from '../ai/drivers';
 import { fearScale } from '../ai/fear';
 import { inputWeightMask } from '../ai/network';
 import { OBS_SIZE } from '../ai/observe';
@@ -44,7 +44,7 @@ const GRID_LANE = 3;
  * pit and caution inputs (zero on track under green, so their gradient is
  * only noise). The radio's train now: traffic is the lesson.
  */
-export const ROADCRAFT_WEIGHTS = inputWeightMask(DRIVER_LAYERS, OBS_SIZE + RADIO_SIZE, DRIVER_LAYERS[0]).map((v) => 1 - v);
+export const ROADCRAFT_WEIGHTS = inputWeightMask(DRIVER_LAYERS, OBS_SIZE + RADIO_SIZE, PREVIEW_FROM).map((v) => 1 - v);
 
 /** The launch: the field in grid boxes behind the line, standing, lights out at once. */
 export function launchLayout(track: Track): PackLayout {
