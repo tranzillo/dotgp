@@ -321,7 +321,7 @@ export function rookieDamageScale(lessons: number, curriculumRounds: number): nu
 }
 
 /** The license test: health a rookie must keep while lapping at full damage. */
-export { LICENSE_HEALTH };
+export { LICENSE_HEALTH, ROOKIE_DAMAGE_SHARE };
 
 /** Weights plus Adam state: anything ES can improve. */
 export interface AdamState {

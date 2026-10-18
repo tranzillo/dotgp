@@ -1,7 +1,7 @@
 import { Tape, TAPE_STEPS, type TapeSegment } from '../events/tape';
 import { adaptWeights } from '../ai/drivers';
 import {
-  adamStep, centeredRanks, DEFAULT_ES, LICENSE_HEALTH, rookieDamageScale, rookieDamageSeconds,
+  adamStep, centeredRanks, DEFAULT_ES, LICENSE_HEALTH, ROOKIE_DAMAGE_SHARE, rookieDamageScale, rookieDamageSeconds,
 } from '../ai/es';
 import { Trial, type TrialOptions, type TrialResult } from '../ai/evaluate';
 import { apprenticePitStops, cleanStop, PitTrial, REFRESHER_ROUNDS, type PitTrialResult } from './pitLesson';
@@ -135,6 +135,8 @@ export interface StudentSpec {
   /** Drives its own pit stops (solo), and in traffic. */
   pitLicensed?: boolean;
   pitTrafficLicensed?: boolean;
+  /** Has made a clean stop of its own on a pit road set back across grass (see setBackPitTrack). */
+  setBackPits?: boolean;
   /** Drives its own cautions and restarts. */
   cautionLicensed?: boolean;
   /** Has the road-course license. (In the Road courses lesson, `weights` are the road-course skill's.) */
@@ -210,6 +212,7 @@ export interface RoundReport {
   licensed: boolean;
   pitLicensed: boolean;
   pitTrafficLicensed: boolean;
+  setBackPits: boolean;
   cautionLicensed: boolean;
   roadLicensed: boolean;
   /** Road courses: the curriculum stage reached (tightest corners, m). */
@@ -261,12 +264,22 @@ export interface RoundTape {
 /** A round's result without the weights (what the viewer shows). */
 export type RoundSummary = Omit<RoundReport, 'weights'>;
 
+/** A generated oval whose pit road is set back across grass (the pit lesson's every other round). */
+export function setBackPitTrack(seed: number): Track {
+  for (let k = 0; ; k++) {
+    const variant = ['intermediate', 'speedway'][k % 2];
+    const track = new Track(generateLayout({ type: 'oval', seed: hashSeed(seed, `pits${k}`), variant }));
+    if (track.pit.entryRoute || k >= 60) return track;
+  }
+}
+
 /** Pit stop lesson: rounds in a row without a stop before a student goes back to the veteran for a refresher. */
 const STUCK_ROUNDS = 6;
 
 interface Student extends StudentSpec {
   pitLicensed: boolean;
   pitTrafficLicensed: boolean;
+  setBackPits: boolean;
   cautionLicensed: boolean;
   roadLicensed: boolean;
   /** Pit stop lesson: rounds in a row the student hasn't stopped. */
@@ -307,6 +320,16 @@ export function roadTrainingWheels(minRadius: number): TrainingWheels | undefine
   const p = roadStage(minRadius);
   if (p >= 1) return undefined;
   return { forgiving: 1 - p, speedCap: LEARNER_SPEED * (LEARNER_SPEED_END / LEARNER_SPEED) ** p };
+}
+
+/**
+ * Damage's price at a curriculum stage: rookie school's share of the full
+ * price at the start (so driving on and sometimes crashing beats stopping
+ * before a corner a beginner can't take yet), the full price by real
+ * hairpins. Without it, beginners learned to brake to a stop (lab, 2026-10-18).
+ */
+export function roadDamageSeconds(minRadius: number): number {
+  return COSTS.damage * (ROOKIE_DAMAGE_SHARE + (1 - ROOKIE_DAMAGE_SHARE) * roadStage(minRadius));
 }
 
 /** Variation size (ES sigma) at a curriculum stage: twice the usual at the start (a beginner far from anything good), the usual by the end. */
@@ -395,6 +418,7 @@ export class Classroom {
     this.students = spec.students.map((s) => ({
       ...s, weights: adaptWeights(s.weights).slice(), m: new Float32Array(size), v: new Float32Array(size), adamSteps: 0,
       passed: new Set<string>(), last: null, pitLicensed: s.pitLicensed ?? false, pitTrafficLicensed: s.pitTrafficLicensed ?? false,
+      setBackPits: s.setBackPits ?? false,
       cautionLicensed: s.cautionLicensed ?? false, roadLicensed: s.roadLicensed ?? false, noStop: 0, reference: adaptWeights(s.weights).slice(),
     }));
     if (this.lesson.id === 'circuits') {
@@ -567,6 +591,10 @@ export class Classroom {
         this.track = roadCourseTrack(hashSeed(this.seed, `round${this.round}-${lesson.focus}${k}`), ROAD_FULL_RADIUS, variant);
       }
       this.walls = 1;
+    } else if (lesson.id === 'pits' && this.round % 2 === 1) {
+      // Every other pit lesson round: a generated oval whose pit road is set back across grass.
+      this.track = setBackPitTrack(hashSeed(this.seed, `round${this.round}`));
+      this.walls = 1;
     } else if (lesson.id !== 'variety' && lesson.id !== 'circuits') {
       this.track = this.presets[this.round % this.presets.length];
       // One world, so one wall softness: the class's average experience sets it.
@@ -638,7 +666,8 @@ export class Classroom {
         seconds: lesson.seconds,
         startS: lesson.id === 'circuits' ? straightStart(this.track, this.rng) : undefined,
         damageScale: this.walls,
-        damageSeconds: lesson.id === 'rookie' ? rookieDamageSeconds(lessons, DEFAULT_ES.curriculumRounds) : COSTS.damage,
+        damageSeconds: lesson.id === 'rookie' ? rookieDamageSeconds(lessons, DEFAULT_ES.curriculumRounds)
+          : lesson.id === 'circuits' ? roadDamageSeconds(this.roadRadius) : COSTS.damage,
         wheels: lesson.id === 'circuits' ? roadTrainingWheels(this.roadRadius) : undefined,
         pace: trackPace(this.track),
         // Valid laps count from full tightness: a beginner that leaves the road loses the whole lap, so while
@@ -693,7 +722,12 @@ export class Classroom {
       // Every license below also needs the student to race as it did before the class (racingKept): lessons
       // that only measure their own skill let racing drift, and once a class licensed drivers that couldn't
       // finish a lap.
-      if (!s.pitLicensed && this.lesson.id === 'pits' && cleanStop(own as PitTrialResult) && racingKept(this.track, s.weights, s.reference)) {
+      const setBack = !!this.track.pit.entryRoute;
+      if (!s.setBackPits && setBack && this.lesson.id === 'pits' && cleanStop(own as PitTrialResult) && racingKept(this.track, s.weights, s.reference)) {
+        s.setBackPits = true;
+        this.say(`${s.name} made a clean stop on a set-back pit road at ${this.track.name}`);
+      }
+      if (!s.pitLicensed && !setBack && this.lesson.id === 'pits' && cleanStop(own as PitTrialResult) && racingKept(this.track, s.weights, s.reference)) {
         if (!s.passed.has(this.track.name)) {
           s.passed.add(this.track.name);
           this.say(`${s.name} made a clean stop at ${this.track.name} (${s.passed.size} of ${this.presets.length})`);
@@ -747,7 +781,7 @@ export class Classroom {
       }
       const report: RoundReport = {
         key: s.key, id: s.id, round: this.round, weights: s.weights.slice(), rounds: s.rounds, licensed: s.licensed, pitLicensed: s.pitLicensed,
-        pitTrafficLicensed: s.pitTrafficLicensed, cautionLicensed: s.cautionLicensed, roadLicensed: s.roadLicensed, graduated,
+        pitTrafficLicensed: s.pitTrafficLicensed, setBackPits: s.setBackPits, cautionLicensed: s.cautionLicensed, roadLicensed: s.roadLicensed, graduated,
         roadRadius: this.lesson.id === 'circuits' ? this.roadRadius : undefined,
         track: this.track.name, fitness: own.fitness, laps: own.laps,
         bestLap: Number.isFinite(own.bestLap) ? own.bestLap : null, health: own.health, walls: this.walls,
