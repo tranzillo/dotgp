@@ -14,6 +14,7 @@
  * --focus chicane|braking: circuit racecraft drills only that situation, every round, on circuits that have one.
  * --lr X, --pairs N, --valid-laps: practice settings other than the lesson's (experiments; --valid-laps scores
  * progress on valid laps only).
+ * --apprentice-rounds N: road courses' apprenticeship rounds (0: none; the skill learns from practice alone).
  * --apprentice-epochs: passes over the recorded moments per apprenticeship round (road courses; default ROAD_APPRENTICE_EPOCHS).
  *
  * Drivers keep their licenses (caution, pit) from the input file; the output
@@ -51,7 +52,10 @@ const practice = {
   ...(args.has('focus') ? { focus: args.get('focus') as 'braking' | 'chicane' } : {}),
 };
 const checkpointEvery = Number(args.get('checkpoint-every') ?? 0);
-const apprenticeship = args.has('apprentice-epochs') ? { epochs: Number(args.get('apprentice-epochs')) } : undefined;
+const apprenticeship = args.has('apprentice-epochs') || args.has('apprentice-rounds') ? {
+  ...(args.has('apprentice-epochs') ? { epochs: Number(args.get('apprentice-epochs')) } : {}),
+  ...(args.has('apprentice-rounds') ? { rounds: Number(args.get('apprentice-rounds')) } : {}),
+} : undefined;
 
 interface DriverEntry {
   weights: number[];
@@ -76,7 +80,7 @@ const students = file.drivers.map((d, k) => ({
   cautionLicensed: d.cautionLicensed, roadLicensed: d.roadCourse?.licensed, roadRadius: d.roadCourse?.radius, nerve: d.nerve,
 }));
 // New road-course skills study the line follower one per thread (the classroom would do them one after another).
-const apprenticed = pool && lesson === 'circuits'
+const apprenticed = pool && lesson === 'circuits' && apprenticeship?.rounds !== 0
   ? await Promise.all(students.map((s) => (s.rounds > 0 ? undefined : pool.apprenticeRoad(s.weights.slice(), hashSeed(seed, s.id), apprenticeship))))
   : undefined;
 const c = new Classroom({ lesson, presets: Object.keys(PRESETS).map(presetLayout), seed, students, apprenticed, apprenticeship, practiseOn, practice });

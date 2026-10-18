@@ -365,7 +365,8 @@ export class Classroom {
     if (this.lesson.id === 'circuits') {
       // A new road-course skill first copies the scripted line follower round circuits; then practice.
       for (const [k, s] of this.students.entries()) {
-        if (s.rounds > 0) continue;
+        // No apprenticeship asked for (rounds 0): the skill learns from practice alone, through the curriculum.
+        if (s.rounds > 0 || spec.apprenticeship?.rounds === 0) continue;
         const done = spec.apprenticed?.[k];
         if (done) s.weights.set(done.weights);
         const { examples } = done ?? apprenticeRoadCourses(s.weights, hashSeed(this.seed, s.id), spec.apprenticeship);
@@ -603,7 +604,10 @@ export class Classroom {
         damageScale: this.walls,
         damageSeconds: lesson.id === 'rookie' ? rookieDamageSeconds(lessons, DEFAULT_ES.curriculumRounds) : COSTS.damage,
         pace: trackPace(this.track),
-        validLaps: lesson.validLaps,
+        // Valid laps count from full tightness: a beginner that leaves the road loses the whole lap, so while
+        // the corners are still being tightened nothing it does scores (no-teacher lab, 2026-10-18: 250 rounds and
+        // the curriculum never moved). Apprenticed skills start at full tightness, so for them it's always on.
+        validLaps: lesson.validLaps && (lesson.id !== 'circuits' || this.roadRadius <= ROAD_FULL_RADIUS),
       };
       this.trial = new Trial(this.track, candidates, opts);
       this.ghostRound = { genomes: candidates, opts };
