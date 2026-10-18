@@ -1,6 +1,7 @@
 import { DRIVER_LAYERS, NeuralDriver, PREVIEW_FROM, ScriptedDriver, Team } from '../ai/drivers';
 import { inputWeightMask, trainSupervised, type Example } from '../ai/network';
-import { OBS_SIZE } from '../ai/observe';
+import { OBS_SIZE, PREVIEW_SIZE } from '../ai/observe';
+import { initialWeights } from '../ai/es';
 import { Rng } from '../ai/rng';
 import { TowerSpotter } from '../ai/spotter';
 import { Car } from '../sim/car';
@@ -106,6 +107,22 @@ export function roadLicenseTest(weights: Float32Array, seed: number, minHealth: 
     if (!valid || car.retired || car.health < minHealth || car.dist < track.length) return false;
   }
   return true;
+}
+
+/**
+ * A brand-new road-course skill, owing nothing to oval driving: a new
+ * driver's random wiring (initialWeights: the gas instinct, no radio yet),
+ * and random attention to the preview of the road too (seeing the road ahead
+ * is a newcomer's first sense here, as its own car is).
+ */
+export function initialRoadWeights(rng: Rng): Float32Array {
+  const w = initialWeights(rng);
+  const nIn = DRIVER_LAYERS[0];
+  const scale = 1 / Math.sqrt(OBS_SIZE);
+  for (let o = 0; o < DRIVER_LAYERS[1]; o++) {
+    for (let k = PREVIEW_FROM; k < PREVIEW_FROM + PREVIEW_SIZE; k++) w[o * (nIn + 1) + 1 + k] = rng.gaussian() * scale;
+  }
+  return w;
 }
 
 /** A circuit from a seed (the next seed, if one can't be laid out: a lesson mustn't die on a generator's bad day). */

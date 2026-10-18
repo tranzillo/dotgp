@@ -14,6 +14,7 @@
  * --focus chicane|braking: circuit racecraft drills only that situation, every round, on circuits that have one.
  * --lr X, --pairs N, --valid-laps: practice settings other than the lesson's (experiments; --valid-laps scores
  * progress on valid laps only).
+ * --road-init random: road lessons start the skill from a brand-new driver's random wiring (not the driver's oval driving).
  * --apprentice-rounds N: road courses' apprenticeship rounds (0: none; the skill learns from practice alone).
  * --apprentice-epochs: passes over the recorded moments per apprenticeship round (road courses; default ROAD_APPRENTICE_EPOCHS).
  *
@@ -27,6 +28,8 @@ import { adaptWeights } from '../src/ai/drivers';
 import { Classroom, LESSONS, type LessonId } from '../src/school/classroom';
 import { hashSeed, PRESETS, presetLayout } from '../src/trackgen';
 import { SchoolPool } from './pool';
+import { Rng } from '../src/ai/rng';
+import { initialRoadWeights } from '../src/school/roadLesson';
 
 const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i++) {
@@ -75,7 +78,9 @@ const pool = jobs > 1 ? new SchoolPool(jobs) : null;
 const students = file.drivers.map((d, k) => ({
   key: k, id: `D${k}`, name: `Driver ${k}`,
   // Road courses starts the skill as a copy of the driver's own driving.
-  weights: adaptWeights(Float32Array.from(road ? d.roadCourse?.weights ?? d.weights : d.weights)), rounds: road ? d.roadCourse?.rounds ?? 0 : 0,
+  weights: road && args.get('road-init') === 'random' && !d.roadCourse ? initialRoadWeights(new Rng(hashSeed(seed, `init-D${k}`)))
+    : adaptWeights(Float32Array.from(road ? d.roadCourse?.weights ?? d.weights : d.weights)),
+  rounds: road ? d.roadCourse?.rounds ?? 0 : 0,
   licensed: d.licensed ?? true, pitLicensed: d.pitLicensed, pitTrafficLicensed: d.pitTrafficLicensed,
   cautionLicensed: d.cautionLicensed, roadLicensed: d.roadCourse?.licensed, roadRadius: d.roadCourse?.radius, nerve: d.nerve,
 }));
