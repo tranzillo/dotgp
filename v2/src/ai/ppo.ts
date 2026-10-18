@@ -112,7 +112,8 @@ export class PpoLearner {
     return this.value.forward(x)[0];
   }
 
-  update(segments: Segment[], rng: Rng): UpdateStats {
+  /** One update on the rollout's segments (`trainPolicy` false: the value estimate learns, the policy holds: a warm-up for a policy that already drives). */
+  update(segments: Segment[], rng: Rng, trainPolicy = true): UpdateStats {
     const { gamma, lambda, clip, epochs, minibatch, policyLr, valueLr, entropy, targetKl, maxGradNorm } = this.opts;
     // Advantages (GAE) and return targets.
     const steps: Step[] = [];
@@ -190,13 +191,15 @@ export class PpoLearner {
         }
         clipNorm(pGrad, sGrad, maxGradNorm);
         clipNorm(vGrad, null, maxGradNorm * 10);
-        this.policyAdam.step(pGrad, policyLr, this.trainable);
-        this.stdAdam.step(sGrad, policyLr);
+        if (trainPolicy) {
+          this.policyAdam.step(pGrad, policyLr, this.trainable);
+          this.stdAdam.step(sGrad, policyLr);
+        }
         this.valueAdam.step(vGrad, valueLr);
       }
       epochsRun++;
       kl /= N;
-      if (kl > 1.5 * targetKl) break;
+      if (trainPolicy && kl > 1.5 * targetKl) break;
     }
     return {
       samples: N, epochs: epochsRun, policyLoss: policyLoss / N, valueLoss: valueLoss / N, kl,
