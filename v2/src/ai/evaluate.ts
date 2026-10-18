@@ -1,4 +1,4 @@
-import { Car, SIGNATURE_BINS } from '../sim/car';
+import { Car, SIGNATURE_BINS, type TrainingWheels } from '../sim/car';
 import { PHYSICS as P } from '../sim/constants';
 import type { Track } from '../sim/track';
 import { placeOnGrid, ROLLING_START_SPEED } from '../sim/grid';
@@ -17,6 +17,8 @@ export interface TrialOptions {
   damageScale?: number;
   /** Seconds of race time each unit of health lost costs (default COSTS.damage; less only in curricula). */
   damageSeconds?: number;
+  /** Training wheels for learners (curricula: forgiving ground, a speed limit). */
+  wheels?: TrainingWheels;
   /** The track's own pace (m/s) progress converts at (default trackPace(track); pass it to save working it out). */
   pace?: number;
   /**
@@ -70,6 +72,8 @@ export class Trial {
   private readonly steps: number;
   private readonly checkEvery: number;
   private readonly lastDist: number[];
+  /** Where each car started (its dist begins at its place on the lap): results count progress from there. */
+  private readonly startDist: number[];
   private readonly damageSeconds: number;
   private readonly pace: number;
   private readonly validLaps: boolean;
@@ -80,7 +84,7 @@ export class Trial {
 
   constructor(track: Track, genomes: Float32Array[], opts: TrialOptions) {
     this.track = track;
-    this.world = new World(track, { collisions: false, drafting: false, damageScale: opts.damageScale ?? 1 });
+    this.world = new World(track, { collisions: false, drafting: false, damageScale: opts.damageScale ?? 1, wheels: opts.wheels ?? null });
     const startS = opts.startS ?? track.length - 20;
     for (let k = 0; k < genomes.length; k++) {
       const car = new Car(k);
@@ -93,6 +97,7 @@ export class Trial {
     this.steps = Math.round(opts.seconds / P.DT);
     this.checkEvery = Math.round(STALL_WINDOW / P.DT);
     this.lastDist = this.world.cars.map((c) => c.dist);
+    this.startDist = this.world.cars.map((c) => c.dist);
     this.damageSeconds = opts.damageSeconds ?? COSTS.damage;
     this.pace = opts.pace ?? trackPace(track);
     this.validLaps = opts.validLaps ?? false;
@@ -151,7 +156,7 @@ export class Trial {
 
   results(): TrialResult[] {
     return this.world.cars.map((car, k) => {
-      const r = scoreCar(car, this.track, 0, this.damageSeconds, this.pace);
+      const r = scoreCar(car, this.track, this.startDist[k], this.damageSeconds, this.pace);
       r.trackLimits = this.progress[k].excursions;
       if (this.validLaps) r.fitness -= this.progress[k].thrownAway / this.pace;
       return r;

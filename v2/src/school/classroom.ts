@@ -18,6 +18,7 @@ import { Rng } from '../ai/rng';
 import { DRIVER_LAYERS } from '../ai/drivers';
 import { StrokeCollector } from '../render/marks';
 import type { TrackLayout } from '../sim/layout';
+import type { TrainingWheels } from '../sim/car';
 import { Track } from '../sim/track';
 import { generateLayout, hashSeed } from '../trackgen';
 import type { CarView, RadioLine, SessionSnapshot } from '../events/session';
@@ -286,6 +287,36 @@ export const ROAD_FULL_RADIUS = 13;
 /** Each round most of the class drives cleanly, the tightest corner allowed shrinks by this factor. */
 const ROAD_TIGHTEN = 0.9;
 
+/** How far up the road-course curriculum a stage is: 0 at its first corners (80 m), 1 at real hairpins. */
+export function roadStage(minRadius: number): number {
+  return Math.min(1, Math.max(0, Math.log(ROAD_START_RADIUS / minRadius) / Math.log(ROAD_START_RADIUS / ROAD_FULL_RADIUS)));
+}
+
+/** A learner's speed limit at the curriculum's start (m/s: the first corners flat out) and where it ends (no limit at all past it). */
+const LEARNER_SPEED = 25;
+const LEARNER_SPEED_END = 100;
+
+/**
+ * Training wheels at a curriculum stage, for a skill learning without a
+ * teacher: off-track ground forgiving at first (a beginner off at a corner
+ * keeps going, so its variations still differ) and hardening to real; a speed
+ * limit rising from the first corners' flat-out speed to none. None at full
+ * tightness, where the apprenticed skills start.
+ */
+export function roadTrainingWheels(minRadius: number): TrainingWheels | undefined {
+  const p = roadStage(minRadius);
+  if (p >= 1) return undefined;
+  return { forgiving: 1 - p, speedCap: LEARNER_SPEED * (LEARNER_SPEED_END / LEARNER_SPEED) ** p };
+}
+
+/** Variation size (ES sigma) at a curriculum stage: twice the usual at the start (a beginner far from anything good), the usual by the end. */
+export function roadSigma(minRadius: number): number {
+  return DEFAULT_ES.sigma * (2 - roadStage(minRadius));
+}
+
+/** The curriculum moves on when, over this many rounds, at least half of all students' drives were clean (and no sooner after its last step). */
+const ROAD_GATE_ROUNDS = 10;
+
 /** Barrier softness at a curriculum stage: soft while the corners are gentle, full at real hairpins. */
 export function roadWalls(minRadius: number): number {
   const progress = (ROAD_START_RADIUS - minRadius) / (ROAD_START_RADIUS - ROAD_FULL_RADIUS);
@@ -328,6 +359,10 @@ export class Classroom {
   private readonly presets: Track[];
   /** Road courses: the tightest corner this round's circuit may have (the curriculum). */
   roadRadius = ROAD_START_RADIUS;
+  /** Road courses: share of the class's drives that were clean, per round since the curriculum last moved. */
+  private roadClean: number[] = [];
+  /** The variation size this round's candidates were drawn with. */
+  private roundSigma = DEFAULT_ES.sigma;
   private readonly rng: Rng;
   private readonly seed: number;
   private readonly practiseOn: boolean;
@@ -546,7 +581,8 @@ export class Classroom {
     }
     this.trackChanged = this.track !== prevTrack;
     const size = genomeSize(DRIVER_LAYERS);
-    const sigma = DEFAULT_ES.sigma;
+    const sigma = lesson.id === 'circuits' ? roadSigma(this.roadRadius) : DEFAULT_ES.sigma;
+    this.roundSigma = sigma;
     const candidates: Float32Array[] = [];
     this.noise = [];
     for (const s of this.students) {
@@ -603,6 +639,7 @@ export class Classroom {
         startS: lesson.id === 'circuits' ? straightStart(this.track, this.rng) : undefined,
         damageScale: this.walls,
         damageSeconds: lesson.id === 'rookie' ? rookieDamageSeconds(lessons, DEFAULT_ES.curriculumRounds) : COSTS.damage,
+        wheels: lesson.id === 'circuits' ? roadTrainingWheels(this.roadRadius) : undefined,
         pace: trackPace(this.track),
         // Valid laps count from full tightness: a beginner that leaves the road loses the whole lap, so while
         // the corners are still being tightened nothing it does scores (no-teacher lab, 2026-10-18: 250 rounds and
@@ -619,7 +656,7 @@ export class Classroom {
   private finishRound(results: Array<{ fitness: number; laps: number; bestLap: number; health: number }> = this.trial.results(),
     time = this.trial.world.time): void {
     const per = 1 + 2 * this.lesson.pairs;
-    const sigma = DEFAULT_ES.sigma;
+    const sigma = this.roundSigma;
     const size = genomeSize(DRIVER_LAYERS);
     this.students.forEach((s, l) => {
       const base = l * per;
@@ -751,16 +788,24 @@ export class Classroom {
       s.last = summary;
       this.reports.push(report);
     });
-    // Road courses: most of the class drove its own round cleanly (a lap's worth, no crash, as the license asks),
-    // so the corners tighten (and the barriers harden). Stopping in the run-off isn't clean.
+    // Road courses: the corners tighten (the barriers harden, the training wheels come off) once the class
+    // drives cleanly (a lap's worth, no crash) round after round: half of all its drives over the last
+    // ROAD_GATE_ROUNDS. One round's majority wasn't enough: on a circuit shared by the class, a lucky easy one
+    // let three of four through, and a class that mostly stopped in the run-off reached hairpins (lab,
+    // 2026-10-18). Stopping in the run-off isn't clean.
     if (this.lesson.id === 'circuits' && this.roadRadius > ROAD_FULL_RADIUS) {
       const clean = this.students.filter((_, l) => {
         const r = results[l * per] as unknown as TrialResult;
         return !r.retired && r.health >= LICENSE_HEALTH && r.distance >= this.track.length;
       }).length;
-      if (clean * 2 > this.students.length) {
+      this.roadClean.push(clean / this.students.length);
+      const recent = this.roadClean.slice(-ROAD_GATE_ROUNDS);
+      if (recent.length >= ROAD_GATE_ROUNDS && recent.reduce((a, b) => a + b, 0) / recent.length >= 0.5) {
         this.roadRadius = Math.max(ROAD_FULL_RADIUS, this.roadRadius * ROAD_TIGHTEN);
-        this.say(`Corners tighten: down to ${this.roadRadius.toFixed(0)} m (barriers ${Math.round(roadWalls(this.roadRadius) * 100)}%)`);
+        this.roadClean = [];
+        const w = roadTrainingWheels(this.roadRadius);
+        this.say(`Corners tighten: down to ${this.roadRadius.toFixed(0)} m (barriers ${Math.round(roadWalls(this.roadRadius) * 100)}%`
+          + `${w ? `, speed limit ${(w.speedCap * 3.6).toFixed(0)} km/h, off-track ${Math.round(100 * w.forgiving)}% forgiving` : ', training wheels off'})`);
       }
     }
     this.timeOffset += time;

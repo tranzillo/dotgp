@@ -208,7 +208,26 @@ export class Car {
  * Integrate one physics step for a single car (no collisions).
  * wearScale speeds up tire wear and fuel burn (race pace).
  */
-export function stepCar(car: Car, track: Track, dt: number, wearScale = 1): void {
+/**
+ * Training wheels, for learners only (a curriculum's early stages): ground off
+ * the track as forgiving as asphalt run-off (forgiving 1) or as it really is
+ * (0), so a mistake costs time rather than ending the drive in a gravel trap;
+ * and no drive above a speed, so corners come at speeds a learner can take.
+ */
+export interface TrainingWheels { forgiving: number; speedCap: number }
+
+/** Ground a learner goes off onto, made forgiving: gravel and grass blended toward asphalt run-off. */
+function forgivingSurface(kind: Surface, forgiving: number): (typeof SURFACES)[Surface] {
+  const real = SURFACES[kind];
+  if (forgiving <= 0 || (kind !== 'gravel' && kind !== 'grass')) return real;
+  const soft = SURFACES.runoff, f = Math.min(1, forgiving);
+  return {
+    grip: real.grip + (soft.grip - real.grip) * f, rolling: real.rolling + (soft.rolling - real.rolling) * f,
+    bump: real.bump + (soft.bump - real.bump) * f, plough: real.plough + (soft.plough - real.plough) * f,
+  } as (typeof SURFACES)[Surface];
+}
+
+export function stepCar(car: Car, track: Track, dt: number, wearScale = 1, wheels?: TrainingWheels): void {
   if (car.retired) {
     // Wrecked: slide to a stop and stay on track as an obstacle.
     const sp = car.speed;
@@ -261,7 +280,7 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1): void
   // --- Friction circle ---
   const surfaceKind = track.surfaceAt(car.s, car.d, car.x, car.y);
   car.surface = surfaceKind;
-  const surface = SURFACES[surfaceKind];
+  const surface = wheels ? forgivingSurface(surfaceKind, wheels.forgiving) : SURFACES[surfaceKind];
   // Tires grip in the plane of the surface: up to mu N there. Braking and drive
   // run along the track, which is level, so all of it counts; cornering force
   // lies across the slope, and only cos(bank) of it is horizontal. An ellipse,
@@ -286,6 +305,8 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1): void
     let engineMax = Math.min(P.MAX_DRIVE_ACCEL, power / (car.mass * Math.max(speed, 1)));
     // Pit limiter: no drive above the pit road speed limit.
     if (surfaceKind === 'pit' && speed > PIT_SERVICE.SPEED_LIMIT) engineMax = 0;
+    // A learner's speed limit (training wheels).
+    if (wheels && speed > wheels.speedCap) engineMax = 0;
     if (aLon > engineMax) aLon = engineMax;
   }
 

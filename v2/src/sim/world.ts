@@ -1,5 +1,5 @@
 import { PHYSICS as P, PIT_SERVICE } from './constants';
-import { applyService, serviceTime, stepCar, type Car } from './car';
+import { applyService, serviceTime, stepCar, type Car, type TrainingWheels } from './car';
 import { computeDraft, resolveCarCollisions, resolveWalls } from './collisions';
 import type { RaceControl } from './raceControl';
 import { pastTrackLimits } from './limits';
@@ -20,6 +20,8 @@ export interface WorldOptions {
   wearScale: number;
   /** Clear stopped wrecks automatically (open sessions); races use the wrecker crew instead. */
   autoClearWrecks: boolean;
+  /** Training wheels for learners (curricula only; none by default). */
+  wheels: TrainingWheels | null;
 }
 
 /** A car stopped within this far of its box's centre is in the box (boxes are 12 m long). */
@@ -57,7 +59,7 @@ export class World {
 
   constructor(track: Track, opts: Partial<WorldOptions> = {}) {
     this.track = track;
-    this.opts = { collisions: true, drafting: true, damageScale: 1, wearScale: 1, autoClearWrecks: true, ...opts };
+    this.opts = { collisions: true, drafting: true, damageScale: 1, wearScale: 1, autoClearWrecks: true, wheels: null, ...opts };
   }
 
   addCar(car: Car, controller: Controller | null): void {
@@ -90,7 +92,7 @@ export class World {
     for (const car of cars) {
       if (car.waiting) continue;
       const wasRetired = car.retired;
-      stepCar(car, track, dt, this.opts.wearScale);
+      stepCar(car, track, dt, this.opts.wearScale, this.opts.wheels ?? undefined);
       reproject(car, track);
       resolveWalls(car, track, this.opts.damageScale);
       if (car.retired && !wasRetired) this.announce(car, 'retired', 'Out of the race');

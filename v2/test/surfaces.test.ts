@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Car, stepCar } from '../src/sim/car';
+import { Car, type TrainingWheels, stepCar } from '../src/sim/car';
 import { PHYSICS as P } from '../src/sim/constants';
 import { resolveWalls } from '../src/sim/collisions';
 import { buildLayout, ovalTrack, SPEEDWAY } from '../src/trackgen';
@@ -65,15 +65,15 @@ describe('road circuit surfaces', () => {
     layout.surfaces.push({ id: 'test', surface, shape: { kind: 'band', range: [back - 20, back + 400], d0: -8, d1: 8 } });
     return new Track(layout);
   };
-  const run = (t: Track, input: number) => {
+  const run = (t: Track, input: number, wheels?: TrainingWheels, speed = 50) => {
     const car = new Car(0);
     car.placeOnTrack(t, back, 0);
     const i = car.trackIdx;
-    car.vx = t.tx[i] * 50; car.vy = t.ty[i] * 50;
+    car.vx = t.tx[i] * speed; car.vy = t.ty[i] * speed;
     car.frameX = t.tx[i]; car.frameY = t.ty[i];
     car.inputX = input;
     for (let k = 0; k < 1.5 / P.DT; k++) {
-      stepCar(car, t, P.DT);
+      stepCar(car, t, P.DT, 1, wheels);
       const p = t.project(car.x, car.y, car.trackIdx);
       car.trackIdx = p.idx; car.s = p.s; car.d = p.d;
     }
@@ -99,6 +99,17 @@ describe('road circuit surfaces', () => {
   it('running wide onto run-off costs speed: it is safe, not free', () => {
     const lost = (surface: Parameters<typeof strip>[0]) => 50 - run(strip(surface), 0).speed;
     expect(lost('runoff')).toBeGreaterThan(lost('track') + 0.3); // ~0.25 m/s² more drag (grip, 80%, costs more at a traction-limited exit)
+  });
+
+  it('training wheels: forgiving gravel slows a learner no more than run-off; a speed limit stops the drive', () => {
+    const lost = (surface: Parameters<typeof strip>[0], wheels?: TrainingWheels) => 50 - run(strip(surface), 0, wheels).speed;
+    const soft = { forgiving: 1, speedCap: Infinity };
+    expect(lost('gravel', soft)).toBeCloseTo(lost('runoff'), 6);
+    expect(lost('gravel', { forgiving: 0.5, speedCap: Infinity })).toBeLessThan(lost('gravel'));
+    expect(lost('track', soft)).toBe(lost('track')); // the track itself is untouched
+    // Full throttle from 20 m/s: with a 25 m/s limit the car stops gaining there.
+    expect(run(strip('track'), 1, { forgiving: 0, speedCap: 25 }, 20).speed).toBeLessThan(26);
+    expect(run(strip('track'), 1, undefined, 20).speed).toBeGreaterThan(30);
   });
 
   it('kerbs unsettle a car; run-off does not', () => {
