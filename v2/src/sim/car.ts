@@ -297,6 +297,14 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1, wheel
   if (im > 1) { ix /= im; iy /= im; }
   let aLon = ix * P.OVERDRIVE_MAX * capacityLon;
   let aLat = iy * P.OVERDRIVE_MAX * capacity;
+  // Brakes stop a car; they can't drive it backwards. At a crawl the frame leans on the track's direction,
+  // so braking there pushed a stopped car backwards, and a car rolling backwards at half the blend speed
+  // had its frame flip every step and the brakes hold it there (learners braking to a crawl were stuck
+  // for good: lab, 2026-10-18).
+  if (aLon < 0) {
+    const forward = vx * fx + vy * fy;
+    aLon = forward > 0 ? Math.max(aLon, -forward / dt) : 0;
+  }
 
   if (aLon > 0) {
     const power = car.fuel > 0
