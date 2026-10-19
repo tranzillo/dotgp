@@ -165,7 +165,7 @@ async function runExperiment(file: string): Promise<void> {
         await runScript('solo', [path(step.a), ...(step.b ? [path(step.b)] : []), '--tracks', String(step.tracks ?? 6),
           '--seconds', String(step.seconds ?? 120), '--json', json], log);
         const r = JSON.parse(readFileSync(json, 'utf8')) as SoloReport;
-        notes.push(`solo ${Object.keys(r.results[0]).map((k) => `${k} ${r.results.map((x) => `${(100 * x[k].crashed).toFixed(0)}%`).join('→')} crashed`).join(', ')}`);
+        notes.push(`solo ${Object.keys(r.results[0]).map((k) => `${k} ${r.results.map((x) => `${(100 * x[k].crashed).toFixed(0)}%`).join('→')} crashed, ${r.results.map((x) => `${(100 * (x[k].stopped ?? 0)).toFixed(0)}%`).join('→')} stopped`).join(', ')}`);
       } else if (step.kind === 'circuits') {
         const json = join(dir, 'circuits.json');
         await runScript('circuits', [path(step.a), ...(step.b ? [path(step.b)] : []), '--tracks', String(step.tracks ?? 6),
