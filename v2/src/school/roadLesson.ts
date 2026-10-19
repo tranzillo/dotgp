@@ -2,6 +2,7 @@ import { DRIVER_LAYERS, NeuralDriver, PREVIEW_FROM, ScriptedDriver, Team } from 
 import { inputWeightMask, trainSupervised, type Example } from '../ai/network';
 import { OBS_SIZE, PREVIEW_SIZE } from '../ai/observe';
 import { initialWeights } from '../ai/es';
+import { RacingLineDriver } from '../ai/racingLine';
 import { Rng } from '../ai/rng';
 import { TowerSpotter } from '../ai/spotter';
 import { Car } from '../sim/car';
@@ -52,7 +53,7 @@ class RoadApprentice implements Controller {
   constructor(
     private readonly team: Team,
     private readonly student: NeuralDriver,
-    private readonly teacher: ScriptedDriver,
+    private readonly teacher: Controller,
     private readonly studentDrives: boolean,
     private readonly examples: Example[],
     private readonly rng: Rng,
@@ -151,9 +152,21 @@ export interface ApprenticeOptions {
   maxExamples?: number;
   /** Passes over each round's training set after the first (default ROAD_APPRENTICE_EPOCHS). */
   epochs?: number;
+  /**
+   * Who teaches (plain data: apprenticeships run on worker threads). Default
+   * the line follower, holding the lane it starts in; 'line': a racer on the
+   * circuit's fastest line at a share of the tyres' grip (from each start
+   * lane it makes its way onto the line, so the student sees recoveries too).
+   */
+  teacher?: { kind: 'follower' } | { kind: 'line'; grip: number };
 }
 
-/** Teach a road-course skill (weights, trained in place) by imitating the scripted line follower on circuits. */
+/** The teacher of a drive that starts in a lane. */
+function teacherFor(teacher: ApprenticeOptions['teacher'], lane: number): Controller {
+  return teacher?.kind === 'line' ? new RacingLineDriver(teacher.grip) : new ScriptedDriver(lane, 0.9);
+}
+
+/** Teach a road-course skill (weights, trained in place) by imitating a scripted teacher on circuits (opts.teacher). */
 export function apprenticeRoadCourses(weights: Float32Array, seed: number, opts: ApprenticeOptions = {}): { examples: number; loss: number } {
   const { rounds = ROAD_APPRENTICE_ROUNDS, maxExamples = Infinity, epochs = ROAD_APPRENTICE_EPOCHS } = opts;
   const rng = new Rng(seed);
@@ -168,7 +181,7 @@ export function apprenticeRoadCourses(weights: Float32Array, seed: number, opts:
         const student = new NeuralDriver(weights);
         const team = new Team(student, new TowerSpotter(), null);
         const car = new Car(0);
-        world.addCar(car, new RoadApprentice(team, student, new ScriptedDriver(lane, 0.9), studentDrives, examples, rng));
+        world.addCar(car, new RoadApprentice(team, student, teacherFor(opts.teacher, lane), studentDrives, examples, rng));
         car.placeOnTrack(track, track.length - 20, lane);
         car.vx = track.tx[car.trackIdx] * ROLLING_START_SPEED;
         car.vy = track.ty[car.trackIdx] * ROLLING_START_SPEED;

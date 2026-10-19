@@ -16,6 +16,8 @@
  * progress on valid laps only).
  * --road-init random: road lessons start the skill from a brand-new driver's random wiring (not the driver's oval driving).
  * --apprentice-rounds N: road courses' apprenticeship rounds (0: none; the skill learns from practice alone).
+ * --teacher line:G | follower: road courses' apprenticeship teacher: a racer on each circuit's fastest line at share G of
+ *   the tyres' grip, or the line follower (default).
  * --apprentice-epochs: passes over the recorded moments per apprenticeship round (road courses; default ROAD_APPRENTICE_EPOCHS).
  *
  * Drivers keep their licenses (caution, pit) from the input file; the output
@@ -55,9 +57,12 @@ const practice = {
   ...(args.has('focus') ? { focus: args.get('focus') as 'braking' | 'chicane' } : {}),
 };
 const checkpointEvery = Number(args.get('checkpoint-every') ?? 0);
-const apprenticeship = args.has('apprentice-epochs') || args.has('apprentice-rounds') ? {
+const apprenticeship = args.has('apprentice-epochs') || args.has('apprentice-rounds') || args.has('teacher') ? {
   ...(args.has('apprentice-epochs') ? { epochs: Number(args.get('apprentice-epochs')) } : {}),
   ...(args.has('apprentice-rounds') ? { rounds: Number(args.get('apprentice-rounds')) } : {}),
+  // --teacher line:0.9 (the fastest line at that share of grip) or follower.
+  ...(args.has('teacher') ? { teacher: args.get('teacher')!.startsWith('line')
+    ? { kind: 'line' as const, grip: Number(args.get('teacher')!.split(':')[1] ?? 0.9) } : { kind: 'follower' as const } } : {}),
 } : undefined;
 
 interface DriverEntry {
