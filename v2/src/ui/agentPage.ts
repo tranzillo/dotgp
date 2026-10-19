@@ -16,8 +16,8 @@ export interface AgentPageDeps {
   log: ActivityLog;
   /** Ids of the replays saved now (a record links to its moment only while its replay is kept). */
   replays: () => ReadonlySet<string>;
-  /** Watch a saved replay, from just before `at` (sim s) or from the start. */
-  watch: (id: string, at?: number) => void;
+  /** Watch a saved replay, from just before `at` (sim s) or from the start, with the agent whose page it was in focus. */
+  watch: (id: string, at?: number, agent?: string) => void;
 }
 
 const ROLE_LABEL: Record<AgentRole, string> = { driver: 'Driver', spotter: 'Spotter', chief: 'Crew chief' };
@@ -38,8 +38,9 @@ export class AgentPage {
       if (link) void this.open(link.dataset.agent!, link.dataset.role as AgentRole);
       const watch = t.closest<HTMLElement>('[data-watch]');
       if (watch) {
+        const agent = this.current?.id;
         this.close();
-        this.deps.watch(watch.dataset.watch!, watch.dataset.at ? Number(watch.dataset.at) : undefined);
+        this.deps.watch(watch.dataset.watch!, watch.dataset.at ? Number(watch.dataset.at) : undefined, agent);
       }
     });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.close(); });
@@ -110,6 +111,7 @@ export class AgentPage {
     const tiles = [
       tile('starts', String(s.races.starts)),
       tile('wins', String(s.races.wins)),
+      role === 'driver' && s.qualifying.sessions ? tile('poles', String(s.qualifying.poles)) : '',
       tile('top 5', String(s.races.top5)),
       tile('DNFs', String(s.races.dnfs)),
       tile('avg finish', s.races.avgFinish === null ? '–' : s.races.avgFinish.toFixed(1)),
@@ -258,6 +260,12 @@ function describe(r: ActivityRecord): string {
       const outcome = d.disqualified ? ' (black flag)' : d.status === 'out' ? ' (DNF)' : '';
       const penalties = d.penalties?.length ? `; penalties: ${d.penalties.map(esc).join(', ')}` : '';
       return `${d.position === 1 ? '<b>Won</b>' : `P${d.position} of ${d.starters}`} at ${esc(d.track)}${outcome}, best ${lap(d.bestLap)}${d.points ? `, ${d.points} pts` : ''}${penalties}${ev}`;
+    }
+    case 'qualifying': {
+      const d = r.data;
+      // A group's time is from the round the car went out in (or the last), so a car can place without one.
+      const result = d.position === 1 && d.bestLap !== null ? '<b>Pole</b>' : `Qualified P${d.position} of ${d.starters}`;
+      return `${result} at ${esc(d.track)}, ${d.bestLap === null ? 'no time' : lap(d.bestLap)}${d.status === 'out' ? ' (wrecked)' : ''}${ev}`;
     }
     case 'season': return `${r.data.champion ? '<b>Champion</b>' : `P${r.data.position}`} in season ${r.data.season} (${r.data.points} pts)`;
     case 'injury': {

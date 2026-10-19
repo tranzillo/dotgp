@@ -33,7 +33,13 @@ function runToFrame(s: Session, seconds: number): void {
 function expectSame(tape: SessionSnapshot, live: SessionSnapshot): void {
   expect(tape.time).toBe(live.time);
   expect(tape.order).toEqual(live.order);
-  expect(tape.race).toEqual(live.race);
+  // Race state exactly; the pace car and wreckers are positions, kept to float precision.
+  const where = (r: SessionSnapshot['race']) => r && { ...r, paceCar: null, wreckers: r.wreckers.map((w) => w.phase) };
+  expect(where(tape.race)).toEqual(where(live.race));
+  const spots = (r: SessionSnapshot['race']) => (r ? [r.paceCar, ...r.wreckers] : []).flatMap((p) => (p ? [p.x, p.y] : []));
+  const at = spots(live.race);
+  expect(spots(tape.race)).toHaveLength(at.length);
+  spots(tape.race).forEach((v, k) => expect(v).toBeCloseTo(at[k], 2));
   expect(tape.standings?.map((st) => [st.id, st.position, st.laps, st.status]))
     .toEqual(live.standings?.map((st) => [st.id, st.position, st.laps, st.status]));
   for (const car of live.cars) {

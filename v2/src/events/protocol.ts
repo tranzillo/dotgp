@@ -1,5 +1,6 @@
 import type { ClassSpec, RoundReport, RoundTape } from '../school/classroom';
 import type { TrackLayout } from '../sim/layout';
+import type { QualifyingView } from '../sim/qualifying';
 import type { EntrantResult, LearnedStep, RadioLine, SessionSnapshot, SessionSpec, TimelineEvent } from './session';
 import type { TapeSegment } from './tape';
 
@@ -34,6 +35,9 @@ export interface EventProgress {
   leaderKey: number | null;
   /** Classes: the round under way. */
   round: number | null;
+  /** Qualifying: cars that have run, of the field (solo); where the session is. */
+  runs: { done: number; total: number } | null;
+  qualifying: QualifyingView | null;
 }
 
 /** Timeline events from index `from` on (everything from 0 after an attach). */

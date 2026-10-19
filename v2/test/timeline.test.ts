@@ -62,10 +62,37 @@ describe('race timeline', () => {
     expect(hit).toBeDefined();
     const car = s.world.cars.find((c) => c.number === 200 + (hit.key - 100))!; // entrant k: key 100 + k, number 200 + k
     const healthAt = (t: number) => s.tape.frame(s.tape.indexAt(t)).cars.find((c) => c.id === car.id)!.health;
-    expect(healthAt(hit.worstHitTime! - 0.2) - healthAt(hit.worstHitTime! + 0.2)).toBeGreaterThan(hit.worstHit * 0.9);
+    // (Health stops at zero: a hit bigger than what the car had left costs only that.)
+    const before = healthAt(hit.worstHitTime! - 0.2);
+    expect(before - healthAt(hit.worstHitTime! + 0.2)).toBeGreaterThan(Math.min(hit.worstHit, before) * 0.9);
     // Pit stops are logged against their team.
     const pit = tl.find((e) => e.kind === 'pit-in');
     if (pit) expect(pit.key).toBeGreaterThanOrEqual(100);
+    // A decision on an incident points back at it: the review of that car, logged at that moment.
+    for (const d of tl.filter((e) => e.incidentTime !== undefined)) {
+      expect(tl.some((e) => e.kind === 'review' && e.key === d.key && e.time === d.incidentTime)).toBe(true);
+    }
+    // The other car in an incident is another team, never the car itself.
+    for (const e of tl) for (const k of e.others ?? []) { expect(k).toBeGreaterThanOrEqual(100); expect(k).not.toBe(e.key); }
+  });
+
+  it("names the other cars in an incident, and a decision's incident time", () => {
+    const s = new Session(spec(5, 4));
+    s.advance(1);
+    const [a, b] = s.world.cars;
+    const keyOf = (number: number) => 100 + (number - 200); // entrant k: key 100 + k, number 200 + k
+    s.world.announce(a, 'review', 'test review', { others: [b, null, a] });
+    const at = s.world.time;
+    s.step();
+    s.world.announce(a, 'steward', 'test decision', { others: [b], incidentTime: at });
+    s.step();
+    const review = s.timeline.find((e) => e.text === 'test review')!;
+    const decision = s.timeline.find((e) => e.text === 'test decision')!;
+    expect(review.key).toBe(keyOf(a.number));
+    expect(review.others).toEqual([keyOf(b.number)]);
+    expect(review.incidentTime).toBeUndefined();
+    expect(decision.others).toEqual([keyOf(b.number)]);
+    expect(decision.incidentTime).toBe(review.time);
   });
 
   it('keeps reading announcements after the world has dropped old ones', () => {

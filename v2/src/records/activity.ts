@@ -11,7 +11,7 @@
 export type AgentRole = 'driver' | 'spotter' | 'chief';
 
 /** Kinds of event an agent can take part in. */
-export type EventType = 'school' | 'practice' | 'race' | 'championship' | 'ghost';
+export type EventType = 'school' | 'practice' | 'qualifying' | 'race' | 'championship' | 'ghost';
 
 /** The event a record came from. */
 export interface EventRef {
@@ -44,6 +44,23 @@ export interface RaceData {
   /** What the stewards handed out (e.g. "a drive-through for avoidable contact"), and the black flag. */
   penalties?: string[];
   disqualified?: boolean;
+  season?: number;
+  round?: number;
+}
+
+export interface QualifyingData {
+  track: string;
+  /** How it was run: solo (timed laps each car ran) or in a group (its rounds). */
+  format: 'solo' | 'group';
+  runLaps?: number;
+  rounds?: number;
+  starters: number;
+  /** Where the car qualified (its grid slot, in a race weekend). */
+  position: number;
+  /** Best timed lap (s), null without one. */
+  bestLap: number | null;
+  status: 'finished' | 'out';
+  /** A championship round's qualifying. */
   season?: number;
   round?: number;
 }
@@ -100,6 +117,7 @@ export type ActivityRecord = RecordBase & (
   /** Learned while racing: one step (several compared lap pairs). */
   | { kind: 'learning'; data: { source: 'race'; track: string; step: number } }
   | { kind: 'race'; data: RaceData }
+  | { kind: 'qualifying'; data: QualifyingData }
   | { kind: 'season'; data: { season: number; position: number; points: number; champion: boolean } }
   /** Hurt in a race crash (the hardest hit: health lost, km/h); career: it ended their career. */
   | { kind: 'injury'; data: { severity: 'minor' | 'serious' | 'career'; races: number; track: string; hit: number; speed: number } }
@@ -182,7 +200,9 @@ export interface AgentSummary {
   raceLearning: number;
   titles: number;
   /** Best lap ever recorded on each track (practice or race), and when. */
-  bestLaps: Record<string, { time: number; at: number; source: 'practice' | 'race' }>;
+  bestLaps: Record<string, { time: number; at: number; source: 'practice' | 'qualifying' | 'race' }>;
+  /** Qualifying sessions run, and poles. */
+  qualifying: { sessions: number; poles: number };
   first: number | null;
   last: number | null;
 }
@@ -197,11 +217,12 @@ export function summarize(records: ActivityRecord[]): AgentSummary {
     raceLearning: 0,
     titles: 0,
     bestLaps: {},
+    qualifying: { sessions: 0, poles: 0 },
     first: records.length ? records[0].time : null,
     last: records.length ? records[records.length - 1].time : null,
   };
   let finishSum = 0;
-  const best = (track: string, time: number | null, at: number, source: 'practice' | 'race') => {
+  const best = (track: string, time: number | null, at: number, source: 'practice' | 'qualifying' | 'race') => {
     if (time === null || !Number.isFinite(time)) return;
     const cur = s.bestLaps[track];
     if (!cur || time < cur.time) s.bestLaps[track] = { time, at, source };
@@ -234,6 +255,11 @@ export function summarize(records: ActivityRecord[]): AgentSummary {
         best(d.track, d.bestLap, r.time, 'race');
         break;
       }
+      case 'qualifying':
+        s.qualifying.sessions++;
+        if (r.data.position === 1 && r.data.bestLap !== null) s.qualifying.poles++;
+        best(r.data.track, r.data.bestLap, r.time, 'qualifying');
+        break;
       case 'season': if (r.data.champion) s.titles++; break;
       case 'seat': break;
     }
@@ -252,7 +278,7 @@ export function lapProgression(records: ActivityRecord[], track: string): Array<
   for (const r of records) {
     let lap: number | null = null;
     if (r.kind === 'practice') { const i = r.data.tracks.indexOf(track); lap = i >= 0 ? r.data.bestLaps[i] : null; }
-    else if (r.kind === 'race' && r.data.track === track) lap = r.data.bestLap;
+    else if ((r.kind === 'race' || r.kind === 'qualifying') && r.data.track === track) lap = r.data.bestLap;
     else if (r.kind === 'lesson' && r.data.track === track) lap = r.data.bestLap;
     if (lap === null || !Number.isFinite(lap)) continue;
     best = Math.min(best, lap);

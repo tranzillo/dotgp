@@ -58,7 +58,7 @@ export class StewardsDesk {
     for (const v of this.detector.step()) {
       if (v.offence === 'track-limits') { this.trackLimits(v); continue; }
       this.underReview.push({ v, due: now + this.rules.reviewSeconds });
-      this.world.announce(v.car, 'review', `Stewards: incident under review, #${v.car.number}${v.against ? ` and #${v.against.number}` : ''}, ${OFFENCE_NAMES[v.offence]}`);
+      this.world.announce(v.car, 'review', `Stewards: incident under review, #${v.car.number}${v.against ? ` and #${v.against.number}` : ''}, ${OFFENCE_NAMES[v.offence]}`, { others: [v.against] });
     }
     while (this.underReview.length && this.underReview[0].due <= now) this.apply(this.stewards.judge(this.underReview.shift()!.v));
     this.serving();
@@ -89,7 +89,7 @@ export class StewardsDesk {
     const car = v.car;
     if (car.disqualified) return;
     if (d.penalty === 'none') {
-      this.world.announce(car, 'review', `Stewards: #${car.number}, ${OFFENCE_NAMES[v.offence]}${v.against ? ` (#${v.against.number})` : ''}: no further action`);
+      this.world.announce(car, 'steward', `Stewards: #${car.number}, ${OFFENCE_NAMES[v.offence]}${v.against ? ` (#${v.against.number})` : ''}: no further action`, { others: [v.against], incidentTime: v.time });
       return;
     }
     // Out of the race by the time of the decision: nothing left to serve.
@@ -103,15 +103,16 @@ export class StewardsDesk {
       text += ` (${n} of ${this.rules.warningsToDriveThrough})`;
       if (n >= this.rules.warningsToDriveThrough) {
         this.warnings.set(car, 0);
-        this.issue(car, v.offence, 'warning', text, v.detail);
+        this.issue(car, v.offence, 'warning', text, v.detail, v);
         penalty = 'drive-through';
         text = `#${car.number}: ${this.rules.warningsToDriveThrough} warnings: a drive-through`;
       }
     }
-    this.issue(car, v.offence, penalty, text, v.detail);
+    this.issue(car, v.offence, penalty, text, v.detail, v);
   }
 
-  private issue(car: Car, offence: Offence, penalty: Penalty, text: string, detail: string): void {
+  /** `about`: the reviewed incident it's for (track limits are called as they happen). */
+  private issue(car: Car, offence: Offence, penalty: Penalty, text: string, detail: string, about?: Violation): void {
     const { rules } = this;
     switch (penalty) {
       case 'time': car.timePenalty += rules.timePenalty; text += ` (+${rules.timePenalty} s)`; break;
@@ -129,7 +130,7 @@ export class StewardsDesk {
       case 'black-flag': this.blackFlag(car); break;
     }
     this.record.push({ car, time: this.world.time, offence, penalty, detail });
-    this.world.announce(car, 'steward', `Stewards: ${text}`);
+    this.world.announce(car, 'steward', `Stewards: ${text}`, about ? { others: [about.against], incidentTime: about.time } : {});
   }
 
   private blackFlag(car: Car): void {

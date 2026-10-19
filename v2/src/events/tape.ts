@@ -2,6 +2,7 @@ import { PHYSICS as P } from '../sim/constants';
 import type { Surface } from '../sim/layout';
 import type { Flag } from '../sim/raceControl';
 import type { Track } from '../sim/track';
+import type { QualifyingView } from '../sim/qualifying';
 import type { CarView, RaceView, SessionSnapshot, StandingView } from './session';
 
 /**
@@ -60,7 +61,15 @@ const STROKE_TELEPORT = 30;
 const H_TIME = 0, H_BITS = 8, H_STATE = 9, H_FLAG = 10, H_LIGHTS = 11, H_PACE = 12, H_NWRECK = 20, H_WRECK = 21;
 const WRECK_BYTES = 9;
 const HEADER_BYTES = H_WRECK + MAX_WRECKERS * WRECK_BYTES; // 57
-const BIT_RACE = 1, BIT_STARTED = 2, BIT_ONE_TO_GO = 4, BIT_PACING = 8, BIT_SAFETY = 16, BIT_PACE_CAR = 32, BIT_STANDINGS = 64;
+const BIT_RACE = 1, BIT_STARTED = 2, BIT_ONE_TO_GO = 4, BIT_PACING = 8, BIT_SAFETY = 16, BIT_PACE_CAR = 32, BIT_STANDINGS = 64, BIT_QUALI = 128;
+/**
+ * Qualifying (never in a race) reuses the race's header fields: round, rounds,
+ * phase (and format), the round's clock, progress (x 10^4, so storage keeps
+ * it fine), and the cut.
+ */
+const Q_ROUND = H_STATE, Q_ROUNDS = H_FLAG, Q_PHASE = H_LIGHTS, Q_CLOCK = H_PACE, Q_PROGRESS = H_PACE + 4, Q_CUT = H_NWRECK;
+const Q_PHASES: Array<QualifyingView['phase']> = ['pits', 'green', 'checkered', 'finished'];
+const Q_GROUP = 0x80;
 
 // Car record.
 const C_X = 0, C_Y = 4, C_S = 8, C_D = 12, C_DIST = 16, C_SPEED = 20, C_BEST = 24, C_STIME = 28;
@@ -145,6 +154,16 @@ function encode(snap: SessionSnapshot, header: TapeHeader, index: Map<number, nu
       v.setFloat32(o + 4, w.y, true);
       v.setUint8(o + 8, Math.max(0, WRECKER_PHASES.indexOf(w.phase)));
     });
+  }
+  const q = snap.qualifying;
+  if (q && !r) {
+    bits |= BIT_QUALI;
+    v.setUint8(at + Q_ROUND, q.round);
+    v.setUint8(at + Q_ROUNDS, q.rounds);
+    v.setUint8(at + Q_PHASE, Q_PHASES.indexOf(q.phase) | (q.format === 'group' ? Q_GROUP : 0));
+    v.setFloat32(at + Q_CLOCK, q.clock, true);
+    v.setFloat32(at + Q_PROGRESS, q.progress * 1e4, true);
+    v.setUint8(at + Q_CUT, q.cut);
   }
   if (snap.standings) bits |= BIT_STANDINGS;
   v.setUint8(at + H_BITS, bits);
@@ -256,7 +275,16 @@ function decode(header: TapeHeader, v: DataView, at: number, track?: Track): Ses
       }),
     };
   }
-  return { time: v.getFloat64(at + H_TIME, true), cars, order, standings, race, technique: [] };
+  let qualifying: QualifyingView | undefined;
+  if (bits & BIT_QUALI) {
+    const phase = v.getUint8(at + Q_PHASE);
+    qualifying = {
+      format: phase & Q_GROUP ? 'group' : 'solo', phase: Q_PHASES[phase & 3],
+      round: v.getUint8(at + Q_ROUND), rounds: v.getUint8(at + Q_ROUNDS),
+      clock: v.getFloat32(at + Q_CLOCK, true), progress: v.getFloat32(at + Q_PROGRESS, true) / 1e4, cut: v.getUint8(at + Q_CUT),
+    };
+  }
+  return { time: v.getFloat64(at + H_TIME, true), cars, order, standings, race, technique: [], ...(qualifying ? { qualifying } : {}) };
 }
 
 /**

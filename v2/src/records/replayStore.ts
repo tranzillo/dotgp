@@ -31,7 +31,7 @@ export interface ReplayMeta {
   saved: number;
   label: string;
   event: EventRef;
-  kind: 'race' | 'class';
+  kind: 'race' | 'qualifying' | 'class';
   track: string;
   layout: TrackLayout;
   /** Races: the teams, by team id (the tape's car keys). */

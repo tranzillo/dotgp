@@ -192,5 +192,10 @@ function progress(s: Hosted): EventProgress {
     flag: snap.race ? (snap.race.state === 'green' ? (snap.race.started ? snap.race.flag : 'pace') : snap.race.state) : null,
     leaderKey: leader?.key ?? null,
     round: snap.school ? snap.school.round + 1 : null,
+    // Standings without a race: qualifying.
+    runs: !snap.race && snap.standings
+      ? { done: snap.standings.filter((st) => st.status === 'finished' || st.status === 'out').length, total: snap.standings.length }
+      : null,
+    qualifying: snap.qualifying ?? null,
   };
 }
