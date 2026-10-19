@@ -300,7 +300,7 @@ const CONTROL_SPARE = 0.05;
 /**
  * Drive a racing line: hold its offset across the track (steering for the
  * line's own curvature, its sideways slope, and feedback), at the speed
- * profile for `grip` of the tyres' grip, braking as the profile does (its
+ * profile for `grip` of the tyres' grip (as worn as they are), braking as the profile does (its
  * slowing ahead, planned, plus feedback). Lateral has priority in the
  * friction circle.
  */
@@ -319,7 +319,8 @@ export function followRacingLine(
   const vLat = car.vx * nx + car.vy * ny;
   const capacity = Math.max(1, car.capacity);
   const capacityLon = Math.max(1, car.capacityLon);
-  const speeds = line.at(grip).speed;
+  // Its share of the grip the tyres have now: worn tyres, slower (in steps of 2%, so profiles are shared).
+  const speeds = line.at(Math.round(grip * car.grip * 50) / 50).speed;
   const n = speeds.length;
   const speedAt = (ahead: number) => {
     const f = ((((car.s + ahead) / line.step) % n) + n) % n, a = Math.floor(f), t = f - a;

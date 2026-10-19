@@ -3,7 +3,7 @@ import { COSTS, trackPace } from '../ai/costs';
 import { danger, fearScale } from '../ai/fear';
 import { TowerSpotter } from '../ai/spotter';
 import { LICENSE_HEALTH } from '../ai/es';
-import { Trial } from '../ai/evaluate';
+import { FUEL_RANGE, TIRE_RANGE, Trial } from '../ai/evaluate';
 import type { PpoLearner, Segment, Step } from '../ai/ppo';
 import { Rng } from '../ai/rng';
 import { Car } from '../sim/car';
@@ -109,6 +109,8 @@ export interface RoadSetting {
    * know to pull away from a crawl.
    */
   recoveries?: number;
+  /** Drives start on tyres anywhere from worn to new and any fuel load (race learning's ranges). */
+  wear?: boolean;
 }
 
 /**
@@ -161,6 +163,10 @@ export function roadRollout(
         car.placeOnTrack(track, straightStart(track, rng), 0);
         car.vx = track.tx[car.trackIdx] * ROLLING_START_SPEED;
         car.vy = track.ty[car.trackIdx] * ROLLING_START_SPEED;
+      }
+      if (setting.wear) {
+        car.tireLife = TIRE_RANGE[0] + rng.next() * (TIRE_RANGE[1] - TIRE_RANGE[0]);
+        car.fuel = FUEL_RANGE[0] + rng.next() * (FUEL_RANGE[1] - FUEL_RANGE[0]);
       }
       const driver = new SamplingDriver(learner, rng);
       const team = new Team(driver);

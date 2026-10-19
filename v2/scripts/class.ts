@@ -19,6 +19,7 @@
  * --teacher line:G[:M] | traffic:G[:M] | follower: road courses' apprenticeship teacher: a racer on each circuit's
  *   fastest line at share G of the tyres' grip (kept M m inside the track limits); the same with racecraft (following,
  *   leaving room); or the line follower (default).
+ * --wear: road apprenticeship drives start on tyres anywhere from worn to new, and any fuel load.
  * --packs N: pack drills per circuit per apprenticeship round (the student among cars the teacher drives).
  * --knocks N: knocks a minute in road apprenticeships while the student drives (its speed cut to a random share).
  * --apprentice-epochs: passes over the recorded moments per apprenticeship round (road courses; default ROAD_APPRENTICE_EPOCHS).
@@ -60,7 +61,7 @@ const practice = {
   ...(args.has('focus') ? { focus: args.get('focus') as 'braking' | 'chicane' } : {}),
 };
 const checkpointEvery = Number(args.get('checkpoint-every') ?? 0);
-const apprenticeship = args.has('apprentice-epochs') || args.has('apprentice-rounds') || args.has('teacher') || args.has('knocks') || args.has('packs') ? {
+const apprenticeship = ['apprentice-epochs', 'apprentice-rounds', 'teacher', 'knocks', 'packs', 'wear'].some((k) => args.has(k)) ? {
   ...(args.has('apprentice-epochs') ? { epochs: Number(args.get('apprentice-epochs')) } : {}),
   ...(args.has('apprentice-rounds') ? { rounds: Number(args.get('apprentice-rounds')) } : {}),
   ...(args.has('knocks') ? { knocks: Number(args.get('knocks')) } : {}),
@@ -70,6 +71,7 @@ const apprenticeship = args.has('apprentice-epochs') || args.has('apprentice-rou
       ...(args.get('teacher')!.split(':')[2] ? { margin: Number(args.get('teacher')!.split(':')[2]) } : {}) }
     : { kind: 'follower' as const } } : {}),
   ...(args.has('packs') ? { packs: Number(args.get('packs')) } : {}),
+  ...(args.has('wear') ? { wear: true } : {}),
 } : undefined;
 
 interface DriverEntry {

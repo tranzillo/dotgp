@@ -2,6 +2,7 @@ import { DRIVER_LAYERS, NeuralDriver, PREVIEW_FROM, ScriptedDriver, Team } from 
 import { inputWeightMask, trainSupervised, type Example } from '../ai/network';
 import { OBS_SIZE, PREVIEW_SIZE } from '../ai/observe';
 import { initialWeights } from '../ai/es';
+import { FUEL_RANGE, TIRE_RANGE } from '../ai/evaluate';
 import { fastestLine, RacingLineDriver } from '../ai/racingLine';
 import { DEFAULT_STYLE, TrafficRacer } from '../ai/trafficRacer';
 import { roadcraftLayout } from './roadcraftLesson';
@@ -177,6 +178,8 @@ export interface ApprenticeOptions {
    * teacher: following, leaving room, keeping inside the limits).
    */
   packs?: number;
+  /** Drives start on tyres anywhere from worn to new and any fuel load (race learning's ranges), not fresh and full. */
+  wear?: boolean;
   /**
    * Knocks per minute while the student drives: its speed cut to a random
    * share of it, so the teacher shows what to do far below the speed the
@@ -207,6 +210,7 @@ export function apprenticeRoadCourses(weights: Float32Array, seed: number, opts:
         const student = new NeuralDriver(weights);
         const team = new Team(student, new TowerSpotter(), null);
         const car = new Car(0);
+        if (opts.wear) worn(car, rng);
         world.addCar(car, new RoadApprentice(team, student, teacherFor(opts.teacher, lane), studentDrives, examples, rng,
           (opts.knocks ?? 0) * P.CONTROL_EVERY * P.DT / 60));
         car.placeOnTrack(track, track.length - 20, lane);
@@ -224,6 +228,7 @@ export function apprenticeRoadCourses(weights: Float32Array, seed: number, opts:
           car.vx = track.tx[car.trackIdx] * spot.speed;
           car.vy = track.ty[car.trackIdx] * spot.speed;
           car.tireLife = spot.tire;
+          if (opts.wear) worn(car, rng);
           if (k !== slot) { world.addCar(car, teacherFor(opts.teacher, 0)); return; }
           const student = new NeuralDriver(weights);
           const team = new Team(student, new TowerSpotter(), null);
@@ -237,6 +242,12 @@ export function apprenticeRoadCourses(weights: Float32Array, seed: number, opts:
     loss = trainSupervised(DRIVER_LAYERS, weights, set, round === 0 ? 30 : epochs, 0.01, () => rng.next());
   }
   return { examples: examples.length, loss };
+}
+
+/** Tyres and fuel as a stint leaves them: anywhere in race learning's ranges. */
+function worn(car: Car, rng: Rng): void {
+  car.tireLife = TIRE_RANGE[0] + rng.next() * (TIRE_RANGE[1] - TIRE_RANGE[0]);
+  car.fuel = FUEL_RANGE[0] + rng.next() * (FUEL_RANGE[1] - FUEL_RANGE[0]);
 }
 
 /** Seconds of a pack drill in the apprenticeship (unless its layout says). */

@@ -36,8 +36,8 @@ export interface TrialOptions {
 }
 
 /** Worn-tire and fuel-load range drivers practise with, so stints don't surprise them. */
-const TIRE_RANGE: [number, number] = [0.15, 1];
-const FUEL_RANGE: [number, number] = [8, P.FUEL_CAPACITY];
+export const TIRE_RANGE: [number, number] = [0.15, 1];
+export const FUEL_RANGE: [number, number] = [8, P.FUEL_CAPACITY];
 
 export interface TrialResult {
   /** Seconds of race time: progress at the track's pace, less what damage (and spoilt laps) cost. */

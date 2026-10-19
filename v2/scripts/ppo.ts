@@ -14,6 +14,7 @@
  *   file with that driver's skill replaced by the policy. --value-warmup N: the first N iterations train only the
  *   value estimate (for a policy that already drives). --keep-checkpoints: each evaluation also writes the
  *   drivers file with -i<iteration> before .json. --valid-laps: only valid laps count (default at full tightness).
+ * --wear: drives start on tyres anywhere from worn to new, and any fuel load.
  * --recoveries X: this share of drives start slow, anywhere, pointing off the road's direction (getting going again).
  * --chicanes X: this share of drives start at the approach to a chicane (on circuits that have one).
  * --packs N: also N circuit racecraft drills per iteration (12-car packs, every other car the learner, the rest
@@ -89,7 +90,7 @@ const started = Date.now();
 const recent: DriveStat[] = [];
 for (let it = 1; it <= iterations; it++) {
   const t0 = Date.now();
-  const solo = roadRollout(learner, { radius, stallEnds, chicanes: num('chicanes', 0), recoveries: num('recoveries', 0), validLaps: args.has('valid-laps') || radius <= ROAD_FULL_RADIUS }, hashSeed(seed, `it${it}`), worlds, cars, seconds);
+  const solo = roadRollout(learner, { radius, stallEnds, chicanes: num('chicanes', 0), recoveries: num('recoveries', 0), wear: args.has('wear'), validLaps: args.has('valid-laps') || radius <= ROAD_FULL_RADIUS }, hashSeed(seed, `it${it}`), worlds, cars, seconds);
   const pack = packs ? packRollout(learner, hashSeed(seed, `pack${it}`), packs, classmates, args.has('nerve') ? num('nerve', 0.5) : undefined) : null;
   const segments = pack ? [...solo.segments, ...pack.segments] : solo.segments;
   const drives = solo.drives;
