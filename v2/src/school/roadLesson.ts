@@ -3,6 +3,8 @@ import { inputWeightMask, trainSupervised, type Example } from '../ai/network';
 import { OBS_SIZE, PREVIEW_SIZE } from '../ai/observe';
 import { initialWeights } from '../ai/es';
 import { fastestLine, RacingLineDriver } from '../ai/racingLine';
+import { DEFAULT_STYLE, TrafficRacer } from '../ai/trafficRacer';
+import { roadcraftLayout } from './roadcraftLesson';
 import { Rng } from '../ai/rng';
 import { TowerSpotter } from '../ai/spotter';
 import { Car } from '../sim/car';
@@ -166,7 +168,15 @@ export interface ApprenticeOptions {
    * the track limits (default the line's usual). From each start lane it
    * makes its way onto the line, so the student sees recoveries too.
    */
-  teacher?: { kind: 'follower' } | { kind: 'line'; grip: number; margin?: number };
+  teacher?: { kind: 'follower' } | { kind: 'line' | 'traffic'; grip: number; margin?: number };
+  /**
+   * Pack drills per circuit per round (default none): circuit racecraft's
+   * drills (12 cars, contact and drafting), the student in a random slot
+   * among cars the teacher drives, the teacher saying what it would do in
+   * the student's place. Teaches racing in traffic (with the 'traffic'
+   * teacher: following, leaving room, keeping inside the limits).
+   */
+  packs?: number;
   /**
    * Knocks per minute while the student drives: its speed cut to a random
    * share of it, so the teacher shows what to do far below the speed the
@@ -177,6 +187,7 @@ export interface ApprenticeOptions {
 
 /** The teacher of a drive that starts in a lane. */
 function teacherFor(teacher: ApprenticeOptions['teacher'], lane: number): Controller {
+  if (teacher?.kind === 'traffic') return new TrafficRacer({ ...DEFAULT_STYLE, grip: teacher.grip, margin: teacher.margin ?? DEFAULT_STYLE.margin, pass: Infinity });
   return teacher?.kind === 'line'
     ? new RacingLineDriver(teacher.grip, (track) => fastestLine(track, teacher.margin)) : new ScriptedDriver(lane, 0.9);
 }
@@ -203,11 +214,43 @@ export function apprenticeRoadCourses(weights: Float32Array, seed: number, opts:
         car.vy = track.ty[car.trackIdx] * ROLLING_START_SPEED;
         for (let k = 0; k < SECONDS / P.DT && !car.retired; k++) world.step();
       }
+      for (let p = 0; p < (opts.packs ?? 0); p++) {
+        const layout = roadcraftLayout(track, packStart(track, rng), rng);
+        const world = new World(track, { collisions: true, drafting: true });
+        const slot = rng.int(layout.spots.length);
+        layout.spots.forEach((spot, k) => {
+          const car = new Car(k);
+          car.placeOnTrack(track, track.wrapS(layout.frontS - spot.back), spot.lane);
+          car.vx = track.tx[car.trackIdx] * spot.speed;
+          car.vy = track.ty[car.trackIdx] * spot.speed;
+          car.tireLife = spot.tire;
+          if (k !== slot) { world.addCar(car, teacherFor(opts.teacher, 0)); return; }
+          const student = new NeuralDriver(weights);
+          const team = new Team(student, new TowerSpotter(), null);
+          world.addCar(car, new RoadApprentice(team, student, teacherFor(opts.teacher, 0), studentDrives, examples, rng,
+            (opts.knocks ?? 0) * P.CONTROL_EVERY * P.DT / 60));
+        });
+        for (let k = 0; k < (layout.seconds ?? PACK_SECONDS) / P.DT && !world.cars[slot].retired; k++) world.step();
+      }
     }
     const set = round === 0 || examples.length <= maxExamples ? examples : sample(examples, maxExamples, rng);
     loss = trainSupervised(DRIVER_LAYERS, weights, set, round === 0 ? 30 : epochs, 0.01, () => rng.next());
   }
   return { examples: examples.length, loss };
+}
+
+/** Seconds of a pack drill in the apprenticeship (unless its layout says). */
+const PACK_SECONDS = 50;
+
+/** A start on a random straight (80 m of it ahead), for a pack drill (as circuit racecraft starts them). */
+function packStart(track: Track, rng: Rng): number {
+  const starts: number[] = [];
+  for (let s = 0; s < track.length; s += 10) {
+    let straight = true;
+    for (let a = -10; a <= 80 && straight; a += 5) straight = Math.abs(track.curvatureAt(s + a)) < 1e-4;
+    if (straight) starts.push(s);
+  }
+  return starts.length ? starts[rng.int(starts.length)] : track.length - 20;
 }
 
 /** n of the items, drawn at random without replacement. */

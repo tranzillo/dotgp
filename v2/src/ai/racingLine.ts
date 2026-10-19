@@ -31,6 +31,9 @@ export interface RacingLine {
   readonly speed: Float32Array;
   /** Lap time (s) of the speed profile. */
   readonly lapTime: number;
+  /** The corridor the line was laid in, at each point: the least and greatest d (inside the track limits, off rough ground, clear of walls). */
+  readonly lo: Float32Array;
+  readonly hi: Float32Array;
   /** The profile using only a share of the tyres' grip (a driver's margin): speed at each point, and its lap time. */
   readonly at: (gripShare: number) => { speed: Float32Array; lapTime: number };
 }
@@ -261,11 +264,12 @@ export function racingLine(track: Track, options: Partial<LineOptions> = {}): Ra
   };
   return {
     step: fine.step, d: Float32Array.from(line), kappa: Float32Array.from(kappa), speed: Float32Array.from(best.speed), lapTime: best.lapTime, at,
+    lo: Float32Array.from(fine.lo), hi: Float32Array.from(fine.hi),
   };
 }
 
-/** The line's offset, curvature and speed at a distance round the track (linear between points). */
-export function lineAt(line: RacingLine, s: number): { d: number; kappa: number; speed: number; slope: number } {
+/** The line's offset, curvature, speed and corridor at a distance round the track (linear between points). */
+export function lineAt(line: RacingLine, s: number): { d: number; kappa: number; speed: number; slope: number; lo: number; hi: number } {
   const n = line.d.length;
   const f = (((s / line.step) % n) + n) % n;
   const i = Math.floor(f), j = (i + 1) % n, t = f - i;
@@ -274,6 +278,8 @@ export function lineAt(line: RacingLine, s: number): { d: number; kappa: number;
     kappa: line.kappa[i] + (line.kappa[j] - line.kappa[i]) * t,
     speed: line.speed[i] + (line.speed[j] - line.speed[i]) * t,
     slope: (line.d[j] - line.d[i]) / line.step,
+    lo: line.lo[i] + (line.lo[j] - line.lo[i]) * t,
+    hi: line.hi[i] + (line.hi[j] - line.hi[i]) * t,
   };
 }
 
@@ -298,7 +304,13 @@ const CONTROL_SPARE = 0.05;
  * slowing ahead, planned, plus feedback). Lateral has priority in the
  * friction circle.
  */
-export function followRacingLine(car: Car, world: World, line: RacingLine, grip: number): void {
+export function followRacingLine(
+  car: Car, world: World, line: RacingLine, grip: number,
+  /** Drive this far across from the line (+d), e.g. alongside another car. */
+  offset = 0,
+  /** A lower speed limit at a distance ahead (e.g. the car in front, a tighter arc), if any. */
+  capAt?: (ahead: number) => number,
+): void {
   const track = world.track;
   const i = car.trackIdx;
   const tx = track.tx[i], ty = track.ty[i];
@@ -309,15 +321,16 @@ export function followRacingLine(car: Car, world: World, line: RacingLine, grip:
   const capacityLon = Math.max(1, car.capacityLon);
   const speeds = line.at(grip).speed;
   const n = speeds.length;
-  const speedAt = (s: number) => {
-    const f = (((s / line.step) % n) + n) % n, a = Math.floor(f), t = f - a;
-    return speeds[a] + (speeds[(a + 1) % n] - speeds[a]) * t;
+  const speedAt = (ahead: number) => {
+    const f = ((((car.s + ahead) / line.step) % n) + n) % n, a = Math.floor(f), t = f - a;
+    const v = speeds[a] + (speeds[(a + 1) % n] - speeds[a]) * t;
+    return capAt ? Math.min(v, capAt(ahead)) : v;
   };
 
   // Along: the profile's speed change over the next stretch (planned), and the error now (feedback).
   const here = lineAt(line, car.s);
   const reach = Math.max(3, vLon * 0.25);
-  const vNow = speedAt(car.s), vNext = speedAt(car.s + reach);
+  const vNow = speedAt(0), vNext = speedAt(reach);
   const planned = (vNext * vNext - vNow * vNow) / (2 * reach);
   const lonWanted = vLon < vNow && planned >= 0 ? 99 : planned + 4 * (vNow - vLon);
 
@@ -330,7 +343,7 @@ export function followRacingLine(car: Car, world: World, line: RacingLine, grip:
   const bend = (fwd.d - 2 * here.d + back.d) / 4;
   const vLatWanted = (vLon * (fwd.d - back.d) / 4) / stretch;
   const feedforward = vLon * vLon * (bend / (stretch * stretch) + k / stretch);
-  const latWanted = feedforward + 2 * (here.d - car.d) - 3 * (vLat - vLatWanted) - car.bankAcc;
+  const latWanted = feedforward + 2 * (here.d + offset - car.d) - 3 * (vLat - vLatWanted) - car.bankAcc;
 
   const latMax = capacity * (1 - CONTROL_SPARE);
   const lat = Math.max(-latMax, Math.min(latMax, latWanted));
