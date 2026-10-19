@@ -1,6 +1,6 @@
 import { adaptWeights } from '../ai/drivers';
 import { initialWeights } from '../ai/es';
-import { initialChiefWeights } from '../ai/neuralChief';
+import { adaptChiefWeights, initialChiefWeights } from '../ai/neuralChief';
 import { randomTraits, type CrewChiefTraits } from '../ai/pitting';
 import type { Rng } from '../ai/rng';
 import { PERFECT_SPOTTER, randomSpotterSkill, type SpotterSkill } from '../ai/spotter';
@@ -26,6 +26,8 @@ export interface DriverAgent {
   pitLicensed?: boolean;
   /** Has also passed pit road in traffic: with both, drives its own stops in races. */
   pitTrafficLicensed?: boolean;
+  /** Has made a clean stop on a pit road set back across grass: drives its own stops there too (otherwise the maneuver does). */
+  setBackPits?: boolean;
   /** Has passed the caution lesson: drives its own cautions and restarts instead of the formation script. */
   cautionLicensed?: boolean;
   /** The road-course skill: a second network for road circuits, its training rounds, and the license. */
@@ -401,7 +403,7 @@ export class Roster {
    */
   static load(data: unknown, rng: Rng, chiefTemplates: Float32Array[] = []): Roster | null {
     const r = new Roster(rng);
-    r.chiefTemplates = chiefTemplates;
+    r.chiefTemplates = chiefTemplates.map(adaptChiefWeights);
     const d = data as Record<string, unknown>;
     if (d && d.version === 3) {
       r.counter = Number(d.counter) || 0;
@@ -414,7 +416,7 @@ export class Roster {
       for (const x of d.spotters as SpotterAgent[]) r.spotters.set(x.id, x);
       for (const x of d.chiefs as Array<ChiefAgent & { brain: { kind: string; weights?: number[]; traits?: CrewChiefTraits } }>) {
         const brain: ChiefBrain = x.brain.kind === 'neural'
-          ? { kind: 'neural', weights: Float32Array.from(x.brain.weights!) }
+          ? { kind: 'neural', weights: adaptChiefWeights(Float32Array.from(x.brain.weights!)) }
           : { kind: 'scripted', traits: x.brain.traits! };
         r.chiefs.set(x.id, { ...x, brain });
       }

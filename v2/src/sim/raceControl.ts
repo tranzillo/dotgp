@@ -22,6 +22,8 @@ export type StandingStart = Extract<StartProcedure, { kind: 'standing' }>;
 const POLE_BOX = 12;
 /** How hard the formation lap slows to a stop on the grid (m/s^2): gently. */
 const FORMATION_DECEL = 2.5;
+/** How far short of its box each car is as a race joins the end of the formation lap (m). */
+const FORMATION_ARRIVAL = 50;
 
 /** Minimum laps under caution, however quickly the track is cleared. */
 const MIN_CAUTION_LAPS = 2;
@@ -56,8 +58,8 @@ export interface Wrecker {
   /** Track s where it leaves the oval with the tow, and direction of travel (+1/-1). */
   exitS: number;
   dir: number;
-  /** Escape lane it tows along (index into the infield's lanes), or -1 for pit road. */
-  via: number;
+  /** The road network node where it leaves the oval with the tow (an apron access), or '' (marshals). */
+  via: string;
   /** Marshals with a crane (circuits) rather than a tow truck. */
   marshals?: boolean;
 }
@@ -88,6 +90,9 @@ export class RaceControl {
   cautions = 0;
   /** Laps the leader had completed when the current caution came out. */
   private cautionLap = 0;
+  get cautionStartLap(): number {
+    return this.cautionLap;
+  }
   /** The leader's race distance when the pace car picked it up. */
   private pickupDist = 0;
   /** Laps this caution runs at least. */
@@ -171,6 +176,14 @@ export class RaceControl {
   /** Cars waved around the pace car (between it and the leader before it has picked up the leader). */
   private readonly waved = new Set<Car>();
   private readonly wavedTold = new Set<Car>();
+  /**
+   * Laps each car in the line is down on the head of the order: lead-lap cars
+   * line up ahead of lapped cars, and a car rejoining from the pits goes to
+   * the back of its own lap's group. Set when the order freezes, and for a
+   * car rejoining, when it rejoins (if the leader lapped it during its stop,
+   * it's lapped).
+   */
+  private readonly lapGroup = new Map<Car, number>();
 
   wavedAround(car: Car): boolean {
     return this.waved.has(car);
@@ -191,8 +204,8 @@ export class RaceControl {
   safetyCar = false;
   private standing: StandingStart | null = null;
   private readonly boxes = new Map<Car, { s: number; d: number }>();
-  /** How far the formation lap's reference has gone, when the lights sequence began, how long they hold. */
-  private formationDist = 0;
+  /** How far the formation lap has left to its boxes, when the lights sequence began, how long they hold. */
+  private formationLeft = 0;
   private lightsFrom = NaN;
   private hold = 0;
 
@@ -209,7 +222,11 @@ export class RaceControl {
     return this.flag !== 'green';
   }
 
-  /** Line the field up double file behind the pace car on the back straight, at pace speed. */
+  /**
+   * Line the field up double file behind the pace car coming off the last
+   * turn, at pace speed, with the pace laps already run: the pace car pulls
+   * onto pit road and the green flies as the leader first reaches the line.
+   */
   formUp(cars: Car[]): void {
     const t = this.track;
     const paceS = pullOffS(t) - 120;
@@ -226,34 +243,38 @@ export class RaceControl {
     this.flag = 'pace';
     this.paceCarOut = true;
     this.pickedUp = true; // the field forms up right behind it
-    // A full pace lap: "one to go" once the leader first crosses the line.
-    this.oneToGo = false;
+    // Joined on the last pace lap (watchers needn't sit through the rest): the pace car is coming in.
+    this.oneToGo = true;
+    this.world.announce(cars[0] ?? this.paceCar, 'flag', 'Pace car coming in: green flag next time by');
   }
 
   /**
    * A standing start: every car in its own grid box behind the line,
    * staggered left and right, stopped; the pace car parked on pit road for
-   * cautions. With a formation lap the field goes round once at formation
-   * pace, single file in grid order, and stops in its boxes; then the lights.
+   * cautions. With a formation lap the race joins it at its end (watchers
+   * needn't sit through the rest): the field rolls up to its boxes in grid
+   * order, already staggered, and brakes to a stop in them; then the lights.
    */
   formUpStanding(cars: Car[], start: StandingStart, random: () => number): void {
     const t = this.track;
     this.standing = start;
     this.hold = start.hold[0] + random() * (start.hold[1] - start.hold[0]);
     const stagger = Math.min(t.halfWidth * 0.45, FILE_OFFSET + 0.4);
+    this.formationLeft = start.formationLap ? FORMATION_ARRIVAL : 0;
+    this.virtualS = t.wrapS(-POLE_BOX - this.formationLeft);
+    const v = this.formationApproachSpeed();
     cars.forEach((car, k) => {
       const s = -POLE_BOX - k * start.gridPitch;
       const d = k % 2 === 0 ? stagger : -stagger;
-      car.placeOnTrack(t, s, d, s);
+      car.placeOnTrack(t, s - this.formationLeft, d, s - this.formationLeft);
+      setSpeed(car, t, v);
       this.boxes.set(car, { s: t.wrapS(s), d });
     });
-    this.paceCar.placeOnTrack(t, (t.pit.wallStart + t.pit.wallEnd) / 2, t.pit.laneD + 2);
+    this.paceCar.placeOnTrack(t, (t.pit.wallStart + t.pit.wallEnd) / 2, t.pit.laneD + 2 + t.pitOffset((t.pit.wallStart + t.pit.wallEnd) / 2));
     this.paceCar.cleared = true;
     this.paceCarOut = false;
     this.pickedUp = false;
     this.oneToGo = false;
-    this.virtualS = t.wrapS(-POLE_BOX);
-    this.formationDist = 0;
     this.flag = start.formationLap ? 'formation' : 'grid';
   }
 
@@ -267,22 +288,29 @@ export class RaceControl {
     return Math.min(PIT_SERVICE.SPEED_LIMIT * 2, 0.6 * corner);
   }
 
-  /** Formation lap and grid: places in line follow the formation reference, then become the grid boxes. */
+  /** The end of the formation lap: formation pace, braking gently to a stop with the pole box's car in it. */
+  private formationApproachSpeed(): number {
+    return Math.min(this.formationSpeedAt(this.virtualS), Math.sqrt(2 * FORMATION_DECEL * Math.max(0, this.formationLeft)));
+  }
+
+  /** End of the formation lap and the grid: each place is its grid box, as far short of it as the pole car is of its own. */
   private standingSlots(dt: number): void {
     const t = this.track;
     let v = 0;
     if (this.flag === 'formation') {
-      // Round at formation pace, braking gently to a stop at the pole box as the lap ends.
-      const left = t.length - this.formationDist;
-      v = Math.min(this.formationSpeedAt(this.virtualS), Math.sqrt(2 * FORMATION_DECEL * Math.max(0, left)));
+      v = this.formationApproachSpeed();
       this.virtualS = t.wrapS(this.virtualS + v * dt);
-      this.formationDist += v * dt;
-      if (left < 0.5) this.flag = 'grid';
+      this.formationLeft -= v * dt;
+      if (this.formationLeft < 0.5) {
+        this.formationLeft = 0;
+        v = 0;
+        this.flag = 'grid';
+      }
     }
     this.order.forEach((car, index) => {
       const box = this.boxes.get(car);
-      if (this.flag === 'grid' && box) {
-        this.slots.set(car, { index, s: box.s, d: box.d, speed: 0 });
+      if (box) {
+        this.slots.set(car, { index, s: t.wrapS(box.s - this.formationLeft), d: box.d, speed: v });
       } else {
         this.slots.set(car, { index, s: t.wrapS(this.virtualS - index * SINGLE_FILE_GAP), d: 0, speed: v });
       }
@@ -322,7 +350,7 @@ export class RaceControl {
    */
   startGreen(): void {
     const t = this.track;
-    this.paceCar.placeOnTrack(t, (t.pit.wallStart + t.pit.wallEnd) / 2, t.pit.laneD + 2);
+    this.paceCar.placeOnTrack(t, (t.pit.wallStart + t.pit.wallEnd) / 2, t.pit.laneD + 2 + t.pitOffset((t.pit.wallStart + t.pit.wallEnd) / 2));
     this.paceCar.cleared = true;
     this.paceCarOut = false;
     this.oneToGo = false;
@@ -522,7 +550,7 @@ export class RaceControl {
     const t = this.track;
     const toExit = t.distanceFrom(leader.s, t.pit.wallEnd);
     if (toExit > FIRST_ROW_GAP && toExit < FIRST_ROW_GAP + ROW_GAP) {
-      this.paceCar.placeOnTrack(t, t.pit.wallEnd - 5, t.pit.wallD + t.pit.wallThickness / 2 + 3);
+      this.paceCar.placeOnTrack(t, t.pit.wallEnd - 5, t.pit.wallD + t.pit.wallThickness / 2 + 3 + t.pitOffset(t.pit.wallEnd - 5));
       setSpeed(this.paceCar, t, this.paceSpeedAt(this.paceCar.s));
       this.paceCar.retired = false;
       this.paceCar.cleared = false;
@@ -547,15 +575,24 @@ export class RaceControl {
     this.slots.clear();
     const inLine = (c: Car) => !c.retired && !c.cleared && c.pit.phase === 'none';
     const byDistance = (a: Car, b: Car) => b.dist - a.dist;
+    const L = t.length;
+    const lapsBehind = (head: Car | undefined, c: Car) => (head ? Math.max(0, Math.floor((head.dist - c.dist) / L)) : 0);
     if (!this.pacing || !this.order.length) {
       // Under green, the running order; the first step of pacing freezes it as the official order.
       this.order = this.world.cars.filter(inLine).sort(byDistance);
+      this.lapGroup.clear();
+      for (const c of this.order) this.lapGroup.set(c, lapsBehind(this.order[0], c));
     } else {
       // The official order, frozen when the caution came out: it changes only when cars leave it (pitting,
-      // wrecked) or rejoin (at the back), and by race control's rulings, never because cars moved.
+      // wrecked) or rejoin (at the back of their lap's group: lead-lap cars ahead of lapped cars), and by
+      // race control's rulings, never because cars moved.
       const order = this.order.filter(inLine);
       const joining = this.world.cars.filter((c) => inLine(c) && !order.includes(c)).sort(byDistance);
-      this.order = order.concat(joining);
+      for (const c of joining) this.lapGroup.set(c, lapsBehind(order[0] ?? joining[0], c));
+      const merged = order.concat(joining);
+      const at = new Map(merged.map((c, i) => [c, i]));
+      const group = (c: Car) => this.lapGroup.get(c) ?? 0;
+      this.order = merged.sort((a, b) => group(a) - group(b) || at.get(a)! - at.get(b)!);
     }
     if (!this.pacing || !this.order.length) return;
     void leader;
@@ -663,7 +700,7 @@ export class RaceControl {
       // Marshals and a crane where the car stopped: lifted over the barrier, then it's gone.
       this.wreckers.push({
         wreck, x: wreck.x, y: wreck.y, s: wreck.s, d: wreck.d,
-        phase: 'hook', timer: MARSHAL_TIME, route: [], exitS: 0, dir: 1, via: -1, marshals: true,
+        phase: 'hook', timer: MARSHAL_TIME, route: [], exitS: 0, dir: 1, via: '', marshals: true,
       });
       return;
     }
@@ -672,7 +709,7 @@ export class RaceControl {
     const fwd = t.distanceFrom(t.pit.wallEnd, wreck.s);
     this.wreckers.push({
       wreck, x: start[0], y: start[1], s: t.pit.wallEnd, d: t.apronEdgeAt(t.pit.wallEnd) - 2,
-      phase: 'drive', timer: 0, route: [], exitS: 0, dir: fwd < t.length / 2 ? 1 : -1, via: -1,
+      phase: 'drive', timer: 0, route: [], exitS: 0, dir: fwd < t.length / 2 ? 1 : -1, via: '',
     });
   }
 
@@ -738,13 +775,12 @@ export class RaceControl {
     }
   }
 
-  /** Pick the nearest infield access: an escape lane, or pit entry and pit road. */
+  /** Pick the nearest way off the oval that leads to a garage (an escape road, pit entry...), along the apron. */
   private planTow(w: Wrecker): void {
     const t = this.track;
-    const accesses = [
-      ...t.infield.escapeLanes.map((lane, via) => ({ via, exitS: t.project(...lane.points[0]).s })),
-      { via: -1, exitS: t.wrapS(t.pit.entryStart) },
-    ];
+    const accesses = t.roads.accesses
+      .filter((n) => t.roads.pathToGarage(n.id))
+      .map((n) => ({ via: n.id, exitS: t.wrapS(n.s ?? t.project(...n.at).s) }));
     const options = accesses.map(({ via, exitS }) => {
       const fwd = t.distanceFrom(w.s, exitS);
       return fwd < t.length / 2 ? { via, exitS, dir: 1, dist: fwd } : { via, exitS, dir: -1, dist: t.length - fwd };
@@ -756,18 +792,12 @@ export class RaceControl {
     w.route = [];
   }
 
+  /** From the access it left the oval at, along the road network's shortest way to a garage, to a parking spot. */
   private routeToGarage(w: Wrecker): Array<[number, number]> {
     const t = this.track;
     const g = t.infield.garage;
     const park = g.parking[this.garageSlots++ % g.parking.length];
-    if (w.via >= 0) return [...t.infield.escapeLanes[w.via].points.slice(1), park];
-    // Pit road: in at the entry, along the inner side of pit road, into the garage.
-    const lane = t.pit.roadD - 2;
-    return [
-      t.toWorld(t.pit.wallStart - 10, lane),
-      t.toWorld(g.lot.s0 + 4, lane),
-      park,
-    ];
+    return [...(t.roads.pathToGarage(w.via) ?? []), park];
   }
 
   private parkWreck(w: Wrecker): void {

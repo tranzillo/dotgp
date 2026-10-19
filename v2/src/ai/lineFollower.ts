@@ -6,6 +6,9 @@ import type { World } from '../sim/world';
  * Hand-written control law: follow a lateral path d = laneAt(s) under a speed
  * cap capAt(s), braking early enough for corners and caps ahead. Used by the
  * scripted baseline driver and the pit maneuver, never by learned drivers.
+ * sweep: the path moves across the track a long way (a pit lane swinging over
+ * to a pit road set back across grass): match its sideways slope as well as
+ * close on it, or the car falls further and further behind it.
  */
 export function followLine(
   car: Car,
@@ -13,6 +16,7 @@ export function followLine(
   laneAt: (s: number) => number,
   capAt: (s: number) => number,
   margin = 0.95,
+  sweep = false,
 ): void {
   const track = world.track;
   const i = car.trackIdx;
@@ -41,13 +45,15 @@ export function followLine(
       const c = Math.cos(bank), sn = Math.sin(bank);
       limit = Math.min(limit, Math.sqrt((G * (sn + mu * c)) / Math.max(0.05, c - mu * sn) / Math.abs(kappa)) * margin);
     }
-    target = Math.min(target, Math.sqrt(limit * limit + 2 * brake * ahead));
+    // (Swinging across the track takes grip too: plan to brake more gently on a lane that does.)
+    target = Math.min(target, Math.sqrt(limit * limit + 2 * (sweep ? 0.6 * brake : brake) * ahead));
   }
 
   // Lateral: hold the track curvature, steer toward the lane (with a little preview), cancel drift.
   const laneTarget = laneAt(car.s + Math.max(5, vLon * 0.3));
   const kappaHere = track.kappa[i] / Math.max(0.2, 1 - track.kappa[i] * car.d);
-  const latWanted = vLon * vLon * kappaHere + 0.8 * (laneTarget - car.d) - 1.6 * vLat - car.bankAcc;
+  const vLatWanted = sweep ? vLon * (laneAt(car.s + 3) - laneAt(car.s - 3)) / 6 : 0;
+  const latWanted = vLon * vLon * kappaHere + 0.8 * (laneTarget - car.d) - 1.6 * (vLat - vLatWanted) - car.bankAcc;
   // Over target: brake hard enough to be back on the braking curve within a fraction of a second.
   const lonWanted = vLon < target ? 99 : -Math.min(brake * 1.3, (vLon - target) * 6);
 

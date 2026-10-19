@@ -189,9 +189,9 @@ export class NeuralDriver implements DriverBrain {
     this.roadNet = roadWeights ? new Network(DRIVER_LAYERS, roadWeights) : null;
   }
 
-  /** The network that drives this track: the road-course skill on road circuits (if the driver has one). */
+  /** The network that drives this track: the road-course skill on road layouts (if the driver has one). */
   netFor(track: Track): Network {
-    return this.roadNet && track.layout.type === 'circuit' ? this.roadNet : this.net;
+    return this.roadNet && track.kind === 'road' ? this.roadNet : this.net;
   }
 
   /** The network's input for this moment (also what an apprentice is shown), mirrored when the next corner turns right. */

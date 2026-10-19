@@ -29,11 +29,24 @@ export function mirrorLayout(layout: TrackLayout): TrackLayout {
       bankInfield: negProfile(cs.bankInfield),
     },
     surfaces: layout.surfaces.map(mirrorRegion),
+    ...(layout.barriers ? { barriers: layout.barriers.map((b) => ({ ...b, points: b.points.map(flipY) })) } : {}),
     walls: layout.walls.map((w): Wall => ({ ...w, d: negEdge(w.d), faces: w.faces === 'in' ? 'out' : w.faces === 'out' ? 'in' : 'both' })),
-    pit: { ...layout.pit, wallD: -layout.pit.wallD, roadD: -layout.pit.roadD, laneD: -layout.pit.laneD },
+    pit: {
+      ...layout.pit, wallD: -layout.pit.wallD, roadD: -layout.pit.roadD, laneD: -layout.pit.laneD,
+      ...(layout.pit.offset ? { offset: negProfile(layout.pit.offset) } : {}),
+      ...(layout.pit.entryRoute ? { entryRoute: negProfile(layout.pit.entryRoute) } : {}),
+      ...(layout.pit.exitRoute ? { exitRoute: negProfile(layout.pit.exitRoute) } : {}),
+    },
     infield: {
       garage: { lot: mirrorRect(layout.infield.garage.lot), parking: layout.infield.garage.parking.map(flipY) },
       escapeLanes: layout.infield.escapeLanes.map((e) => ({ ...e, points: e.points.map(flipY) })),
+      ...(layout.infield.network ? {
+        network: {
+          nodes: layout.infield.network.nodes.map((n) => ({ ...n, at: flipY(n.at) })),
+          roads: layout.infield.network.roads.map((r) => ({ ...r, points: r.points.map(flipY) })),
+          ...(layout.infield.network.areas ? { areas: layout.infield.network.areas.map((a) => ({ ...a, rings: a.rings.map((ring) => ring.map(flipY)) })) } : {}),
+        },
+      } : {}),
     },
     markings: layout.markings.map((m): Marking => (m.kind === 'line' ? { ...m, d: negEdge(m.d) } : { ...m, d0: -m.d1, d1: -m.d0 })),
     decor: layout.decor.map((d) => ({ ...d, rect: mirrorRect(d.rect) })),
@@ -54,5 +67,7 @@ function mirrorRegion(region: SurfaceRegion): SurfaceRegion {
       return { ...region, shape: { ...shape, rect: mirrorRect(shape.rect) } };
     case 'path':
       return { ...region, shape: { ...shape, points: shape.points.map(flipY) } };
+    case 'polygon':
+      return { ...region, shape: { ...shape, rings: shape.rings.map((ring) => ring.map(flipY)) } };
   }
 }

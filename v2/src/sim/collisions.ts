@@ -13,29 +13,65 @@ import type { Track } from './track';
  * solid ends that can be hit nose-first).
  */
 export function resolveWalls(car: Car, track: Track, damageScale = 1): void {
-  const r = P.CAR_RADIUS;
   const i = car.trackIdx;
   const nx = -track.ty[i], ny = track.tx[i];
   const wasInContact = car.wallContact;
   car.wallContact = false;
+  hitWalls(car, track, car.s, car.d, nx, ny, nx, ny, wasInContact, damageScale, false);
+  // Barriers laid in the world (a road layout's closures): solid from both sides.
+  for (const b of track.barriers) {
+    for (let k = 0; k + 1 < b.points.length; k++) {
+      const [ax, ay] = b.points[k], [bx, by] = b.points[k + 1];
+      const vx = bx - ax, vy = by - ay;
+      const t = Math.max(0, Math.min(1, ((car.x - ax) * vx + (car.y - ay) * vy) / (vx * vx + vy * vy || 1)));
+      const dx = car.x - (ax + vx * t), dy = car.y - (ay + vy * t);
+      const dist = Math.hypot(dx, dy);
+      const pen = P.CAR_RADIUS + b.thickness / 2 - dist;
+      if (pen > 0 && dist > 1e-9) {
+        const Nx = dx / dist, Ny = dy / dist;
+        wallImpact(car, Nx, Ny, pen, Nx * nx + Ny * ny, wasInContact, damageScale);
+      }
+    }
+  }
+  // The venue's other tracks' walls are solid too (measured from their own centerlines), from either side:
+  // a car can come at one from outside the track it bounds.
+  for (const nb of track.neighbours) {
+    const b = nb.bounds;
+    if (car.x < b.minX || car.x > b.maxX || car.y < b.minY || car.y > b.maxY) continue;
+    const q = nb.near(car.x, car.y, nb.reach);
+    if (q) hitWalls(car, nb, q.s, q.d, -nb.ty[q.idx], nb.tx[q.idx], nx, ny, wasInContact, damageScale, true);
+  }
+}
 
+/**
+ * One track's walls against a car at (s, d) on it, its lateral axis (wnx,
+ * wny) there; (onx, ony) is the lateral axis of the track the car races on,
+ * where its d is kept. twoSided: every wall is solid from both sides (another
+ * track's walls), not only the side it faces.
+ */
+function hitWalls(
+  car: Car, track: Track, s: number, d: number, wnx: number, wny: number, onx: number, ony: number,
+  wasInContact: boolean, damageScale: number, twoSided: boolean,
+): void {
+  const r = P.CAR_RADIUS;
+  const axis = wnx * onx + wny * ony;
   for (const wall of track.walls) {
-    if (!track.inRange(car.s, wall.range)) continue;
-    const mid = typeof wall.d === 'number' ? wall.d : track.edgeAt(wall.d, car.s);
+    if (!track.inRange(s, wall.range)) continue;
+    const mid = typeof wall.d === 'number' ? wall.d : track.edgeAt(wall.d, s);
     const half = wall.thickness / 2;
-    if (wall.faces === 'in') {
+    if (wall.faces === 'in' && !twoSided) {
       // Keeps cars on its +d side.
-      const pen = mid + half - (car.d - r);
-      if (pen > 0) wallImpact(car, nx, ny, pen, 1, wasInContact, damageScale);
-    } else if (wall.faces === 'out') {
-      const pen = car.d + r - (mid - half);
-      if (pen > 0) wallImpact(car, -nx, -ny, pen, -1, wasInContact, damageScale);
+      const pen = mid + half - (d - r);
+      if (pen > 0) wallImpact(car, wnx, wny, pen, axis, wasInContact, damageScale);
+    } else if (wall.faces === 'out' && !twoSided) {
+      const pen = d + r - (mid - half);
+      if (pen > 0) wallImpact(car, -wnx, -wny, pen, -axis, wasInContact, damageScale);
     } else {
-      const gap = car.d - mid;
+      const gap = d - mid;
       const pen = r + half - Math.abs(gap);
       if (pen > 0) {
         const side = gap >= 0 ? 1 : -1; // push back to whichever side the car is on
-        wallImpact(car, nx * side, ny * side, pen, side, wasInContact, damageScale);
+        wallImpact(car, wnx * side, wny * side, pen, side * axis, wasInContact, damageScale);
       }
     }
   }
@@ -46,7 +82,7 @@ export function resolveWalls(car: Car, track: Track, damageScale = 1): void {
     const pen = r + cap.radius - dist;
     if (pen > 0 && dist > 1e-9) {
       const Nx = dx / dist, Ny = dy / dist;
-      wallImpact(car, Nx, Ny, pen, Nx * nx + Ny * ny, wasInContact, damageScale);
+      wallImpact(car, Nx, Ny, pen, Nx * onx + Ny * ony, wasInContact, damageScale);
     }
   }
 }
@@ -162,10 +198,10 @@ export function resolveCarCollisions(cars: Car[], track?: Track): void {
 export function computeDraft(cars: Car[], track: Track): void {
   for (const c of cars) c.draftFactor = 1;
   for (const A of cars) {
-    if (A.retired) continue;
+    if (A.retired || A.cleared) continue;
     let best = 0;
     for (const B of cars) {
-      if (B === A || B.retired) continue;
+      if (B === A || B.retired || B.cleared) continue; // cleared: not on track for anyone (parked in the pits, too)
       // Every pair, every step: the cheap test first.
       const lateral = Math.abs(B.d - A.d);
       if (lateral > P.DRAFT_WIDTH) continue;

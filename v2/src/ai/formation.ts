@@ -3,6 +3,8 @@ import type { Car } from '../sim/car';
 import { pullOffS } from '../sim/raceControl';
 import type { Controller, World } from '../sim/world';
 import { followLine } from './lineFollower';
+import { pitPath } from './pitting';
+import { fastLaneGap } from '../sim/layout';
 import { Rng } from './rng';
 
 /**
@@ -160,7 +162,7 @@ export class PaceCarDriver implements Controller {
     const t = world.track;
     const r = t.signedS(car.s);
     const wallClear = t.pit.wallD + t.pit.wallThickness / 2 + P.CAR_RADIUS + 1.2;
-    const fastLane = Math.max(t.pit.wallD + t.pit.wallThickness / 2 + 3, wallClear);
+    const fastLane = Math.max(t.pit.wallD + fastLaneGap(t.pit.wallThickness, !!t.pit.offset), wallClear);
     const ramp = (x: number, x0: number, x1: number, a: number, b: number) =>
       x <= x0 ? a : x >= x1 ? b : a + (b - a) * (x - x0) / (x1 - x0);
     const pull = pullOffS(t);
@@ -171,24 +173,36 @@ export class PaceCarDriver implements Controller {
     const leaveFrom = apron ? pull - 180 : t.pit.entryStart - 5;
     if (ctl.oneToGo && (car.d > inner + 0.5 || (r > leaveFrom && r < t.pit.wallStart))) {
       // Heading in: (down to the apron at turn 4 exit,) onto pit road, stop at its start.
+      const path = pitPath(t);
       const lane = (s: number) => {
         const x = t.signedS(s);
+        // A pit lane laid out across the grass: down to its start, then along it.
+        if (path.laid) {
+          if (x < t.pit.entryStart) return ramp(x, t.pit.entryStart - 180, t.pit.entryStart, 0, path.inAt(t.pit.entryStart));
+          return x < path.inEnd ? path.inAt(x) : fastLane + t.pitOffset(s);
+        }
         if (!apron) return ramp(x, t.pit.entryStart, t.pit.wallStart - 20, 0, fastLane);
         if (x < pull) return ramp(x, pull - 180, pull, 0, wallClear);
         return ramp(x, pull, t.pit.wallStart - 50, wallClear, fastLane);
       };
       const cap = (s: number) => {
         const x = t.signedS(s);
-        if (x < t.pit.wallStart - 5) return Math.min(ctl.paceSpeedAt(s), PIT_SERVICE.SPEED_LIMIT * 1.5);
+        if (x < t.pit.wallStart - 5) return Math.min(ctl.paceSpeedAt(s), PIT_SERVICE.SPEED_LIMIT * 1.5, pitPath(t).inCap(x));
         return Math.min(PIT_SERVICE.SPEED_LIMIT - 1, Math.sqrt(2 * 3 * Math.max(0, t.pit.wallStart + 25 - x)));
       };
-      followLine(car, world, lane, cap, 0.75);
+      followLine(car, world, lane, cap, 0.75, path.laid);
       return;
     }
     if (car.d > inner) {
       // Just released from pit road: out through the exit taper and onto the track.
-      const lane = (s: number) => ramp(t.signedS(s), t.pit.wallEnd + 15, t.pit.exitEnd, fastLane, 0);
-      followLine(car, world, lane, (s) => ctl.paceSpeedAt(s) * 1.2, 0.8);
+      const path = pitPath(t);
+      const lane = (s: number) => {
+        const x = t.signedS(s);
+        if (!path.laid) return ramp(x, t.pit.wallEnd + 15, t.pit.exitEnd, fastLane, 0);
+        if (x < path.outStart) return fastLane + t.pitOffset(s);
+        return x < t.pit.exitEnd ? path.outAt(x, s) : ramp(x, t.pit.exitEnd, t.pit.exitEnd + 80, path.outAt(t.pit.exitEnd, s), 0);
+      };
+      followLine(car, world, lane, (s) => Math.min(ctl.paceSpeedAt(s) * 1.2, path.outCap(t.signedS(s))), 0.8, path.laid);
       return;
     }
     // Out on track: slowly until it has picked up the leader (the leader catches it), then at pace speed.

@@ -6,19 +6,21 @@ import { danger, fearScale } from '../ai/fear';
 import { PaceCarDriver, formationTraits } from '../ai/formation';
 import { NeuralCrewChief } from '../ai/neuralChief';
 import { OnlineLearner, RACE_LEARNING } from '../ai/online';
-import { StrategistCrewChief, type CrewChief, type CrewChiefTraits } from '../ai/pitting';
+import { RunChief, StrategistCrewChief, type CrewChief, type CrewChiefTraits } from '../ai/pitting';
 import { Rng } from '../ai/rng';
 import { describeRadio, RADIO_SIZE, TowerSpotter, type SpotterSkill } from '../ai/spotter';
 import { StrokeCollector } from '../render/marks';
 import { Car, SIGNATURE_BINS } from '../sim/car';
 import { PHYSICS as P } from '../sim/constants';
 import { placeOnGrid, ROLLING_START_SPEED } from '../sim/grid';
-import type { Surface, TrackLayout } from '../sim/layout';
+import { layoutKind, type Surface, type TrackLayout } from '../sim/layout';
+import { createQualifying, type Qualifying, type QualifyingFormat, type QualifyingView } from '../sim/qualifying';
 import { Race } from '../sim/race';
 import { Track } from '../sim/track';
 import { World, type WorldEvent } from '../sim/world';
 import { OPEN_SESSION_FRAMES, Tape, TAPE_STEPS } from './tape';
-import { rulebookFor, type Offence, type Penalty } from '../rules/rulebook';
+import type { Offence, Penalty } from '../rules/rulebook';
+import { defaultSeries, racesOn, seriesById, type Series } from '../rules/series';
 import type { StewardTraits } from '../rules/stewards';
 import type { SchoolView } from '../school/classroom';
 
@@ -29,7 +31,7 @@ import type { SchoolView } from '../school/classroom';
  * of results(). No DOM, no globals.
  */
 
-export type SessionKind = 'race' | 'practice' | 'ghost';
+export type SessionKind = 'race' | 'qualifying' | 'practice' | 'ghost';
 
 /** A car in the session: a team's car number and livery, and the three agents in it. */
 export interface EntrantSpec {
@@ -40,7 +42,7 @@ export interface EntrantSpec {
   number?: number;
   /** pits / cautions: drives its own pit stops / cautions (it has learned to); otherwise the scripts do. */
   /** roadWeights: the driver's road-course skill (drives road circuits instead of its main network). */
-  driver: { id: string; weights: Float32Array; roadWeights?: Float32Array; pits?: boolean; cautions?: boolean; nerve?: number };
+  driver: { id: string; weights: Float32Array; roadWeights?: Float32Array; pits?: boolean; setBackPits?: boolean; cautions?: boolean; nerve?: number };
   spotter: { id: string; skill: SpotterSkill };
   chief: { id: string; brain: { kind: 'neural'; weights: Float32Array } | { kind: 'scripted'; traits: CrewChiefTraits } };
 }
@@ -53,12 +55,26 @@ export interface SessionSpec {
   laps: number;
   /** Tire wear and fuel burn multiplier. */
   pace: number;
-  /** Shuffles the grid. */
+  /** Shuffles the grid (and qualifying's run order). */
   seed: number;
+  /** The starting order by entrant key (races: what qualifying set); entrants it leaves out start behind, shuffled. */
+  grid?: number[];
+  /** How qualifying is run (qualifying only; default: the track's rulebook's format, at its usual length). */
+  qualifying?: QualifyingFormat;
   /** Drivers learn as they race (races only). */
   learn?: boolean;
-  /** Races are run to the oval rulebook; the stewards' panel (default: middling). */
+  /** Races are run to the series' rulebook; the stewards' panel (default: middling). */
   stewards?: StewardTraits;
+  /** The series racing (its rulebook: start, cautions, qualifying). Default: the first series that races on this layout. */
+  series?: string;
+}
+
+/** The series a session races as (one that races on its layout). */
+export function seriesOf(spec: Pick<SessionSpec, 'layout' | 'series'>): Series {
+  if (!spec.series) return defaultSeries(spec.layout);
+  const series = seriesById(spec.series);
+  if (!racesOn(series, spec.layout)) throw new Error(`${series.name} doesn't race on ${spec.layout.name} (a ${layoutKind(spec.layout)} layout)`);
+  return series;
 }
 
 /** A driver took a learning step during the session: the weights it drives with now. */
@@ -115,7 +131,7 @@ export interface RaceView {
 }
 
 /** What a timeline event is: race control's flags and lead changes, or one of the world's announcements. */
-export type TimelineKind = 'start' | 'caution' | 'restart' | 'green' | 'checkered' | 'lead' | Exclude<WorldEvent['kind'], 'flag'>;
+export type TimelineKind = 'start' | 'caution' | 'restart' | 'green' | 'checkered' | 'lead' | 'pole' | 'round' | Exclude<WorldEvent['kind'], 'flag'>;
 
 /**
  * Something that happened in a session, when and to whom: the timeline's
@@ -127,6 +143,10 @@ export interface TimelineEvent {
   kind: TimelineKind;
   /** The team it's about (entrant key); null for race control. */
   key: number | null;
+  /** Other teams in it (entrant keys): the car it made contact with, the other side of a stewards' case. */
+  others?: number[];
+  /** A stewards' decision: when the incident it's about happened (sim s). */
+  incidentTime?: number;
   text: string;
   /** Races: how far through the race distance the leader was (0..1), and the lap they were on. */
   at?: number;
@@ -151,6 +171,8 @@ export interface SessionSnapshot {
   technique: Array<[number, number[]]>;
   /** Driving school classes: the lesson's state. */
   school?: SchoolView;
+  /** Qualifying sessions: the round, its clock and cut line, how far through. */
+  qualifying?: QualifyingView;
 }
 
 /** How a session went for one entrant (races: the classification). */
@@ -190,6 +212,8 @@ export class Session {
   readonly track: Track;
   readonly world: World;
   readonly race: Race | null;
+  /** Qualifying sessions: the run order, who is out, the times. */
+  readonly qualifying: Qualifying | null;
   private readonly entrants = new Map<number, EntrantSpec>(); // by car id
   private readonly teams = new Map<number, Team>(); // by car id
   private readonly drivers = new Map<string, NeuralDriver>(); // by driver id
@@ -233,20 +257,27 @@ export class Session {
     this.kind = spec.kind;
     this.track = new Track(spec.layout);
     const contact = spec.kind !== 'ghost';
-    this.world = new World(this.track, { collisions: contact, drafting: contact, wearScale: spec.kind === 'ghost' ? 1 : spec.pace });
-    // Shuffle the grid so the starting order isn't always roster order.
+    // Race pace is for races' pit windows (and practice for them); a qualifying run is a few laps on fresh tires.
+    const wearScale = spec.kind === 'ghost' || spec.kind === 'qualifying' ? 1 : spec.pace;
+    this.world = new World(this.track, { collisions: contact, drafting: contact, wearScale });
+    // Shuffle the grid so the starting order isn't always roster order (a set grid goes first).
     const rng = new Rng(spec.seed);
     // Each driver's own way of driving cautions, drawn once per race from the seed.
     const traitRng = new Rng(spec.seed ^ 0x5bd1e995);
-    const grid = spec.entrants.map((e) => ({ e, k: rng.next() })).sort((a, b) => a.k - b.k).map((x) => x.e);
+    const slot = (e: EntrantSpec) => { const i = spec.grid?.indexOf(e.key) ?? -1; return i < 0 ? Infinity : i; };
+    const grid = spec.entrants.map((e) => ({ e, k: rng.next() }))
+      .sort((a, b) => (slot(a.e) - slot(b.e)) || a.k - b.k).map((x) => x.e);
+    const qualifying: QualifyingFormat | null = spec.kind === 'qualifying' ? spec.qualifying ?? defaultQualifying(seriesOf(spec)) : null;
     grid.forEach((entrant, k) => {
       const car = new Car(k, entrant.fill);
       if (entrant.number !== undefined) car.number = entrant.number;
       if (contact) placeOnGrid(car, this.track, k, true);
       else this.rollingStart(car); // ghosts share one spot
       const driver = new NeuralDriver(entrant.driver.weights, entrant.driver.roadWeights);
-      const team = new Team(driver, new TowerSpotter(entrant.spotter.skill), contact ? makeChief(entrant.chief.brain) : null,
-        entrant.driver.pits ?? false, entrant.driver.cautions ?? false,
+      const chief = qualifying ? new RunChief((c) => this.qualifying!.wantsIn(c)) : contact ? makeChief(entrant.chief.brain) : null;
+      const team = new Team(driver, new TowerSpotter(entrant.spotter.skill), chief,
+        // Its own stops where it has learned to make them: a pit road set back across grass needs that too.
+        (entrant.driver.pits ?? false) && (!spec.layout.pit.entryRoute || (entrant.driver.setBackPits ?? false)), entrant.driver.cautions ?? false,
         formationTraits(entrant.driver.nerve, () => traitRng.next()));
       this.world.addCar(car, team);
       this.entrants.set(car.id, entrant);
@@ -262,33 +293,37 @@ export class Session {
     });
     // Races run under race control: pace laps, green at the line, cautions with the wrecker crew.
     this.race = spec.kind === 'race'
-      ? new Race(this.world, spec.laps, new PaceCarDriver(), { rulebook: rulebookFor(spec.layout.type), stewards: spec.stewards, seed: spec.seed })
+      ? new Race(this.world, spec.laps, new PaceCarDriver(), { rulebook: seriesOf(spec).rulebook, stewards: spec.stewards, seed: spec.seed })
       : null;
+    // Qualifying goes out in grid order: the draw.
+    this.qualifying = qualifying ? createQualifying(this.world, qualifying) : null;
     this.tape = new Tape({
       id: 0,
       cars: this.world.cars.map((car) => ({ id: car.id, key: this.entrants.get(car.id)!.key, color: car.color })),
       laps: this.race ? spec.laps : null,
-    }, this.race ? Infinity : OPEN_SESSION_FRAMES);
+    }, this.race || this.qualifying ? Infinity : OPEN_SESSION_FRAMES);
   }
 
   get time(): number {
     return this.world.time;
   }
 
-  /** The race has been run to the end (never true for open sessions). */
+  /** The race (or qualifying) has been run to the end (never true for open sessions). */
   get finished(): boolean {
-    return this.race?.state === 'finished';
+    return this.race?.state === 'finished' || this.qualifying?.state === 'finished';
   }
 
   /** One physics step, plus the bookkeeping the viewer and records want. */
   step(): void {
     if (this.race) this.race.step();
+    else if (this.qualifying) this.qualifying.step();
     else this.world.step();
     if (this.learners.size) this.learnFromLaps();
     this.recordTechnique();
     if (this.collectStrokes) this.strokes.collect(this.world.cars);
     this.readAnnouncements();
     if (this.race) this.watchRace(this.race);
+    if (this.qualifying) this.readQualifyingNews(this.qualifying);
     for (const car of this.world.cars) {
       if (car.worstHit && this.worstHitAt.get(car.id)?.hit !== car.worstHit) this.worstHitAt.set(car.id, { hit: car.worstHit, time: this.world.time });
     }
@@ -379,7 +414,7 @@ export class Session {
   /** What the viewer draws now (technique: the live-only histograms too). */
   snapshot(technique = true): SessionSnapshot {
     const cars = this.world.cars.map((car) => this.view(car));
-    const standings = this.race?.standings() ?? null;
+    const standings = this.race?.standings() ?? this.qualifying?.standings() ?? null;
     const order = standings
       ? standings.map((st) => st.car.id)
       : [...this.world.cars].sort((a, b) => Number(a.retired) - Number(b.retired) || b.dist - a.dist).map((c) => c.id);
@@ -402,21 +437,25 @@ export class Session {
         wreckers: (ctl?.wreckers ?? []).map((w) => ({ x: w.x, y: w.y, phase: w.phase })),
       } : null,
       technique: technique ? [...this.technique].map(([key, h]) => [key, Array.from(h)]) : [],
+      ...(this.qualifying ? { qualifying: this.qualifying.view() } : {}),
     };
   }
 
   /** The classification and each entrant's numbers. */
   results(): EntrantResult[] {
-    const standings = this.race?.standings()
+    const q = this.qualifying;
+    const standings = this.race?.standings() ?? q?.standings()
       ?? this.snapshot().order.map((id, i) => ({ car: this.world.cars.find((c) => c.id === id)!, position: i + 1, laps: 0, time: NaN, status: 'running' as const }));
     return standings.map((st) => {
       const car = st.car;
       const e = this.entrants.get(car.id)!;
-      const laps = car.lapTimes;
+      // Qualifying: only the run's timed laps (not the in-lap); its time is the best of them.
+      const laps = q ? car.lapTimes.slice(0, st.laps) : car.lapTimes;
+      const best = q ? st.time : bestValidLap(car); // laps past the track limits don't count
       return {
         key: e.key, driver: e.driver.id, spotter: e.spotter.id, chief: e.chief.id,
-        position: st.position, status: st.status, laps: st.laps || car.lapsCompleted, time: st.time,
-        bestLap: Number.isFinite(bestValidLap(car)) ? bestValidLap(car) : null, // laps past the track limits don't count
+        position: st.position, status: st.status, laps: q ? st.laps : st.laps || car.lapsCompleted, time: st.time,
+        bestLap: Number.isFinite(best) ? best : null,
         avgLap: laps.length ? laps.reduce((a, b) => a + b, 0) / laps.length : null,
         stops: car.pit.stops, wallHits: car.wallHits, health: car.health,
         worstHit: car.worstHit?.severity ?? 0, worstHitSpeed: car.worstHit?.speed ?? 0, worstHitTime: this.worstHitAt.get(car.id)?.time ?? null,
@@ -452,7 +491,7 @@ export class Session {
 
   /** Open sessions: a wrecked car returns after a pause. Ghosts get instant top-ups (no crew chief). */
   private serviceCars(): void {
-    if (this.race) return; // in a race, wrecks are out and the crew chiefs handle stops
+    if (this.race || this.qualifying) return; // in a race (or qualifying), wrecks are out and the crew chiefs handle stops
     this.world.cars.forEach((car, k) => {
       if (car.retired) {
         const since = this.retiredAt.get(car.id);
@@ -508,7 +547,8 @@ export class Session {
       }
       // Race control's calls go to the crew but are race control's words; stewards speak for themselves.
       if (key !== null) this.pushRadio({ time: e.time, key, text: e.kind === 'crew' && !e.text.startsWith('Race control') ? `Crew: ${e.text}` : e.text });
-      this.log(e.kind, key, e.text);
+      const others = (e.others ?? []).map((o) => this.entrants.get(o.id)?.key).filter((k): k is number => k !== undefined && k !== key);
+      this.log(e.kind, key, e.text, others, e.incidentTime, e.time);
     }
   }
 
@@ -544,8 +584,20 @@ export class Session {
     this.stateWas = race.state;
   }
 
-  private log(kind: TimelineKind, key: number | null, text: string): void {
-    const event: TimelineEvent = { time: this.world.time, kind, key, text };
+  /** Qualifying's broadcast lines to the feed (a team's, or race control's); the marked ones to the timeline too. */
+  private readQualifyingNews(q: Qualifying): void {
+    for (const n of q.takeNews()) {
+      const key = n.car ? this.entrants.get(n.car.id)!.key : null;
+      this.pushRadio({ time: this.world.time, key, text: n.text });
+      if (n.mark) this.log(n.mark, key, n.text);
+    }
+  }
+
+  /** time: when it happened (an announcement's own time), if not now. */
+  private log(kind: TimelineKind, key: number | null, text: string, others: number[] = [], incidentTime?: number, time = this.world.time): void {
+    const event: TimelineEvent = {
+      time, kind, key, text, ...(others.length ? { others } : {}), ...(incidentTime !== undefined ? { incidentTime } : {}),
+    };
     const race = this.race;
     if (race) {
       const leader = race.leader();
@@ -554,6 +606,8 @@ export class Session {
         : race.started && leader ? Math.min(1, (leader.lapsCompleted + this.track.wrapS(leader.s) / L) / race.laps) : 0;
       event.lap = leader ? Math.min(race.laps, leader.lapsCompleted + 1) : race.laps;
     }
+    const q = this.qualifying;
+    if (q) event.at = q.view().progress;
     this.timeline.push(event);
   }
 
@@ -575,6 +629,13 @@ export class Session {
       prev.set(team.radio);
     }
   }
+}
+
+/** Qualifying as the series' rulebook runs it: ovals one car at a time for a lap, circuits three rounds of six minutes. */
+export function defaultQualifying(series: Series): QualifyingFormat {
+  return series.rulebook.qualifying === 'group'
+    ? { format: 'group', rounds: 3, roundSeconds: 360 }
+    : { format: 'solo', laps: 1 };
 }
 
 function makeChief(brain: EntrantSpec['chief']['brain']): CrewChief {

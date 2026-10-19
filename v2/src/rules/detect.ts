@@ -50,7 +50,7 @@ export class Detector {
   private contacts = new Map<string, { car: Car; against: Car | null; harm: number; last: number; speed: number }>();
 
   constructor(private readonly world: World, private readonly control: RaceControl, private readonly rules: Rulebook) {
-    this.lineRule = rules.belowTheLineOn.includes(String(world.track.layout.params.variant ?? ''));
+    this.lineRule = rules.belowTheLineOn.includes(world.track.kind);
   }
 
   step(): Violation[] {

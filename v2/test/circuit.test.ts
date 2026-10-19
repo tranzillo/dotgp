@@ -26,6 +26,24 @@ describe('road circuits', () => {
     });
   }
 
+  it('lays each barrier unbroken all the way round, chicanes included (no gap to drive through)', () => {
+    const layout = generateLayout({ type: 'circuit', seed: 4, variant: 'gp' });
+    const p = layout.params as unknown as CircuitParams;
+    // (This one has chicanes, where barriers past a corner's centre fold back over the outline.)
+    expect(p.elements.some((e, i) => 'straight' in e && e.straight < 15 && 'corner' in p.elements[i - 1])).toBe(true);
+    const track = new Track(layout);
+    const barriers = layout.walls.filter((w) => w.id.startsWith('barrier'));
+    expect(barriers.map((w) => w.range)).toEqual([null, null]);
+    for (const w of barriers) {
+      let prev = track.toWorld(0, track.edgeAt(w.d, 0));
+      for (let s = 0.5; s <= track.length; s += 0.5) {
+        const at = track.toWorld(s, track.edgeAt(w.d, s));
+        expect(Math.hypot(at[0] - prev[0], at[1] - prev[1])).toBeLessThan(4);
+        prev = at;
+      }
+    }
+  });
+
   it('is deterministic: a seed always gives the same circuit', () => {
     const a = generateLayout({ type: 'circuit', seed: 77 });
     const b = generateLayout({ type: 'circuit', seed: 77 });

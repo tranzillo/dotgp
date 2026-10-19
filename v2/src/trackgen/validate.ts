@@ -60,5 +60,20 @@ export function validateLayout(layout: TrackLayout, track: Track): Problem[] {
       }
     }
   });
+  // The road network: roads join the nodes they say, every way off the oval leads to a garage.
+  const roads = track.roads;
+  const ids = layout.infield.network?.nodes.map((n) => n.id) ?? [];
+  if (new Set(ids).size !== ids.length) error('road network has two nodes with the same id');
+  const close = (a: [number, number], b: [number, number]) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.5;
+  for (const road of roads.roads) {
+    const from = roads.nodes.get(road.from), to = roads.nodes.get(road.to);
+    if (!from || !to) { error(`road ${road.id} joins a node that isn't there`); continue; }
+    if (!close(road.points[0], from.at) || !close(road.points[road.points.length - 1], to.at)) error(`road ${road.id} doesn't start and end at its nodes`);
+  }
+  for (const node of roads.accesses) {
+    const p = track.project(node.at[0], node.at[1]);
+    if (p.d < track.innerEdgeAt(p.s) - 3 || p.d > track.pavedInnerD(p.s) + 1) error(`access ${node.id} isn't at the apron`);
+    if (!roads.pathToGarage(node.id)) error(`access ${node.id} doesn't lead to a garage`);
+  }
   return problems;
 }

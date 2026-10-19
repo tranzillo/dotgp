@@ -1,7 +1,7 @@
 import type { Centerline } from '../sim/centerline';
 import {
-  shiftEdge, type CenterlineSpec, type Decoration, type Edge, type EscapeLane, type Garage, type Marking, type PitLane, type Profile,
-  type SurfaceRegion, type TrackRect, type Wall,
+  evalProfile, fastLaneGap, shiftEdge, type CenterlineSpec, type Decoration, type Edge, type EscapeLane, type Garage, type Marking, type PitLane, type Profile,
+  type Road, type RoadNetwork, type RoadNode, type SurfaceRegion, type TrackRect, type Wall,
 } from '../sim/layout';
 
 /**
@@ -160,6 +160,141 @@ export function pitLane(o: PitLaneOptions): { pit: PitLane; pavedInner: Profile 
   };
 }
 
+/** Half the width of the paved lane into and out of a pit road set back from the track. */
+const PIT_LANE_HALF = 5.5;
+/** Pit road set back this far (or more) gets its own lanes across the grass. */
+const SET_BACK_PIT = 4;
+
+export interface PitComplexOptions extends PitLaneOptions {
+  /** Grass between pit road and the garage lot (0: the lot is right behind it), and how many lanes cross it. */
+  garageSetBack: number;
+  garageLanes: number;
+  /** How deep the lot is, given where its front is (d). */
+  garageDepth: (d0: number) => number;
+  /** Pit road on a chord: how much further in the whole pit complex stands at each (signed) s. */
+  offset?: (s: number) => number;
+}
+
+/**
+ * Pit road, its way in and out, the garage, and the roads between them, as
+ * one piece. Pit road can stand right against the track (the wall a metre
+ * inside the racing surface: the classic oval) or set back across a grass
+ * island, reached by paved lanes that leave the apron at the entry and
+ * rejoin it at the exit; the cars' and the pace car's pit routes follow
+ * those lanes (pit.entryRoute / exitRoute). The garage is right behind pit
+ * road or set back too, reached by garage lanes. The road network joins it
+ * all: pit entry (from the apron) to pit road, along it (wreckers keep to its
+ * inner side, behind the boxes), out to the apron at the exit; and garage
+ * lanes or the lot itself off pit road.
+ */
+export function pitComplex(cl: Centerline, o: PitComplexOptions): {
+  pit: PitLane; pavedInner: Profile; garage: Garage; buildings: Decoration[]; surfaces: SurfaceRegion[]; network: RoadNetwork;
+} {
+  const base = pitLane(o);
+  const L = cl.length;
+  const off = o.offset ?? (() => 0);
+  const apronD = o.innerEdge + o.apronWidth;
+  const apronLane = o.innerEdge + o.apronWidth / 2;
+  const fast = base.pit.wallD + fastLaneGap(base.pit.wallThickness, !!o.offset);
+  const setBack = o.wallGap >= SET_BACK_PIT || !!o.offset;
+  const inEnd = base.pit.wallStart - 30, outStart = base.pit.wallEnd + 15;
+  // The lanes in and out ease from the apron onto pit road's line. On a chord, pit road angles away from the track, so
+  // they blend into it (arriving along it, not just at it): sampled.
+  const blended = (a: number, b: number, fromLane: (s: number) => number, toLane: (s: number) => number): Profile => {
+    const keys: Array<[number, number]> = [];
+    for (let s = a; s < b; s += 5) {
+      const t = (s - a) / (b - a), w = t * t * (3 - 2 * t);
+      keys.push([s, fromLane(s) * (1 - w) + toLane(s) * w]);
+    }
+    keys.push([b, toLane(b)]);
+    return { keys, ease: 'linear' };
+  };
+  const entryRoute: Profile = o.offset
+    ? blended(base.pit.entryStart, inEnd, () => apronLane, (s) => fast + off(s))
+    : { keys: [[base.pit.entryStart, apronLane], [inEnd, fast]], ease: 'smooth' };
+  const exitRoute: Profile = o.offset
+    ? blended(outStart, base.pit.exitEnd, (s) => fast + off(s), () => apronLane)
+    : { keys: [[outStart, fast], [base.pit.exitEnd, apronLane]], ease: 'smooth' };
+  let offsetProfile: Profile | undefined;
+  if (o.offset) {
+    const keys: Array<[number, number]> = [];
+    for (let s = base.pit.entryStart - 1; s < base.pit.exitEnd + 1; s += 10) keys.push([s, off(s)]);
+    keys.push([base.pit.exitEnd + 1, off(base.pit.exitEnd + 1)]);
+    offsetProfile = { keys, ease: 'linear' };
+  }
+  const pit: PitLane = setBack ? { ...base.pit, entryRoute, exitRoute, ...(offsetProfile ? { offset: offsetProfile } : {}) } : base.pit;
+  const { entryStart, wallStart, wallEnd, exitEnd, roadD } = pit;
+  /** Where a car on the way in or out is (d), from the entry to the exit. */
+  const laneAt = (s: number) => (s < inEnd ? evalProfile(entryRoute, s, L) : s > outStart ? evalProfile(exitRoute, s, L) : fast + off(s));
+
+  // Set back: pavement round the lanes and pit road, grass between them and the apron.
+  const surfaces: SurfaceRegion[] = [];
+  let pavedInner = base.pavedInner;
+  if (setBack) {
+    const paved: Array<[number, number]> = [[entryStart - 1, apronD]];
+    const island: Array<[number, number]> = [[entryStart - 1, apronD]];
+    for (let s = entryStart; s <= exitEnd; s += 10) {
+      const onRoad = s >= wallStart && s <= wallEnd;
+      paved.push([s, onRoad ? roadD + off(s) : Math.max(apronD, laneAt(s) + PIT_LANE_HALF)]);
+      const wallFace = pit.wallD + off(s) - pit.wallThickness / 2;
+      island.push([s, Math.max(apronD, onRoad ? wallFace : laneAt(s) - PIT_LANE_HALF)]);
+    }
+    paved.push([exitEnd + 1, apronD]);
+    island.push([exitEnd + 1, apronD]);
+    pavedInner = { keys: paved, ease: 'linear' };
+    surfaces.push({ id: 'pit-island', surface: 'grass', shape: { kind: 'band', range: [entryStart, exitEnd], d0: apronD, d1: { keys: island, ease: 'linear' } }, pattern: 'mowing' });
+  }
+
+  // The garage, and lanes to it across the grass when it's set back.
+  const s0 = wallStart + 30, s1 = wallEnd - 30;
+  // (Behind pit road where it is furthest in, on a chord.)
+  let deepest = 0;
+  for (let s = s0; s <= s1; s += 5) deepest = Math.max(deepest, off(s));
+  const d0 = roadD + deepest + o.garageSetBack;
+  const { garage, buildings } = garageLot(cl, { s0, s1, d0, depth: o.garageDepth(d0) });
+  const laneS = o.garageSetBack > 0
+    ? Array.from({ length: Math.max(1, o.garageLanes) }, (_, k) => s0 + ((k + 0.5) * (s1 - s0)) / Math.max(1, o.garageLanes))
+    : [];
+  laneS.forEach((s, k) => {
+    surfaces.push({ id: `garage-lane${k}`, surface: 'road', shape: { kind: 'path', points: [cl.toWorld(s, roadD - 1 + off(s)), cl.toWorld(s, d0 + 2)], width: 8 }, outline: true });
+  });
+
+  // The network.
+  const service = (s: number) => roadD - 2 + off(s); // pit road's inner side, behind the boxes
+  const nodes: RoadNode[] = [];
+  const roads: Road[] = [];
+  const node = (id: string, kind: RoadNode['kind'], at: [number, number], s?: number) => { nodes.push({ id, kind, at, ...(s !== undefined ? { s } : {}) }); return id; };
+  const along = (from: number, to: number, d: (s: number) => number, step: number): Array<[number, number]> => {
+    const pts: Array<[number, number]> = [];
+    for (let s = from; s < to; s += step) pts.push(cl.toWorld(s, d(s)));
+    pts.push(cl.toWorld(to, d(to)));
+    return pts;
+  };
+  const entryAt = cl.toWorld(entryStart, apronD - 2), exitAt = cl.toWorld(exitEnd, apronD - 2);
+  node('pit-entry', 'apron', entryAt, entryStart);
+  node('pit-exit', 'apron', exitAt, exitEnd);
+  // Stations along pit road's inner side: its start and end, and where the garage is reached from it.
+  const garageS = o.garageSetBack > 0 ? laneS : [garage.lot.s0 + 4];
+  const stations: Array<{ s: number; id: string }> = [
+    { s: wallStart - 10, id: node('pit-road-start', 'junction', cl.toWorld(wallStart - 10, service(wallStart - 10))) },
+    ...garageS.map((s, k) => ({ s, id: node(o.garageSetBack > 0 ? `pit-lane${k}` : 'garage-pit', o.garageSetBack > 0 ? 'junction' : 'garage', cl.toWorld(s, service(s))) })),
+    { s: wallEnd + 10, id: node('pit-road-end', 'junction', cl.toWorld(wallEnd + 10, service(wallEnd + 10))) },
+  ];
+  const entryPts = setBack ? along(entryStart, wallStart - 10, laneAt, 15) : [cl.toWorld(entryStart, apronD - 2)];
+  roads.push({ id: 'pit-entry', from: 'pit-entry', to: 'pit-road-start', points: [entryAt, ...entryPts.slice(1), cl.toWorld(wallStart - 10, service(wallStart - 10))], width: 2 * PIT_LANE_HALF, grade: 'pit', oneWay: true });
+  for (let k = 0; k + 1 < stations.length; k++) {
+    const a = stations[k], b = stations[k + 1];
+    roads.push({ id: `pit-road${k}`, from: a.id, to: b.id, points: along(a.s, b.s, service, 25), width: o.roadWidth, grade: 'pit' });
+  }
+  const exitPts = setBack ? along(wallEnd + 10, exitEnd, laneAt, 15) : [cl.toWorld(wallEnd + 10, service(wallEnd + 10))];
+  roads.push({ id: 'pit-exit', from: 'pit-road-end', to: 'pit-exit', points: [cl.toWorld(wallEnd + 10, service(wallEnd + 10)), ...exitPts.slice(1), exitAt], width: 2 * PIT_LANE_HALF, grade: 'pit', oneWay: true });
+  laneS.forEach((s, k) => {
+    const end = node(`garage${k}`, 'garage', cl.toWorld(s, d0 + 2));
+    roads.push({ id: `garage-lane${k}`, from: `pit-lane${k}`, to: end, points: [cl.toWorld(s, service(s)), cl.toWorld(s, d0 + 2)], width: 8, grade: 'garage' });
+  });
+  return { pit, pavedInner, garage, buildings, surfaces, network: { nodes, roads } };
+}
+
 // ---------- infield ----------
 
 export interface GarageOptions {
@@ -219,7 +354,44 @@ export function escapeLane(cl: Centerline, o: EscapeLaneOptions): EscapeLane {
   };
 }
 
+/**
+ * A road round the edge of the infield instead of across it (the infield
+ * holds another track): off the apron, then along the infield at the depth
+ * of the garage lot's back row, through the turns, into the lot from its
+ * near end. Same contract as an escape lane: first point at the apron, last
+ * in the garage.
+ */
+export function serviceRoad(cl: Centerline, o: EscapeLaneOptions): EscapeLane {
+  const d = o.lot.d1 - 2;
+  const points: Array<[number, number]> = [
+    cl.toWorld(o.leaveS - 60, o.innerEdge + 1),
+    cl.toWorld(o.leaveS, o.apronD + 6),
+  ];
+  // From the leave point on round the lap to the lot's near end, every 25 m.
+  const from = o.leaveS + 30 + (d - o.apronD);
+  const to = from + cl.distanceFrom(from, o.lot.s0 - 10);
+  for (let s = from; s < to; s += 25) points.push(cl.toWorld(s, d));
+  points.push(cl.toWorld(o.lot.s0 - 10, d), cl.toWorld(o.lot.s0 + 6, d));
+  return { points, width: o.width };
+}
+
 // ---------- surfaces, walls, paint ----------
+
+/** A pit lateral position (wallD, roadD, laneD) where it is along pit road: shifted by the offset on a chord. */
+function pitEdge(pit: PitLane, d: number): Edge {
+  return pit.offset ? shiftEdge(pit.offset, d) : d;
+}
+
+/** The pit boxes' lines: one set across pit road, or (on a chord) one per box, each where pit road is there. */
+function stallTicks(pit: PitLane, length: number, half: number): Marking[] {
+  const at = [...pit.stalls.map((s) => s - half), pit.stalls[pit.stalls.length - 1] + half];
+  const offset = pit.offset;
+  if (!offset) return [{ kind: 'ticks', s: at, d0: pit.laneD, d1: pit.roadD - 1, style: 'stall' }];
+  return at.map((s): Marking => {
+    const shift = evalProfile(offset, s, length);
+    return { kind: 'ticks', s: [s], d0: pit.laneD + shift, d1: pit.roadD - 1 + shift, style: 'stall' };
+  });
+}
 
 /**
  * The standard surface stack for a paved track with an infield, bottom to
@@ -236,7 +408,7 @@ export function standardSurfaces(
     { id: 'garage', surface: 'garage', shape: { kind: 'rect', rect: garage.lot }, outline: true },
     { id: 'apron', surface: 'apron', shape: { kind: 'band', range: null, d0: edgeIn, d1: pavedInner } },
     { id: 'racing', surface: 'track', shape: { kind: 'band', range: null, d0: edgeOut, d1: edgeIn, openOut: true } },
-    { id: 'pit-road', surface: 'pit', shape: { kind: 'band', range: [pit.wallStart, pit.wallEnd], d0: pit.wallD, d1: pit.roadD } },
+    { id: 'pit-road', surface: 'pit', shape: { kind: 'band', range: [pit.wallStart, pit.wallEnd], d0: pitEdge(pit, pit.wallD), d1: pitEdge(pit, pit.roadD) } },
   ];
 }
 
@@ -247,7 +419,7 @@ export function standardWalls(edgeOut: Edge, pit: PitLane, outerThickness = 0.8)
     { id: 'outer', range: null, d: shiftEdge(edgeOut, -outerThickness / 2), thickness: outerThickness, faces: 'in', caps: false },
     {
       id: 'pit-wall', range: [pit.wallStart, pit.wallEnd],
-      d: pit.wallD, thickness: pit.wallThickness, faces: 'both', caps: true, attenuators: true,
+      d: pitEdge(pit, pit.wallD), thickness: pit.wallThickness, faces: 'both', caps: true, attenuators: true,
     },
   ];
 }
@@ -264,8 +436,8 @@ export function standardMarkings(length: number, edgeIn: Edge, startLine: [numbe
     { kind: 'line', range: [pit.blendEnd, length + pit.wallEnd], d: edgeIn, style: 'edge' },
     { kind: 'line', range: [pit.wallEnd, pit.blendEnd], d: edgeIn, style: 'blend' },
     { kind: 'line', range: [pit.entryStart, pit.wallStart], d: edgeIn, style: 'entry' },
-    { kind: 'line', range: [pit.wallStart, pit.wallEnd], d: pit.laneD, style: 'lane' },
-    { kind: 'ticks', s: [...pit.stalls.map((s) => s - half), pit.stalls[pit.stalls.length - 1] + half], d0: pit.laneD, d1: pit.roadD - 1, style: 'stall' },
+    { kind: 'line', range: [pit.wallStart, pit.wallEnd], d: pitEdge(pit, pit.laneD), style: 'lane' },
+    ...stallTicks(pit, length, half),
     { kind: 'ticks', s: [0], d0: startLine[0], d1: startLine[1], style: 'start' },
   ];
 }

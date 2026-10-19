@@ -32,7 +32,7 @@
       #controls { display: flex; align-items: center; gap: 6px 14px; padding: 4px 16px 8px; border-top: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
       #controls .push { margin-left: auto; }
       #controls .group { display: flex; align-items: center; gap: 6px; }
-      #controls .ctl-label { color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+      #controls .ctl-label { color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
       .seg { display: inline-flex; }
       .seg button { border-radius: 0; margin-left: -1px; padding: 4px 8px; font-variant-numeric: tabular-nums; }
       .seg button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
@@ -65,8 +65,36 @@
       #tlLabel { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
       #tlLabel b { color: var(--text); font-weight: 600; }
       .popwrap { position: relative; }
-      #displayPop { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 4; width: 300px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px 6px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
-      #displayPop[hidden] { display: none; }
+      .vsep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
+      /* A slider and a number box for one value: either one moves the other. */
+      .slider-num { display: inline-flex; align-items: center; gap: 6px; }
+      .slider-num input[type=range] { width: 96px; margin: 0; accent-color: var(--text); cursor: pointer; }
+      .slider-num input[type=number] { width: 58px; height: 28px; background: #1d1d21; color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px 0 6px;
+        font: 12px var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+      .slider-num input[type=number]:focus { outline: none; border-color: #6a6a72; }
+      .slider-num .unit { color: var(--muted); font: 12px var(--mono); margin-left: -3px; }
+      .pop { position: absolute; bottom: calc(100% + 8px); z-index: 4; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+      .pop[hidden] { display: none; }
+      #displayPop { right: 0; width: 300px; padding: 10px 12px 6px; }
+      /* The camera: whose car it's on (and a list of the field to pick from), and the cars in a moment picked off the timeline. */
+      #camPick { display: inline-flex; align-items: center; gap: 2px; width: 190px; height: 28px; padding: 0 8px; white-space: nowrap; overflow: hidden; }
+      #camPick .who { overflow: hidden; text-overflow: ellipsis; }
+      #camPick .muted { margin-left: auto; padding-left: 6px; }
+      #camPop { left: 50%; transform: translateX(-50%); width: 300px; max-height: 380px; overflow-y: auto; padding: 4px 0; }
+      #camPop .pick { display: flex; align-items: center; gap: 2px; width: 100%; padding: 4px 10px; border: 0; border-radius: 0; background: transparent; text-align: left; font: 12px var(--mono); white-space: nowrap; }
+      #camPop .pick:hover { background: #1d1d22; }
+      #camPop .pick.on { background: #26262c; color: var(--text); border-color: transparent; }
+      #camPop .pick .pos { width: 26px; color: var(--muted); }
+      #camPop .pick .name { flex: 1; overflow: hidden; text-overflow: ellipsis; font-family: system-ui, sans-serif; }
+      #camPop .pick.out { color: #6a6a72; }
+      #camPop .head { padding: 6px 10px 3px; color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+      #camIncident { display: inline-flex; align-items: center; gap: 3px; padding-left: 4px; }
+      #camIncident[hidden] { display: none; }
+      #camIncident button { height: 26px; padding: 0 7px; font-size: 12px; }
+      #camIncident .tag { color: #ff9f1a; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin-right: 2px; }
+      /* The car the camera's on, in the tower and the paddock. */
+      .cam { display: inline-block; width: 10px; height: 8px; margin-left: 5px; vertical-align: 0; background: currentColor; color: #ff9f1a;
+        clip-path: polygon(0 15%, 65% 15%, 65% 40%, 100% 15%, 100% 85%, 65% 60%, 65% 85%, 0 85%); }
       #displayPop h2 { margin: 4px 0 8px; }
       #displayPop h2 + .row { margin-top: 0; }
       aside { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 14px 14px 24px; }
@@ -176,19 +204,31 @@
           <div id="hud"></div>
         </div>
         <div id="controls">
+          <div id="timeline"><div id="tlBar"><div class="tl-line"><div id="tlLive"></div><div id="tlFill"></div><div id="tlCautions"></div><div id="tlTicks"></div></div><div id="tlMarks"></div><div id="tlHead"></div></div><span id="tlLabel"></span></div>
           <div class="group">
             <button id="stepBack" class="icon-btn" title="Step 0.1 s back (,)"><svg viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="2" height="11"/><path d="M13 2.5v11L5.5 8z"/></svg></button>
             <button id="reverse" class="icon-btn" title="Play backwards (R)"><svg viewBox="0 0 16 16"><path d="M8 3v10L1.5 8zM15 3v10L8.5 8z"/></svg></button>
             <button id="playPause" class="icon-btn" title="Pause (Space or K)"></button>
             <button id="stepAhead" class="icon-btn" title="Step 0.1 s ahead (.)"><svg viewBox="0 0 16 16"><path d="M3 2.5v11l7.5-5.5z"/><rect x="11.5" y="2.5" width="2" height="11"/></svg></button>
             <button id="goLive" class="live-btn" title="Back to live (End)"><i></i>LIVE</button>
+            <span class="vsep"></span>
+            <span class="slider-num"><label class="ctl-label" for="speedNum" title="Slower (J), faster (L)">Sim speed</label><input type="range" id="speedRange" min="0" max="1000" step="1" aria-label="Sim speed" title="Slower (J), faster (L)"><input type="number" id="speedNum" min="0.1" max="64" step="0.25" inputmode="decimal"><span class="unit">×</span></span>
           </div>
-          <div id="timeline"><div id="tlBar"><div class="tl-line"><div id="tlLive"></div><div id="tlFill"></div><div id="tlCautions"></div><div id="tlTicks"></div></div><div id="tlMarks"></div><div id="tlHead"></div></div><span id="tlLabel"></span></div>
-          <div class="group push"><span class="ctl-label" title="Slower (J), faster (L)">Speed</span><span id="speedButtons" class="seg"></span></div>
-          <div class="group"><span class="ctl-label" title="Cycle with Z">Camera</span><span id="zoomButtons" class="seg"></span></div>
+          <div id="camera" class="group push">
+            <span class="ctl-label">Camera</span>
+            <button id="camPrev" class="icon-btn" title="Previous car ([)" aria-label="Previous car"><svg viewBox="0 0 16 16"><path d="M10.5 2.5v11L3.5 8z"/></svg></button>
+            <div class="popwrap">
+              <button id="camPick" title="The driver in focus: the camera follows them and the tower, paddock and radio pick them out" aria-expanded="false" aria-controls="camPop"></button>
+              <div id="camPop" class="pop" hidden></div>
+            </div>
+            <button id="camNext" class="icon-btn" title="Next car (])" aria-label="Next car"><svg viewBox="0 0 16 16"><path d="M5.5 2.5v11l7-5.5z"/></svg></button>
+            <span id="camIncident" hidden></span>
+            <span class="vsep"></span>
+            <span class="slider-num"><label class="ctl-label" for="zoomNum" title="Cycle with Z (1 = the whole track)">Zoom</label><input type="range" id="zoomRange" min="0" max="1000" step="1" aria-label="Zoom" title="Cycle with Z (1 = the whole track)"><input type="number" id="zoomNum" min="1" max="16" step="0.1" inputmode="decimal"><span class="unit">×</span></span>
+          </div>
           <div class="popwrap">
             <button id="displayToggle" title="Display options" aria-expanded="false" aria-controls="displayPop">Display</button>
-            <div id="displayPop" hidden>
+            <div id="displayPop" class="pop" hidden>
               <h2>Display</h2>
               <div class="row"><span class="label">Cars</span><span id="dotButtons" class="row inline"></span></div>
               <div class="row"><span class="label" title="Speed trails, and exhaust puffs while the engine is pulling">Trails</span><span id="effectButtons" class="row inline"></span></div>
@@ -212,7 +252,7 @@
             <thead id="towerHead"><tr><th>P</th><th>Driver</th><th>Gap</th><th>Best</th><th>Tire</th><th>Fuel</th><th>Pit</th><th>Hlth</th></tr></thead>
             <tbody id="tower"></tbody>
           </table></div>
-          <p class="note">Click a car to follow it and hear only its radio; double-click for the driver's history.</p>
+          <p class="note">Click a car to put it in focus (the camera follows it, the radio is only its team; [ and ] go through the field, and the camera bar lists it); double-click for the driver's history.</p>
 
           <h2>Team radio</h2>
           <div id="radio"></div>
@@ -226,20 +266,31 @@
           <h2>Championship</h2>
           <div id="season"></div>
           <div class="row"><button id="nextRound" title="Race the next round of the championship now">Race the next round</button></div>
-          <div class="row"><span class="label" title="What the field does when a race ends">Then</span><span id="autoButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="What the field does when a race ends (a race weekend: practice, qualifying, then the race)">Then</span><span id="autoButtons" class="row inline"></span></div>
 
           <h2>Race settings <span class="muted">(championship and exhibitions)</span></h2>
           <div class="row"><span class="label">Field</span><span id="fieldButtons" class="row inline"></span></div>
           <div class="row"><span class="label">Laps</span><span id="lapButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="How qualifying runs (from the next qualifying). By series: its rulebook's format (ovals one car at a time, road racing in rounds with the field together)">Qualifying</span><span id="qualiFormatButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="Solo qualifying: timed laps each car runs, one car at a time; its best one counts">Solo laps</span><span id="qualiLapButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="Group qualifying: rounds with the field on track together; after each but the last the slowest go out (the field over the rounds each time)">Rounds</span><span id="qualiRoundButtons" class="row inline"></span><span id="qualiMinuteButtons" class="row inline"></span></div>
           <div class="row"><span class="label" title="Tire wear and fuel burn multiplier">Pace</span><span id="paceButtons" class="row inline"></span></div>
           <div class="row"><span class="label" title="Drivers learn as they race, comparing laps (from the next race)">Learn</span><span id="learnButtons" class="row inline"></span></div>
           <div class="row"><button id="restart" title="Start the field's current session again with these settings">Restart</button></div>
 
           <h2>Exhibition <span class="muted">(doesn't count for the championship)</span></h2>
-          <div class="row" id="trackButtons"></div>
-          <div class="row"><button id="newTrack" title="Generate a random oval (drivers practise on generated ovals in the Track variety lesson)">New oval</button><button id="newCircuit" title="Generate a random road circuit (the drivers can't turn right yet)">New circuit</button></div>
+          <div class="row"><span class="label" title="Where to race: the presets, and any venue generated below">Venue</span><span id="venueButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="Who races, to their rulebook. Only series that race on one of the venue's layouts can be picked">Series</span><span id="seriesButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="Which of the venue's layouts the series races on">Layout</span><span id="layoutButtons" class="row inline"></span></div>
           <div class="row"><span class="label">Session</span><span id="modeButtons" class="row inline"></span></div>
-          <p class="note">Picking a track or a session starts it straight away.</p>
+          <div class="row"><button id="startExhibition" title="Start this session for the field (its current session ends)">Start</button></div>
+
+          <h2>Generate a venue</h2>
+          <div class="row"><span class="label">Kind</span><span id="genKindButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="Size class (any: the seed picks)">Size</span><span id="genSizeButtons" class="row inline"></span></div>
+          <div class="row" id="genShapeRow"><span class="label" title="Oval shape (any: the size class's mix). Drivers practise on all of them in the Track variety lesson">Shape</span><span id="genShapeButtons" class="row inline"></span></div>
+          <div class="row"><button id="generate" title="Add a venue to the Exhibition list (starts nothing)">Generate</button></div>
+          <p class="note">Generating adds a venue to the list without starting anything. Pick a venue, series, layout and session, then Start.</p>
         </section>
 
         <section data-view="paddock" hidden>

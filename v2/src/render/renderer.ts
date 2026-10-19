@@ -57,6 +57,9 @@ const COLORS = {
   buildingRoof: '#6c6c75',
   road: '#38383d',
   grassStripe: '#213a27',
+  /** Painted run-off: the bands across it. */
+  paintRed: 'rgba(150,48,48,0.5)',
+  paintBlue: 'rgba(48,72,150,0.5)',
   /** Barriers: solid and bright, so they never read as a painted edge. */
   barrier: '#e4e4e4',
   barrierShadow: '#050506',
@@ -98,6 +101,9 @@ const LINE_STYLES: Record<LineStyle, { color: string; width: number; dash?: numb
   start: { color: COLORS.startLine, width: 2 },
 };
 
+/** How bright the lines of a layout that isn't being raced are drawn. */
+const OTHER_LAYOUT_ALPHA = 0.4;
+
 /** What a decoration painter gets to draw with. */
 interface DecorView {
   ctx: CanvasRenderingContext2D;
@@ -122,6 +128,22 @@ const DECOR_PAINTERS: { [K in Decoration['kind']]: (v: DecorView, deco: Extract<
     v.ctx.lineTo(bx, by);
     v.ctx.strokeStyle = COLORS.buildingRoof;
     v.ctx.lineWidth = Math.max(1, 1.5 * v.scale);
+    v.ctx.stroke();
+  },
+  bays(v, { rect, spacing }) {
+    const depth = rect.d1 - rect.d0;
+    const row = Math.min(6, depth * 0.35);
+    v.ctx.beginPath();
+    for (let s = rect.s0 + 2; s <= rect.s1 - 2; s += spacing) {
+      for (const [a, b] of [[rect.d0 + 1, rect.d0 + 1 + row], [rect.d1 - 1 - row, rect.d1 - 1]]) {
+        const [ax, ay] = v.toScreen(s, a);
+        const [bx, by] = v.toScreen(s, b);
+        v.ctx.moveTo(ax, ay);
+        v.ctx.lineTo(bx, by);
+      }
+    }
+    v.ctx.strokeStyle = COLORS.paint;
+    v.ctx.lineWidth = Math.max(0.5, 0.15 * v.scale);
     v.ctx.stroke();
   },
 };
@@ -279,6 +301,14 @@ export class Renderer {
     this.updateTransform();
   }
 
+  /** The zoom at which a box this size (world metres) takes up `share` of the view (clear of the insets). */
+  zoomToFit(w: number, h: number, share = 0.6): number {
+    const ins = this.insets, px = this.dpr;
+    const viewW = this.canvas.width - (ins.left + ins.right) * px;
+    const viewH = this.canvas.height - (ins.top + ins.bottom) * px;
+    return Math.min((viewW * share) / Math.max(1, w), (viewH * share) / Math.max(1, h)) / this.fitScale;
+  }
+
   private updateTransform(): void {
     const track = this.track;
     if (!track) return;
@@ -339,8 +369,11 @@ export class Renderer {
 
   private rectPath(ctx: CanvasRenderingContext2D, r: TrackRect): void {
     const track = this.track!;
+    // Its long sides follow the track (a lot along a curved front stretch curves with it), sampled every few metres.
+    const steps = Math.max(1, Math.ceil((r.s1 - r.s0) / 5));
+    const along = Array.from({ length: steps + 1 }, (_, k) => r.s0 + ((r.s1 - r.s0) * k) / steps);
     ctx.beginPath();
-    [[r.s0, r.d0], [r.s1, r.d0], [r.s1, r.d1], [r.s0, r.d1]].forEach(([sv, dv], i) => {
+    [...along.map((sv) => [sv, r.d0]), ...along.reverse().map((sv) => [sv, r.d1])].forEach(([sv, dv], i) => {
       const [x, y] = this.toScreen(...track.toWorld(sv, dv));
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     });
@@ -355,19 +388,26 @@ export class Renderer {
     });
   }
 
-  /** Red blocks across a kerb every other stretch (it is filled white first). */
+  /**
+   * Red blocks across a kerb every other stretch (it is filled white first),
+   * each the same length along the kerb itself: round the inside of a corner
+   * that is less track (centerline) than round the outside.
+   */
   private kerbStripes(ctx: CanvasRenderingContext2D, range: SRange, d0: Edge, d1: Edge): void {
     const track = this.track!;
     const [s0, s1] = range ?? [0, track.length];
-    const block = 3; // m
+    const block = 3; // m, along the kerb
+    const at0 = this.edgeFn(d0), at1 = this.edgeFn(d1);
+    const along = (s: number) => block / Math.max(0.2, 1 - track.curvatureAt(s) * (at0(s) + at1(s)) / 2);
     ctx.fillStyle = COLORS.kerbStripe;
-    for (let s = s0; s < s1; s += 2 * block) {
-      const e = Math.min(s1, s + block);
+    for (let s = s0; s < s1;) {
+      const e = Math.min(s1, s + along(s));
       ctx.beginPath();
-      this.trace(ctx, s, e, this.edgeFn(d0));
-      this.trace(ctx, s, e, this.edgeFn(d1), false, true);
+      this.trace(ctx, s, e, at0);
+      this.trace(ctx, s, e, at1, false, true);
       ctx.closePath();
       ctx.fill();
+      s = e + along(e); // (then a white block)
     }
   }
 
@@ -392,6 +432,9 @@ export class Renderer {
       }
     } else if (shape.kind === 'rect') {
       this.rectPath(ctx, shape.rect);
+    } else if (shape.kind === 'polygon') {
+      this.ringsPath(ctx, shape.rings);
+      rule = 'evenodd';
     } else {
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
@@ -403,7 +446,27 @@ export class Renderer {
     }
     ctx.fillStyle = color;
     ctx.fill(rule);
-    if (region.surface === 'kerb' && shape.kind === 'band') this.kerbStripes(ctx, shape.range, shape.d0, shape.d1);
+    // (A kerb's tapering ends are plain white.)
+    if (region.surface === 'kerb' && shape.kind === 'band' && region.pattern !== 'kerbEnd') this.kerbStripes(ctx, shape.range, shape.d0, shape.d1);
+    if (region.pattern === 'painted') {
+      // Painted run-off: broad diagonal bands, red and blue, fixed to the ground.
+      ctx.save();
+      ctx.clip(rule);
+      const band = 4 * this.scale;
+      const [ox, oy] = this.toScreen(0, 0);
+      const w = this.base.width, h = this.base.height;
+      ctx.lineWidth = band;
+      const phase = ((ox + oy) % (4 * band) + 4 * band) % (4 * band);
+      for (let c = phase - h - 4 * band, i = 0; c < w + 4 * band; c += band, i++) {
+        if (i % 2) continue;
+        ctx.strokeStyle = i % 4 ? COLORS.paintBlue : COLORS.paintRed;
+        ctx.beginPath();
+        ctx.moveTo(c, 0);
+        ctx.lineTo(c + h, h);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
     if (region.pattern === 'mowing') {
       ctx.save();
       ctx.clip(rule);
@@ -417,11 +480,25 @@ export class Renderer {
     }
   }
 
+  /** Closed world rings as one path (fill even-odd for holes). */
+  private ringsPath(ctx: CanvasRenderingContext2D, rings: Array<Array<[number, number]>>): void {
+    ctx.beginPath();
+    for (const ring of rings) {
+      ring.forEach(([x, y], i) => {
+        const [sx, sy] = this.toScreen(x, y);
+        if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+      });
+      ctx.closePath();
+    }
+  }
+
   /** Quiet edge line round a region (lots, roads). */
   private outlineRegion(ctx: CanvasRenderingContext2D, region: SurfaceRegion): void {
     const shape = region.shape;
     if (shape.kind === 'rect') {
       this.rectPath(ctx, shape.rect);
+    } else if (shape.kind === 'polygon') {
+      this.ringsPath(ctx, shape.rings);
     } else if (shape.kind === 'path') {
       ctx.beginPath();
       const pts = shape.points;
@@ -445,18 +522,40 @@ export class Renderer {
   }
 
   /**
-   * Draw the track from its layout: surfaces bottom to top and decoration on
-   * the base layer; outlines, paint, barriers and the start line on the lines
-   * layer. Knows nothing about what kind of track it is.
+   * Draw the track from its layout, and the venue's other tracks round it:
+   * surfaces bottom to top and decoration on the base layer; outlines, paint,
+   * barriers and the start line on the lines layer. The outermost track
+   * first, so each one inside paints over the infield of the one round it.
+   * Knows nothing about what kind of track any of them is.
    */
   private drawTrack(): void {
-    const track = this.track!;
-    const layout = track.layout;
-    const px = this.dpr;
-
+    const own = this.track!;
+    const area = (t: Track) => (t.extent.maxX - t.extent.minX) * (t.extent.maxY - t.extent.minY);
+    const tracks = [own, ...own.neighbours].sort((a, b) => area(b) - area(a));
     const base = this.base.getContext('2d')!;
     base.fillStyle = COLORS.background;
     base.fillRect(0, 0, this.base.width, this.base.height);
+    const lines = this.lines.getContext('2d')!;
+    lines.clearRect(0, 0, this.lines.width, this.lines.height);
+    try {
+      for (const t of tracks) { this.track = t; this.drawBase(base); }
+      // Every layout's lines are painted, as at a real track; the one being raced bright, the rest faint.
+      for (const t of tracks) {
+        this.track = t;
+        lines.globalAlpha = t === own ? 1 : OTHER_LAYOUT_ALPHA;
+        this.drawLines(lines);
+      }
+      lines.globalAlpha = 1;
+    } finally {
+      this.track = own;
+    }
+    if (this.debugLayers.banking) this.drawBankLabels(lines);
+    this.trackDirty = false;
+  }
+
+  /** One track's surfaces, banking sheen and decoration. */
+  private drawBase(base: CanvasRenderingContext2D): void {
+    const layout = this.track!.layout;
     for (const region of layout.surfaces) this.paintRegion(base, region);
     // Banking: a heatmap in the debug view, otherwise a light sheen that rises with the slope.
     this.paintBanking(base, this.debugLayers.banking
@@ -464,9 +563,13 @@ export class Renderer {
       : (b) => `rgba(255,255,255,${Math.min(0.3, 0.3 * deg(b) / 30).toFixed(3)})`);
     const view = this.decorView(base);
     for (const deco of layout.decor) paintDecoration(view, deco);
+  }
 
-    const lines = this.lines.getContext('2d')!;
-    lines.clearRect(0, 0, this.lines.width, this.lines.height);
+  /** One track's outlines, paint, barriers and start line. */
+  private drawLines(lines: CanvasRenderingContext2D): void {
+    const track = this.track!;
+    const layout = track.layout;
+    const px = this.dpr;
     lines.lineJoin = 'round';
     lines.lineCap = 'butt';
     const stroke = (style: { color: string; width: number; dash?: number[] }) => {
@@ -477,10 +580,14 @@ export class Renderer {
       lines.setLineDash([]);
     };
 
+    const alpha = lines.globalAlpha;
     for (const region of layout.surfaces) {
       if (!region.outline) continue;
+      // A course road is another layout's racing surface: its edges faint too.
+      if (region.surface === 'track' && region.shape.kind === 'path') lines.globalAlpha = alpha * OTHER_LAYOUT_ALPHA;
       this.outlineRegion(lines, region);
       stroke(LINE_STYLES.edge);
+      lines.globalAlpha = alpha;
     }
 
     const paint = (m: Marking) => {
@@ -500,16 +607,20 @@ export class Renderer {
     // The start/finish line goes over the barriers; everything else under them.
     for (const m of layout.markings) if (m.style !== 'start') paint(m);
 
-    // Barriers: thick and bright with a dark outline, attenuators on padded ends.
-    for (const wall of layout.walls) {
-      const w = Math.max(3 * px, wall.thickness * this.scale);
-      for (const [color, width] of [[COLORS.barrierShadow, w + 2 * px], [COLORS.barrier, w]] as const) {
+    // Barriers are solid whichever layout is raced: drawn at full strength.
+    lines.globalAlpha = 1;
+    // Barriers: thick and bright with a dark outline (all the outlines first, so where one barrier
+    // runs on from another the second's outline doesn't cut across the first), attenuators on padded ends.
+    for (const [color, grow] of [[COLORS.barrierShadow, 2 * px], [COLORS.barrier, 0]] as const) {
+      for (const wall of layout.walls) {
         lines.beginPath();
         this.along(lines, wall.range, wall.d);
         lines.strokeStyle = color;
-        lines.lineWidth = width;
+        lines.lineWidth = Math.max(3 * px, wall.thickness * this.scale) + grow;
         lines.stroke();
       }
+    }
+    for (const wall of layout.walls) {
       if (wall.attenuators && wall.range) {
         for (const sv of wall.range) {
           const [x, y] = this.toScreen(...track.toWorld(sv, track.edgeAt(wall.d, sv)));
@@ -520,9 +631,17 @@ export class Renderer {
         }
       }
     }
+    // Barriers laid in the world (a road layout's closures): drawn like the walls.
+    for (const [color, grow] of [[COLORS.barrierShadow, 2 * px], [COLORS.barrier, 0]] as const) {
+      for (const b of layout.barriers ?? []) {
+        this.polyline(lines, b.points);
+        lines.strokeStyle = color;
+        lines.lineWidth = Math.max(3 * px, b.thickness * this.scale) + grow;
+        lines.stroke();
+      }
+    }
+    lines.globalAlpha = alpha;
     for (const m of layout.markings) if (m.style === 'start') paint(m);
-    if (this.debugLayers.banking) this.drawBankLabels(lines);
-    this.trackDirty = false;
   }
 
   /**
@@ -683,7 +802,7 @@ export class Renderer {
   }
 
   render(
-    cars: RenderCar[], liveryOf: (car: RenderCar) => Livery | undefined, highlight: RenderCar | null = null,
+    cars: RenderCar[], liveryOf: (car: RenderCar) => Livery | undefined, highlight: readonly RenderCar[] = [],
     officials: RenderOfficials = { paceCar: null, wreckers: [] },
   ): void {
     const ctx = this.ctx;
@@ -810,7 +929,7 @@ export class Renderer {
       }
       ctx.globalAlpha = 1;
 
-      if (car === highlight) {
+      if (highlight.includes(car)) {
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 1.5 * this.dpr;
         ctx.beginPath();

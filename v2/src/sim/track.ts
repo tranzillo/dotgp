@@ -1,10 +1,19 @@
 import { Centerline } from './centerline';
+import { PolygonIndex } from './polygon';
+import { legacyNetwork, RoadGraph } from './roads';
 import {
-  evalEdge, evalProfile, type Edge, type Infield, type PitLane, type Surface, type SurfaceRegion, type TrackLayout, type Wall,
+  evalEdge, evalProfile, layoutKind, type Edge, type Infield, type LayoutKind, type PitLane, type Surface, type SurfaceRegion, type TrackLayout, type Wall,
 } from './layout';
 
 export type { Surface, TrackRect } from './layout';
 export type { Projection } from './centerline';
+
+/**
+ * How far past the outside edge the racing surface carries on for physics
+ * (beyond the wall face, where a car can't be) at a venue with other tracks:
+ * past it is what's there (grass, another track), not more racing surface.
+ */
+const OPEN_BEYOND = 3;
 
 /** Pit lane as the sim uses it: the layout's pit plus derived world positions. */
 export interface PitGeometry extends PitLane {
@@ -32,6 +41,8 @@ export interface WallCap {
 export class Track extends Centerline {
   readonly layout: TrackLayout;
   readonly name: string;
+  /** What kind of racing it's for (road layouts get drivers' road-course skill). */
+  readonly kind: LayoutKind;
   /**
    * Nominal half width (at the start line): a fixed scale for normalising
    * lateral distances. For where the surface actually ends, use the edges.
@@ -45,19 +56,35 @@ export class Track extends Centerline {
   readonly wallCaps: WallCap[];
   /** Surface regions, top first (the order surfaceAt checks them in). */
   private readonly regionsTopFirst: SurfaceRegion[];
+  /** Point tests for polygon regions, built when first needed. */
+  private readonly polygons = new Map<SurfaceRegion, PolygonIndex>();
   /** Racing surface edges per sample. */
   private readonly edgeIn: Float64Array;
   private readonly edgeOut: Float64Array;
+  /** How much further in the pit complex stands per sample (pit road on a chord); zeros if it doesn't. */
+  private readonly pitOff: Float64Array;
   /** Banking per sample: inside and outside edge of the racing surface, and inside it. */
   private readonly bankIn: Float64Array;
   private readonly bankOut: Float64Array;
   private readonly bankInfield: Float64Array;
   readonly bounds: { minX: number; minY: number; maxX: number; maxY: number };
+  /** Furthest anything of this track's own (surfaces, walls, garage) lies from its centerline (m). */
+  readonly reach: number;
+  /** The venue's other tracks: scenery here (drivable, solid walls, not raced). */
+  readonly neighbours: Track[];
+  /** Barriers laid in the world (a road layout's closures). */
+  readonly barriers: Array<{ id: string; points: Array<[number, number]>; thickness: number }>;
+  /** The infield's roads (escape roads, pit road, the garage...), as a graph. */
+  readonly roads: RoadGraph;
+  /** At a venue with other tracks (or one of them): surfaces end where they say, nothing runs on open past the wall. */
+  private readonly bounded: boolean;
 
-  constructor(layout: TrackLayout) {
-    super(layout.centerline);
+  /** scenery: built as another track's neighbour. */
+  constructor(layout: TrackLayout, scenery = false) {
+    super(layout.centerline, layout.placement);
     this.layout = layout;
     this.name = layout.name;
+    this.kind = layoutKind(layout);
     const cs = layout.crossSection;
     this.apronWidth = cs.apronWidth;
 
@@ -84,7 +111,12 @@ export class Track extends Centerline {
     }
 
     const pit = layout.pit;
-    this.pit = { ...pit, wallEnds: [this.toWorld(pit.wallStart, pit.wallD), this.toWorld(pit.wallEnd, pit.wallD)] };
+    this.pitOff = new Float64Array(n);
+    if (pit.offset) for (let i = 0; i < n; i++) this.pitOff[i] = evalProfile(pit.offset, this.signedS(i * this.ds), this.length);
+    this.pit = {
+      ...pit,
+      wallEnds: [this.toWorld(pit.wallStart, pit.wallD + this.pitOffset(pit.wallStart)), this.toWorld(pit.wallEnd, pit.wallD + this.pitOffset(pit.wallEnd))],
+    };
     this.infield = layout.infield;
     this.walls = layout.walls;
     this.wallCaps = [];
@@ -105,6 +137,12 @@ export class Track extends Centerline {
     const pad = reach + 4;
     const e = this.extent;
     this.bounds = { minX: e.minX - pad, maxX: e.maxX + pad, minY: e.minY - pad, maxY: e.maxY + pad };
+    const lot = layout.infield.garage.lot;
+    this.reach = Math.max(pad, Math.abs(lot.d0), Math.abs(lot.d1), Math.abs(this.pit.roadD) + Math.max(0, ...this.pitOff)) + 2;
+    this.neighbours = scenery ? [] : (layout.neighbours ?? []).map((nb) => new Track(nb, true));
+    this.bounded = scenery || this.neighbours.length > 0;
+    this.roads = new RoadGraph(layout.infield.network ?? legacyNetwork(this));
+    this.barriers = layout.barriers ?? [];
   }
 
   /** Inside edge of the racing surface at a sample index. */
@@ -146,6 +184,12 @@ export class Track extends Centerline {
     return evalEdge(edge, this.signedS(s), this.length);
   }
 
+  /** How much further in than its wallD, roadD and laneD the pit complex stands at s (pit road on a chord; else 0). */
+  pitOffset(s: number): number {
+    const f = this.wrapS(s) / this.ds, i = Math.floor(f) % this.n, t = f - Math.floor(f);
+    return this.pitOff[i] + (this.pitOff[(i + 1) % this.n] - this.pitOff[i]) * t;
+  }
+
   /** True where the pit wall stands. */
   inPitWallZone(s: number): boolean {
     return this.inRange(s, [this.pit.wallStart, this.pit.wallEnd]);
@@ -157,10 +201,33 @@ export class Track extends Centerline {
    * skipped.
    */
   surfaceAt(s: number, d: number, x?: number, y?: number): Surface {
+    let own = this.layout.ground;
     for (const region of this.regionsTopFirst) {
-      if (this.regionContains(region, s, d, x, y)) return region.surface;
+      if (this.regionContains(region, s, d, x, y)) { own = region.surface; break; }
     }
-    return this.layout.ground;
+    // Where this track has nothing but grass, a neighbour may have pavement.
+    if (own === 'grass' && x !== undefined && y !== undefined && this.neighbours.length) return this.sceneryAt(x, y) ?? own;
+    return own;
+  }
+
+  /** What the venue's other tracks have at a world point, where it's more than grass. */
+  private sceneryAt(x: number, y: number): Surface | null {
+    for (const nb of this.neighbours) {
+      if (x < nb.bounds.minX - nb.reach || x > nb.bounds.maxX + nb.reach || y < nb.bounds.minY - nb.reach || y > nb.bounds.maxY + nb.reach) continue;
+      const q = nb.near(x, y, nb.reach);
+      const surface = q ? nb.surfaceAt(q.s, q.d, x, y) : nb.roadAt(x, y);
+      if (surface && surface !== 'grass') return surface;
+    }
+    return null;
+  }
+
+  /** The topmost road (world-space path) at a world point, if any. */
+  roadAt(x: number, y: number): Surface | null {
+    for (const region of this.regionsTopFirst) {
+      const kind = region.shape.kind;
+      if ((kind === 'path' || kind === 'polygon') && this.regionContains(region, 0, 0, x, y)) return region.surface;
+    }
+    return null;
   }
 
   private regionContains(region: SurfaceRegion, s: number, d: number, x?: number, y?: number): boolean {
@@ -168,7 +235,7 @@ export class Track extends Centerline {
     switch (shape.kind) {
       case 'band':
         return this.inRange(s, shape.range)
-          && (shape.openOut || d > this.edgeAt(shape.d0, s))
+          && (shape.openOut ? !this.bounded || d > this.edgeAt(shape.d0, s) - OPEN_BEYOND : d > this.edgeAt(shape.d0, s))
           && (shape.openIn || d <= this.edgeAt(shape.d1, s));
       case 'rect': {
         const r = shape.rect;
@@ -176,6 +243,12 @@ export class Track extends Centerline {
       }
       case 'path':
         return x !== undefined && y !== undefined && onPath(shape.points, shape.width / 2, x, y);
+      case 'polygon': {
+        if (x === undefined || y === undefined) return false;
+        let index = this.polygons.get(region);
+        if (!index) this.polygons.set(region, (index = new PolygonIndex(shape.rings)));
+        return index.contains(x, y);
+      }
     }
   }
 

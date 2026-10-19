@@ -1,3 +1,5 @@
+import type { LayoutKind } from '../sim/layout';
+
 /**
  * The rules of a discipline, as data. A rulebook says what counts as an
  * offence and what each one usually costs; detection (detect.ts) finds them
@@ -47,6 +49,7 @@ export type StartProcedure =
   | { kind: 'rolling' }
   | {
     kind: 'standing';
+    /** A formation lap: the race joins its end, the field rolling up to its boxes (otherwise it starts stopped in them). */
     formationLap: boolean;
     /** Metres between grid boxes (each car its own row, staggered left and right). */
     gridPitch: number;
@@ -73,6 +76,12 @@ export interface Rulebook {
    * file throughout, restarts single file.
    */
   neutralise: 'pace-car' | 'safety-car';
+  /**
+   * How qualifying sets the grid. Solo (ovals): one car at a time against the
+   * clock. Group (circuits): rounds with the field on track together, the
+   * slowest knocked out after each.
+   */
+  qualifying: 'solo' | 'group';
   offences: Record<Offence, OffenceRule>;
   /** Seconds a 'time' penalty adds, and how long a 'stop-go' stops for. */
   timePenalty: number;
@@ -86,8 +95,8 @@ export interface Rulebook {
   pitSpeedGrace: number;
   /** Seconds the stewards take to review an incident before they announce a decision. */
   reviewSeconds: number;
-  /** Track size classes where the apron is out of bounds for passing (the line rule). */
-  belowTheLineOn: string[];
+  /** Layout kinds where the apron is out of bounds for passing (the line rule). */
+  belowTheLineOn: LayoutKind[];
   /**
    * Track limits (road circuits): every time the whole car is past the white
    * line counts. Up to `strikes` they're noted; the last of them brings the
@@ -102,6 +111,7 @@ export const OVAL_RULES: Rulebook = {
   name: 'Oval',
   start: { kind: 'rolling' },
   neutralise: 'pace-car',
+  qualifying: 'solo',
   offences: {
     'pit-speeding': { thresholds: [0.15, 0.6], penalties: ['warning', 'drive-through', 'stop-go'] },
     'passing-under-caution': { thresholds: [0.2], penalties: ['warning', 'tail'] },
@@ -135,14 +145,10 @@ export const CIRCUIT_RULES: Rulebook = {
   name: 'Circuit',
   start: { kind: 'standing', formationLap: true, gridPitch: 8, lights: 5, lightInterval: 1, hold: [0.2, 3] },
   neutralise: 'safety-car',
+  qualifying: 'group',
   belowTheLineOn: [],
   trackLimits: { strikes: 3 },
 };
-
-/** The rulebook a track races to. */
-export function rulebookFor(trackType: string): Rulebook {
-  return trackType === 'circuit' ? CIRCUIT_RULES : OVAL_RULES;
-}
 
 export const OFFENCE_NAMES: Record<Offence, string> = {
   'pit-speeding': 'speeding on pit road',

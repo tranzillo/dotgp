@@ -34,9 +34,13 @@ export const WRECK_CLEAR_TIME = 4;
 export interface WorldEvent {
   time: number;
   car: Car;
-  /** steward: a decision (warning, penalty, black flag); review: an incident looked at (or let go); served: a penalty served. */
+  /** review: an incident the stewards are looking into; steward: a decision (no further action, warning, penalty, black flag); served: a penalty served. */
   kind: 'pit-in' | 'pit-out' | 'missed-pit' | 'retired' | 'crew' | 'flag' | 'steward' | 'review' | 'served';
   text: string;
+  /** Other cars in it: the one it made contact with, the other side of a stewards' case. */
+  others?: Car[];
+  /** A decision about an incident: when the incident was (sim s). */
+  incidentTime?: number;
 }
 
 export class World {
@@ -111,7 +115,11 @@ export class World {
       const all = this.officials.length ? [...cars, ...this.officials.map((o) => o.car)] : cars;
       const before = cars.map((c) => c.retired);
       resolveCarCollisions(all, track);
-      cars.forEach((c, i) => { if (c.retired && !before[i]) this.announce(c, 'retired', 'Out of the race after contact'); });
+      cars.forEach((c, i) => {
+        if (!c.retired || before[i]) return;
+        const other = all.find((o) => o.id === c.lastImpact?.other);
+        this.announce(c, 'retired', 'Out of the race after contact', { others: [other ?? null] });
+      });
       for (const car of all) reproject(car, track);
       for (const { car } of this.officials) { car.health = 1; car.retired = false; } // officials don't wreck
     }
@@ -126,8 +134,11 @@ export class World {
     this.tick++;
   }
 
-  announce(car: Car, kind: WorldEvent['kind'], text: string): void {
-    this.events.push({ time: this.time, car, kind, text });
+  announce(car: Car, kind: WorldEvent['kind'], text: string, about: { others?: Array<Car | null>; incidentTime?: number } = {}): void {
+    const others = about.others?.filter((c): c is Car => !!c) ?? [];
+    this.events.push({
+      time: this.time, car, kind, text, ...(others.length ? { others } : {}), ...(about.incidentTime !== undefined ? { incidentTime: about.incidentTime } : {}),
+    });
     if (this.events.length > 500) this.eventsDropped += this.events.splice(0, this.events.length - 500).length;
   }
 
@@ -137,7 +148,7 @@ export class World {
     if (pit.phase === 'none' || car.retired) return;
     const r = this.track.signedS(car.s);
     if (pit.phase === 'in') {
-      const inPitLane = car.d > this.track.pit.wallD;
+      const inPitLane = car.d > this.track.pit.wallD + this.track.pitOffset(car.s);
       if (r > this.track.pit.wallStart + 5 && r < pit.boxS && !inPitLane) {
         pit.phase = 'none';
         pit.call = null;

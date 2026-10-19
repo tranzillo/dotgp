@@ -12,6 +12,9 @@ import { FLAT_TRACK, SHORT_TRACK, SPEEDWAY, type OvalParams } from './oval';
 export * from './generator';
 export * from './oval';
 export * from './circuit';
+export * from './complex';
+export * from './course';
+export * from './roval';
 export { mirrorLayout } from './mirror';
 export type { Problem } from './validate';
 

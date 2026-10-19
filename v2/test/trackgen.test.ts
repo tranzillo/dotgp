@@ -4,7 +4,9 @@ import { Car } from '../src/sim/car';
 import { Track } from '../src/sim/track';
 import { World } from '../src/sim/world';
 import { resolveWalls } from '../src/sim/collisions';
-import { buildLayout, generateLayout, ovalTrack, OVAL_SIZE_CLASSES, presetTrack, SHORT_TRACK, SPEEDWAY } from '../src/trackgen';
+import {
+  buildLayout, generateLayout, hashSeed, OVAL_SHAPES, OVAL_SIZE_CLASSES, ovalTrack, presetLayout, presetTrack, SHORT_TRACK, SPEEDWAY, type ShapedOvalParams,
+} from '../src/trackgen';
 
 describe('track generation', () => {
   it('is deterministic: the same seed gives the same layout', () => {
@@ -42,6 +44,59 @@ describe('track generation', () => {
       }
     });
   }
+
+  it('keeps the presets exactly as they were: drivers are trained on them', () => {
+    // A change here means every trained driver is racing a different track. Change only on purpose.
+    expect(hashSeed(0, JSON.stringify(presetLayout('speedway')))).toBe(3134438636);
+    expect(hashSeed(0, JSON.stringify(presetLayout('short')))).toBe(1157504970);
+    expect(hashSeed(0, JSON.stringify(presetLayout('flat')))).toBe(2805021105);
+  });
+
+  for (const [variant, cls] of Object.entries(OVAL_SIZE_CLASSES)) {
+    for (const shape of Object.keys(cls.shapes)) {
+      it(`makes ${variant} ${shape}s that close and lap cleanly`, () => {
+        for (const seed of [11, 12]) {
+          const layout = generateLayout({ type: 'oval', seed, variant, params: { shape } });
+          const track = new Track(layout);
+          expect(track.closureError, `${shape} seed ${seed}`).toBeLessThan(0.1);
+          expect((layout.params as unknown as ShapedOvalParams).shape).toBe(shape);
+          // The line is on the front stretch, inside pit road's wall.
+          expect(layout.pit.wallStart).toBeLessThan(0);
+          expect(layout.pit.wallEnd).toBeGreaterThan(0);
+          const world = new World(track, { collisions: false });
+          const car = new Car(0);
+          car.placeOnTrack(track, track.length - 20, 0);
+          world.addCar(car, new ScriptedDriver(0, 0.9));
+          while (car.lapsCompleted < 1 && world.time < 400) world.step();
+          expect(car.lapsCompleted, `${shape} seed ${seed}`).toBe(1);
+          expect(car.health, `${shape} seed ${seed}`).toBe(1);
+        }
+      });
+    }
+  }
+
+  it('banks each corner by its design speed: a tri-oval bend much less than the turns', () => {
+    const layout = generateLayout({ type: 'oval', seed: 3, variant: 'superspeedway', params: { shape: 'tri-oval' } });
+    const [bend, t1, t2] = (layout.params as unknown as ShapedOvalParams).corners;
+    expect(bend.dogleg).toBe(true);
+    expect(bend.radius).toBeGreaterThan(2 * t1.radius);
+    expect(bend.bankInner).toBeLessThan(0.75 * Math.min(t1.bankInner, t2.bankInner));
+    // The line is at the bend's apex: the track curves there.
+    const track = new Track(layout);
+    expect(track.curvatureAt(0)).toBeCloseTo(1 / bend.radius, 6);
+  });
+
+  it('lays out the shapes it is asked for, with their corners', () => {
+    const corners = (shape: string) => (generateLayout({ type: 'oval', seed: 7, variant: 'speedway', params: { shape } }).params as unknown as ShapedOvalParams).corners;
+    expect(corners('rectangle').map((c) => Math.round(c.angle * 180 / Math.PI))).toEqual([90, 90, 90, 90]);
+    expect(corners('triangle')).toHaveLength(3);
+    expect(corners('quad-oval').filter((c) => c.dogleg)).toHaveLength(2);
+    const [a, b] = corners('egg');
+    expect(a.radius).not.toBe(b.radius);
+    for (const shape of OVAL_SHAPES.filter((s) => OVAL_SIZE_CLASSES.speedway.shapes[s])) {
+      expect(corners(shape).reduce((x, c) => x + c.angle, 0), shape).toBeCloseTo(2 * Math.PI, 9);
+    }
+  });
 
   it('rejects layouts that do not fit: a garage reaching across a tiny infield', () => {
     expect(() => buildLayout('oval', { ...SHORT_TRACK, turnRadius: 40, easementLength: 15 })).toThrow(/infield/);

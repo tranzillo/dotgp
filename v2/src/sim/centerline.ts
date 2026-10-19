@@ -1,6 +1,9 @@
-import type { CenterlineSpec } from './layout';
+import type { CenterlineSpec, Placement } from './layout';
 
 const SAMPLE_SPACING = 0.5;
+/** Spatial index: cell size (m), and every how many samples go in it (the nearest is refined from there). */
+const CELL = 16;
+const INDEX_STRIDE = 4;
 
 export interface Projection {
   s: number;
@@ -31,7 +34,10 @@ export class Centerline {
   /** Gap between the integrated end and start before it was spread along the lap (m). */
   readonly closureError: number;
 
-  constructor(spec: CenterlineSpec) {
+  /** Lazily built grid of sample indices, for nearest-point queries with no hint (see near). */
+  private grid: { x0: number; y0: number; nx: number; ny: number; start: Int32Array; items: Int32Array } | null = null;
+
+  constructor(spec: CenterlineSpec, placement?: Placement) {
     const sections = spec.sections;
     const L = sections.reduce((sum, sec) => sum + sec[0], 0);
     const kappaAt = (s: number): number => {
@@ -93,6 +99,61 @@ export class Centerline {
       this.y[i] -= cy;
     }
     this.extent = { minX: minX - cx, maxX: maxX - cx, minY: minY - cy, maxY: maxY - cy };
+    // Then into its venue's frame.
+    if (placement && (placement.x || placement.y || placement.angle)) {
+      const c = Math.cos(placement.angle), s = Math.sin(placement.angle);
+      minX = Infinity; minY = Infinity; maxX = -Infinity; maxY = -Infinity;
+      for (let i = 0; i < n; i++) {
+        const x = this.x[i], y = this.y[i], tx = this.tx[i], ty = this.ty[i];
+        this.x[i] = placement.x + c * x - s * y;
+        this.y[i] = placement.y + s * x + c * y;
+        this.tx[i] = c * tx - s * ty;
+        this.ty[i] = s * tx + c * ty;
+        minX = Math.min(minX, this.x[i]); maxX = Math.max(maxX, this.x[i]);
+        minY = Math.min(minY, this.y[i]); maxY = Math.max(maxY, this.y[i]);
+      }
+      this.extent = { minX, maxX, minY, maxY };
+    }
+  }
+
+  /**
+   * The nearest point on the centerline to a world point, if it is within
+   * maxDist (a lap's worth of samples is indexed on a grid, so this is cheap
+   * anywhere, unlike project with no hint). For points near a track that
+   * isn't the one a car is racing on.
+   */
+  near(px: number, py: number, maxDist: number): Projection | null {
+    const g = this.grid ?? this.buildGrid();
+    const r = Math.ceil(maxDist / CELL);
+    const cx = Math.floor((px - g.x0) / CELL), cy = Math.floor((py - g.y0) / CELL);
+    let best = maxDist * maxDist, bi = -1;
+    for (let gy = Math.max(0, cy - r); gy <= Math.min(g.ny - 1, cy + r); gy++) {
+      for (let gx = Math.max(0, cx - r); gx <= Math.min(g.nx - 1, cx + r); gx++) {
+        const c = gy * g.nx + gx;
+        for (let k = g.start[c]; k < g.start[c + 1]; k++) {
+          const d2 = this.dist2(g.items[k], px, py);
+          if (d2 < best) { best = d2; bi = g.items[k]; }
+        }
+      }
+    }
+    if (bi < 0) return null;
+    const p = this.project(px, py, bi);
+    return Math.abs(p.d) <= maxDist ? p : null;
+  }
+
+  private buildGrid(): NonNullable<Centerline['grid']> {
+    const e = this.extent;
+    const x0 = e.minX - CELL, y0 = e.minY - CELL;
+    const nx = Math.ceil((e.maxX - x0) / CELL) + 2, ny = Math.ceil((e.maxY - y0) / CELL) + 2;
+    const cellOf = (i: number) => Math.floor((this.y[i] - y0) / CELL) * nx + Math.floor((this.x[i] - x0) / CELL);
+    const start = new Int32Array(nx * ny + 1);
+    for (let i = 0; i < this.n; i += INDEX_STRIDE) start[cellOf(i) + 1]++;
+    for (let c = 0; c < nx * ny; c++) start[c + 1] += start[c];
+    const fill = start.slice(0, nx * ny);
+    const items = new Int32Array(start[nx * ny]);
+    for (let i = 0; i < this.n; i += INDEX_STRIDE) items[fill[cellOf(i)]++] = i;
+    this.grid = { x0, y0, nx, ny, start, items };
+    return this.grid;
   }
 
   wrapS(s: number): number {

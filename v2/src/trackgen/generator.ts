@@ -80,7 +80,14 @@ export function generateLayout(opts: GenerateOptions): TrackLayout {
     const ctx = context(seed);
     const variant = opts.variant ?? type.variants[ctx.rng('variant').int(type.variants.length)];
     const params = { ...type.sample(ctx.rng('params'), variant, opts.params), ...opts.params };
-    const layout = type.build(params, ctx);
+    let layout: TrackLayout;
+    try {
+      layout = type.build(params, ctx);
+    } catch (e) {
+      // Parameters this seed can't lay out (no room for its infield, say): another seed.
+      failures.push(`seed ${seed}: ${(e as Error).message}`);
+      continue;
+    }
     layout.seed = opts.seed;
     layout.params = { ...layout.params, variant, attempt };
     const problems = check(type, layout);

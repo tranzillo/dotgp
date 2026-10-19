@@ -4,6 +4,9 @@ import { EventHost, type EventHandle } from '../events/host';
 import type { CarView, EntrantResult, EntrantSpec, RadioLine as SessionRadio, SessionSnapshot, SessionSpec, TimelineEvent } from '../events/session';
 import { injuryFrom } from '../events/injury';
 import { OFFENCE_NAMES } from '../rules/rulebook';
+import { defaultSeries, SERIES, type Series } from '../rules/series';
+import type { QualifyingFormat, QualifyingView } from '../sim/qualifying';
+import { adaptChiefWeights } from '../ai/neuralChief';
 import { PENALTY_NAMES } from '../rules/desk';
 import { LESSONS, type ClassSpec, type LessonId, type RoundReport, type RoundTape } from '../school/classroom';
 import { ActivityLog, MemoryActivityStore, type AgentRole, type EventRef } from '../records/activity';
@@ -19,7 +22,10 @@ import { Renderer, type DebugLayers, type DotMode, type RenderCar, type RenderOf
 import { SIGNATURE_BINS } from '../sim/car';
 import { G, PHYSICS as P } from '../sim/constants';
 import { Track } from '../sim/track';
-import { generateTrack, PRESETS, presetLayout, presetTrack } from '../trackgen';
+import {
+  CIRCUIT_CLASSES, complexLayouts, generateTrack, MEGA_COMPLEX, venueLayouts, OVAL_SHAPES, OVAL_SIZE_CLASSES, PRESETS, presetLayout, presetTrack, type OvalShape,
+} from '../trackgen';
+import { layoutLabel, layoutsFor, multiLayoutVenue, singleLayoutVenue, venueSeries, type Venue, type VenueLayout } from '../venue/venue';
 import { AgentPage } from './agentPage';
 import { Roster, type Role, type TeamEntry } from './roster';
 import {
@@ -108,29 +114,95 @@ async function fetchJson(url: string): Promise<unknown | null> {
 
 // ---------- Session settings ----------
 
-/** Tracks by name: the presets (the season's calendar), plus any generated this session. */
-const TRACKS = new Map<string, Track>(Object.keys(PRESETS).map((id) => [presetTrack(id).name, presetTrack(id)]));
-const SEASON_TRACKS = [...TRACKS.keys()];
+/** Venues on offer: the presets (the season's calendar, one layout each), the mega complex, and any generated this session. */
+const venues: Venue[] = Object.keys(PRESETS).map((id) => singleLayoutVenue(presetTrack(id)));
+const SEASON_TRACKS = venues.map((v) => v.name);
+const megaComplex = multiLayoutVenue(MEGA_COMPLEX.id, MEGA_COMPLEX.name, complexLayouts(MEGA_COMPLEX));
+venues.push(megaComplex);
 /** Each track appears this many times per season. */
 const ROUNDS_PER_TRACK = 2;
 let season: SeasonState = newSeason(SEASON_TRACKS, ROUNDS_PER_TRACK);
-/** The track and kind of the next session started (and of the field's current one). */
+/** The track, its name and the series of the next session started (and of the field's current one). */
 let trackName = SEASON_TRACKS[0];
-let track = TRACKS.get(trackName)!;
+let track = venues[0].layouts[0].track;
+let raceSeries: Series = defaultSeries(track.layout);
 
-/** Generate a track (an oval or a road circuit) and add it to the track list (seed and variant random unless given). */
-function addGeneratedTrack(type: 'oval' | 'circuit' = 'oval', seed = Math.floor(Math.random() * 1e9), variant?: string): Track {
-  const t = generateTrack({ type, seed, variant });
-  const label = `${t.name} (${t.layout.params.variant})`;
-  TRACKS.set(label, t);
-  trackOptions.push([label, label]);
-  return t;
+/**
+ * Generate a venue (an oval or a road circuit, one layout) and add it to the
+ * list. Nothing starts: racing there is the Exhibition panel's Start. Seed,
+ * size class and shape random unless given.
+ */
+function addGeneratedVenue(type: 'oval' | 'circuit', seed = Math.floor(Math.random() * 1e9), variant?: string, shape?: OvalShape): Venue {
+  const id = `${type}-${seed}-${variant ?? ''}-${shape ?? ''}`;
+  const existing = venues.find((v) => v.id === id);
+  if (existing) return existing;
+  const t = generateTrack({ type, seed, variant, ...(shape ? { params: { shape } } : {}) });
+  const chosen = String(t.layout.params.variant);
+  const kind = [chosen, type === 'oval' ? String(t.layout.params.shape ?? '') : ''].filter(Boolean).join(' ');
+  const source = `${type}:${seed}:${chosen}${shape ? `:${shape}` : ''}`;
+  // A track with another in its infield (an inner oval) is a venue of both.
+  const venue = t.neighbours.length || t.layout.infield.rovals?.length
+    ? {
+      ...multiLayoutVenue(
+        id, `${t.name} (${[kind, ...t.neighbours.map((nb) => nb.name.toLowerCase()), ...(t.layout.infield.rovals?.length ? ['road course'] : [])].join(', ')})`,
+        // Within the venue the track itself goes by what it is (the place is the venue's name).
+        venueLayouts(t.layout).map((l, i) => (i === 0 ? { ...l, name: t.name.split(' ').slice(1).join(' ') || t.name } : l)),
+      ),
+      source,
+    }
+    : singleLayoutVenue(t, { id, name: `${t.name} (${kind})`, source });
+  venues.push(venue);
+  return venue;
 }
-const trackOptions: Array<[string, string]> = SEASON_TRACKS.map((k) => [k, k]);
-/** race: laps, pits, DNFs. practice: open session, wrecks respawn. ghost: no contact. */
-type Mode = 'race' | 'practice' | 'ghost';
+
+/**
+ * The exhibition being set up: a venue, a series that races there, one of
+ * the venue's layouts for that series, and the session. Picking any of them
+ * starts nothing; Start does.
+ */
+const draft: { venue: Venue; series: Series; layout: VenueLayout; mode: Mode } = {
+  venue: megaComplex, series: venueSeries(megaComplex)[0], layout: megaComplex.layouts[0], mode: 'race',
+};
+
+/** Pick the draft's venue (or series): the series and layout follow to ones that race together there. */
+function pickDraft(venue: Venue, series = draft.series): void {
+  const offered = venueSeries(venue);
+  draft.venue = venue;
+  draft.series = offered.includes(series) ? series : offered[0];
+  const layouts = layoutsFor(venue, draft.series);
+  if (!layouts.includes(draft.layout)) draft.layout = layouts[0];
+  buttonGroups.forEach((render) => render());
+}
+
+/** Make the draft the field's next session (an exhibition). */
+function applyDraft(): void {
+  championship = false;
+  weekendPractice = null;
+  mode = draft.mode;
+  raceSeries = draft.series;
+  track = draft.layout.track;
+  trackName = layoutLabel(draft.venue, draft.layout);
+}
+
+/** What the generator makes next: kind, size class and (ovals) shape; null for any. */
+const gen: { type: 'oval' | 'circuit'; size: string | null; shape: OvalShape | null } = { type: 'oval', size: null, shape: null };
+/** race: laps, pits, DNFs. qualifying: one car at a time, best lap sets the order. practice: open session, wrecks respawn. ghost: no contact. */
+type Mode = 'race' | 'qualifying' | 'practice' | 'ghost';
 let mode: Mode = 'race';
 let raceLaps = 50;
+/**
+ * How qualifying runs: by the series' rulebook (ovals solo, circuits in
+ * groups), or one format everywhere; solo: timed laps a run; group: rounds
+ * and each round's length (minutes).
+ */
+let qualiFormat: 'series' | QualifyingFormat['format'] = 'series';
+let qualiLaps = 1;
+let qualiRounds = 3;
+let qualiMinutes = 6;
+function qualifyingFor(series: Series): QualifyingFormat {
+  const format = qualiFormat === 'series' ? series.rulebook.qualifying : qualiFormat;
+  return format === 'group' ? { format, rounds: qualiRounds, roundSeconds: qualiMinutes * 60 } : { format, laps: qualiLaps };
+}
 /** Race pace: tire wear and fuel burn multiplier. */
 let pace = 4;
 /** Drivers learn as they race (lap against lap). */
@@ -156,12 +228,30 @@ let raceDoneAt = NaN;
 /** Viewing speed, and paused (the attached event runs at 0 then; the speed is kept for resuming). */
 let speed = 1;
 let paused = false;
-const SPEEDS: Array<[string, number]> = [['0.25×', 0.25], ['0.5×', 0.5], ['1×', 1], ['4×', 4], ['16×', 16], ['64×', 64]];
-const speedText = () => (paused ? 'paused' : SPEEDS.find(([, v]) => v === speed)?.[0] ?? `${speed}×`)
-  + (replay ? (reverse ? ' backwards · replay' : ' · replay') : '');
+/** Sim speed: anything in the range (slider or number box); J and L step through the presets. */
+const SPEED_RANGE: [number, number] = [0.1, 64];
+const SPEEDS = [0.25, 0.5, 1, 2, 4, 8, 16, 32, 64];
+const speedText = () => (paused ? 'paused' : `${speed}×`) + (replay ? (reverse ? ' backwards · replay' : ' · replay') : '');
+/** Zoom: 1 frames the whole track; Z steps through the presets. */
+const ZOOM_RANGE: [number, number] = [1, 16];
+const ZOOMS = [1, 2, 4, 8];
 let zoom = 1;
-let selected: TeamEntry | null = null;
-let focus: [number, number] | null = null;
+/**
+ * The driver in focus (their team's id): the camera follows them, the tower
+ * and the paddock pick them out, and the radio is theirs. Null: nobody, and
+ * the camera (zoomed in) is on the leader.
+ */
+let focusKey: number | null = null;
+/**
+ * A moment picked off the timeline: the teams in it (the first is put in
+ * focus) and when. While framed, the camera takes them all in around then.
+ */
+let incident: { keys: number[]; time: number; framed: boolean } | null = null;
+/** Where the camera is (world m) and how far in, easing after what they should be; null: jump straight there. */
+let camPos: [number, number] | null = null;
+let camZoom = 1;
+/** Teams the camera had in view last frame (the tower and the camera bar mark them). */
+let onCamera: number[] = [];
 
 const canvas = document.getElementById('track') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
@@ -174,6 +264,8 @@ interface EventMeta {
   mode: Mode | 'class';
   trackName: string;
   track: Track;
+  /** The series racing (sessions). */
+  series?: Series;
   /** Teams by entrant key (the team id). Empty for classes. */
   teams: Map<number, TeamEntry>;
   recorded: boolean;
@@ -184,6 +276,8 @@ interface EventMeta {
   lesson?: LessonId;
   /** A championship round (scores points), not an exhibition. */
   round?: boolean;
+  /** A race weekend's qualifying: its order is the race's grid. */
+  weekend?: boolean;
 }
 const metas = new Map<EventHandle, EventMeta>();
 /** The event the field is in (on screen or not). */
@@ -225,6 +319,10 @@ const host = new EventHost({
       finishRace(handle);
       saveRace(handle);
     }
+    if (meta.mode === 'qualifying' && !meta.recorded) {
+      finishQualifying(handle);
+      saveRace(handle);
+    }
     // Watched: give the result a moment on screen. In the background: straight on.
     if (handle.attachedTo) raceDoneAt = performance.now() / 1000;
     else if (handle === fieldEvent) carryOn(handle);
@@ -238,7 +336,7 @@ const host = new EventHost({
       renderer.setTrack(meta.track);
       renderer.clearMarks();
       playback.reset();
-      focus = null;
+      camPos = null;
     }
   },
   rounds(handle, reports) {
@@ -270,15 +368,18 @@ const shownMeta = () => { const h = shown(); return h ? metas.get(h) ?? null : n
 const snap = (): SessionSnapshot | null => tapeSnap ?? shown()?.snapshot ?? null;
 const teamOfKey = (key: number) => shownMeta()?.teams.get(key);
 const liveryOf = (car: RenderCar) => shownMeta()?.liveries?.get((car as CarView).key) ?? teamOfKey((car as CarView).key)?.livery;
-const carOf = (entry: TeamEntry | null, cars = snap()?.cars) => (entry && shownMeta()?.mode !== 'class' ? cars?.find((c) => c.key === entry.id) ?? null : null);
+const carOf = (key: number | null, cars = snap()?.cars) => (key !== null && shownMeta()?.mode !== 'class' ? cars?.find((c) => c.key === key) ?? null : null);
+/** The team in focus, if it's in the event on screen. */
+const focusTeam = () => (focusKey === null ? undefined : shownMeta()?.teams.get(focusKey));
 /** Driving school: draw each student's practice variations (faint) too. */
 let showVariations = true;
 
 function newEventRef(round: boolean): EventRef {
   const type = mode === 'ghost' ? 'ghost' : mode;
   const label = round
-    ? `Season ${season.number} round ${Math.min(season.races.length + 1, season.schedule.length)} · ${trackName}`
-    : mode === 'race' ? `Exhibition · ${trackName}`
+    ? `Season ${season.number} round ${Math.min(season.races.length + 1, season.schedule.length)}${mode === 'qualifying' ? ' qualifying' : ''} · ${trackName}`
+    : mode === 'race' ? `Exhibition · ${raceSeries.name} · ${trackName}`
+    : mode === 'qualifying' ? `Qualifying · ${raceSeries.name} · ${trackName}`
     : mode === 'practice' ? `Practice · ${trackName}` : `Ghost laps · ${trackName}`;
   return {
     id: `${type}-${Date.now().toString(36)}-${++eventCounter}`, type, label, track: trackName,
@@ -290,7 +391,8 @@ function newEventRef(round: boolean): EventRef {
 function toNextRound(): void {
   championship = true;
   trackName = nextTrack(season);
-  track = TRACKS.get(trackName) ?? TRACKS.get(SEASON_TRACKS[0])!;
+  track = (venues.find((v) => v.name === trackName) ?? venues[0]).layouts[0].track;
+  raceSeries = defaultSeries(track.layout);
 }
 
 function entrantSpec(t: TeamEntry): EntrantSpec {
@@ -299,7 +401,10 @@ function entrantSpec(t: TeamEntry): EntrantSpec {
     key: t.id,
     fill: t.livery.fill,
     number: t.livery.number,
-    driver: { id: driver.id, weights: driver.weights, roadWeights: driver.roadCourse?.weights, nerve: driver.nerve, pits: (driver.pitLicensed && driver.pitTrafficLicensed) ?? false, cautions: driver.cautionLicensed ?? false },
+    driver: {
+      id: driver.id, weights: driver.weights, roadWeights: driver.roadCourse?.weights, nerve: driver.nerve,
+      pits: (driver.pitLicensed && driver.pitTrafficLicensed) ?? false, setBackPits: driver.setBackPits ?? false, cautions: driver.cautionLicensed ?? false,
+    },
     spotter: { id: spotter.id, skill: spotter.skill },
     chief: { id: chief.id, brain: chief.brain },
   };
@@ -308,11 +413,12 @@ function entrantSpec(t: TeamEntry): EntrantSpec {
 /**
  * Start a session for the field (the field's previous session ends). It
  * claims every agent in the field; if any is busy in another event, nothing
- * starts. Races keep running in the background; open sessions pause there.
+ * starts. Races and qualifying keep running in the background; open sessions
+ * pause there. A race can be given its grid (team ids in starting order).
  */
-function startSession(attach = true, warm = 0): EventHandle | null {
+function startSession(attach = true, warm = 0, grid?: number[]): EventHandle | null {
   if (fieldEvent) endEvent(fieldEvent);
-  const round = mode === 'race' && championship;
+  const round = (mode === 'race' || mode === 'qualifying') && championship;
   const ref = newEventRef(round);
   // Injured or retired drivers' seats go to stand-ins; recovered regulars get theirs back.
   for (const line of roster.fillSeats(field(), (id) => occupancy.isFree(id))) news(line);
@@ -324,10 +430,12 @@ function startSession(attach = true, warm = 0): EventHandle | null {
   }
   const spec: SessionSpec = {
     kind: mode, layout: track.layout, entrants: teams.map(entrantSpec), laps: raceLaps, pace,
-    seed: (rng.next() * 2 ** 32) >>> 0, learn: learnInRaces && !readOnly(),
+    seed: (rng.next() * 2 ** 32) >>> 0, learn: learnInRaces && !readOnly(), grid,
+    qualifying: qualifyingFor(raceSeries), series: raceSeries.id,
   };
-  const handle = host.start(ref, { what: 'session', spec }, { attach, runDetached: mode === 'race', warm });
-  metas.set(handle, { mode, trackName, track, teams: new Map(teams.map((t) => [t.id, t])), recorded: false, round });
+  const runDetached = mode === 'race' || mode === 'qualifying';
+  const handle = host.start(ref, { what: 'session', spec }, { attach, runDetached, warm });
+  metas.set(handle, { mode, trackName, track, series: raceSeries, teams: new Map(teams.map((t) => [t.id, t])), recorded: false, round });
   fieldEvent = handle;
   raceDoneAt = NaN;
   if (attach) showEvent(handle);
@@ -357,7 +465,8 @@ function showEvent(handle: EventHandle): void {
   leaveReplay();
   radioFeed.length = 0;
   technique.clear();
-  focus = null;
+  camPos = null;
+  incident = null;
   if (handle.snapshot === null) $('hud').innerHTML = `<b>${meta.trackName}</b> · starting…`;
   // Over, with nothing running: watch it from tape (at the end; scrub or Home to go back).
   if (!handle.alive && handle.tape && handle.tape.length > 1) {
@@ -366,10 +475,23 @@ function showEvent(handle: EventHandle): void {
   }
 }
 
-/** After a race: the next race, or the next weekend, in the background if this one was. */
+/**
+ * After a race: the next race, or the next weekend, in the background if this
+ * one was. After a weekend's qualifying: the race, gridded in qualifying
+ * order. Qualifying on its own ends there.
+ */
 function carryOn(prev: EventHandle): void {
   const attach = prev.attachedTo;
   raceDoneAt = NaN;
+  const meta = metas.get(prev);
+  if (meta?.mode === 'qualifying') {
+    if (meta.weekend && prev.results) {
+      mode = 'race';
+      startSession(attach, 0, prev.results.map((r) => r.key));
+      buttonGroups.forEach((render) => render());
+    }
+    return;
+  }
   if (readOnly()) {
     // A bundle doesn't race the championship or practise: another exhibition race where this one was.
     if (loop !== 'stop') { mode = 'race'; startSession(attach); }
@@ -402,7 +524,8 @@ const carLabel = (t: TeamEntry) => `${dotHtml(t.livery)}#${t.livery.number}`;
 
 function drawRadio(): void {
   const upTo = replay ? replay.time : Infinity; // replaying: what had been said by then
-  const lines = radioFeed.filter((l) => l.time <= upTo && (!selected || l.team === selected)).slice(0, 12);
+  const inFocus = focusTeam();
+  const lines = radioFeed.filter((l) => l.time <= upTo && (!inFocus || l.team?.id === inFocus.id)).slice(0, 12);
   $('radio').innerHTML = lines.map((l) => {
     const clock = `${Math.floor(l.time / 60)}:${Math.floor(l.time % 60).toString().padStart(2, '0')}`;
     return l.team ? `<div><span class="muted">${clock}</span> ${carLabel(l.team)} ${l.text}</div>`
@@ -415,27 +538,76 @@ function drawRadio(): void {
 /** ?focusS=<metres from the line> parks the zoomed camera on a spot (e.g. 0 = pit road). */
 const fixedFocusS = new URLSearchParams(location.search).get('focusS');
 
-function leaderView(s: SessionSnapshot, cars: CarView[]): CarView | undefined {
+/** The car the camera's on with nobody in focus: the leader; in solo qualifying, the car out on its run. */
+function autoCar(s: SessionSnapshot, cars: CarView[]): CarView | undefined {
+  if (s.qualifying?.format === 'solo') {
+    const run = s.standings?.find((st) => st.status === 'running');
+    const car = run && cars.find((c) => c.id === run.id);
+    if (car) return car;
+  }
   return cars.find((c) => c.id === s.order[0]);
 }
 
-/** cars: as drawn this frame (played back between snapshots). */
-function updateCamera(s: SessionSnapshot | null, cars: CarView[], t: Track): void {
-  if (zoom === 1 || !s) {
+/** An incident picked off the timeline is framed from this long before it until this long after (sim s). */
+const INCIDENT_BEFORE = 8;
+const INCIDENT_AFTER = 6;
+/** How far in an incident is framed when the view is on the whole track. */
+const INCIDENT_ZOOM = 4;
+
+/** The cars of the framed incident still on track, while it's going on; null otherwise. */
+function incidentCars(time: number, cars: CarView[]): CarView[] | null {
+  const inc = incident;
+  if (!inc?.framed || time < inc.time - INCIDENT_BEFORE || time > inc.time + INCIDENT_AFTER) return null;
+  const inIt = cars.filter((c) => inc.keys.includes(c.key) && !c.cleared);
+  return inIt.length ? inIt : null;
+}
+
+/**
+ * The camera: on the driver in focus, else (zoomed in) the leader; around a
+ * framed incident, on all its cars, pulled back as far as they need. It eases
+ * after its target and its zoom. cars: as drawn this frame. Returns the cars
+ * to ring on track: the one in focus, or the incident's.
+ */
+function updateCamera(s: SessionSnapshot | null, cars: CarView[], t: Track, time: number): CarView[] {
+  onCamera = [];
+  if (!s) {
     renderer.setView(1, 0, 0);
-    return;
+    return [];
   }
-  if (fixedFocusS !== null && !selected) {
-    const [x, y] = t.toWorld(Number(fixedFocusS), t.innerEdgeAt(Number(fixedFocusS)) + 6);
-    renderer.setView(zoom, x, y);
-    return;
+  let target: [number, number] | null = null;
+  let want = zoom;
+  let inView: CarView[] = [];
+  const group = incidentCars(time, cars);
+  if (fixedFocusS !== null && focusKey === null && !group && zoom > 1) {
+    target = t.toWorld(Number(fixedFocusS), t.innerEdgeAt(Number(fixedFocusS)) + 6);
+  } else if (group) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const c of group) { minX = Math.min(minX, c.x); maxX = Math.max(maxX, c.x); minY = Math.min(minY, c.y); maxY = Math.max(maxY, c.y); }
+    target = [(minX + maxX) / 2, (minY + maxY) / 2];
+    want = Math.max(1, Math.min(zoom > 1 ? zoom : INCIDENT_ZOOM, renderer.zoomToFit(maxX - minX, maxY - minY)));
+    inView = group;
+    onCamera = group.map((c) => c.key);
+  } else {
+    const focused = carOf(focusKey, cars);
+    const car = focused ?? (zoom > 1 ? autoCar(s, cars) : undefined);
+    if (focused) inView = [focused];
+    if (car && zoom > 1) {
+      target = [car.x, car.y];
+      onCamera = [car.key];
+    }
   }
-  const target = carOf(selected, cars) ?? leaderView(s, cars);
-  if (!target) return;
-  if (!focus) focus = [target.x, target.y];
-  focus[0] += (target.x - focus[0]) * 0.2;
-  focus[1] += (target.y - focus[1]) * 0.2;
-  renderer.setView(zoom, focus[0], focus[1]);
+  // Nothing to follow: back out to the whole track, centred on it.
+  if (!target) {
+    const b = t.bounds;
+    target = [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2];
+    want = 1;
+  }
+  camZoom = Math.abs(Math.log(want / camZoom)) < 0.005 ? want : camZoom * (want / camZoom) ** 0.12;
+  if (!camPos) camPos = [target[0], target[1]];
+  camPos[0] += (target[0] - camPos[0]) * 0.2;
+  camPos[1] += (target[1] - camPos[1]) * 0.2;
+  renderer.setView(camZoom, camPos[0], camPos[1]);
+  return inView;
 }
 
 let lastFrameAt = NaN;
@@ -473,8 +645,8 @@ function frame(): void {
     }
     const s = snap();
     renderer.effectsPaused = !!replay && (reverse || scrubbing);
-    updateCamera(s, cars, meta.track);
-    renderer.render(showVariations ? cars : cars.filter((c) => !c.variant), liveryOf, carOf(selected, cars), officials ?? {
+    const ringed = updateCamera(s, cars, meta.track, time);
+    renderer.render(showVariations ? cars : cars.filter((c) => !c.variant), liveryOf, ringed, officials ?? {
       paceCar: s?.race?.paceCar ?? null,
       wreckers: s?.race?.wreckers ?? [],
     });
@@ -591,6 +763,7 @@ function barPosition(s: SessionSnapshot | null, cars: CarView[], time: number, t
     const leader = cars.find((c) => c.id === s.order[0]);
     return r.state !== 'green' ? 1 : r.started && leader ? Math.min(1, (leader.laps + t.wrapS(leader.s) / t.length) / r.laps) : 0;
   }
+  if (s?.qualifying) return s.qualifying.progress;
   const tape = h.tape;
   if (!tape || tape.length < 1) return 0;
   const start = tape.timeAt(tape.first);
@@ -614,6 +787,13 @@ function updateTimeline(s: SessionSnapshot | null, cars: CarView[], time: number
       laps = r.laps;
     } else if (sc) {
       label = `Round <b>${sc.round + 1}</b> · ${clockText(time)}`;
+    } else if (s.qualifying?.format === 'group') {
+      const q = s.qualifying;
+      label = `${q.rounds > 1 ? `Q<b>${q.round + 1}</b> / ${q.rounds}` : 'Qualifying'}${q.phase === 'green' ? ` · ${clockText(q.clock)} left` : ''} · ${clockText(time)}`;
+    } else if (s.qualifying && s.standings) {
+      const n = s.standings.length;
+      const done = s.standings.filter((st) => st.status === 'finished' || st.status === 'out').length;
+      label = `Qualifying · car <b>${Math.min(n, done + 1)}</b> / ${n} · ${clockText(time)}`;
     } else {
       label = `Practice · ${clockText(time)}`;
     }
@@ -648,15 +828,29 @@ function updateTimeline(s: SessionSnapshot | null, cars: CarView[], time: number
 const MARKS: Partial<Record<TimelineEvent['kind'], { color: string; minor?: boolean; rank: number }>> = {
   caution: { color: '#f5c518', rank: 3 },
   retired: { color: '#ff5a5a', rank: 2 },
+  review: { color: '#ff9f1a', minor: true, rank: 1 },
   steward: { color: '#ff9f1a', minor: true, rank: 1 },
   lead: { color: '#b9b9c2', minor: true, rank: 0 },
+  pole: { color: '#b36bff', rank: 1 },
+  round: { color: '#e8e8ee', minor: true, rank: 0 },
 };
 /** Events closer than this (share of the race) share a marker. */
 const MARK_MERGE = 0.002;
-/** The timeline the markers were drawn from, and the caution still out (its shading grows with the race). */
-const marksShown: { events: TimelineEvent[] | null; count: number; open: HTMLElement | null; openAt: number } = { events: null, count: 0, open: null, openAt: 0 };
+/**
+ * A marker's moment: when (the first event's time), the teams in it (the
+ * first is the one it's most about: the top-ranked event's car), and the
+ * event times in it (a stewards' decision joins its incident's marker).
+ */
+interface MarkGroup {
+  at: number; time: number; style: { color: string; minor?: boolean; rank: number }; minor: boolean; lines: string[];
+  keys: number[]; keyRank: number; times: number[];
+}
+/** The timeline the markers were drawn from, its moments, and the caution still out (its shading grows with the race). */
+const marksShown: { events: TimelineEvent[] | null; count: number; groups: MarkGroup[]; open: HTMLElement | null; openAt: number } = {
+  events: null, count: 0, groups: [], open: null, openAt: 0,
+};
 
-/** Race timelines: a marker per notable event (hover for what happened), and the cautions shaded. */
+/** Race timelines: a marker per notable moment (hover for what happened; click to watch it), and the cautions shaded. */
 function updateMarks(events: TimelineEvent[], meta: EventMeta | null, progress: number): void {
   if (events !== marksShown.events || events.length !== marksShown.count) {
     marksShown.events = events;
@@ -667,7 +861,7 @@ function updateMarks(events: TimelineEvent[], meta: EventMeta | null, progress: 
       const t = key === null ? undefined : meta?.teams.get(key);
       return t ? `#${t.livery.number} ` : '';
     };
-    const groups: Array<{ at: number; time: number; style: { color: string; minor?: boolean; rank: number }; minor: boolean; lines: string[] }> = [];
+    const groups: MarkGroup[] = [];
     const spans: string[] = [];
     let cautionAt: number | null = null;
     for (const e of events) {
@@ -679,16 +873,31 @@ function updateMarks(events: TimelineEvent[], meta: EventMeta | null, progress: 
       }
       const style = MARKS[e.kind];
       if (!style) continue;
-      const line = `Lap ${e.lap} · ${clockText(e.time)} · ${who(e.key)}${e.text}`;
+      const line = `${e.lap !== undefined ? `Lap ${e.lap} · ` : ''}${clockText(e.time)} · ${who(e.key)}${e.text}`;
+      // A decision goes with the incident it's about, if that has a marker; otherwise with what's close by.
       const last = groups[groups.length - 1];
-      if (last && e.at - last.at < MARK_MERGE) {
-        last.lines.push(line);
-        if (style.rank > last.style.rank) last.style = style;
-        last.minor &&= !!style.minor;
-      } else groups.push({ at: e.at, time: e.time, style, minor: !!style.minor, lines: [line] });
+      const into = (e.incidentTime !== undefined ? groups.find((g) => g.times.includes(e.incidentTime!)) : undefined)
+        ?? (last && e.at - last.at < MARK_MERGE ? last : undefined);
+      const g = into ?? { at: e.at, time: e.time, style, minor: !!style.minor, lines: [], keys: [], keyRank: -1, times: [] };
+      if (!into) groups.push(g);
+      g.lines.push(line);
+      g.times.push(e.time);
+      if (style.rank > g.style.rank) g.style = style;
+      g.minor &&= !!style.minor;
+      // Who it's about: the top-ranked event's car first, then everyone else in it.
+      const keys = [...(e.key !== null ? [e.key] : []), ...(e.others ?? [])];
+      if (e.key !== null && style.rank > g.keyRank) {
+        g.keyRank = style.rank;
+        g.keys = [e.key, ...g.keys.filter((k) => k !== e.key)];
+      }
+      for (const k of keys) if (!g.keys.includes(k)) g.keys.push(k);
     }
+    marksShown.groups = groups;
     const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-    const marks = groups.map((g) => `<i class="${g.minor ? 'minor' : ''}" data-t="${g.time}" style="left:${pct(g.at)};--c:${g.style.color}" title="${esc([...g.lines, 'Click to watch'].join('\n'))}"></i>`);
+    const marks = groups.map((g, i) => {
+      const cars = g.keys.length ? `Click to watch (${g.keys.map((k) => who(k).trim()).filter(Boolean).join(', ')} in focus)` : 'Click to watch';
+      return `<i class="${g.minor ? 'minor' : ''}" data-g="${i}" style="left:${pct(g.at)};--c:${g.style.color}" title="${esc([...g.lines, cars].join('\n'))}"></i>`;
+    });
     if (cautionAt !== null) spans.push(`<span data-open style="left:${pct(cautionAt)}"></span>`);
     $('tlMarks').innerHTML = marks.join('');
     $('tlCautions').innerHTML = spans.join('');
@@ -712,7 +921,7 @@ function applySpeed(): void {
   b.title = paused ? 'Play (Space or K)' : 'Pause (Space or K)';
   b.setAttribute('aria-label', paused ? 'Play' : 'Pause');
   $('reverse').classList.toggle('on', reverse && !paused);
-  renderSpeedButtons();
+  showSpeed(speed);
 }
 
 /** What the transport last showed. */
@@ -765,12 +974,29 @@ function jump(seconds: number): void {
   }
 }
 
-/** One step up or down the speed list (resumes if paused). */
+/** On to the next preset speed up or down from wherever the speed is (resumes if paused). */
 function nudgeSpeed(dir: 1 | -1): void {
-  const i = SPEEDS.findIndex(([, v]) => v === speed);
-  speed = SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, (i < 0 ? 2 : i) + dir))][1];
+  speed = dir > 0 ? SPEEDS.find((v) => v > speed * 1.001) ?? SPEEDS[SPEEDS.length - 1]
+    : [...SPEEDS].reverse().find((v) => v < speed / 1.001) ?? SPEEDS[0];
   paused = false;
   applySpeed();
+}
+
+/**
+ * Watch a moment from just before it (replay), with the teams in it (if any)
+ * in focus: the camera frames them all as it happens, then stays with the first.
+ */
+function watchMoment(time: number, keys: number[]): void {
+  if (!toReplay(time - 5)) return;
+  // A moment is watched at real speed (or slower, if slow-motion was on).
+  speed = Math.min(speed, 1);
+  paused = false;
+  applySpeed();
+  if (!keys.length) return;
+  focusKey = keys[0];
+  incident = { keys, time, framed: true };
+  camPos = null;
+  focusChanged();
 }
 
 /** A tenth of a second on, paused. */
@@ -784,11 +1010,9 @@ function stepAhead(): void {
   host.step(0.1);
 }
 
-const ZOOMS: Array<[string, number]> = [['Full', 1], ['2×', 2], ['4×', 4], ['8×', 8]];
 function setZoom(z: number): void {
   zoom = z;
-  focus = null;
-  renderZoomButtons();
+  showZoom(z);
 }
 
 $('playPause').onclick = togglePause;
@@ -813,8 +1037,9 @@ $('goLive').onclick = () => {
   };
   bar.addEventListener('pointerdown', (e) => {
     const mark = (e.target as HTMLElement).closest<HTMLElement>('#tlMarks i');
-    if (mark?.dataset.t) {
-      toReplay(Number(mark.dataset.t) - 5);
+    const g = mark?.dataset.g !== undefined ? marksShown.groups[Number(mark.dataset.g)] : undefined;
+    if (g) {
+      watchMoment(g.time, g.keys);
       return;
     }
     if (!toReplay()) return;
@@ -832,22 +1057,221 @@ $('goLive').onclick = () => {
   bar.addEventListener('pointercancel', release);
 }
 
-// Display options: a popover from the bar; closes on a click elsewhere or Escape.
-{
-  const toggle = $('displayToggle'), pop = $('displayPop');
-  const show = (open: boolean) => { pop.hidden = !open; toggle.classList.toggle('on', open); toggle.setAttribute('aria-expanded', String(open)); };
-  toggle.onclick = () => show(pop.hidden);
+/** A popover from the bar: its button opens and closes it; a click elsewhere or Escape closes it. */
+function popover(toggleId: string, popId: string, onOpen?: () => void): { isOpen: () => boolean; close: () => void } {
+  const toggle = $(toggleId), pop = $(popId);
+  const show = (open: boolean) => {
+    pop.hidden = !open;
+    toggle.classList.toggle('on', open);
+    toggle.setAttribute('aria-expanded', String(open));
+    if (open) onOpen?.();
+  };
+  toggle.addEventListener('click', () => show(pop.hidden));
   document.addEventListener('pointerdown', (e) => {
-    if (!pop.hidden && !(e.target as HTMLElement).closest('.popwrap')) show(false);
+    if (!pop.hidden && !toggle.parentElement!.contains(e.target as Node)) show(false);
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') show(false); });
+  return { isOpen: () => !pop.hidden, close: () => show(false) };
 }
 
+popover('displayToggle', 'displayPop');
+
+/**
+ * A slider and a number box for one value. Moving the slider writes the value
+ * into the box; typing in the box moves the slider (a number out of range
+ * waits for Enter or leaving the box, then is brought into range). Log scale
+ * for ranges over many doublings; the slider clicks onto the presets near
+ * them. Returns a function to show a value set elsewhere (a key).
+ */
+function sliderNumber(opts: {
+  range: string; box: string; min: number; max: number; log?: boolean; presets?: number[];
+  value: () => number; onChange: (v: number) => void;
+}): (v: number) => void {
+  const range = $<HTMLInputElement>(opts.range), box = $<HTMLInputElement>(opts.box);
+  const scale = (v: number) => (opts.log ? Math.log(v) : v);
+  const lo = scale(opts.min), hi = scale(opts.max), steps = Number(range.max);
+  const toPos = (v: number) => Math.round(((scale(v) - lo) / (hi - lo)) * steps);
+  const fromPos = (p: number) => { const x = lo + (p / steps) * (hi - lo); return opts.log ? Math.exp(x) : x; };
+  const clamp = (v: number) => Math.min(opts.max, Math.max(opts.min, v));
+  // Two significant figures off the slider (0.37, 2.4, 23); the box takes any value.
+  const tidy = (v: number) => clamp(Number(v.toPrecision(2)));
+  const show = (v: number) => {
+    range.value = String(toPos(v));
+    if (document.activeElement !== box) box.value = String(v);
+  };
+  range.addEventListener('input', () => {
+    const p = Number(range.value);
+    const v = opts.presets?.find((d) => Math.abs(toPos(d) - p) <= steps * 0.015) ?? tidy(fromPos(p));
+    box.value = String(v);
+    opts.onChange(v);
+  });
+  box.addEventListener('input', () => {
+    const v = box.valueAsNumber;
+    if (!Number.isFinite(v) || v < opts.min || v > opts.max) return;
+    range.value = String(toPos(v));
+    opts.onChange(v);
+  });
+  box.addEventListener('change', () => {
+    const v = Number.isFinite(box.valueAsNumber) ? clamp(box.valueAsNumber) : opts.value();
+    box.value = String(v);
+    range.value = String(toPos(v));
+    if (v !== opts.value()) opts.onChange(v);
+  });
+  // Enter settles the number and hands the keys back to the shortcuts; Escape puts back what it was.
+  box.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') box.value = String(opts.value());
+    if (e.key === 'Enter' || e.key === 'Escape') box.blur();
+  });
+  show(opts.value());
+  return show;
+}
+
+const showSpeed = sliderNumber({
+  range: 'speedRange', box: 'speedNum', min: SPEED_RANGE[0], max: SPEED_RANGE[1], log: true, presets: SPEEDS,
+  value: () => speed, onChange: (v) => { speed = v; paused = false; applySpeed(); },
+});
+const showZoom = sliderNumber({
+  range: 'zoomRange', box: 'zoomNum', min: ZOOM_RANGE[0], max: ZOOM_RANGE[1], log: true, presets: ZOOMS,
+  value: () => zoom, onChange: (v) => { zoom = v; },
+});
+
+// ---------- The camera: the driver in focus ----------
+
+/** The camera icon, by the car the camera's on. */
+const CAM = '<span class="cam" title="On camera"></span>';
+const driverName = (t: TeamEntry) => roster.drivers.get(t.driver)?.name ?? '';
+
+/** The focus changed: everything that shows it catches up. */
+function focusChanged(): void {
+  renderCamera();
+  renderCamPop();
+  renderTeams();
+  renderRoster();
+  drawRadio();
+  updateTower();
+}
+
+/** Put a team in focus (null: nobody, the camera on the leader). Picking a car this way puts any incident away. */
+function setFocus(key: number | null): void {
+  focusKey = key;
+  incident = null;
+  camPos = null; // a cut, not a pan
+  focusChanged();
+}
+
+/** Click a car in focus again to let it go. */
+const toggleFocus = (key: number) => setFocus(focusKey === key ? null : key);
+
+/** The field in running order (team ids); none in a class (students aren't teams). */
+function fieldOrder(): number[] {
+  const s = snap(), meta = shownMeta();
+  return s && meta && meta.mode !== 'class' ? runningOrder(s).map((c) => c.key).filter((k) => meta.teams.has(k)) : [];
+}
+
+/** Through the field with [ and ]: Auto (the leader), then P1, P2, … and round again. */
+function cycleFocus(dir: 1 | -1): void {
+  const list = [null, ...fieldOrder()];
+  if (list.length < 2) return;
+  const i = Math.max(0, list.indexOf(focusKey));
+  setFocus(list[(i + dir + list.length) % list.length]);
+}
+
+/** The team the camera's on by itself (nobody in focus). */
+function autoTeam(): TeamEntry | undefined {
+  const s = snap(), car = s && autoCar(s, s.cars);
+  return car ? shownMeta()?.teams.get(car.key) : undefined;
+}
+const autoLabel = () => (snap()?.qualifying?.format === 'solo' ? 'car on track' : 'leader');
+
+/** What the camera bar last showed. */
+const camShown = { pick: '', incident: '', pop: '', disabled: '' };
+
+/** The camera bar: who's in focus (or Auto and whose car that is), and an incident's cars to switch between. */
+function renderCamera(): void {
+  const meta = shownMeta();
+  const school = !meta || meta.mode === 'class';
+  const disabled = String(school);
+  if (disabled !== camShown.disabled) {
+    camShown.disabled = disabled;
+    for (const id of ['camPrev', 'camNext', 'camPick']) ($(id) as HTMLButtonElement).disabled = school;
+  }
+  const t = focusTeam(), auto = autoTeam();
+  const pick = school ? '<span class="who">Auto</span>'
+    : t ? `${carLabel(t)}&nbsp;<span class="who">${driverName(t)}</span><span class="muted">▾</span>`
+    : `<span class="who">Auto: ${autoLabel()}${auto ? ` ${carLabel(auto)}` : ''}</span><span class="muted">▾</span>`;
+  if (pick !== camShown.pick) $('camPick').innerHTML = camShown.pick = pick;
+  // An incident: its cars, one button each (follow that one), and All to frame them together again.
+  const inc = incident && meta ? incident : null;
+  const html = !inc ? '' : `<span class="tag">Incident</span>${inc.keys.length > 1
+    ? `<button data-inc="all" class="${inc.framed ? 'on' : ''}" title="Frame all of them as it happens">All</button>` : ''}`
+    + inc.keys.map((k) => {
+      const team = meta!.teams.get(k);
+      const on = inc.keys.length > 1 ? !inc.framed && focusKey === k : focusKey === k;
+      return team ? `<button data-inc="${k}" class="${on ? 'on' : ''}" title="Follow #${team.livery.number} ${driverName(team)}">#${team.livery.number}</button>` : '';
+    }).join('')
+    + '<button data-inc="done" title="Done with the incident">×</button>';
+  if (html !== camShown.incident) {
+    camShown.incident = html;
+    const el = $('camIncident');
+    el.innerHTML = html;
+    el.hidden = !html;
+  }
+}
+
+/** The camera list: Auto, then the field in running order, each to pick. */
+function renderCamPop(): void {
+  if (!camPop.isOpen()) return;
+  const s = snap(), meta = shownMeta();
+  const auto = autoTeam();
+  const rows = [`<div class="head">Camera follows</div>`,
+    `<button class="pick${focusKey === null ? ' on' : ''}" data-key=""><span class="pos"></span><span class="name">Auto: the ${autoLabel()}${auto ? `, #${auto.livery.number}` : ''}</span>${focusKey === null && onCamera.length ? CAM : ''}</button>`];
+  if (s && meta && meta.mode !== 'class') {
+    runningOrder(s).forEach((car, p) => {
+      const t = meta.teams.get(car.key);
+      if (!t) return;
+      const status = car.retired ? (car.disqualified ? 'DQ' : 'OUT') : pitStatus(car);
+      rows.push(`<button class="pick${t.id === focusKey ? ' on' : ''}${car.retired ? ' out' : ''}" data-key="${t.id}">`
+        + `<span class="pos">P${p + 1}</span>${carLabel(t)}&nbsp;<span class="name">${driverName(t)}</span>`
+        + `${onCamera.includes(t.id) ? CAM : ''}${status ? ` <span class="muted">${status}</span>` : ''}</button>`);
+    });
+  }
+  const html = rows.join('');
+  if (html !== camShown.pop) $('camPop').innerHTML = camShown.pop = html;
+}
+
+const camPop = popover('camPick', 'camPop', () => { camShown.pop = ''; renderCamPop(); });
+$('camPop').onclick = (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-key]');
+  if (!b) return;
+  setFocus(b.dataset.key ? Number(b.dataset.key) : null);
+  camPop.close();
+};
+$('camPrev').onclick = () => cycleFocus(-1);
+$('camNext').onclick = () => cycleFocus(1);
+$('camIncident').onclick = (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-inc]');
+  if (!b || !incident) return;
+  const what = b.dataset.inc!;
+  if (what === 'done') incident = null;
+  else if (what === 'all') {
+    incident.framed = true;
+    focusKey = incident.keys[0];
+  } else {
+    // One of its cars: follow that one (the incident stays, to switch back).
+    focusKey = Number(what);
+    incident.framed = incident.keys.length === 1;
+  }
+  camPos = null;
+  focusChanged();
+};
+
 // Keyboard: Space/K pause, J/L slower/faster, R backwards, ←/→ 5 s (Shift: 30 s), ,/. step, Home/End start/live,
-// Z camera. Not while typing, or over the history page.
+// Z zoom, [/] previous/next car. Not while typing, or over the history page; on a slider its own keys move it.
 document.addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey || (e.repeat && e.key === ' ')) return;
-  if ((e.target as HTMLElement).closest('input, select, textarea, [contenteditable]')) return;
+  const target = e.target as HTMLElement;
+  if (target.closest('input:not([type=range]), select, textarea, [contenteditable]')) return;
+  if (target.matches('input[type=range]') && /^(Arrow|Page|Home|End)/.test(e.key)) return;
   if (!$('agentPage').hidden) return;
   switch (e.key.toLowerCase()) {
     case ' ': case 'k': togglePause(); break;
@@ -860,7 +1284,9 @@ document.addEventListener('keydown', (e) => {
     case 'arrowright': jump(e.shiftKey ? 30 : 5); break;
     case 'home': toReplay(-Infinity); break;
     case 'end': if (replay) { replay.seek(replay.end); goLive(); } break;
-    case 'z': setZoom(ZOOMS[(ZOOMS.findIndex(([, v]) => v === zoom) + 1) % ZOOMS.length][1]); break;
+    case 'z': setZoom(ZOOMS.find((v) => v > zoom * 1.001) ?? ZOOMS[0]); break;
+    case '[': cycleFocus(-1); break;
+    case ']': cycleFocus(1); break;
     default: return;
   }
   e.preventDefault();
@@ -901,6 +1327,10 @@ function updateTower(): void {
     schoolTower(s, meta);
     return;
   }
+  if (meta.mode === 'qualifying') {
+    qualifyingTower(s, meta);
+    return;
+  }
   $('towerHead').innerHTML = TOWER_HEAD;
   const cars = runningOrder(s);
   const leader = cars[0];
@@ -923,16 +1353,16 @@ function updateTower(): void {
         : s.race?.pacing ? '–'
         : `+${((leader.dist - car.dist) / Math.max(20, leader.speed)).toFixed(2)}`);
     }
-    return `<tr data-team="${t.id}" title="${roster.drivers.get(t.driver)?.name ?? ''}" class="${selected === t ? 'sel' : ''}${car.retired ? ' out' : ''}">
-      <td>${p + 1}</td><td>${carLabel(t)}${finished ? FLAG : ''}${penaltyMarks(car)}</td>
+    return `<tr data-team="${t.id}" title="${roster.drivers.get(t.driver)?.name ?? ''}" class="${focusKey === t.id ? 'sel' : ''}${car.retired ? ' out' : ''}">
+      <td>${p + 1}</td><td>${carLabel(t)}${finished ? FLAG : ''}${penaltyMarks(car)}${onCamera.includes(t.id) ? CAM : ''}</td>
       <td>${gap}</td><td>${fmt(car.bestLap)}</td>
       <td>${Math.round(car.tireLife * 100)}</td><td>${Math.round((car.fuel / P.FUEL_CAPACITY) * 100)}</td>
       <td>${car.stops}</td><td>${Math.round(car.health * 100)}</td></tr>`;
   }).join('');
-  const followed = (selected && meta.teams.has(selected.id) ? selected : null) ?? meta.teams.get(leader.key)!;
-  const following = zoom === 1 ? '' : fixedFocusS !== null && !selected ? ' · camera parked'
-    : ` · following #${followed.livery.number} ${roster.drivers.get(followed.driver)?.name ?? ''}`;
+  const followed = focusTeam() ?? meta.teams.get(leader.key)!;
+  const following = followingText(meta);
   const session = meta.mode === 'race' ? `${meta.round ? 'championship' : 'exhibition'} race · ${pace}× pace` : meta.mode === 'practice' ? `practice · ${pace}× pace` : 'ghosts';
+  const next = nextUpText(meta);
   let status = `leader ${(leader.speed * 3.6).toFixed(0)} km/h · t ${s.time.toFixed(0)}s`;
   const r = s.race;
   if (r) {
@@ -941,12 +1371,10 @@ function updateTower(): void {
     const who = `#${w.livery.number} ${roster.drivers.get(w.driver)?.name ?? ''}`;
     const flagText = r.flag === 'formation' ? '<span class="flagtag pace">FORMATION LAP</span>'
       : r.flag === 'grid' ? (r.lights ? `<span style="color:#e5484d;letter-spacing:2px">${'●'.repeat(r.lights)}</span> lights` : '<span class="flagtag pace">GRID</span> forming up')
-      : !r.started ? '<span class="flagtag pace">PACE LAPS</span>'
+      : !r.started ? `<span class="flagtag pace">PACE CAR</span>${r.oneToGo ? ' coming in: green next time by' : ''}`
       : r.flag === 'caution' ? (r.safetyCar ? `<span class="flagtag caution">SAFETY CAR</span>${r.oneToGo ? ' in this lap' : ''}` : `<span class="flagtag caution">CAUTION</span>${r.oneToGo ? ' one to go' : ''}`)
       : r.flag === 'restart' ? '<span class="flagtag caution">RESTART</span> leader to the line'
       : '<span class="flagtag green">GREEN</span>';
-    const next = Number.isNaN(raceDoneAt) || loop === 'stop' ? ''
-      : ` · ${loop === 'weekend' ? 'practice' : 'next race'} in ${Math.max(0, Math.ceil(NEXT_RACE_DELAY - (performance.now() / 1000 - raceDoneAt)))} s`;
     const learning = (handle: EventHandle | null) => {
       const spec = handle?.event?.what === 'session' ? handle.event.spec : null;
       return spec?.learn ? ` · drivers learning (${meta.learnedSteps ?? 0} steps)` : '';
@@ -955,11 +1383,103 @@ function updateTower(): void {
       : r.state === 'checkered' ? `${FLAG} <b>Checkered flag</b> · ${who} wins · others finishing`
       : `${FLAG} <b>Final</b> · ${who} wins${next}`;
   } else if (weekendPractice && shown() === fieldEvent) {
-    status = `<b>Practice</b> · ${weekendPractice.roundsLeft} practice rounds until the race · drivers and crew chiefs learning`;
+    status = `<b>Practice</b> · ${weekendPractice.roundsLeft} practice rounds until qualifying · drivers and crew chiefs learning`;
   }
   const drivers = readOnly() ? ` · ${bundleOf(source)?.name} drivers` : '';
   $('hud').innerHTML = `<b>${meta.trackName}</b> · ${meta.track.length.toFixed(0)} m · ${s.cars.length} cars${drivers} · ${session} · ${speedText()}${following}<br>${status}`
-    + (renderer.debug.banking || renderer.debug.forces ? `<br>${bankReadout(carOf(followed), meta)}` : '');
+    + (renderer.debug.banking || renderer.debug.forces ? `<br>${bankReadout(carOf(followed.id), meta)}` : '');
+}
+
+/** The HUD's word on the camera: who it's following, the incident it's framing, or parked. */
+function followingText(meta: EventMeta): string {
+  const num = (k: number) => `#${meta.teams.get(k)?.livery.number ?? '?'}`;
+  if (onCamera.length > 1) return ` · camera on the incident: ${onCamera.map(num).join(', ')}`;
+  const t = onCamera.length ? meta.teams.get(onCamera[0]) : undefined;
+  if (t) return ` · following #${t.livery.number} ${driverName(t)}`;
+  const inFocus = focusTeam();
+  if (inFocus) return ` · #${inFocus.livery.number} ${driverName(inFocus)} in focus`;
+  return zoom > 1 && fixedFocusS !== null ? ' · camera parked' : '';
+}
+
+/** After a finished race or qualifying on screen: what comes next, and when. */
+function nextUpText(meta: EventMeta): string {
+  const what = meta.mode === 'qualifying' ? (meta.weekend ? 'the race' : '')
+    : loop === 'stop' ? '' : loop === 'weekend' ? 'practice' : 'next race';
+  if (Number.isNaN(raceDoneAt) || !what) return '';
+  return ` · ${what} in ${Math.max(0, Math.ceil(NEXT_RACE_DELAY - (performance.now() / 1000 - raceDoneAt)))} s`;
+}
+
+/**
+ * Group qualifying: the round a car at this place went out in (positions fill
+ * from the back, the field over the rounds at a time), or null if it's still
+ * in (or made the last round).
+ */
+function knockedOutIn(position: number, field: number, q: QualifyingView): number | null {
+  const cut = Math.floor(field / Math.max(1, q.rounds));
+  if (!cut || q.format !== 'group') return null;
+  const r = Math.floor((field - position) / cut);
+  return r < Math.min(q.round, q.rounds - 1) ? r : null;
+}
+
+/**
+ * Qualifying: the times and gaps, who's on track, who's still to go; in group
+ * qualifying the cut line (the drop zone below it) and who went out in which
+ * round. The HUD says where the session is.
+ */
+function qualifyingTower(s: SessionSnapshot, meta: EventMeta): void {
+  $('towerHead').innerHTML = TOWER_HEAD;
+  const cars = runningOrder(s);
+  const standings = s.standings ?? [];
+  const q: QualifyingView = s.qualifying ?? { format: 'solo', round: 0, rounds: 1, phase: 'green', clock: 0, progress: 0, cut: 0 };
+  const group = q.format === 'group';
+  const qName = (r: number) => (q.rounds > 1 ? `Q${r + 1}` : 'Qualifying');
+  const fastest = standings[0] && Number.isFinite(standings[0].time) ? standings[0] : null;
+  const name = (t: TeamEntry) => `#${t.livery.number} ${roster.drivers.get(t.driver)?.name ?? ''}`;
+  $('tower').innerHTML = cars.map((car, p) => {
+    const t = meta.teams.get(car.key)!;
+    const st = standings[p];
+    const timed = !!st && Number.isFinite(st.time);
+    const ko = knockedOutIn(p + 1, standings.length, q);
+    const gap = ko !== null ? `OUT ${qName(ko)}`
+      : timed ? (p === 0 ? (q.phase === 'finished' || !group || q.rounds === q.round + 1 ? 'POLE' : 'P1') : `+${(st.time - fastest!.time).toFixed(3)}`)
+      : st?.status === 'running' ? 'ON TRACK' : st?.status === 'pit' ? (group ? 'IN PITS' : 'TO GO') : st?.status === 'out' ? 'OUT' : 'NO TIME';
+    // On track now, timed already or not.
+    const onTrack = st?.status === 'running' ? ' <span title="On track" style="color:#3ecf8e">●</span>' : '';
+    // The cut: a line under the last place that goes through, the drop zone below it dimmed.
+    const style = ko !== null ? 'opacity:0.5' : q.cut && p === q.cut ? 'border-top:2px solid #e5484d' : '';
+    return `<tr data-team="${t.id}" title="${roster.drivers.get(t.driver)?.name ?? ''}" class="${focusKey === t.id ? 'sel' : ''}${st?.status === 'out' ? ' out' : ''}"${style ? ` style="${style}"` : ''}>
+      <td>${p + 1}</td><td>${carLabel(t)}${onTrack}${onCamera.includes(t.id) ? CAM : ''}</td>
+      <td>${gap}</td><td>${timed ? st.time.toFixed(3) : '–'}</td>
+      <td>${Math.round(car.tireLife * 100)}</td><td>${Math.round((car.fuel / P.FUEL_CAPACITY) * 100)}</td>
+      <td>${car.stops}</td><td>${Math.round(car.health * 100)}</td></tr>`;
+  }).join('');
+  const teamOf = (id: number) => meta.teams.get(s.cars.find((c) => c.id === id)!.key);
+  const poleTeam = fastest && teamOf(fastest.id);
+  const spec = shown()?.event?.what === 'session' ? (shown()!.event!.spec as SessionSpec).qualifying : undefined;
+  let status: string;
+  if (q.phase === 'finished') {
+    status = `${FLAG} <b>Qualifying over</b>${poleTeam ? ` · pole ${name(poleTeam)} ${fastest!.time.toFixed(3)}` : ''}${nextUpText(meta)}`;
+  } else if (group) {
+    const inIt = standings.length - standings.filter((_, p) => knockedOutIn(p + 1, standings.length, q) !== null).length;
+    const onTrack = standings.filter((st) => st.status === 'running').length;
+    const through = q.cut ? ` · top ${q.cut} go through` : ' · for pole';
+    status = q.phase === 'pits' ? `<b>${qName(q.round)}</b> · about to start · ${inIt} cars${through}`
+      : q.phase === 'checkered' ? `${FLAG} <b>${qName(q.round)}</b> · checkered flag · laps under way still count · ${onTrack} on track`
+      : `<span class="flagtag green">${qName(q.round)}</span> <b>${clockText(q.clock)}</b> left · ${onTrack} of ${inIt} on track${through}`;
+    if (fastest && q.phase !== 'pits' && poleTeam) status += ` · fastest ${name(poleTeam)} ${fastest.time.toFixed(3)}`;
+  } else {
+    const done = standings.filter((st) => st.status === 'finished' || st.status === 'out').length;
+    const runner = standings.find((st) => st.status === 'running');
+    const runnerTeam = runner && teamOf(runner.id);
+    status = `<b>Qualifying</b> · car ${Math.min(standings.length, done + 1)} of ${standings.length}`
+      + `${runnerTeam ? ` · ${name(runnerTeam)} on track` : ' · next car out'}${poleTeam ? ` · pole ${name(poleTeam)} ${fastest!.time.toFixed(3)}` : ''}`;
+  }
+  const how = group
+    ? `${q.rounds > 1 ? `${q.rounds} rounds, the slowest out after each` : 'one session'}${spec?.format === 'group' ? `, ${Math.round(spec.roundSeconds / 60)} min each` : ''}`
+    : `one car at a time${spec?.format === 'solo' ? `, best of ${spec.laps} lap${spec.laps === 1 ? '' : 's'}` : ''}`;
+  const session = `${meta.round ? 'championship' : 'exhibition'} qualifying · ${how}${meta.weekend ? ' · sets the grid' : ''}`;
+  const drivers = readOnly() ? ` · ${bundleOf(source)?.name} drivers` : '';
+  $('hud').innerHTML = `<b>${meta.trackName}</b> · ${meta.track.length.toFixed(0)} m · ${s.cars.length} cars${drivers} · ${session} · ${speedText()}${followingText(meta)}<br>${status}`;
 }
 
 /**
@@ -989,13 +1509,16 @@ function eventStatus(h: EventHandle): string {
   if (h.state === 'finished') {
     const winner = h.results?.[0];
     const t = winner && meta?.teams.get(winner.key);
-    return `finished${t ? ` · won by #${t.livery.number}` : ''}`;
+    return `finished${t ? ` · ${meta?.mode === 'qualifying' ? 'pole' : 'won by'} #${t.livery.number}` : ''}`;
   }
   if (h.attachedTo) return 'on screen';
   const p = h.progress;
   if (!h.runDetached) return 'paused (open sessions run while watched)';
   if (!p) return 'starting…';
   if (p.round !== null) return `round ${p.round}`;
+  const q = p.qualifying;
+  if (q?.format === 'group' && q.phase !== 'finished') return `${q.rounds > 1 ? `Q${q.round + 1}` : 'qualifying'} · ${q.phase === 'green' ? `${clockText(q.clock)} left` : q.phase === 'pits' ? 'about to start' : 'checkered'}`;
+  if (p.runs) return `qualifying · ${p.runs.done} of ${p.runs.total} cars run`;
   return p.lap !== null ? `lap ${p.lap} / ${p.laps}${p.flag && p.flag !== 'green' ? ` · ${p.flag}` : ''}` : `${p.time.toFixed(0)} s`;
 }
 
@@ -1058,12 +1581,12 @@ const replayTeams = (meta: EventMeta) => [...meta.teams.values()].map((t) => ({
   id: t.id, livery: t.livery, driver: t.driver, spotter: t.spotter, chief: t.chief, driverName: roster.drivers.get(t.driver)?.name ?? '',
 }));
 
-/** A finished race: kept as a replay. */
+/** A finished race (or qualifying): kept as a replay. */
 function saveRace(handle: EventHandle): void {
   const meta = metas.get(handle);
   if (!meta || !handle.tape || handle.tape.length < 2) return;
   void keepReplay({
-    id: handle.ref.id, label: handle.ref.label, event: handle.ref, kind: 'race', track: meta.trackName, layout: meta.track.layout,
+    id: handle.ref.id, label: handle.ref.label, event: handle.ref, kind: meta.mode === 'qualifying' ? 'qualifying' : 'race', track: meta.trackName, layout: meta.track.layout,
     teams: replayTeams(meta), timeline: handle.timeline, results: handle.results ?? undefined,
   }, handle.tape.segment());
 }
@@ -1079,20 +1602,30 @@ function saveRound(handle: EventHandle, t: RoundTape): void {
   }, t.tape);
 }
 
-/** Open a saved replay like an event, and play it from the start (or from just before `at`). */
-async function watchSaved(m: ReplayMeta, at?: number): Promise<void> {
+/**
+ * Open a saved replay like an event, and play it from the start (or from just
+ * before `at`), with the team of `agent` (if they were in it) in focus.
+ */
+async function watchSaved(m: ReplayMeta, at?: number, agent?: string): Promise<void> {
   const packed = await replays.tape(m.id);
   if (!packed) { news('That replay has been cleared.'); await refreshReplays(); return; }
   const tape = Tape.from(await unpackTape(packed));
   const handle = host.open(m.event, tape, m.timeline, m.results ?? null);
   const track = new Track(m.layout);
   metas.set(handle, {
-    mode: m.kind === 'class' ? 'class' : 'race', trackName: m.track, track, recorded: true, round: !!m.event.parent,
+    mode: m.kind, trackName: m.track, track, recorded: true, round: !!m.event.parent,
     teams: new Map(m.teams.map((t) => [t.id, { id: t.id, livery: t.livery, driver: t.driver, spotter: t.spotter, chief: t.chief }])),
     liveries: m.liveries ? new Map(m.liveries) : undefined,
   });
   showEvent(handle);
   if (replay) replay.seek(at === undefined ? replay.start : at - 5);
+  const team = agent ? m.teams.find((t) => t.driver === agent || t.spotter === agent || t.chief === agent) : undefined;
+  if (team) {
+    focusKey = team.id;
+    // A moment of theirs: the camera goes to them for it, zoomed in.
+    if (at !== undefined) incident = { keys: [team.id], time: at, framed: true };
+  }
+  focusChanged();
   if (at !== undefined) speed = 1; // a moment is watched at real speed
   paused = false;
   applySpeed();
@@ -1115,11 +1648,12 @@ function renderReplays(): void {
     const winner = m.results?.[0], team = winner && m.teams.find((t) => t.id === winner.key);
     const what = m.kind === 'race'
       ? (team ? `won by #${team.livery.number} ${team.driverName ?? ''}` : 'race')
+      : m.kind === 'qualifying' ? (team ? `pole: #${team.livery.number} ${team.driverName ?? ''}` : 'qualifying')
       : `${m.graduated?.length ? `${m.graduated.length} licensed` : 'watched'}`;
     return `<tr><td class="name">${m.pinned ? '<span title="Pinned: kept past the cap">●</span> ' : ''}${m.label}<div class="muted">${m.track} · ${what} · ${clockText(m.duration)} · ${(m.bytes / 1e6).toFixed(1)} MB · ${when(m.saved)}</div></td>`
       + `<td class="act"><button data-rp="${i}" data-act="watch">Watch</button><button data-rp="${i}" data-act="pin">${m.pinned ? 'Unpin' : 'Pin'}</button>`
       + `<button data-rp="${i}" data-act="delete" title="Delete this replay">×</button></td></tr>`;
-  }).join('') || '<tr><td class="muted">Finished races are saved here, and driving-school rounds that were watched or earned a license.</td></tr>';
+  }).join('') || '<tr><td class="muted">Finished races and qualifying are saved here, and driving-school rounds that were watched or earned a license.</td></tr>';
 }
 
 $('replayList').onclick = async (e) => {
@@ -1154,8 +1688,8 @@ function agentOptions(role: Role, current: string): string {
 }
 
 function renderTeams(): void {
-  $('teams').innerHTML = field().map((t) => `<tr data-team="${t.id}">
-    <td>${carLabel(t)}</td>
+  $('teams').innerHTML = field().map((t) => `<tr data-team="${t.id}" class="${focusKey === t.id ? 'sel' : ''}">
+    <td data-focus title="${focusKey === t.id ? 'In focus: click to let go' : 'Put in focus (the camera follows them)'}">${carLabel(t)}${focusKey === t.id ? CAM : ''}</td>
     <td><select data-role="driver">${agentOptions('driver', t.driver)}</select></td>
     <td><select data-role="spotter">${agentOptions('spotter', t.spotter)}</select></td>
     <td><select data-role="chief">${agentOptions('chief', t.chief)}</select></td></tr>`).join('');
@@ -1171,19 +1705,25 @@ $('teams').onchange = (e) => {
   renderTeams();
   $('teamsNote').textContent = 'Changes take effect at the next start (Series: Restart applies them now).';
 };
+$('teams').onclick = (e) => {
+  const cell = (e.target as HTMLElement).closest<HTMLElement>('[data-focus]');
+  const row = cell?.closest<HTMLElement>('tr');
+  if (row) toggleFocus(Number(row.dataset.team));
+};
 
 // ---------- Technique roses ----------
 
 const TECHNIQUE_SLOTS = 6;
 
-/** Technique roses for the selected team's driver and the front of the field. */
+/** Technique roses for the driver in focus and the front of the field. */
 function drawTechniques(): void {
   const s = snap();
   const meta = shownMeta();
   for (const [key, h] of s?.technique ?? []) technique.set(key, h);
   const host = $('techniques');
   const shownTeams: TeamEntry[] = [];
-  if (selected && meta?.teams.has(selected.id)) shownTeams.push(selected);
+  const inFocus = focusTeam();
+  if (inFocus) shownTeams.push(inFocus);
   if (s && meta && meta.mode !== 'class') {
     for (const car of runningOrder(s)) {
       const t = meta.teams.get(car.key)!;
@@ -1255,14 +1795,19 @@ function drawTechniques(): void {
 /** Re-render callbacks for every button group, so state loaded at boot shows correctly. */
 const buttonGroups: Array<() => void> = [];
 
-function buttonGroup<T>(hostId: string, options: Array<[string, T]>, current: () => T | null, onPick: (v: T) => void): () => void {
+function buttonGroup<T>(
+  hostId: string, options: Array<[string, T]> | (() => Array<[string, T]>), current: () => T | null, onPick: (v: T) => void,
+  locked?: (v: T) => string | null,
+): () => void {
   const hostEl = $(hostId);
   const render = () => {
     hostEl.innerHTML = '';
-    for (const [label, value] of options) {
+    for (const [label, value] of typeof options === 'function' ? options() : options) {
       const b = document.createElement('button');
       b.textContent = label;
       b.className = current() === value ? 'on' : '';
+      const why = locked?.(value);
+      if (why) { b.disabled = true; b.title = why; }
       b.onclick = () => { onPick(value); render(); };
       hostEl.appendChild(b);
     }
@@ -1272,40 +1817,61 @@ function buttonGroup<T>(hostId: string, options: Array<[string, T]>, current: ()
   return render;
 }
 
-/** Every track races to its own rulebook (ovals: rolling start, pace car; circuits: standing start, safety car). */
-const racesOn = (_t: Track) => true;
-
-function selectTrack(name: string): void {
-  championship = false;
-  trackName = name;
-  track = TRACKS.get(name)!;
-  if (mode === 'race' && !racesOn(track)) mode = 'practice';
-  startSession();
+// Exhibition: venue, then a series that races there (others locked), then its layout and the session. Start starts it.
+buttonGroup('venueButtons', () => venues.map((v) => [v.name, v] as [string, Venue]), () => draft.venue, (v) => pickDraft(v));
+buttonGroup('seriesButtons', () => SERIES.map((s) => [s.name, s] as [string, Series]), () => draft.series, (s) => pickDraft(draft.venue, s),
+  (s) => (venueSeries(draft.venue).includes(s) ? null : `${s.name} doesn't race at ${draft.venue.name} (${s.blurb.toLowerCase()})`));
+buttonGroup('layoutButtons', () => layoutsFor(draft.venue, draft.series).map((l) => [`${l.name} · ${(l.track.length / 1000).toFixed(2)} km`, l] as [string, VenueLayout]),
+  () => draft.layout, (l) => { draft.layout = l; });
+$('startExhibition').onclick = () => {
+  applyDraft();
+  startSession(); // ends the field's previous session (and its practice training)
   buttonGroups.forEach((render) => render());
-}
-const renderTrackButtons = buttonGroup('trackButtons', trackOptions, () => (championship ? null : trackName), selectTrack);
-const newTrack = (type: 'oval' | 'circuit') => {
-  const t = addGeneratedTrack(type);
-  selectTrack(trackOptions[trackOptions.length - 1][0]);
-  renderTrackButtons();
-  news(`New track: ${t.name}, ${t.length.toFixed(0)} m (${type}, seed ${t.layout.seed}). Open it again with ?track=${type}:${t.layout.seed}`
-    + (type === 'circuit' ? ". Drivers without a road-course license (Academy: Road courses) haven't learned circuits' tight corners yet: expect wrecks." : ''));
+  if (track.kind === 'road') news("Road course: drivers without a road-course license (Academy: Road courses) haven't learned its tight corners yet: expect wrecks.");
 };
-$('newTrack').onclick = () => newTrack('oval');
-$('newCircuit').onclick = () => newTrack('circuit');
+
+// Generate: adds a venue to the list (and picks it), starts nothing.
+const sizesOf = (type: 'oval' | 'circuit') => Object.keys(type === 'oval' ? OVAL_SIZE_CLASSES : CIRCUIT_CLASSES);
+const shapeFits = (shape: OvalShape, size: string | null) => (size ? !!OVAL_SIZE_CLASSES[size].shapes[shape] : true);
+buttonGroup('genKindButtons', [['Oval', 'oval'], ['Road circuit', 'circuit']] as Array<[string, 'oval' | 'circuit']>, () => gen.type, (t) => {
+  gen.type = t;
+  gen.size = null;
+  gen.shape = null;
+  $('genShapeRow').hidden = t !== 'oval';
+  buttonGroups.forEach((render) => render());
+});
+const sizeName = (k: string) => (k === 'gp' ? 'GP' : k[0].toUpperCase() + k.slice(1));
+buttonGroup('genSizeButtons', () => [['Any', null], ...sizesOf(gen.type).map((k) => [sizeName(k), k])] as Array<[string, string | null]>,
+  () => gen.size, (s) => {
+    gen.size = s;
+    if (gen.shape && !shapeFits(gen.shape, s)) gen.shape = null;
+    buttonGroups.forEach((render) => render());
+  });
+buttonGroup('genShapeButtons', () => [['Any', null], ...OVAL_SHAPES.map((k) => [k[0].toUpperCase() + k.slice(1), k])] as Array<[string, OvalShape | null]>,
+  () => gen.shape, (s) => { gen.shape = s; },
+  (s) => (s && !shapeFits(s, gen.size) ? `No ${s} ${gen.size} ovals` : null));
+$('generate').onclick = () => {
+  // A shape with any size: one of the sizes that has it.
+  const sizes = sizesOf(gen.type).filter((k) => gen.type !== 'oval' || !gen.shape || shapeFits(gen.shape, k));
+  const variant = gen.size ?? (gen.shape ? sizes[rng.int(sizes.length)] : undefined);
+  const venue = addGeneratedVenue(gen.type, Math.floor(Math.random() * 1e9), variant, gen.shape ?? undefined);
+  pickDraft(venue);
+  const t = venue.layouts[0].track;
+  news(`New venue: ${venue.name}, ${t.length.toFixed(0)} m. Race there from Exhibition (pick a series and Start). Open it again with ?track=${venue.source}`);
+};
 buttonGroup('fieldButtons', FIELD_SIZES.map((n) => [String(n), n] as [string, number]), () => fieldSize, (n) => {
   const practising = !!trainer;
   fieldSize = n;
   if (readOnly()) roster = Roster.fromBundle(bundleOf(source)!, bundleDrivers.get(source)!, n, rng)!;
   else roster.ensureTeams(n);
-  if (selected && !field().includes(selected)) selected = null;
+  if (focusKey !== null && !field().some((t) => t.id === focusKey)) focusKey = null;
   persist();
   renderTeams();
   startSession();
   if (practising && mode === 'practice') startPractice();
 });
-const renderSpeedButtons = buttonGroup('speedButtons', SPEEDS, () => (paused ? null : speed), (s) => { speed = s; paused = false; applySpeed(); });
-const renderZoomButtons = buttonGroup('zoomButtons', ZOOMS, () => zoom, setZoom);
+// Values set from the URL at boot show on the sliders too.
+buttonGroups.push(() => showSpeed(speed), () => showZoom(zoom));
 // Settings → Replays: how much to keep.
 buttonGroup('replayCapButtons', REPLAY_CAPS, () => replayCapMB, async (mb) => {
   replayCapMB = mb;
@@ -1319,18 +1885,18 @@ buttonGroup('effectButtons', [['Show', true], ['Hide', false]] as Array<[string,
   () => renderer.effects, (v) => { renderer.effects = v; });
 buttonGroup('variationButtons', [['Show', true], ['Hide', false]] as Array<[string, boolean]>,
   () => showVariations, (v) => { showVariations = v; });
-buttonGroup('modeButtons', [['Race', 'race'], ['Practice', 'practice'], ['Ghosts', 'ghost']] as Array<[string, Mode]>,
-  () => (championship ? null : mode), (m) => {
-    if (m === 'race' && !racesOn(track)) { news(`No races on road circuits yet (standing starts and the safety car come with the circuit rulebook): practice or ghosts.`); return; }
-    mode = m;
-    championship = false;
-    weekendPractice = null;
-    startSession(); // ends the field's previous session (and its practice training)
-  });
+buttonGroup('modeButtons', [['Race', 'race'], ['Qualifying', 'qualifying'], ['Practice', 'practice'], ['Ghosts', 'ghost']] as Array<[string, Mode]>,
+  () => draft.mode, (m) => { draft.mode = m; });
 buttonGroup('lapButtons', [['20', 20], ['50', 50], ['100', 100], ['200', 200]], () => raceLaps, (n) => {
   raceLaps = n;
   if (mode === 'race') startSession();
 });
+// Qualifying settings take effect from the next qualifying.
+buttonGroup('qualiFormatButtons', [['By series', 'series'], ['Solo', 'solo'], ['Group', 'group']] as Array<[string, typeof qualiFormat]>,
+  () => qualiFormat, (f) => { qualiFormat = f; });
+buttonGroup('qualiLapButtons', [['1', 1], ['2', 2], ['3', 3]], () => qualiLaps, (n) => { qualiLaps = n; });
+buttonGroup('qualiRoundButtons', [['1', 1], ['2', 2], ['3', 3], ['4', 4]], () => qualiRounds, (n) => { qualiRounds = n; });
+buttonGroup('qualiMinuteButtons', [['4 min', 4], ['6 min', 6], ['10 min', 10]], () => qualiMinutes, (n) => { qualiMinutes = n; });
 buttonGroup('paceButtons', [['Real', 1], ['4×', 4], ['8×', 8]], () => pace, (p) => { pace = p; startSession(); });
 buttonGroup('learnButtons', [['On', true], ['Off', false]] as Array<[string, boolean]>, () => learnInRaces, (v) => { learnInRaces = v; });
 buttonGroup('autoButtons', [['Race weekend', 'weekend'], ['Next round', 'races'], ['Stop', 'stop']] as Array<[string, Loop]>,
@@ -1369,11 +1935,8 @@ $('nextRound').onclick = () => {
 $('clearMarks').onclick = () => renderer.clearMarks();
 $('restart').onclick = () => { $('teamsNote').textContent = ''; startSession(); };
 $('tower').onclick = (e) => {
-  const row = (e.target as HTMLElement).closest('tr');
-  if (!row) return;
-  const t = roster.teams.find((x) => x.id === Number(row.dataset.team)) ?? null;
-  selected = selected === t ? null : t;
-  focus = null;
+  const row = (e.target as HTMLElement).closest<HTMLElement>('tr[data-team]');
+  if (row) toggleFocus(Number(row.dataset.team));
 };
 
 // ---------- Races: results, records, the championship ----------
@@ -1415,6 +1978,29 @@ function finishRace(handle: EventHandle): void {
   occupancy.release(handle.ref.id);
   persist();
   renderSeason();
+  renderRoster();
+}
+
+/** Each driver's qualifying result in the log, and the pole on the news. */
+function finishQualifying(handle: EventHandle): void {
+  const meta = metas.get(handle)!;
+  const results = handle.results!;
+  meta.recorded = true;
+  const format = (handle.event!.spec as SessionSpec).qualifying ?? qualifyingFor(meta.series ?? defaultSeries(meta.track.layout));
+  const round = meta.round ? { season: season.number, round: season.races.length + 1 } : {};
+  for (const r of results) {
+    activity.record({
+      kind: 'qualifying', agent: r.driver, role: 'driver', event: handle.ref, brain: roster.drivers.get(r.driver)?.rounds, replay: { id: handle.ref.id },
+      data: {
+        track: meta.trackName, format: format.format, ...(format.format === 'solo' ? { runLaps: format.laps } : { rounds: format.rounds }),
+        starters: results.length, position: r.position, bestLap: r.bestLap,
+        status: r.status === 'out' ? 'out' : 'finished', ...round,
+      },
+    });
+  }
+  const pole = results[0], t = pole && meta.teams.get(pole.key);
+  if (t && pole.bestLap !== null) news(`Pole at ${meta.trackName}: #${t.livery.number} ${roster.drivers.get(pole.driver)?.name ?? ''}, ${pole.bestLap.toFixed(3)}`);
+  occupancy.release(handle.ref.id);
   renderRoster();
 }
 
@@ -1474,7 +2060,7 @@ function renderSeason(): void {
 
 // ---------- Practice: the field learns (in its practice session) ----------
 
-/** Race weekend: practice on the season's next track, then race there. */
+/** Race weekend: practice on the season's next track, then qualifying, then the race there from the grid it set. */
 function startWeekendPractice(attach: boolean): void {
   toNextRound();
   mode = 'practice';
@@ -1487,8 +2073,9 @@ function finishWeekendPractice(): void {
   const attach = fieldEvent?.attachedTo ?? true;
   weekendPractice = null;
   stopPractice();
-  mode = 'race';
-  startSession(attach);
+  mode = 'qualifying';
+  const handle = startSession(attach);
+  if (handle) metas.get(handle)!.weekend = true;
   buttonGroups.forEach((render) => render());
 }
 
@@ -1616,7 +2203,7 @@ $<HTMLInputElement>('loadFile').onchange = async (e) => {
   roster = loaded;
   watchRoster(roster);
   roster.ensureTeams(fieldSize);
-  selected = null;
+  focusKey = null;
   technique.clear();
   persist();
   renderTeams();
@@ -1629,9 +2216,9 @@ $<HTMLInputElement>('loadFile').onchange = async (e) => {
 const agentPage = new AgentPage({
   roster: () => roster, occupancy, log: activity,
   replays: () => new Set(savedReplays.map((m) => m.id)),
-  watch: (id, at) => {
+  watch: (id, at, agent) => {
     const m = savedReplays.find((x) => x.id === id);
-    if (m) void watchSaved(m, at);
+    if (m) void watchSaved(m, at, agent);
   },
 });
 let rosterRole: AgentRole = 'driver';
@@ -1653,8 +2240,8 @@ function renderRoster(): void {
     }
     return { a, team, busy, detail };
   }).sort((x, y) => (x.team ? x.team.livery.number : 1e4) - (y.team ? y.team.livery.number : 1e4));
-  hostEl.innerHTML = rows.map(({ a, team, busy, detail }) => `<tr>
-    <td>${team ? carLabel(team) : '<span class="muted">academy</span>'}</td>
+  hostEl.innerHTML = rows.map(({ a, team, busy, detail }) => `<tr class="${team && team.id === focusKey ? 'sel' : ''}">
+    <td${team ? ` data-focus-team="${team.id}" title="Put #${team.livery.number} in focus"` : ''}>${team ? carLabel(team) : '<span class="muted">academy</span>'}</td>
     <td class="name"><a data-agent="${a.id}" data-role="${rosterRole}">${a.name}</a></td>
     <td class="muted">${busy ? busy.type : 'free'}</td>
     <td class="muted">${detail}</td></tr>`).join('');
@@ -1666,6 +2253,8 @@ buttonGroup('rosterTabs', [['Drivers', 'driver'], ['Chiefs', 'chief'], ['Spotter
 $('roster').onclick = (e) => {
   const link = (e.target as HTMLElement).closest<HTMLElement>('[data-agent]');
   if (link) void agentPage.open(link.dataset.agent!, link.dataset.role as AgentRole);
+  const car = (e.target as HTMLElement).closest<HTMLElement>('[data-focus-team]');
+  if (car) toggleFocus(Number(car.dataset.focusTeam));
 };
 $('recruitRookie').onclick = () => {
   const d = roster.freshDriver();
@@ -1754,7 +2343,7 @@ function startClass(): void {
       key: STUDENT_KEY + i, id: d.id, name: d.name,
       weights: lesson === 'circuits' ? (d.roadCourse?.weights ?? d.weights).slice() : d.weights,
       rounds: lesson === 'circuits' ? d.roadCourse?.rounds ?? 0 : d.rounds,
-      licensed: d.licensed, pitLicensed: d.pitLicensed, pitTrafficLicensed: d.pitTrafficLicensed, cautionLicensed: d.cautionLicensed,
+      licensed: d.licensed, pitLicensed: d.pitLicensed, pitTrafficLicensed: d.pitTrafficLicensed, setBackPits: d.setBackPits, cautionLicensed: d.cautionLicensed,
       roadLicensed: d.roadCourse?.licensed, roadRadius: d.roadCourse?.radius, nerve: d.nerve,
     })),
     presets: Object.keys(PRESETS).map(presetLayout),
@@ -1790,6 +2379,7 @@ function lessonRounds(handle: EventHandle, reports: RoundReport[]): void {
     d.licensed = r.licensed;
     d.pitLicensed = r.pitLicensed;
     d.pitTrafficLicensed = r.pitTrafficLicensed;
+    d.setBackPits = r.setBackPits;
     d.cautionLicensed = r.cautionLicensed;
     const variations = 2 * LESSONS[meta?.lesson ?? 'rookie'].pairs;
     const replay = { id: `${handle.ref.id}:r${r.round}` };
@@ -1881,9 +2471,8 @@ async function useRoster(next: string): Promise<void> {
   } else {
     roster = Roster.fromBundle(bundleOf(next)!, bundleDrivers.get(next)!, fieldSize, rng)!;
     championship = false;
-    if (mode === 'race' || !racesOn(track)) mode = racesOn(track) ? 'race' : 'practice';
   }
-  selected = null;
+  focusKey = null;
   technique.clear();
   renderRosterSource();
   renderTeams();
@@ -1932,7 +2521,7 @@ async function boot(): Promise<void> {
   const params = new URLSearchParams(location.search);
   // Bundled trained crew chiefs: new teams' chiefs descend from them.
   const chiefData = await fetchJson('/chiefs/default.json') as { chiefs?: Array<{ weights: number[] }> } | null;
-  const templates = (chiefData?.chiefs ?? []).map((c) => Float32Array.from(c.weights));
+  const templates = (chiefData?.chiefs ?? []).map((c) => adaptChiefWeights(Float32Array.from(c.weights)));
   roster = loadPersisted(templates)
     // Ship with a trained field if one is bundled; otherwise start with rookies.
     ?? Roster.load(await fetchJson('/drivers/default.json'), rng, templates)
@@ -1949,14 +2538,11 @@ async function boot(): Promise<void> {
   if (params.has('laps')) raceLaps = Number(params.get('laps'));
   if (params.has('pace')) pace = Number(params.get('pace'));
   if (params.has('speed')) speed = Number(params.get('speed'));
-  // ?track=oval:<seed>[:<variant>] or ?track=circuit:<seed>[:club|gp] opens a generated track.
-  const [kind, seedText, variant] = (params.get('track') ?? '').split(':');
+  // ?track=oval:<seed>[:<variant>[:<shape>]] or ?track=circuit:<seed>[:club|gp] opens a generated venue (an exhibition race there).
+  const [kind, seedText, variant, shape] = (params.get('track') ?? '').split(':');
   if ((kind === 'oval' || kind === 'circuit') && seedText) {
-    addGeneratedTrack(kind, Number(seedText), variant || undefined);
-    championship = false;
-    trackName = trackOptions[trackOptions.length - 1][0];
-    track = TRACKS.get(trackName)!;
-    if (!racesOn(track)) mode = 'practice';
+    pickDraft(addGeneratedVenue(kind, Number(seedText), variant || undefined, (shape || undefined) as OvalShape | undefined));
+    applyDraft();
   } else {
     toNextRound();
   }
@@ -1987,7 +2573,11 @@ async function boot(): Promise<void> {
   try { sizes.observe(canvas, { box: 'device-pixel-content-box' }); } catch { sizes.observe(canvas); } // also sees display scale changes
   sizes.observe(hud);
   window.addEventListener('resize', fitView);
-  setInterval(updateTower, 200);
+  setInterval(() => {
+    updateTower();
+    renderCamera();
+    renderCamPop();
+  }, 200);
   setInterval(() => {
     // A finished race whose results were on screen, but you looked away: the season carries on.
     if (fieldEvent?.state === 'finished' && !fieldEvent.attachedTo && !Number.isNaN(raceDoneAt)) carryOn(fieldEvent);
