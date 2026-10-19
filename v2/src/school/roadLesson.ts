@@ -2,7 +2,7 @@ import { DRIVER_LAYERS, NeuralDriver, PREVIEW_FROM, ScriptedDriver, Team } from 
 import { inputWeightMask, trainSupervised, type Example } from '../ai/network';
 import { OBS_SIZE, PREVIEW_SIZE } from '../ai/observe';
 import { initialWeights } from '../ai/es';
-import { RacingLineDriver } from '../ai/racingLine';
+import { fastestLine, RacingLineDriver } from '../ai/racingLine';
 import { Rng } from '../ai/rng';
 import { TowerSpotter } from '../ai/spotter';
 import { Car } from '../sim/car';
@@ -57,9 +57,16 @@ class RoadApprentice implements Controller {
     private readonly studentDrives: boolean,
     private readonly examples: Example[],
     private readonly rng: Rng,
+    /** Chance per decision, while the student drives, of a knock: the car's speed cut to a random share of it. */
+    private readonly knock = 0,
   ) {}
 
   decide(car: Car, world: World): void {
+    if (this.studentDrives && this.knock && this.rng.next() < this.knock) {
+      const keep = this.rng.next();
+      car.vx *= keep;
+      car.vy *= keep;
+    }
     const px = car.inputX, py = car.inputY;
     let label: [number, number] | null = null;
     if (this.rng.next() < SAMPLE) {
@@ -155,15 +162,23 @@ export interface ApprenticeOptions {
   /**
    * Who teaches (plain data: apprenticeships run on worker threads). Default
    * the line follower, holding the lane it starts in; 'line': a racer on the
-   * circuit's fastest line at a share of the tyres' grip (from each start
-   * lane it makes its way onto the line, so the student sees recoveries too).
+   * circuit's fastest line at a share of the tyres' grip, kept a margin inside
+   * the track limits (default the line's usual). From each start lane it
+   * makes its way onto the line, so the student sees recoveries too.
    */
-  teacher?: { kind: 'follower' } | { kind: 'line'; grip: number };
+  teacher?: { kind: 'follower' } | { kind: 'line'; grip: number; margin?: number };
+  /**
+   * Knocks per minute while the student drives: its speed cut to a random
+   * share of it, so the teacher shows what to do far below the speed the
+   * place takes (its own laps never are). Default none.
+   */
+  knocks?: number;
 }
 
 /** The teacher of a drive that starts in a lane. */
 function teacherFor(teacher: ApprenticeOptions['teacher'], lane: number): Controller {
-  return teacher?.kind === 'line' ? new RacingLineDriver(teacher.grip) : new ScriptedDriver(lane, 0.9);
+  return teacher?.kind === 'line'
+    ? new RacingLineDriver(teacher.grip, (track) => fastestLine(track, teacher.margin)) : new ScriptedDriver(lane, 0.9);
 }
 
 /** Teach a road-course skill (weights, trained in place) by imitating a scripted teacher on circuits (opts.teacher). */
@@ -181,7 +196,8 @@ export function apprenticeRoadCourses(weights: Float32Array, seed: number, opts:
         const student = new NeuralDriver(weights);
         const team = new Team(student, new TowerSpotter(), null);
         const car = new Car(0);
-        world.addCar(car, new RoadApprentice(team, student, teacherFor(opts.teacher, lane), studentDrives, examples, rng));
+        world.addCar(car, new RoadApprentice(team, student, teacherFor(opts.teacher, lane), studentDrives, examples, rng,
+          (opts.knocks ?? 0) * P.CONTROL_EVERY * P.DT / 60));
         car.placeOnTrack(track, track.length - 20, lane);
         car.vx = track.tx[car.trackIdx] * ROLLING_START_SPEED;
         car.vy = track.ty[car.trackIdx] * ROLLING_START_SPEED;

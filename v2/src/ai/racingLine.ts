@@ -277,12 +277,14 @@ export function lineAt(line: RacingLine, s: number): { d: number; kappa: number;
   };
 }
 
-const lines = new WeakMap<Track, RacingLine>();
+const lines = new WeakMap<Track, Map<number, RacingLine>>();
 
-/** A track's fastest line with the default options (worked out once per track). */
-export function fastestLine(track: Track): RacingLine {
-  let line = lines.get(track);
-  if (!line) { line = racingLine(track); lines.set(track, line); }
+/** A track's fastest line, kept `margin` inside the track limits (default the usual), worked out once per track and margin. */
+export function fastestLine(track: Track, margin = DEFAULTS.margin): RacingLine {
+  let byMargin = lines.get(track);
+  if (!byMargin) { byMargin = new Map(); lines.set(track, byMargin); }
+  let line = byMargin.get(margin);
+  if (!line) { line = racingLine(track, { margin }); byMargin.set(margin, line); }
   return line;
 }
 

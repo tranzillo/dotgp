@@ -100,6 +100,15 @@ export interface RoadSetting {
    * start on a random straight.
    */
   chicanes?: number;
+  /**
+   * This share of drives start as a driver getting going again after a
+   * moment: anywhere round the circuit, slow (0-10 m/s, a quarter standing),
+   * its last command anything, pointing up to 60
+   * degrees off the road's direction, on it or just off it (to 3 m past an
+   * edge). Racing laps rarely visit these, so without them a driver may not
+   * know to pull away from a crawl.
+   */
+  recoveries?: number;
 }
 
 /**
@@ -129,7 +138,20 @@ export function roadRollout(
     const live: Drive[] = [];
     const begin = (k: number): Drive => {
       const car = new Car(k);
-      if (features.length && rng.next() < setting.chicanes!) {
+      if (setting.recoveries && rng.next() < setting.recoveries) {
+        const s = rng.next() * track.length;
+        const i = track.indexAt(s);
+        const d = track.outerEdge(i) - 3 + rng.next() * (track.innerEdge(i) - track.outerEdge(i) + 6);
+        car.placeOnTrack(track, s, d);
+        // A quarter from a standstill; and whatever the driver last asked for (a driver stopped on the brake
+        // sees its last command, braking, and may keep asking for it).
+        const speed = rng.next() < 0.25 ? 0 : rng.next() * 10, angle = (rng.next() * 2 - 1) * (Math.PI / 3);
+        car.inputX = rng.next() * 2 - 1;
+        car.inputY = rng.next() - 0.5;
+        const tx = track.tx[car.trackIdx], ty = track.ty[car.trackIdx];
+        car.vx = speed * (tx * Math.cos(angle) - ty * Math.sin(angle));
+        car.vy = speed * (ty * Math.cos(angle) + tx * Math.sin(angle));
+      } else if (features.length && rng.next() < setting.chicanes!) {
         const pack = situationLayout(track, features[rng.int(features.length)], 'chicane', rng, 1);
         const spot = pack.spots[0];
         car.placeOnTrack(track, track.wrapS(pack.frontS - spot.back), spot.lane);
