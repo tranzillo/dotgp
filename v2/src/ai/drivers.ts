@@ -6,7 +6,8 @@ import { genomeSize, Network, widenNetwork } from './network';
 import { PIT_SERVICE } from '../sim/constants';
 import { PitAutopilot, pitDecisionS, pitRoute, type CrewChief } from './pitting';
 import {
-  CAUTION_SIZE, LOOKAHEAD, OBS_SIZE, observe, observeCaution, observePit, observePreview, PIT_LOOKAHEAD, PIT_SIZE, PREVIEW_SIZE,
+  CAUTION_SIZE, KNOWLEDGE_AHEAD, KNOWLEDGE_SIZE, LOOKAHEAD, OBS_SIZE, observe, observeCaution, observeKnowledge, observePit, observePreview,
+  PIT_LOOKAHEAD, PIT_SIZE, PREVIEW_SIZE,
 } from './observe';
 import { Rng } from './rng';
 import { RADIO, RADIO_SIZE, TowerSpotter, type Spotter } from './spotter';
@@ -14,9 +15,12 @@ import type { Track } from '../sim/track';
 
 /** Where the preview of the road starts in the driver's inputs (after everything else, so older drivers widen into it). */
 export const PREVIEW_FROM = OBS_SIZE + RADIO_SIZE + PIT_SIZE + CAUTION_SIZE;
+/** Where track knowledge starts in the driver's inputs (after the preview). */
+export const KNOWLEDGE_FROM = PREVIEW_FROM + PREVIEW_SIZE;
 /** Driver network: own-car observations + the spotter's radio + a pit stop in progress + a caution + the road ahead -> acceleration request. */
-export const DRIVER_LAYERS = [PREVIEW_FROM + PREVIEW_SIZE, 32, 24, 2] as const;
-/** Earlier drivers, still loadable via adaptWeights: before the preview, before caution inputs, before pit inputs, and solo-era (no radio). */
+export const DRIVER_LAYERS = [KNOWLEDGE_FROM + KNOWLEDGE_SIZE, 32, 24, 2] as const;
+/** Earlier drivers, still loadable via adaptWeights: before track knowledge, before the preview, before caution inputs, before pit inputs, and solo-era (no radio). */
+export const PREVIEW_DRIVER_LAYERS = [PREVIEW_FROM + PREVIEW_SIZE, 32, 24, 2] as const;
 export const CAUTION_DRIVER_LAYERS = [OBS_SIZE + RADIO_SIZE + PIT_SIZE + CAUTION_SIZE, 32, 24, 2] as const;
 export const PIT_DRIVER_LAYERS = [OBS_SIZE + RADIO_SIZE + PIT_SIZE, 32, 24, 2] as const;
 export const RADIO_DRIVER_LAYERS = [OBS_SIZE + RADIO_SIZE, 24, 16, 2] as const;
@@ -25,7 +29,7 @@ export const LEGACY_DRIVER_LAYERS = [OBS_SIZE, 16, 12, 2] as const;
 /** Upgrade saved weights to the current driver network, preserving behaviour (new inputs start ignored). */
 export function adaptWeights(w: Float32Array): Float32Array {
   if (w.length === genomeSize(DRIVER_LAYERS)) return w;
-  for (const old of [CAUTION_DRIVER_LAYERS, PIT_DRIVER_LAYERS, RADIO_DRIVER_LAYERS, LEGACY_DRIVER_LAYERS]) {
+  for (const old of [PREVIEW_DRIVER_LAYERS, CAUTION_DRIVER_LAYERS, PIT_DRIVER_LAYERS, RADIO_DRIVER_LAYERS, LEGACY_DRIVER_LAYERS]) {
     if (w.length === genomeSize(old)) {
       const rng = new Rng(w.length);
       return widenNetwork(old, w, DRIVER_LAYERS, () => rng.next());
@@ -145,7 +149,7 @@ export function nextCornerDirection(track: Track, s: number): number {
 /**
  * The same moment seen in mirror image: everything lateral changes sign
  * (heading against the track, lane, sideways speed, the banking's push, the
- * last steering command, curvature ahead; traffic on the inside and outside
+ * last steering command, curvature ahead, where the known line runs; traffic on the inside and outside
  * swap; lateral offsets of cars, the hazard, the pit route and the caution
  * slot flip). The physics has no handedness, so this is exact.
  */
@@ -163,6 +167,7 @@ export function mirrorDriverInputs(x: Float32Array): void {
   for (let j = 2; j < 2 + PIT_LOOKAHEAD.length; j++) x[p + j] = -x[p + j];
   x[p + PIT_SIZE + 3] = -x[p + PIT_SIZE + 3];
   for (let j = 0; j < PREVIEW_SIZE; j++) x[PREVIEW_FROM + j] = -x[PREVIEW_FROM + j];
+  for (let j = 0; j < KNOWLEDGE_AHEAD.length; j++) x[KNOWLEDGE_FROM + j] = -x[KNOWLEDGE_FROM + j]; // where the line runs (its speeds have no side)
 }
 
 /**
@@ -178,9 +183,10 @@ export class NeuralDriver implements DriverBrain {
   readonly net: Network;
   /** The road-course skill: a second network that drives on road circuits (ovals are the main network's). */
   readonly roadNet: Network | null;
-  private readonly input = new Float32Array(PREVIEW_FROM + PREVIEW_SIZE);
+  private readonly input = new Float32Array(DRIVER_LAYERS[0]);
   private readonly obs = new Float32Array(OBS_SIZE);
   private readonly preview = new Float32Array(PREVIEW_SIZE);
+  private readonly knowledge = new Float32Array(KNOWLEDGE_SIZE);
   /** The last inputs were mirrored (the coming corner turns right): labels for them must be mirrored too. */
   mirrored = false;
 
@@ -201,6 +207,7 @@ export class NeuralDriver implements DriverBrain {
     this.input.set(pit, OBS_SIZE + RADIO_SIZE);
     this.input.set(caution, OBS_SIZE + RADIO_SIZE + PIT_SIZE);
     this.input.set(observePreview(car, world.track, this.preview), PREVIEW_FROM);
+    this.input.set(observeKnowledge(car, world.track, this.knowledge), KNOWLEDGE_FROM);
     const dir = nextCornerDirection(world.track, car.s);
     if (dir !== 0) this.mirrored = dir < 0; // nothing in sight: keep the last view
     if (this.mirrored) mirrorDriverInputs(this.input);

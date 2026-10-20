@@ -2,6 +2,7 @@ import { G, PHYSICS as P } from '../sim/constants';
 import type { Car } from '../sim/car';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
+import { fastestLine } from './racingLine';
 
 /** Distances ahead (m) at which the driver samples track curvature. */
 export const LOOKAHEAD = [0, 30, 60, 100, 160, 250, 400] as const;
@@ -58,6 +59,32 @@ export function observePreview(car: Car, track: Track, out: Float32Array): Float
     }
     out[w] = tightest * CURVATURE_SCALE;
   }
+  return out;
+}
+
+/**
+ * Track knowledge: a driver knows the circuit (as racing drivers do: they've
+ * walked it, driven it in the simulator, run practice). At points ahead,
+ * where its line runs (across the road, relative to the car) and the speed it
+ * takes there (against the car's own, on tyres as worn as these). Road
+ * courses only (zero on ovals). For now every driver knows the same line, the
+ * circuit's fastest (at the usual margin) at 85% of the tyres' grip.
+ */
+export const KNOWLEDGE_AHEAD = [0, 15, 30, 50, 80, 120] as const;
+export const KNOWLEDGE_SIZE = 2 * KNOWLEDGE_AHEAD.length;
+/** The share of the tyres' grip the known speeds are for. */
+export const KNOWLEDGE_GRIP = 0.85;
+
+export function observeKnowledge(car: Car, track: Track, out: Float32Array): Float32Array {
+  if (track.kind !== 'road') return out.fill(0);
+  const line = fastestLine(track);
+  const speed = line.at(Math.round(KNOWLEDGE_GRIP * car.grip * 50) / 50).speed;
+  const n = line.d.length;
+  KNOWLEDGE_AHEAD.forEach((a, j) => {
+    const f = ((((car.s + a) / line.step) % n) + n) % n, i = Math.floor(f), k = (i + 1) % n, t = f - i;
+    out[j] = (line.d[i] + (line.d[k] - line.d[i]) * t - car.d) / 10;
+    out[KNOWLEDGE_AHEAD.length + j] = (speed[i] + (speed[k] - speed[i]) * t - car.speed) / 20;
+  });
   return out;
 }
 

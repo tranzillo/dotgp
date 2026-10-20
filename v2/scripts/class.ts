@@ -20,6 +20,7 @@
  *   fastest line at share G of the tyres' grip (kept M m inside the track limits); the same with racecraft (following,
  *   leaving room); or the line follower (default).
  * --wear: road apprenticeship drives start on tyres anywhere from worn to new, and any fuel load.
+ * --styles: each road student apprentices under its own style of the racing-line teacher (grip, margin, room), drawn for it.
  * --packs N: pack drills per circuit per apprenticeship round (the student among cars the teacher drives).
  * --knocks N: knocks a minute in road apprenticeships while the student drives (its speed cut to a random share).
  * --apprentice-epochs: passes over the recorded moments per apprenticeship round (road courses; default ROAD_APPRENTICE_EPOCHS).
@@ -35,7 +36,7 @@ import { Classroom, LESSONS, type LessonId } from '../src/school/classroom';
 import { hashSeed, PRESETS, presetLayout } from '../src/trackgen';
 import { SchoolPool } from './pool';
 import { Rng } from '../src/ai/rng';
-import { initialRoadWeights } from '../src/school/roadLesson';
+import { apprenticeRoadCourses, initialRoadWeights } from '../src/school/roadLesson';
 
 const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i++) {
@@ -74,6 +75,24 @@ const apprenticeship = ['apprentice-epochs', 'apprentice-rounds', 'teacher', 'kn
   ...(args.has('wear') ? { wear: true } : {}),
 } : undefined;
 
+/** A road teacher's style (grip share, margin inside the track limits, room alongside). */
+interface RoadStyle { grip: number; margin: number; room: number }
+/**
+ * --styles: each student apprentices under its own style of the racing-line teacher, drawn for it (grip 80-90%, line
+ * 0.6-1.5 m inside the limits, 0.5-1.5 m left alongside), so a class grows into a field of different racers.
+ */
+const styleFor = (k: number): RoadStyle | undefined => {
+  if (!args.has('styles')) return undefined;
+  const rng = new Rng(hashSeed(seed, `style-D${k}`));
+  return { grip: 0.8 + 0.1 * rng.next(), margin: 0.6 + 0.9 * rng.next(), room: 0.5 + rng.next() };
+};
+const apprenticeshipFor = (k: number) => {
+  const style = styleFor(k);
+  const t = apprenticeship?.teacher;
+  if (!style || !t || t.kind === 'follower') return apprenticeship;
+  return { ...apprenticeship, teacher: { ...t, ...style } };
+};
+
 interface DriverEntry {
   weights: number[];
   licensed?: boolean;
@@ -82,7 +101,7 @@ interface DriverEntry {
   cautionLicensed?: boolean;
   nerve?: number;
   /** The road-course skill (Road courses trains this, not `weights`). */
-  roadCourse?: { weights: number[]; rounds?: number; licensed?: boolean; radius?: number };
+  roadCourse?: { weights: number[]; rounds?: number; licensed?: boolean; radius?: number; style?: RoadStyle };
 }
 // Road-course lessons train the road-course skill, not the oval network.
 const road = lesson === 'circuits' || lesson === 'roadcraft';
@@ -99,8 +118,15 @@ const students = file.drivers.map((d, k) => ({
   cautionLicensed: d.cautionLicensed, roadLicensed: d.roadCourse?.licensed, roadRadius: d.roadCourse?.radius, nerve: d.nerve,
 }));
 // New road-course skills study the line follower one per thread (the classroom would do them one after another).
-const apprenticed = pool && lesson === 'circuits' && apprenticeship?.rounds !== 0
-  ? await Promise.all(students.map((s) => (s.rounds > 0 ? undefined : pool.apprenticeRoad(s.weights.slice(), hashSeed(seed, s.id), apprenticeship))))
+// (Each with its own style, if drawn: the classroom would give them all the class's.)
+const apprenticed = (pool || args.has('styles')) && lesson === 'circuits' && apprenticeship?.rounds !== 0
+  ? await Promise.all(students.map((s) => {
+    if (s.rounds > 0) return undefined;
+    const opts = apprenticeshipFor(s.key);
+    if (pool) return pool.apprenticeRoad(s.weights.slice(), hashSeed(seed, s.id), opts);
+    const weights = s.weights.slice();
+    return { weights, examples: apprenticeRoadCourses(weights, hashSeed(seed, s.id), opts).examples };
+  }))
   : undefined;
 const c = new Classroom({ lesson, presets: Object.keys(PRESETS).map(presetLayout), seed, students, apprenticed, apprenticeship, practiseOn, practice });
 console.log(`${lesson}: ${file.drivers.length} students, apprenticeship ${((Date.now() - t0) / 1000).toFixed(0)} s, ${jobs} thread${jobs > 1 ? 's' : ''}`);
@@ -123,7 +149,15 @@ function save(path: string): void {
     ...file,
     drivers: file.drivers.map((d, k) => {
       const s = c.students[k];
-      if (road) return { ...d, roadCourse: { weights: Array.from(s.weights), rounds: s.rounds, licensed: s.roadLicensed, radius: lesson === 'circuits' ? c.roadRadius : d.roadCourse?.radius } };
+      if (road) {
+        const style = (lesson === 'circuits' && d.roadCourse?.rounds === undefined ? styleFor(k) : undefined) ?? d.roadCourse?.style;
+        return {
+          ...d, roadCourse: {
+            weights: Array.from(s.weights), rounds: s.rounds, licensed: s.roadLicensed, radius: lesson === 'circuits' ? c.roadRadius : d.roadCourse?.radius,
+            ...(style ? { style } : {}),
+          },
+        };
+      }
       return {
         ...d, weights: Array.from(s.weights), licensed: s.licensed, pitLicensed: s.pitLicensed,
         pitTrafficLicensed: s.pitTrafficLicensed, cautionLicensed: s.cautionLicensed,

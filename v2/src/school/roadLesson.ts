@@ -62,6 +62,7 @@ class RoadApprentice implements Controller {
     private readonly rng: Rng,
     /** Chance per decision, while the student drives, of a knock: the car's speed cut to a random share of it. */
     private readonly knock = 0,
+    private readonly extra?: ApprenticeOptions['extra'],
   ) {}
 
   decide(car: Car, world: World): void {
@@ -86,7 +87,14 @@ class RoadApprentice implements Controller {
     car.inputX = px;
     car.inputY = py;
     this.team.spotter.call(car, world, this.team.radio);
-    const x = this.student.inputs(car, world, this.team.radio, this.team.pitInputs, this.team.cautionInputs).slice();
+    const seen = this.student.inputs(car, world, this.team.radio, this.team.pitInputs, this.team.cautionInputs);
+    let x = seen.slice();
+    if (this.extra) {
+      const more = this.extra(car, world, this.student.mirrored);
+      x = new Float32Array(seen.length + more.length);
+      x.set(seen);
+      x.set(more, seen.length);
+    }
     if (this.student.mirrored) label[1] = -label[1]; // the teacher steers in the world's frame; the student saw it mirrored
     car.inputX = ax;
     car.inputY = ay;
@@ -169,7 +177,7 @@ export interface ApprenticeOptions {
    * the track limits (default the line's usual). From each start lane it
    * makes its way onto the line, so the student sees recoveries too.
    */
-  teacher?: { kind: 'follower' } | { kind: 'line' | 'traffic'; grip: number; margin?: number };
+  teacher?: { kind: 'follower' } | { kind: 'line' | 'traffic'; grip: number; margin?: number; room?: number };
   /**
    * Pack drills per circuit per round (default none): circuit racecraft's
    * drills (12 cars, contact and drafting), the student in a random slot
@@ -180,6 +188,10 @@ export interface ApprenticeOptions {
   packs?: number;
   /** Drives start on tyres anywhere from worn to new and any fuel load (race learning's ranges), not fresh and full. */
   wear?: boolean;
+  /** Given everything recorded (what the student saw, what the teacher would do), at the end (experiments; not across threads). */
+  onExamples?: (examples: Example[]) => void;
+  /** More to record with what the student saw, as it saw it (mirrored or not) (experiments: what else would it need to see?). */
+  extra?: (car: Car, world: World, mirrored: boolean) => Float32Array;
   /**
    * Knocks per minute while the student drives: its speed cut to a random
    * share of it, so the teacher shows what to do far below the speed the
@@ -190,7 +202,11 @@ export interface ApprenticeOptions {
 
 /** The teacher of a drive that starts in a lane. */
 function teacherFor(teacher: ApprenticeOptions['teacher'], lane: number): Controller {
-  if (teacher?.kind === 'traffic') return new TrafficRacer({ ...DEFAULT_STYLE, grip: teacher.grip, margin: teacher.margin ?? DEFAULT_STYLE.margin, pass: Infinity });
+  if (teacher?.kind === 'traffic') {
+    return new TrafficRacer({
+      ...DEFAULT_STYLE, grip: teacher.grip, margin: teacher.margin ?? DEFAULT_STYLE.margin, room: teacher.room ?? DEFAULT_STYLE.room, pass: Infinity,
+    });
+  }
   return teacher?.kind === 'line'
     ? new RacingLineDriver(teacher.grip, (track) => fastestLine(track, teacher.margin)) : new ScriptedDriver(lane, 0.9);
 }
@@ -212,7 +228,7 @@ export function apprenticeRoadCourses(weights: Float32Array, seed: number, opts:
         const car = new Car(0);
         if (opts.wear) worn(car, rng);
         world.addCar(car, new RoadApprentice(team, student, teacherFor(opts.teacher, lane), studentDrives, examples, rng,
-          (opts.knocks ?? 0) * P.CONTROL_EVERY * P.DT / 60));
+          (opts.knocks ?? 0) * P.CONTROL_EVERY * P.DT / 60, opts.extra));
         car.placeOnTrack(track, track.length - 20, lane);
         car.vx = track.tx[car.trackIdx] * ROLLING_START_SPEED;
         car.vy = track.ty[car.trackIdx] * ROLLING_START_SPEED;
@@ -233,14 +249,17 @@ export function apprenticeRoadCourses(weights: Float32Array, seed: number, opts:
           const student = new NeuralDriver(weights);
           const team = new Team(student, new TowerSpotter(), null);
           world.addCar(car, new RoadApprentice(team, student, teacherFor(opts.teacher, 0), studentDrives, examples, rng,
-            (opts.knocks ?? 0) * P.CONTROL_EVERY * P.DT / 60));
+            (opts.knocks ?? 0) * P.CONTROL_EVERY * P.DT / 60, opts.extra));
         });
         for (let k = 0; k < (layout.seconds ?? PACK_SECONDS) / P.DT && !world.cars[slot].retired; k++) world.step();
       }
     }
-    const set = round === 0 || examples.length <= maxExamples ? examples : sample(examples, maxExamples, rng);
+    let set = round === 0 || examples.length <= maxExamples ? examples : sample(examples, maxExamples, rng);
+    // (The student itself learns from what it sees: any extra recorded is for the experiment.)
+    if (opts.extra) set = set.map((e) => ({ ...e, x: e.x.subarray(0, DRIVER_LAYERS[0]) }));
     loss = trainSupervised(DRIVER_LAYERS, weights, set, round === 0 ? 30 : epochs, 0.01, () => rng.next());
   }
+  opts.onExamples?.(examples);
   return { examples: examples.length, loss };
 }
 
