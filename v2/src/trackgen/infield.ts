@@ -4,6 +4,7 @@ import type { Decoration, EscapeLane, PitLane, Road, RoadNode, RovalSpec, Surfac
 import { Track } from '../sim/track';
 import { buildLayout } from './generator';
 import { generateRoval } from './roval';
+import { shapedOval } from './oval';
 import { CLEARANCE, densify, occupies, placeLayout } from './geometry';
 
 /**
@@ -127,15 +128,23 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
   // ---- a road course, first. Where one goes in, the infield is its: the services (placeholders, to be redone) come
   // later, round it ----
   if (plan.course) {
-    const keepOut = (x: number, y: number) => {
-      const q = cl.project(x, y);
-      return cl.inRange(q.s, [lot.s0 - 20, lot.s1 + 20]) && q.d < lot.d1 + 20;
+    // The garage, and room enough round it that it stays the front stretch's: nothing of a course nearer its back
+    // edge than the front stretch is (as the layouts' validation asks).
+    const back: Array<[number, number]> = [];
+    for (let s = lot.s0; s <= lot.s1 + 1e-6; s += Math.max(5, (lot.s1 - lot.s0) / 12)) back.push(cl.toWorld(s, lot.d1));
+    const keepOut = (x: number, y: number, m: number) => {
+      const q = cl.near(x, y, lot.d1 + 20 + m);
+      if (q && cl.inRange(q.s, [lot.s0 - 20 - m, lot.s1 + 20 + m]) && q.d < lot.d1 + 20 + m) return true;
+      const r = lot.d1 + 4 + m;
+      return back.some(([u, v]) => Math.abs(x - u) < r && Math.abs(y - v) < r && Math.hypot(x - u, y - v) < r);
     };
-    const roval = generateRoval(
-      { cl, pavedInner: site.pavedInner, turns: site.turns, keepOut, pitRange: [pit.entryStart, pit.exitEnd], rng },
-      { id: 'roval-0', name: 'Grand Prix' },
-    );
-    if (roval) return { surfaces: [], decor: [], nodes: [], roads: [], escapeLanes: [], inner: null, rovals: [roval], problems };
+    // First the inner oval (in one half of the infield), then the courses that share its road and the oval's.
+    const made = generateRoval({
+      cl, pavedInner: site.pavedInner, turns: site.turns, keepOut,
+      pitRange: pit.entryRoute ? [pit.entryStart, pit.exitEnd] : [pit.wallStart, pit.wallEnd], rng,
+      buildInner: (straight, radius, width) => courseInner(site, straight, radius, width),
+    });
+    if (made) return { surfaces: [], decor: [], nodes: [], roads: [], escapeLanes: [], inner: made.inner, rovals: made.rovals, problems };
   }
   const nodes: RoadNode[] = [];
   const roads: Road[] = [];
@@ -404,6 +413,30 @@ function roomAt(cl: Centerline, s: number, from: number): number {
 /** Do two polylines cross (or come within 10 m)? */
 function crosses(a: Array<[number, number]>, b: Array<[number, number]>): boolean {
   return a.some(([x, y]) => b.some(([u, v]) => Math.hypot(x - u, y - v) < 10));
+}
+
+/**
+ * The inner oval the road courses share road with (as at Iowa), unplaced: a
+ * flat short oval with no walls, this front straight, turn radius and width;
+ * a short pit lane on its front straight, clear of both turns (courses turn in
+ * and out round them). Its pit lane and garage are placeholders. Null if it
+ * can't be laid out.
+ */
+function courseInner(site: InfieldSite, straight: number, radius: number, width: number): TrackLayout | null {
+  try {
+    const built = buildLayout('oval', {
+      ...shapedOval({
+        straightLength: straight, turnRadius: radius, easementLength: Math.round(radius * 0.35), width, apronWidth: 4,
+        bankInner: 0, bankOuter: 0, bankStraight: 0,
+        name: 2 * (straight + Math.PI * radius) < 800 ? 'Bullring' : 'Short track',
+      }),
+      pits: { gap: 1, entryLength: 15, exitLength: 15, blend: 0, startInset: 45, endInset: 40, stallSpacing: 11, garageSetBack: 0, garageLanes: 1 },
+    }, site.seed);
+    // (Open, as the infield is: its pit wall only.)
+    return { ...built, id: `${site.id}/inner`, walls: built.walls.filter((w) => w.id === 'pit-wall') };
+  } catch {
+    return null;
+  }
 }
 
 /**

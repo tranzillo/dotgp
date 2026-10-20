@@ -107,40 +107,37 @@ The default track becomes a sporting mega complex: an extreme tri-oval superspee
    - R6: services and features last
    User decisions: every layout shares the oval's pit road and start for now (infield pit lanes later); the chord pit is in from the start; paving style is random; maximise layout diversity; departures at turn entries and apexes are essential; all layouts' lines are painted.
    R3 attempt and rethink (2026-10-18): the racing network (trunk, Y-forks, branches, lattice paths) was built and then dropped. Its pieces were narrow, uniform lanes, nothing like the generated circuits, and every layout came out about the oval's length. Second attempt: each road course a full circuit, with an organic polygon and circuit.ts's cross-section. It flowed better but read as terrain (kinks, walls, run-off fields), which an infield, a flat manicured site, isn't.
-   **Where we stopped (2026-10-18): infield-style road courses, `trackgen/roval.ts`, the Grand Prix only.**
-   - Measured from the references (`feedback/infield layouts/`):
-     - legs run parallel to an oval straight, or follow a turn at a constant offset
-     - fingers and hooks: two legs 40 to 90 m apart with a hairpin
-     - 90-degree corners
-     - legs of 150 to 450 m
-     - courses 11 to 14 m wide
-     - the course often keeps to one end of the infield
-   - Generation:
-     - pick the oval's part of the lap: `end` (skip one end, Daytona/Kansas style), `straight`, `turn` or `both`
-     - hug the oval's turn concentrically (offset at most half its radius) to where the oval runs square to the front stretch
-     - an axis-aligned walk between the two hugs: about 80 candidate walks, scored on hairpins and long legs, no staircases, a plain box 15% of the time
-     - the walk's last legs solved to close the loop exactly
-     - corners fitted by `poseSection`, with per-waypoint radii (concentric with the turns where it hugs)
-   - Cross-section, an open infield (the user's choice):
-     - circuit.ts's `dressCourse` with no continuous barriers, verges or run-off
-     - kerbs at corners
-     - concrete only where the course runs within about 15 m of the oval's pavement
-     - tyre walls and a little gravel at hairpins at the end of long legs
-   - The layout: `compileRoval` splices the course into the oval's lap with banking ramps, closes the oval across where it leaves and rejoins, and pins the start line.
-   - Pits (a placeholder): the oval's pit road when the oval's part takes it in; otherwise a circuit-style pit lane on a course straight of at least 340 m.
-   - `RovalSpec` lives in `infield.rovals`.
-   - Where a course goes in, the infield's services stay out. They are placeholders, as are pits, garage access and escape roads, all to be rebuilt.
-   - Numbers:
-     - a course on about 55% of intermediates, 80% of speedways and all superspeedways
-     - laps 0.6 to 1.2 times the oval's
-     - generation about 30 ms per course; the layout compile about 0.5 s
-   - Tools: `scripts/infieldsurvey.ts` (builds, laps every course) and `scripts/_rovalshapes.ts` (writes course shapes as JSON for quick plots).
-   Next, in order:
-   1. More layouts from the Grand Prix: shortcuts across fingers (Kansas's loops), different departures, a back-straight bus stop. Pavement shared between layouts, and every layout's lines painted.
-   2. A longer Grand Prix (the 1.3 to 1.5 times the oval target: take in more of the oval, deeper fingers).
-   3. Smooth the small S-wiggles where some slip roads leave the oval.
-   4. Raise intermediate success.
-   5. Train drivers on these courses.
+   Prototypes 1 and 2 (2026-10-18/19): the walk-based courses (axis-aligned legs, 90-degree corners, derived layouts that cut across the Grand Prix) were rejected as connecting straight paths with right angles, and their layouts as offset clones. The user's model is Iowa: a speedway, a bullring in its infield, a road course that keeps part of the speedway and shares road with the bullring, and a short course that is a cross-section of the two.
+   **Where we stopped (2026-10-19): road courses as one interlinked road network, `trackgen/roval.ts`.**
+   - The network:
+     - ways: the speedway (one way only), an inner oval in one half of the infield (along or across it, flat, no walls), and the roads
+     - roads meet a way at a junction (heading either way along it), at turn entries and exits on the ovals and partway along a road's long straight
+   - Roads, in order:
+     - loops round the outside of the inner oval's ends
+     - the Grand Prix's two roads (speedway turn entry to an inner turn exit, an inner turn entry to a speedway turn exit), sharing a straight or a straight, a turn and a straight of the inner oval, either way round
+     - 0 to 2 more roads between the tracks
+     - 1 to 3 shortcuts between road straights (or a road and an oval)
+   - Without an inner oval (small infields: all intermediates so far), one road across the infield plus shortcuts.
+   - Each road is routed, not drawn:
+     - off the track at a slant (25 to 60 degrees)
+     - a cheapest path over a 6 m grid of free ground, dearer near its edge, by way of 0 to 2 points in the emptiest ground
+     - simplified (Douglas-Peucker), then corners from the circuit vocabulary fitted by `poseSection`
+   - Layouts: every route round the network over a front stretch (`routes`).
+     - cut from the speedway (on it once) or from the inner oval (never touching the speedway)
+     - closed exactly by the smallest change to the straights (`closeLap`)
+     - near-duplicates dropped (88% of either on the other's road)
+     - named by length: Grand Prix, National, Club...; Short course, Infield... for the inner oval's
+     - the best of 5 networks kept (more layouts first, then how much of the infield it spreads over)
+   - Kept from before: `compileRoval` (now with closures wherever a course parts from its host and meets it again), the open-infield cross-section, every layout the others' scenery.
+   - The garage keep-out keeps courses nearer the front stretch than the garage's back edge (validation asks that); ground tests are cached on 2 m grids (generation went from about 40 s to about 2 s a venue).
+   - Numbers (10 seeds a class): every venue that plans a course gets one (4 intermediates, 7 speedways, 5 superspeedways); 1 to 4 layouts, about 2 per speedway; about 2 s a venue.
+   - Next:
+     - in-app look and lapping (the earlier short course had a junction where cars crashed)
+     - the generation time
+     - roads that run along the oval's edge
+     - more short courses
+     - drivers trained on these courses
+   - Tools: `scripts/_rovalshapes.ts out.json [seed] [count]` writes each venue's network and layouts for plots.
    Then the real rebuild of pits, garage, services and features (R5/R6), done properly this time.
 4. Connector roads and road-course layouts through the rings (a route compiler; gates in walls a layout doesn't use; unused asphalt as run-off), and venue recipes for Generate at every scale: a local dirt bullring, a speedway with dirt in the infield, a tri-oval with a bullring, the mega complex (the new default).
 5. Dirt: a surface, its grip, a dirt series.

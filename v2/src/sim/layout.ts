@@ -215,6 +215,8 @@ export interface Infield {
 export interface RovalSpec {
   id: string;
   name: string;
+  /** Cut from the inner oval in the infield, not the oval itself (`join` and `leave` on its lap). */
+  host?: 'inner';
   join: number;
   leave: number;
   sections: Array<[number, number, number]>;

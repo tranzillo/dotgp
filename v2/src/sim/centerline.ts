@@ -33,11 +33,14 @@ export class Centerline {
   readonly extent: { minX: number; minY: number; maxX: number; maxY: number };
   /** Gap between the integrated end and start before it was spread along the lap (m). */
   readonly closureError: number;
+  /** What it was built from. */
+  readonly spec: CenterlineSpec;
 
   /** Lazily built grid of sample indices, for nearest-point queries with no hint (see near). */
   private grid: { x0: number; y0: number; nx: number; ny: number; start: Int32Array; items: Int32Array } | null = null;
 
   constructor(spec: CenterlineSpec, placement?: Placement) {
+    this.spec = spec;
     const sections = spec.sections;
     const L = sections.reduce((sum, sec) => sum + sec[0], 0);
     const kappaAt = (s: number): number => {

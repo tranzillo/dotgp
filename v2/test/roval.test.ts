@@ -20,6 +20,10 @@ function withRovals(count: number): TrackLayout[] {
   return out;
 }
 const ovals = withRovals(2);
+/** The track a road course is cut from: the speedway, or the inner oval in its infield. */
+const hostOf = (oval: TrackLayout, host?: 'inner') => new Track({
+  ...(host === 'inner' ? oval.neighbours!.find((n) => n.id.endsWith('/inner'))! : oval), neighbours: undefined,
+});
 
 describe('road courses through the infield', () => {
   it('lays a bus-stop chicane that ends back on its line', () => {
@@ -31,11 +35,11 @@ describe('road courses through the infield', () => {
     expect(Math.max(...points.map((p) => p[1]))).toBeGreaterThan(20); // into the infield
   });
 
-  it('compiles road courses that run exactly on the oval where they take it in', () => {
+  it('compiles road courses that run exactly on the track they are cut from where they take it in', () => {
     expect(ovals.length).toBeGreaterThan(0);
     for (const oval of ovals) {
-      const o = new Track({ ...oval, neighbours: undefined });
       for (const spec of oval.infield.rovals!) {
+        const o = hostOf(oval, spec.host);
         const layout = rovalLayouts(oval).find((l) => l.id.endsWith(spec.id))!;
         const r = new Track(layout);
         expect(layout.kind).toBe('road');
@@ -53,24 +57,28 @@ describe('road courses through the infield', () => {
         }
         expect(validateLayout(layout, r).filter((p) => p.severity === 'error')).toEqual([]);
         // The oval (and anything in its infield) is scenery round it.
-        expect(layout.neighbours!.map((n) => n.id)[0]).toBe(oval.id);
+        expect(layout.neighbours!.map((n) => n.id)).toContain(oval.id);
       }
     }
   });
 
-  it('closes the oval behind the road course with barriers clear of the route', () => {
+  it('closes the track it is cut from behind the road course with barriers clear of the route', () => {
     for (const oval of ovals) {
-      const o = new Track({ ...oval, neighbours: undefined });
       for (const layout of rovalLayouts(oval)) {
+        const spec = oval.infield.rovals!.find((sp) => layout.id.endsWith(`/${sp.id}`))!;
+        const o = hostOf(oval, spec.host);
         const r = new Track(layout);
         expect(r.barriers.length).toBeGreaterThan(0);
         for (const b of r.barriers) {
           const [[ax, ay], [bx, by]] = b.points;
-          // It spans the oval's racing surface...
-          const pa = o.project(ax, ay), pb = o.project(bx, by);
-          expect(Math.min(pa.d, pb.d)).toBeLessThan(o.outerEdgeAt(pa.s) + 1);
-          expect(Math.max(pa.d, pb.d)).toBeGreaterThan(o.innerEdgeAt(pa.s));
-          // ...and stays off the road course's own surface.
+          // Across the oval where the course leaves and rejoins it, spanning its racing surface (the others close the
+          // venue's other road courses where they part from this one)...
+          if (!b.id.includes('-closed-')) {
+            const pa = o.project(ax, ay), pb = o.project(bx, by);
+            expect(Math.min(pa.d, pb.d)).toBeLessThan(o.outerEdgeAt(pa.s) + 1);
+            expect(Math.max(pa.d, pb.d)).toBeGreaterThan(o.innerEdgeAt(pa.s));
+          }
+          // ...and all off the road course's own surface.
           for (let t = 0; t <= 1; t += 0.05) {
             const x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
             const q = r.project(x, y);
@@ -79,6 +87,54 @@ describe('road courses through the infield', () => {
         }
       }
     }
+  });
+
+  it("makes its layouts cross-sections of one road network, each different, each the others' scenery", () => {
+    let found = false;
+    for (let seed = 1; seed < 40 && !found; seed++) {
+      const oval = generateLayout({ type: 'oval', seed, variant: 'speedway' });
+      const specs = oval.infield.rovals ?? [];
+      if (specs.length < 2) continue;
+      found = true;
+      expect(specs[0].name).toBe('Grand Prix');
+      expect(new Set(specs.map((sp) => sp.name)).size).toBe(specs.length);
+      const layouts = rovalLayouts(oval);
+      const laps = layouts.map((l) => {
+        const t = new Track({ ...l, neighbours: undefined });
+        const pts: Array<[number, number]> = [];
+        for (let s = 0; s < t.length; s += 10) pts.push(t.toWorld(s, 0));
+        return pts;
+      });
+      const shareOf = (a: Array<[number, number]>, b: Array<[number, number]>) =>
+        a.filter(([x, y]) => b.some(([u, v]) => Math.hypot(x - u, y - v) < 3)).length / a.length;
+      laps.forEach((lap, i) => {
+        // Each shares road with another beyond the front stretch (the network's), and none is another with a detour.
+        const shares = laps.map((other, j) => (j === i ? 0 : shareOf(lap, other)));
+        expect(Math.max(...shares), layouts[i].name).toBeGreaterThan(0.25);
+        laps.forEach((other, j) => { if (j !== i) expect(shares[j] > 0.88 && shareOf(other, lap) > 0.88, `${layouts[i].name} ~ ${layouts[j].name}`).toBe(false); });
+      });
+      for (const layout of layouts) {
+        const others = layout.neighbours!.map((n) => n.id);
+        for (const other of layouts) if (other !== layout) expect(others).toContain(other.id);
+        expect(layout.barriers!.some((b) => b.id.includes('-closed-'))).toBe(true);
+      }
+      // The oval's own layout has them as scenery, without their barriers across it.
+      const oval0 = venueLayouts(oval)[0];
+      expect(oval0.neighbours!.filter((n) => n.kind === 'road')).toHaveLength(specs.length);
+      expect(oval0.neighbours!.every((n) => !n.barriers?.length)).toBe(true);
+    }
+    expect(found).toBe(true);
+  });
+
+  it('lays a road course across an infield too small for an inner oval', () => {
+    let found = false;
+    for (let seed = 1; seed < 30 && !found; seed++) {
+      const oval = generateLayout({ type: 'oval', seed, variant: 'intermediate' });
+      if (!oval.infield.rovals?.length) continue;
+      found = true;
+      for (const layout of rovalLayouts(oval)) expect(validateLayout(layout, new Track(layout)).filter((p) => p.severity === 'error')).toEqual([]);
+    }
+    expect(found).toBe(true);
   });
 
   it('can be lapped cleanly, and races to road-course rules', () => {

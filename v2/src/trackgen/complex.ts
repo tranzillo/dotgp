@@ -2,7 +2,7 @@ import type { LayoutKind, Placement, TrackLayout } from '../sim/layout';
 import { placeLayout, validateVenue } from './geometry';
 import { buildLayout } from './generator';
 export { placeLayout, validateVenue } from './geometry';
-import { rovalLayouts } from './roval';
+import { venueWithCourses } from './roval';
 import { closeOval, type AnyOvalParams, type OvalCorner, type ShapedOvalParams } from './oval';
 
 /**
@@ -38,9 +38,9 @@ const ORIGIN: Placement = { x: 0, y: 0, angle: 0 };
  * neighbours, and the road courses routed through its infield.
  */
 export function venueLayouts(layout: TrackLayout): TrackLayout[] {
+  if (layout.infield.rovals?.length) return venueWithCourses(layout);
   const all = [{ ...layout, neighbours: undefined }, ...(layout.neighbours ?? [])];
-  const tracks = all.length > 1 ? all.map((l, i) => ({ ...l, neighbours: all.filter((_, j) => j !== i) })) : [layout];
-  return [...tracks, ...rovalLayouts(layout)];
+  return all.length > 1 ? all.map((l, i) => ({ ...l, neighbours: all.filter((_, j) => j !== i) })) : [layout];
 }
 
 /** The venue's layouts, one per ring, each with the others as its neighbours. Throws if the rings get in each other's way. */
