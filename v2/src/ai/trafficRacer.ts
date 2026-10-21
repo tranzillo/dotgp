@@ -2,7 +2,7 @@ import { G, PHYSICS as P } from '../sim/constants';
 import type { Car } from '../sim/car';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
-import { FormationDriver, type FormationTraits } from './formation';
+import { FormationDriver, formationTraits, type FormationTraits } from './formation';
 import { fastestLine, followRacingLine, lineAt, type RacingLine } from './racingLine';
 
 /**
@@ -57,6 +57,33 @@ export function followLoss(v: number, reaction: number, lead: number, brake: num
 }
 
 export const DEFAULT_STYLE: RacerStyle = { grip: 0.85, margin: 0.6, room: 0.5, pass: 1 };
+
+/** How close to the track limits a racer's line may run (m): a few steps, so a field shares a few lines. */
+const MARGINS = [1.0, 0.8, 0.6, 0.4];
+/** The deceleration of the car ahead the boldest racer insures against (m/s^2): a lift. */
+const BOLD_INSURE = 1.5;
+
+/**
+ * A racer's way of racing from who it is: nerve (0 timid, 1 fearless) and talent (0-1). Nerve sets how much of
+ * the car ahead's braking it leaves room for (full braking to a lift, so the bold run nose to tail in the draft),
+ * how much room it leaves beside a car, how small an edge it pulls out to pass with, how near the limits its line
+ * runs, and its caution manners (reaction, gap, eagerness). Talent is how much of the tyres' grip it can use: a
+ * spread of a couple of percent in lap time, as in a real field. The rest is individual.
+ */
+export function racerStyle(nerve: number, talent: number, random: () => number): { style: RacerStyle; traits: FormationTraits } {
+  const brake = 0.5 * P.TIRE_MU * G;
+  const line = Math.min(MARGINS.length - 1, Math.floor((0.5 * nerve + 0.5 * random()) * MARGINS.length));
+  return {
+    style: {
+      grip: 0.82 + 0.08 * talent,
+      margin: MARGINS[line],
+      room: 1.0 - 0.8 * nerve,
+      pass: 2.0 - 1.5 * nerve,
+      insure: brake * Math.pow(BOLD_INSURE / brake, nerve),
+    },
+    traits: formationTraits(nerve, random),
+  };
+}
 
 /** How far (along) another car counts as alongside: door to door, overlapping by more than a little. */
 const ALONGSIDE = 2 * P.CAR_RADIUS;

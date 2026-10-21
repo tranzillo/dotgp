@@ -25,7 +25,11 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { adaptWeights, neuralTeam, Team } from '../src/ai/drivers';
 import { TowerSpotter } from '../src/ai/spotter';
-import { DEFAULT_STYLE, type RacerStyle, TrafficRacer } from '../src/ai/trafficRacer';
+import { DEFAULT_STYLE, racerStyle, type RacerStyle, TrafficRacer } from '../src/ai/trafficRacer';
+import { hashSeed } from '../src/trackgen/generator';
+
+/** teacher:styles fields this many individual racers. */
+const STYLED_RACERS = 40;
 import { PaceCarDriver } from '../src/ai/formation';
 import { randomTraits, StrategistCrewChief } from '../src/ai/pitting';
 import { Rng } from '../src/ai/rng';
@@ -269,7 +273,17 @@ function runRace(trackName: string, seed: number): RaceStats {
     const limits = drawn ?? d.limits;
     if (teacher && side === 0) {
       // The teacher drives its own cautions and restarts (the pit maneuver still drives its stops).
-      world.addCar(car, new Team(new TrafficRacer(teacherStyle), new TowerSpotter(), chief, false, true));
+      // teacher:styles: a field of individuals, 40 of them cycling round the grid like a roster, each with its own
+      // nerve and talent (fixed per individual, whatever the race).
+      let racer = new TrafficRacer(teacherStyle);
+      if (teacher[1] === 'styles') {
+        const who = new Rng(hashSeed(77, `racer${(k + seed) % STYLED_RACERS}`));
+        const nerve = 0.15 + 0.7 * who.next(), talent = who.next();
+        const { style, traits } = racerStyle(nerve, talent, () => who.next());
+        racer = new TrafficRacer(style, undefined, traits);
+        brains[k].driver = (k + seed) % STYLED_RACERS; // each an individual, for the twins numbers
+      }
+      world.addCar(car, new Team(racer, new TowerSpotter(), chief, false, true));
       continue;
     }
     world.addCar(car, neuralTeam(adaptWeights(Float32Array.from(d.weights)), chief,
