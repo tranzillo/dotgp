@@ -102,27 +102,34 @@ function corridor(track: Track, step: number, margin: number): Corridor {
 
 /** Signed curvature of the path through each point (Menger: + turning toward +d, as the track's). */
 function pathCurvature(c: Corridor, d: Float64Array, out: Float64Array, ds: Float64Array): void {
+  for (let k = 0; k < c.n; k++) curvatureAt(c, d, k, out, ds);
+}
+
+/** The path's curvature through point k, and the distance to the next point. */
+function curvatureAt(c: Corridor, d: Float64Array, k: number, out: Float64Array, ds: Float64Array): void {
   const n = c.n;
-  for (let k = 0; k < n; k++) {
-    const a = (k - 1 + n) % n, b = (k + 1) % n;
-    const ax = c.cx[a] + d[a] * c.nx[a], ay = c.cy[a] + d[a] * c.ny[a];
-    const px = c.cx[k] + d[k] * c.nx[k], py = c.cy[k] + d[k] * c.ny[k];
-    const bx = c.cx[b] + d[b] * c.nx[b], by = c.cy[b] + d[b] * c.ny[b];
-    const ux = px - ax, uy = py - ay, vx = bx - px, vy = by - py;
-    const la = Math.hypot(ux, uy), lb = Math.hypot(vx, vy), lc = Math.hypot(bx - ax, by - ay);
-    out[k] = (2 * (ux * vy - uy * vx)) / Math.max(1e-9, la * lb * lc);
-    ds[k] = lb; // to the next point
-  }
+  const a = (k - 1 + n) % n, b = (k + 1) % n;
+  const ax = c.cx[a] + d[a] * c.nx[a], ay = c.cy[a] + d[a] * c.ny[a];
+  const px = c.cx[k] + d[k] * c.nx[k], py = c.cy[k] + d[k] * c.ny[k];
+  const bx = c.cx[b] + d[b] * c.nx[b], by = c.cy[b] + d[b] * c.ny[b];
+  const ux = px - ax, uy = py - ay, vx = bx - px, vy = by - py;
+  const la = Math.hypot(ux, uy), lb = Math.hypot(vx, vy), lc = Math.hypot(bx - ax, by - ay);
+  out[k] = (2 * (ux * vy - uy * vx)) / Math.max(1e-9, la * lb * lc);
+  ds[k] = lb; // to the next point
 }
 
 /** Per-point grip (mu) and rolling resistance of the ground under the line, and the banking leaning into its turn. */
 function ground(track: Track, c: Corridor, d: Float64Array, kappa: Float64Array, mu: Float64Array, roll: Float64Array, bank: Float64Array): void {
-  for (let k = 0; k < c.n; k++) {
-    const surf = SURFACES[track.surfaceAt(c.s[k], d[k])];
-    mu[k] = P.TIRE_MU * surf.grip;
-    roll[k] = surf.rolling * G;
-    bank[k] = Math.sign(kappa[k]) * track.bankAt(track.indexAt(c.s[k]), d[k]);
-  }
+  for (let k = 0; k < c.n; k++) groundAt(track, c, d, kappa, k, mu, roll, bank);
+}
+
+function groundAt(
+  track: Track, c: Corridor, d: Float64Array, kappa: Float64Array, k: number, mu: Float64Array, roll: Float64Array, bank: Float64Array,
+): void {
+  const surf = SURFACES[track.surfaceAt(c.s[k], d[k])];
+  mu[k] = P.TIRE_MU * surf.grip;
+  roll[k] = surf.rolling * G;
+  bank[k] = Math.sign(kappa[k]) * track.bankAt(track.indexAt(c.s[k]), d[k]);
 }
 
 interface Profile { speed: Float64Array; lapTime: number }
@@ -130,10 +137,12 @@ interface Profile { speed: Float64Array; lapTime: number }
 /** The speed profile round a closed line, and its lap time (at a share of the tyres' grip: a driver's margin). */
 function profile(
   n: number, kappa: Float64Array, ds: Float64Array, muFull: Float64Array, roll: Float64Array, bank: Float64Array, mass: number, gripShare = 1,
+  /** Buffers to work in (refinement evaluates thousands of profiles); fresh ones otherwise. */
+  work?: { vmax: Float64Array; latCap: Float64Array; v: Float64Array },
 ): Profile {
   const mu = gripShare === 1 ? muFull : muFull.map((m) => m * gripShare);
-  const vmax = new Float64Array(n);
-  const latCap = new Float64Array(n);
+  const vmax = work?.vmax ?? new Float64Array(n);
+  const latCap = work?.latCap ?? new Float64Array(n);
   let slowest = 0;
   for (let k = 0; k < n; k++) {
     const c = Math.cos(bank[k]), sn = Math.sin(bank[k]);
@@ -150,7 +159,7 @@ function profile(
     const use = (v * v * Math.abs(kappa[k])) / latCap[k];
     return mu[k] * G * Math.sqrt(Math.max(0, 1 - use * use));
   };
-  const v = new Float64Array(n);
+  const v = work?.v ?? new Float64Array(n);
   // Forward from the slowest point: as fast as the engine (and grip) can take it.
   v[slowest] = vmax[slowest];
   for (let j = 1; j <= n; j++) {
@@ -233,23 +242,38 @@ export function racingLine(track: Track, options: Partial<LineOptions> = {}): Ra
   let best = evaluate(line);
 
   // Refinement for lap time: smooth bumps of the line (about a corner's length), kept if the lap gets faster.
+  // A bump only moves its stretch, so only that stretch's curvature and ground are worked out again (and put
+  // back if the lap isn't faster).
   let state = o.seed >>> 0 || 1;
   const rand = () => { state ^= state << 13; state ^= state >>> 17; state ^= state << 5; return (state >>> 0) / 4294967296; };
-  const trial = new Float64Array(n);
   const tries = o.refine * n / 8;
+  const work = { vmax: new Float64Array(n), latCap: new Float64Array(n), v: new Float64Array(n) };
+  const keep = { d: new Float64Array(n), kappa: new Float64Array(n), ds: new Float64Array(n), mu: new Float64Array(n), roll: new Float64Array(n), bank: new Float64Array(n) };
   for (let t = 0; t < tries; t++) {
     const centre = Math.floor(rand() * n);
     const width = 4 + Math.floor(rand() * 16); // 10-50 m at 2.5 m
     const room = fine.hi[centre] - fine.lo[centre];
     const amp = (rand() * 2 - 1) * room * (0.3 * (1 - t / tries) + 0.03);
-    trial.set(line);
+    // The stretch a bump moves, and the points either side whose curvature (and distance on) it changes.
+    const from = -2 * width - 1, to = 2 * width + 1;
+    for (let j = from; j <= to; j++) {
+      const k = (centre + j + n) % n;
+      keep.d[k] = line[k]; keep.kappa[k] = kappa[k]; keep.ds[k] = ds[k]; keep.mu[k] = mu[k]; keep.roll[k] = roll[k]; keep.bank[k] = bank[k];
+    }
     for (let j = -2 * width; j <= 2 * width; j++) {
       const k = (centre + j + n) % n;
-      trial[k] = Math.max(fine.lo[k], Math.min(fine.hi[k], trial[k] + amp * Math.exp(-(j * j) / (2 * width * width / 4))));
+      line[k] = Math.max(fine.lo[k], Math.min(fine.hi[k], line[k] + amp * Math.exp(-(j * j) / (2 * width * width / 4))));
     }
-    const p = evaluate(trial);
-    if (p.lapTime < best.lapTime) { line.set(trial); best = p; }
+    for (let j = from; j <= to; j++) curvatureAt(fine, line, (centre + j + n) % n, kappa, ds);
+    for (let j = from; j <= to; j++) groundAt(track, fine, line, kappa, (centre + j + n) % n, mu, roll, bank);
+    const lapTime = profile(n, kappa, ds, mu, roll, bank, o.mass, 1, work).lapTime;
+    if (lapTime < best.lapTime) { best = { speed: best.speed, lapTime }; continue; }
+    for (let j = from; j <= to; j++) {
+      const k = (centre + j + n) % n;
+      line[k] = keep.d[k]; kappa[k] = keep.kappa[k]; ds[k] = keep.ds[k]; mu[k] = keep.mu[k]; roll[k] = keep.roll[k]; bank[k] = keep.bank[k];
+    }
   }
+  best = profile(n, kappa, ds, mu, roll, bank, o.mass);
   pathCurvature(fine, line, kappa, ds);
   ground(track, fine, line, kappa, mu, roll, bank);
   const shares = new Map<number, { speed: Float32Array; lapTime: number }>();

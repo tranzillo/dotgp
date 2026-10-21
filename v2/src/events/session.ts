@@ -1,6 +1,7 @@
 import type { Flag } from '../sim/raceControl';
 import { bestValidLap } from '../sim/limits';
 import { NeuralDriver, Team } from '../ai/drivers';
+import { fastestLine } from '../ai/racingLine';
 import { COSTS } from '../ai/costs';
 import { danger, fearScale } from '../ai/fear';
 import { PaceCarDriver, formationTraits } from '../ai/formation';
@@ -256,6 +257,8 @@ export class Session {
   constructor(spec: SessionSpec) {
     this.kind = spec.kind;
     this.track = new Track(spec.layout);
+    // Drivers' track knowledge (the circuit's line), worked out now rather than at the first decision mid-race.
+    if (this.track.kind === 'road') fastestLine(this.track);
     const contact = spec.kind !== 'ghost';
     // Race pace is for races' pit windows (and practice for them); a qualifying run is a few laps on fresh tires.
     const wearScale = spec.kind === 'ghost' || spec.kind === 'qualifying' ? 1 : spec.pace;
