@@ -87,6 +87,13 @@ export function racerStyle(nerve: number, talent: number, random: () => number):
 
 /** How far (along) another car counts as alongside: door to door, overlapping by more than a little. */
 const ALONGSIDE = 2 * P.CAR_RADIUS;
+/**
+ * How hard it drives toward its speed when below it (1/s), racing and under caution: in proportion, as it already
+ * brakes above it (racing 4, the formation 6), not flat out. A teacher's throttle has to be one a student can copy:
+ * one flicking between full throttle and the brakes is learned as its average, coasting where it should brake.
+ */
+const DRIVE_GAIN = 4;
+const CAUTION_DRIVE_GAIN = 6;
 /** How far ahead it looks for a car in its path (m). */
 const LOOKAHEAD = 60;
 /** Reaction time in the following gap (s). */
@@ -119,7 +126,9 @@ export class TrafficRacer {
 
   constructor(readonly style: RacerStyle = DEFAULT_STYLE, lineFor?: (track: Track) => RacingLine, traits?: FormationTraits) {
     this.lineFor = lineFor ?? ((track) => fastestLine(track, style.margin));
-    this.formation = new FormationDriver(traits, (car, world, lane) => this.cautionCap(car, world, lane));
+    // Under caution it drives toward its speed smoothly (as it brakes above it), not flat out below it: a teacher's
+    // throttle has to be one a student can copy.
+    this.formation = new FormationDriver(traits, (car, world, lane) => this.cautionCap(car, world, lane), CAUTION_DRIVE_GAIN);
   }
 
   /** Under a caution (once it has reacted to the flag, and until it has reacted to the green): the formation's. */
@@ -268,6 +277,6 @@ export class TrafficRacer {
       return cap;
     };
     this.last = { want, offset, low, high, follow: followCap, squeezed: low > high, passing };
-    followRacingLine(car, world, line, grip, offset, capAt);
+    followRacingLine(car, world, line, grip, offset, capAt, DRIVE_GAIN);
   }
 }

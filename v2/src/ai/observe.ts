@@ -124,6 +124,46 @@ export function observePit(
 
 export const CAUTION_SIZE = 7;
 
+export const CALLS_SIZE = 5;
+
+/**
+ * What race control and the spotter tell a driver under caution, beyond where
+ * its place is: whether the line has formed yet (the pace car has picked up
+ * the leader) or the field is still slowing where it is; whether it has been
+ * told to line up behind a car, and how far ahead of that car it still is;
+ * whether it's being waved around; and whether a car that belongs ahead of it
+ * is coming up from behind to its place ("let the 24 by"). A driver can't
+ * know these from what it sees on track, and how it should drive turns on
+ * them. All zero under green.
+ */
+export function observeCalls(car: Car, world: World, out: Float32Array): Float32Array {
+  out.fill(0);
+  const ctl = world.control;
+  if (!ctl || !ctl.pacing || car.pit.phase !== 'none' || car.finished) return out;
+  const track = world.track;
+  out[0] = ctl.flag !== 'caution' || ctl.pickedUp ? 1 : 0;
+  const behind = ctl.toLineUpBehind(car);
+  if (behind) {
+    const past = track.distanceFrom(behind.s, car.s); // how far we're ahead of it
+    if (past < track.length / 2) { out[1] = 1; out[2] = Math.min(1, past / 100); }
+  }
+  out[3] = ctl.wavedAround(car) ? 1 : 0;
+  const slot = ctl.slotFor(car);
+  if (slot) {
+    for (const other of world.cars) {
+      const o = ctl.slotFor(other);
+      if (!o || o.index >= slot.index || other.retired) continue;
+      const gap = track.distanceFrom(other.s, car.s) - 2 * P.CAR_RADIUS; // how far it is behind us
+      const closing = other.speed - car.speed;
+      if (gap <= 0 || gap > track.length / 2 || closing <= 0) continue;
+      // Coming up to its place: within the distance it needs to slow to our speed at the formation's comfortable
+      // braking, plus a car and the formation's usual gap (when the formation itself gives way).
+      if (gap < (closing * closing) / (2 * 4) + 2 * P.CAR_RADIUS + 6) { out[4] = 1; break; }
+    }
+  }
+  return out;
+}
+
 /**
  * What a driver perceives under caution (pace laps, caution laps, the run to
  * a restart): that the field is pacing and whether the restart is coming,

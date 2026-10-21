@@ -51,7 +51,12 @@ export class FormationDriver {
    * No traits given: drawn for the car the first time it drives (middling nerve). A discipline, if given, caps
    * every speed the formation asks for: a driver bringing its own way of keeping off the car ahead.
    */
-  constructor(traits?: FormationTraits, private readonly discipline?: (car: Car, world: World, lane: number) => number) {
+  constructor(
+    traits?: FormationTraits,
+    private readonly discipline?: (car: Car, world: World, lane: number) => number,
+    /** Drive toward its speeds smoothly rather than flat out below them (a teacher, so it can be copied): the gain (1/s). */
+    private readonly driveGain?: number,
+  ) {
     this.traits = traits ?? null;
   }
 
@@ -150,7 +155,7 @@ export class FormationDriver {
   /** Toward a lane at a speed, no faster than the driver's own discipline allows (if it brings one). */
   private drive(car: Car, world: World, lane: number, v: number): void {
     const want = this.discipline ? Math.min(v, this.discipline(car, world, lane)) : v;
-    followLine(car, world, () => lane, () => want, 0.85);
+    followLine(car, world, () => lane, () => want, 0.85, false, this.driveGain);
   }
 }
 

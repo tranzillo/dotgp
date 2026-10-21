@@ -6,7 +6,7 @@ import { genomeSize, Network, widenNetwork } from './network';
 import { PHYSICS as P, PIT_SERVICE } from '../sim/constants';
 import { PitAutopilot, pitDecisionS, pitRoute, type CrewChief } from './pitting';
 import {
-  CAUTION_SIZE, KNOWLEDGE_AHEAD, KNOWLEDGE_SIZE, LOOKAHEAD, OBS_SIZE, observe, observeCaution, observeKnowledge, observePit, observePreview,
+  CALLS_SIZE, CAUTION_SIZE, KNOWLEDGE_AHEAD, KNOWLEDGE_SIZE, LOOKAHEAD, OBS_SIZE, observe, observeCalls, observeCaution, observeKnowledge, observePit, observePreview,
   PIT_LOOKAHEAD, PIT_SIZE, PREVIEW_SIZE,
 } from './observe';
 import { Rng } from './rng';
@@ -17,9 +17,14 @@ import type { Track } from '../sim/track';
 export const PREVIEW_FROM = OBS_SIZE + RADIO_SIZE + PIT_SIZE + CAUTION_SIZE;
 /** Where track knowledge starts in the driver's inputs (after the preview). */
 export const KNOWLEDGE_FROM = PREVIEW_FROM + PREVIEW_SIZE;
-/** Driver network: own-car observations + the spotter's radio + a pit stop in progress + a caution + the road ahead -> acceleration request. */
-export const DRIVER_LAYERS = [KNOWLEDGE_FROM + KNOWLEDGE_SIZE, 32, 24, 2] as const;
-/** Earlier drivers, still loadable via adaptWeights: before track knowledge, before the preview, before caution inputs, before pit inputs, and solo-era (no radio). */
+/** Where the caution inputs start (the first: the field is pacing). */
+export const CAUTION_FROM = OBS_SIZE + RADIO_SIZE + PIT_SIZE;
+/** Where race control's caution calls start in the driver's inputs (after track knowledge). */
+export const CALLS_FROM = KNOWLEDGE_FROM + KNOWLEDGE_SIZE;
+/** Driver network: own-car observations + the spotter's radio + a pit stop in progress + a caution + the road ahead + the caution calls -> acceleration request. */
+export const DRIVER_LAYERS = [CALLS_FROM + CALLS_SIZE, 32, 24, 2] as const;
+/** Earlier drivers, still loadable via adaptWeights: before the caution calls, before track knowledge, before the preview, before caution inputs, before pit inputs, and solo-era (no radio). */
+export const KNOWLEDGE_DRIVER_LAYERS = [KNOWLEDGE_FROM + KNOWLEDGE_SIZE, 32, 24, 2] as const;
 export const PREVIEW_DRIVER_LAYERS = [PREVIEW_FROM + PREVIEW_SIZE, 32, 24, 2] as const;
 export const CAUTION_DRIVER_LAYERS = [OBS_SIZE + RADIO_SIZE + PIT_SIZE + CAUTION_SIZE, 32, 24, 2] as const;
 export const PIT_DRIVER_LAYERS = [OBS_SIZE + RADIO_SIZE + PIT_SIZE, 32, 24, 2] as const;
@@ -29,7 +34,7 @@ export const LEGACY_DRIVER_LAYERS = [OBS_SIZE, 16, 12, 2] as const;
 /** Upgrade saved weights to the current driver network, preserving behaviour (new inputs start ignored). */
 export function adaptWeights(w: Float32Array): Float32Array {
   if (w.length === genomeSize(DRIVER_LAYERS)) return w;
-  for (const old of [PREVIEW_DRIVER_LAYERS, CAUTION_DRIVER_LAYERS, PIT_DRIVER_LAYERS, RADIO_DRIVER_LAYERS, LEGACY_DRIVER_LAYERS]) {
+  for (const old of [KNOWLEDGE_DRIVER_LAYERS, PREVIEW_DRIVER_LAYERS, CAUTION_DRIVER_LAYERS, PIT_DRIVER_LAYERS, RADIO_DRIVER_LAYERS, LEGACY_DRIVER_LAYERS]) {
     if (w.length === genomeSize(old)) {
       const rng = new Rng(w.length);
       return widenNetwork(old, w, DRIVER_LAYERS, () => rng.next());
@@ -237,21 +242,33 @@ export class NeuralDriver implements DriverBrain {
   private readonly obs = new Float32Array(OBS_SIZE);
   private readonly preview = new Float32Array(PREVIEW_SIZE);
   private readonly knowledge = new Float32Array(KNOWLEDGE_SIZE);
+  private readonly calls = new Float32Array(CALLS_SIZE);
+  /**
+   * The caution skill: a network of its own that drives while the field is pacing (cautions, pace laps, the run to
+   * the restart), so learning cautions can't cost the driver its racing. None: the main network drives those too.
+   */
+  readonly cautionNet: Network | null;
   /** The last inputs were mirrored (the coming corner turns right): labels for them must be mirrored too. */
   mirrored = false;
 
   /** The driver's latency and motor noise, if it has human limits (none: the car gets exactly what it decides, at once). */
   private readonly hands: Hands | null;
 
-  constructor(weights: Float32Array, roadWeights?: Float32Array, limits?: DriverLimits) {
+  constructor(weights: Float32Array, roadWeights?: Float32Array, limits?: DriverLimits, cautionWeights?: Float32Array) {
     this.net = new Network(DRIVER_LAYERS, weights);
     this.roadNet = roadWeights ? new Network(DRIVER_LAYERS, roadWeights) : null;
+    this.cautionNet = cautionWeights ? new Network(DRIVER_LAYERS, cautionWeights) : null;
     this.hands = limits && (limits.latency > 0 || limits.noise > 0) ? new Hands(limits, P.CONTROL_EVERY * P.DT) : null;
   }
 
   /** The network that drives this track: the road-course skill on road layouts (if the driver has one). */
   netFor(track: Track): Network {
     return this.roadNet && track.kind === 'road' ? this.roadNet : this.net;
+  }
+
+  /** The network for these inputs: the caution skill while the field is pacing (if the driver has one), else the track's. */
+  netAt(track: Track, input: Float32Array): Network {
+    return this.cautionNet && input[CAUTION_FROM] !== 0 ? this.cautionNet : this.netFor(track);
   }
 
   /** The network's input for this moment (also what an apprentice is shown), mirrored when the next corner turns right. */
@@ -262,6 +279,7 @@ export class NeuralDriver implements DriverBrain {
     this.input.set(caution, OBS_SIZE + RADIO_SIZE + PIT_SIZE);
     this.input.set(observePreview(car, world.track, this.preview), PREVIEW_FROM);
     this.input.set(observeKnowledge(car, world.track, this.knowledge), KNOWLEDGE_FROM);
+    this.input.set(observeCalls(car, world, this.calls), CALLS_FROM);
     const dir = nextCornerDirection(world.track, car.s);
     if (dir !== 0) this.mirrored = dir < 0; // nothing in sight: keep the last view
     if (this.mirrored) mirrorDriverInputs(this.input);
@@ -269,7 +287,8 @@ export class NeuralDriver implements DriverBrain {
   }
 
   decide(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array): void {
-    const out = this.netFor(world.track).forward(this.inputs(car, world, radio, pit, caution));
+    const input = this.inputs(car, world, radio, pit, caution);
+    const out = this.netAt(world.track, input).forward(input);
     const y = this.mirrored ? -out[1] : out[1];
     if (this.hands) this.hands.apply(out[0], y, car);
     else { car.inputX = out[0]; car.inputY = y; }
@@ -278,8 +297,9 @@ export class NeuralDriver implements DriverBrain {
 
 export function neuralTeam(
   weights: Float32Array, crewChief: CrewChief | null = null, driverPits = false, driverCautions = false, limits?: DriverLimits,
+  cautionWeights?: Float32Array,
 ): Team {
-  return new Team(new NeuralDriver(weights, undefined, limits), new TowerSpotter(), crewChief, driverPits, driverCautions);
+  return new Team(new NeuralDriver(weights, undefined, limits, cautionWeights), new TowerSpotter(), crewChief, driverPits, driverCautions);
 }
 
 /**

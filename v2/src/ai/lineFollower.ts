@@ -17,6 +17,12 @@ export function followLine(
   capAt: (s: number) => number,
   margin = 0.95,
   sweep = false,
+  /**
+   * Below the target speed: drive toward it in proportion to how far below it is (1/s), as braking above it does,
+   * instead of flat out. Smooth: what a driver learning by copying it can learn (it can't copy on-off flicking
+   * between full throttle and the brakes). Unset: flat out.
+   */
+  driveGain?: number,
 ): void {
   const track = world.track;
   const i = car.trackIdx;
@@ -55,7 +61,7 @@ export function followLine(
   const vLatWanted = sweep ? vLon * (laneAt(car.s + 3) - laneAt(car.s - 3)) / 6 : 0;
   const latWanted = vLon * vLon * kappaHere + 0.8 * (laneTarget - car.d) - 1.6 * (vLat - vLatWanted) - car.bankAcc;
   // Over target: brake hard enough to be back on the braking curve within a fraction of a second.
-  const lonWanted = vLon < target ? 99 : -Math.min(brake * 1.3, (vLon - target) * 6);
+  const lonWanted = vLon < target ? (driveGain === undefined ? 99 : (target - vLon) * driveGain) : -Math.min(brake * 1.3, (vLon - target) * 6);
 
   // Lateral has priority inside the friction circle.
   const lat = Math.max(-capacity, Math.min(capacity, latWanted));

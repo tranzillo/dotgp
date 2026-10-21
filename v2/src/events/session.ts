@@ -42,7 +42,11 @@ export interface EntrantSpec {
   number?: number;
   /** pits / cautions: drives its own pit stops / cautions (it has learned to); otherwise the scripts do. */
   /** roadWeights: the driver's road-course skill (drives road circuits instead of its main network). */
-  driver: { id: string; weights: Float32Array; roadWeights?: Float32Array; pits?: boolean; setBackPits?: boolean; cautions?: boolean; nerve?: number };
+  driver: {
+    id: string; weights: Float32Array; roadWeights?: Float32Array; pits?: boolean; setBackPits?: boolean; cautions?: boolean; nerve?: number;
+    /** The caution skill (drives while the field is pacing), and the driver's human limits (latency, motor noise). */
+    cautionWeights?: Float32Array; limits?: { latency: number; noise: number };
+  };
   spotter: { id: string; skill: SpotterSkill };
   chief: { id: string; brain: { kind: 'neural'; weights: Float32Array } | { kind: 'scripted'; traits: CrewChiefTraits } };
 }
@@ -273,7 +277,8 @@ export class Session {
       if (entrant.number !== undefined) car.number = entrant.number;
       if (contact) placeOnGrid(car, this.track, k, true);
       else this.rollingStart(car); // ghosts share one spot
-      const driver = new NeuralDriver(entrant.driver.weights, entrant.driver.roadWeights);
+      const limits = entrant.driver.limits && { ...entrant.driver.limits, seed: (spec.seed ^ ((k + 1) * 0x85ebca6b)) >>> 0 };
+      const driver = new NeuralDriver(entrant.driver.weights, entrant.driver.roadWeights, limits, entrant.driver.cautionWeights);
       const chief = qualifying ? new RunChief((c) => this.qualifying!.wantsIn(c)) : contact ? makeChief(entrant.chief.brain) : null;
       const team = new Team(driver, new TowerSpotter(entrant.spotter.skill), chief,
         // Its own stops where it has learned to make them: a pit road set back across grass needs that too.

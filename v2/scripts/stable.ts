@@ -18,10 +18,11 @@ const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i++) if (process.argv[i].startsWith('--')) args.set(process.argv[i].slice(2), process.argv[++i]);
 const out = args.get('out') ?? 'stable.json';
 const seed = Number(args.get('seed') ?? 1);
-const pass = ['rounds', 'laps', 'field', 'seed', 'debris', 'epochs'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
+const pass = ['rounds', 'laps', 'field', 'seed', 'debris', 'epochs', 'shake'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
 
 const toJson = (d: StableDriver) => ({
   lineage: d.lineage, rounds: 0, nerve: d.nerve, talent: d.talent, limits: d.limits, cautionLicensed: true, weights: Array.from(d.weights),
+  ...(d.caution ? { caution: { weights: Array.from(d.caution) } } : {}),
 });
 
 if (args.has('group-only')) {
@@ -33,8 +34,9 @@ if (args.has('group-only')) {
     ...(args.has('field') ? { field: Number(args.get('field')) } : {}),
     ...(args.has('debris') ? { debris: Number(args.get('debris')) } : {}),
     ...(args.has('epochs') ? { epochs: Number(args.get('epochs')) } : {}),
+    ...(args.has('shake') ? { shake: Number(args.get('shake')) } : {}),
     onRound: (round, r) => console.log(`group ${first} round ${round} ${r.track}: ${r.out} out, ${r.examples} moments, `
-      + `loss ${(r.losses.reduce((a, b) => a + b, 0) / r.losses.length).toFixed(4)}, solo crashes ${r.soloCrashes}/${3 * count} (${r.seconds.toFixed(0)} s)`),
+      + `loss ${(r.losses.reduce((a, b) => a + b, 0) / r.losses.length).toFixed(4)}, cautions ${r.cautionLoss.toFixed(4)}, solo crashes ${r.soloCrashes}/${3 * count} (${r.seconds.toFixed(0)} s)`),
   });
   writeFileSync(out, JSON.stringify({ drivers: students.map(toJson) }));
 } else {

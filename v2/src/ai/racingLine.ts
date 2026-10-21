@@ -310,6 +310,11 @@ export function followRacingLine(
   offset = 0,
   /** A lower speed limit at a distance ahead (e.g. the car in front, a tighter arc), if any. */
   capAt?: (ahead: number) => number,
+  /**
+   * Below the profile's speed: close on it in proportion to how far below it is (1/s), as above it, rather than
+   * flat out. A teacher's throttle has to be one a student can copy. Unset: flat out.
+   */
+  driveGain?: number,
 ): void {
   const track = world.track;
   const i = car.trackIdx;
@@ -333,7 +338,7 @@ export function followRacingLine(
   const reach = Math.max(3, vLon * 0.25);
   const vNow = speedAt(0), vNext = speedAt(reach);
   const planned = (vNext * vNext - vNow * vNow) / (2 * reach);
-  const lonWanted = vLon < vNow && planned >= 0 ? 99 : planned + 4 * (vNow - vLon);
+  const lonWanted = vLon < vNow && planned >= 0 && driveGain === undefined ? 99 : planned + (driveGain ?? 4) * (vNow - vLon);
 
   // Across: following d = D(s) along a curved road. With s' = vLon / (1 - k d), the acceleration across the
   // track it takes is vLon^2 (D'' / (1 - k d)^2 + k / (1 - k d)) (the road's curve, and the line's bend

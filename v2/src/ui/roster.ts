@@ -32,6 +32,10 @@ export interface DriverAgent {
   cautionLicensed?: boolean;
   /** The road-course skill: a second network for road circuits, its training rounds, and the license. */
   roadCourse?: { weights: Float32Array; rounds: number; licensed: boolean; radius?: number };
+  /** The caution skill: a network of its own that drives while the field is pacing (cautions, pace laps, restarts). */
+  caution?: { weights: Float32Array };
+  /** Human limits: seconds from seeing to the car answering, and motor noise (share of an input it strays by). */
+  limits?: { latency: number; noise: number };
   /**
    * Nerve: appetite for risk, 0 timid to 1 fearless (unset: middling). It
    * sets what the driver learns to care about: how much fear of an imminent
@@ -138,7 +142,14 @@ export class Roster {
     // Inherits a working driving style, so no rookie school needed.
     // Something of the mentor's nerve too.
     const nerve = Math.max(0, Math.min(1, (mentor.nerve ?? 0.5) + 0.15 * this.rng.gaussian()));
-    const d = { id: this.uid('D'), name: this.uniqueName(), weights, rounds: 0, mentor: mentor.name, licensed: true, nerve };
+    // The mentor's caution skill too (as its driving, slightly varied); human limits are its own, if the mentor's
+    // line drives with them.
+    const caution = mentor.caution && { weights: mentor.caution.weights.map((w) => w + this.rng.gaussian() * DESCENT_NOISE.driver) };
+    const limits = mentor.limits && { latency: 0.1 + 0.1 * this.rng.next(), noise: 0.02 + 0.06 * this.rng.next() };
+    const d = {
+      id: this.uid('D'), name: this.uniqueName(), weights, rounds: 0, mentor: mentor.name, licensed: true, nerve,
+      ...(caution ? { caution, cautionLicensed: mentor.cautionLicensed } : {}), ...(limits ? { limits } : {}),
+    };
     this.drivers.set(d.id, d);
     this.joined('driver', d, 'descendant', mentor.name);
     return d;
@@ -350,6 +361,7 @@ export class Roster {
       drivers: [...this.drivers.values()].map((d) => ({
         ...d, weights: Array.from(d.weights),
         ...(d.roadCourse ? { roadCourse: { ...d.roadCourse, weights: Array.from(d.roadCourse.weights) } } : {}),
+        ...(d.caution ? { caution: { weights: Array.from(d.caution.weights) } } : {}),
       })),
       spotters: [...this.spotters.values()],
       chiefs: [...this.chiefs.values()].map((c) => ({
@@ -367,7 +379,10 @@ export class Roster {
    */
   static fromBundle(
     bundle: { id: string; name: string },
-    drivers: Array<{ weights: number[]; rounds?: number; nerve?: number; cautionLicensed?: boolean; roadCourse?: { weights: number[]; rounds?: number; licensed?: boolean } }>,
+    drivers: Array<{
+      weights: number[]; rounds?: number; nerve?: number; cautionLicensed?: boolean; roadCourse?: { weights: number[]; rounds?: number; licensed?: boolean };
+      caution?: { weights: number[] }; limits?: { latency: number; noise: number };
+    }>,
     fieldSize: number,
     rng: Rng,
   ): Roster | null {
@@ -384,6 +399,8 @@ export class Roster {
         roadCourse: src.roadCourse
           ? { weights: adaptWeights(Float32Array.from(src.roadCourse.weights)), rounds: src.roadCourse.rounds ?? 0, licensed: !!src.roadCourse.licensed }
           : undefined,
+        caution: src.caution ? { weights: adaptWeights(Float32Array.from(src.caution.weights)) } : undefined,
+        limits: src.limits,
       };
       r.drivers.set(driver.id, driver);
       const spotter: SpotterAgent = { id: `${bundle.id}-S${k}`, name: `Spotter ${k + 1}`, skill: PERFECT_SPOTTER };
@@ -407,10 +424,13 @@ export class Roster {
     const d = data as Record<string, unknown>;
     if (d && d.version === 3) {
       r.counter = Number(d.counter) || 0;
-      for (const x of d.drivers as Array<Omit<DriverAgent, 'roadCourse'> & { weights: number[]; roadCourse?: { weights: number[]; rounds: number; licensed: boolean } }>) {
+      for (const x of d.drivers as Array<Omit<DriverAgent, 'roadCourse' | 'caution'> & {
+        weights: number[]; roadCourse?: { weights: number[]; rounds: number; licensed: boolean }; caution?: { weights: number[] };
+      }>) {
         r.drivers.set(x.id, {
           ...x, weights: adaptWeights(Float32Array.from(x.weights)), licensed: x.licensed ?? (x.rounds > 0 || x.mentor !== null),
           roadCourse: x.roadCourse ? { ...x.roadCourse, weights: adaptWeights(Float32Array.from(x.roadCourse.weights)) } : undefined,
+          caution: x.caution ? { weights: adaptWeights(Float32Array.from(x.caution.weights)) } : undefined,
         });
       }
       for (const x of d.spotters as SpotterAgent[]) r.spotters.set(x.id, x);

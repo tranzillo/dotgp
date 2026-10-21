@@ -17,7 +17,7 @@
  * drivers: forty drivers, forty teachers, no shared ancestry.
  */
 import { initialWeights } from '../ai/es';
-import { DRIVER_LAYERS, NeuralDriver, Team, type DriverLimits } from '../ai/drivers';
+import { CAUTION_FROM, DRIVER_LAYERS, NeuralDriver, Team, type DriverLimits } from '../ai/drivers';
 import type { FormationTraits } from '../ai/formation';
 import { PaceCarDriver } from '../ai/formation';
 import { type Example, trainSupervised } from '../ai/network';
@@ -43,6 +43,8 @@ export interface StableDriver {
   talent: number;
   limits: { latency: number; noise: number };
   weights: Float32Array;
+  /** The caution skill (a network of its own for when the field is pacing), once it has one. */
+  caution: Float32Array | null;
 }
 
 /**
@@ -57,6 +59,7 @@ export function newStableDriver(lineage: number, seed: number): StableDriver {
     talent: rng.next(),
     limits: { latency: 0.1 + 0.1 * rng.next(), noise: 0.02 + 0.06 * rng.next() },
     weights: initialWeights(rng),
+    caution: null,
   };
 }
 
@@ -69,16 +72,56 @@ export function teacherOf(d: { lineage: number; nerve: number; talent: number })
 /** Share of the students' decisions recorded (moments a few frames apart are nearly the same). */
 const SAMPLE = 0.3;
 
+/**
+ * Who drives a student's car in a round: its teacher (the student watches); its teacher through shaken hands (the
+ * student's own latency and a drifting error on top, `sigma` of the inputs' range, so the car ends up off its line
+ * and the teacher shows the way back: noise injection); or the student itself (DAgger).
+ */
+export type Driving = { kind: 'teacher' } | { kind: 'shaken'; sigma: number } | { kind: 'student' };
+
+/** How long a shaken teacher's drifting error takes to change (s). */
+const SHAKE_TAU = 0.5;
+
+/** A teacher's hands shaken: its decisions arrive late (the student's latency) and off by a drifting error. */
+class ShakenHands {
+  private readonly queue: Array<[number, number]> = [];
+  private readonly delay: number;
+  private readonly keep = Math.exp(-(P.CONTROL_EVERY * P.DT) / SHAKE_TAU);
+  private nx = 0;
+  private ny = 0;
+
+  constructor(latency: number, private readonly sigma: number, private readonly rng: Rng) {
+    this.delay = Math.round(latency / (P.CONTROL_EVERY * P.DT));
+  }
+
+  apply(x: number, y: number, car: Car): void {
+    this.queue.push([x, y]);
+    const [ax, ay] = this.queue.length > this.delay ? this.queue.shift()! : [car.inputX, car.inputY];
+    const fresh = Math.sqrt(1 - this.keep * this.keep);
+    this.nx = this.keep * this.nx + fresh * this.rng.gaussian();
+    this.ny = this.keep * this.ny + fresh * this.rng.gaussian();
+    car.inputX = ax + this.sigma * this.nx;
+    car.inputY = ay + this.sigma * this.ny;
+  }
+}
+
 /** Records (what the student saw, what its teacher would do) whoever drives. */
 class OvalApprentice implements Controller {
+  private readonly hands: ShakenHands | null;
+  private readonly studentDrives: boolean;
+
   constructor(
     readonly team: Team,
     private readonly student: NeuralDriver,
     private readonly teacher: TrafficRacer,
-    private readonly studentDrives: boolean,
+    driving: Driving,
     private readonly examples: Example[],
     private readonly rng: Rng,
-  ) {}
+    latency = 0,
+  ) {
+    this.studentDrives = driving.kind === 'student';
+    this.hands = driving.kind === 'shaken' ? new ShakenHands(latency, driving.sigma, rng) : null;
+  }
 
   /** The scripted maneuver drives the stops (not taught here); otherwise the student or its teacher. */
   get mode(): string { return this.team.mode; }
@@ -92,7 +135,10 @@ class OvalApprentice implements Controller {
     car.inputY = py;
     // The team always runs (the crew chief calls the stops, the maneuver drives them); watching, the teacher drives.
     this.team.decide(car, world);
-    if (!this.studentDrives && car.pit.phase === 'none') { car.inputX = label[0]; car.inputY = label[1]; }
+    if (!this.studentDrives && car.pit.phase === 'none') {
+      if (this.hands) this.hands.apply(label[0], label[1], car);
+      else { car.inputX = label[0]; car.inputY = label[1]; }
+    }
     if (car.pit.phase !== 'none' || this.rng.next() >= SAMPLE) return;
     // What the student saw at this moment (its last command included).
     const ax = car.inputX, ay = car.inputY;
@@ -134,13 +180,18 @@ export interface OvalApprenticeOptions {
   epochs?: number;
   /** Moments trained on per student per round: a fresh sample of everything recorded so far. */
   maxExamples?: number;
+  /**
+   * After the first round: 0, the students drive (DAgger); above 0, their teachers drive through shaken hands
+   * (noise injection), the drifting error this share of the inputs' range at full strength (reached by round 3).
+   */
+  shake?: number;
   /** Told after each round. */
-  onRound?: (round: number, report: { track: string; losses: number[]; examples: number; out: number; soloCrashes: number; seconds: number }) => void;
+  onRound?: (round: number, report: { track: string; losses: number[]; cautionLoss: number; examples: number; out: number; soloCrashes: number; seconds: number }) => void;
 }
 
 /** One classroom race: the students seated round a field of individual traffic racers. Returns how many cars went out. */
 export function classroomRace(
-  track: Track, students: StableDriver[], studentDrives: boolean, examples: Example[][], rng: Rng, opts: Required<Omit<OvalApprenticeOptions, 'onRound'>>,
+  track: Track, students: StableDriver[], driving: Driving, examples: Example[][], rng: Rng, opts: Required<Omit<OvalApprenticeOptions, 'onRound'>>,
   round: number, seed: number,
 ): number {
   const world = new SimWorld(track, { collisions: true, drafting: true, wearScale: 4 });
@@ -161,9 +212,9 @@ export function classroomRace(
     }
     const d = students[s];
     const limits: DriverLimits = { ...d.limits, seed: hashSeed(seed, `hands${round}:${d.lineage}`) };
-    const student = new NeuralDriver(d.weights, undefined, limits);
+    const student = new NeuralDriver(d.weights, undefined, limits, d.caution ?? undefined);
     const team = new Team(student, new TowerSpotter(), chief, false, true);
-    world.addCar(car, new OvalApprentice(team, student, labellingTeacher(d), studentDrives, examples[s], rng));
+    world.addCar(car, new OvalApprentice(team, student, labellingTeacher(d), driving, examples[s], rng, d.limits.latency));
   }
   const race = new Race(world, opts.laps, new PaceCarDriver());
   const debrisPerSecond = opts.debris / 30; // a lap's roughly half a minute
@@ -195,7 +246,7 @@ const SOLO_SECONDS = 60;
  * the student alone, the way it is only a few percent of the time in a 40-car race, where it would learn to brake
  * for the car ahead and never where to brake for the corner. Returns how many drives the student crashed.
  */
-function soloDrives(track: Track, students: StableDriver[], studentDrives: boolean, examples: Example[][], rng: Rng, round: number, seed: number): number {
+function soloDrives(track: Track, students: StableDriver[], driving: Driving, examples: Example[][], rng: Rng, round: number, seed: number): number {
   let crashed = 0;
   students.forEach((d, s) => {
     for (const lane of SOLO_LANES) {
@@ -207,8 +258,8 @@ function soloDrives(track: Track, students: StableDriver[], studentDrives: boole
       car.tireLife = TIRE_RANGE[0] + rng.next() * (TIRE_RANGE[1] - TIRE_RANGE[0]);
       car.fuel = FUEL_RANGE[0] + rng.next() * (FUEL_RANGE[1] - FUEL_RANGE[0]);
       const limits: DriverLimits = { ...d.limits, seed: hashSeed(seed, `solo${round}:${d.lineage}:${lane}`) };
-      const student = new NeuralDriver(d.weights, undefined, limits);
-      world.addCar(car, new OvalApprentice(new Team(student, new TowerSpotter(), null), student, labellingTeacher(d), studentDrives, examples[s], rng));
+      const student = new NeuralDriver(d.weights, undefined, limits, d.caution ?? undefined);
+      world.addCar(car, new OvalApprentice(new Team(student, new TowerSpotter(), null), student, labellingTeacher(d), driving, examples[s], rng, d.limits.latency));
       for (let k = 0; k < SOLO_SECONDS / P.DT && !car.retired; k++) world.step();
       if (car.retired) crashed++;
     }
@@ -222,7 +273,7 @@ function soloDrives(track: Track, students: StableDriver[], studentDrives: boole
  */
 export function apprenticeStable(students: StableDriver[], seed: number, options: OvalApprenticeOptions = {}): void {
   const opts = {
-    rounds: 10, field: 40, laps: 30, debris: 0.05, epochs: 4, maxExamples: 60_000, ...options,
+    rounds: 10, field: 40, laps: 30, debris: 0.05, epochs: 4, maxExamples: 60_000, shake: 0, ...options,
   };
   const rng = new Rng(hashSeed(seed, 'apprentice'));
   const examples: Example[][] = students.map(() => []);
@@ -230,17 +281,30 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
   for (let round = 0; round < opts.rounds; round++) {
     const t0 = Date.now();
     const track = apprenticeTrack(round, seed);
-    const soloCrashes = soloDrives(track, students, round > 0, alone, rng, round, seed);
-    const out = classroomRace(track, students, round > 0, examples, rng, opts, round, seed);
+    // Round 0 the students watch; then, noise injection (the teacher shaken, harder as the rounds go on) or DAgger.
+    const driving: Driving = round === 0 ? { kind: 'teacher' }
+      : opts.shake > 0 ? { kind: 'shaken', sigma: opts.shake * Math.min(1, round / 3) } : { kind: 'student' };
+    const soloCrashes = soloDrives(track, students, driving, alone, rng, round, seed);
+    const out = classroomRace(track, students, driving, examples, rng, opts, round, seed);
+    const cautionLosses: number[] = [];
+    // Two skills, trained apart: racing (alone and in traffic under green) and cautions (the field pacing), the
+    // caution network starting as a copy of the racing one. Neither's examples crowd out the other's.
     const half = Math.floor(opts.maxExamples / 2);
+    const epochs = round === 0 ? 3 * opts.epochs : opts.epochs;
     const losses = students.map((d, s) => {
-      const pick = (all: Example[]) => (all.length <= half ? all : sampleOf(all, half, rng));
-      const set = [...pick(alone[s]), ...pick(examples[s])];
-      return trainSupervised(DRIVER_LAYERS, d.weights, set, round === 0 ? 3 * opts.epochs : opts.epochs, 0.01, () => rng.next());
+      const pick = (all: Example[], n: number) => (all.length <= n ? all : sampleOf(all, n, rng));
+      const green = examples[s].filter((e) => e.x[CAUTION_FROM] === 0), pacing = examples[s].filter((e) => e.x[CAUTION_FROM] !== 0);
+      const loss = trainSupervised(DRIVER_LAYERS, d.weights, [...pick(alone[s], half), ...pick(green, half)], epochs, 0.01, () => rng.next());
+      if (pacing.length) {
+        d.caution ??= d.weights.slice();
+        cautionLosses.push(trainSupervised(DRIVER_LAYERS, d.caution, pick(pacing, half), epochs, 0.01, () => rng.next()));
+      }
+      return loss;
     });
     opts.onRound?.(round, {
       track: `${track.length.toFixed(0)} m`, losses, examples: examples.reduce((a, e) => a + e.length, 0) + alone.reduce((a, e) => a + e.length, 0),
       out, soloCrashes, seconds: (Date.now() - t0) / 1000,
+      cautionLoss: cautionLosses.length ? cautionLosses.reduce((a, b) => a + b, 0) / cautionLosses.length : NaN,
     });
   }
 }
