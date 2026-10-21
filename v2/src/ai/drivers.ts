@@ -3,7 +3,7 @@ import type { Controller, World } from '../sim/world';
 import { FormationDriver, type FormationTraits } from './formation';
 import { followLine } from './lineFollower';
 import { genomeSize, Network, widenNetwork } from './network';
-import { PIT_SERVICE } from '../sim/constants';
+import { PHYSICS as P, PIT_SERVICE } from '../sim/constants';
 import { PitAutopilot, pitDecisionS, pitRoute, type CrewChief } from './pitting';
 import {
   CAUTION_SIZE, KNOWLEDGE_AHEAD, KNOWLEDGE_SIZE, LOOKAHEAD, OBS_SIZE, observe, observeCaution, observeKnowledge, observePit, observePreview,
@@ -179,6 +179,56 @@ export function mirrorDriverInputs(x: Float32Array): void {
  * nothing changes, and an oval run the other way round drives exactly like
  * the original. Between corners the view follows the coming one.
  */
+/**
+ * A driver's human limits. A real driver sees, then reacts: the car answers what
+ * the driver saw a moment ago (a skilled driver's visuomotor delay is ~0.1-0.2 s).
+ * And hands aren't exact: the input a driver means isn't quite the input the car
+ * gets, the error growing with the size of the input (signal-dependent motor noise)
+ * and drifting smoothly rather than jittering. Drivers differ in both, so two
+ * drivers in the same spot don't act on the same instant in the same way.
+ */
+export interface DriverLimits {
+  /** Seconds from what the driver sees to the car answering it. */
+  latency: number;
+  /** The applied input strays from the meant one by about this share of its size (1 sd). */
+  noise: number;
+  /** Seeds the noise (a driver's own, so a race replays exactly). */
+  seed: number;
+}
+/** How long motor noise takes to drift (s): an Ornstein-Uhlenbeck process with this correlation time. */
+const MOTOR_NOISE_TAU = 0.25;
+
+/** The latency and noise between a driver's decision and the car's inputs. */
+class Hands {
+  private readonly delay: number;
+  private readonly queue: Array<[number, number]> = [];
+  private readonly rng: Rng;
+  private readonly keep: number;
+  private readonly fresh: number;
+  private nx = 0;
+  private ny = 0;
+
+  constructor(private readonly limits: DriverLimits, decisionDt: number) {
+    this.delay = Math.max(0, Math.round(limits.latency / decisionDt));
+    this.rng = new Rng(limits.seed);
+    this.keep = Math.exp(-decisionDt / MOTOR_NOISE_TAU);
+    this.fresh = Math.sqrt(1 - this.keep * this.keep);
+    this.nx = this.rng.gaussian();
+    this.ny = this.rng.gaussian();
+  }
+
+  /** The input the car gets now, given what the driver means now. */
+  apply(x: number, y: number, car: Car): void {
+    this.queue.push([x, y]);
+    // Until the first decisions come through, the car keeps what it had.
+    const [ax, ay] = this.queue.length > this.delay ? this.queue.shift()! : [car.inputX, car.inputY];
+    this.nx = this.keep * this.nx + this.fresh * this.rng.gaussian();
+    this.ny = this.keep * this.ny + this.fresh * this.rng.gaussian();
+    car.inputX = ax + this.limits.noise * Math.abs(ax) * this.nx;
+    car.inputY = ay + this.limits.noise * Math.abs(ay) * this.ny;
+  }
+}
+
 export class NeuralDriver implements DriverBrain {
   readonly net: Network;
   /** The road-course skill: a second network that drives on road circuits (ovals are the main network's). */
@@ -190,9 +240,13 @@ export class NeuralDriver implements DriverBrain {
   /** The last inputs were mirrored (the coming corner turns right): labels for them must be mirrored too. */
   mirrored = false;
 
-  constructor(weights: Float32Array, roadWeights?: Float32Array) {
+  /** The driver's latency and motor noise, if it has human limits (none: the car gets exactly what it decides, at once). */
+  private readonly hands: Hands | null;
+
+  constructor(weights: Float32Array, roadWeights?: Float32Array, limits?: DriverLimits) {
     this.net = new Network(DRIVER_LAYERS, weights);
     this.roadNet = roadWeights ? new Network(DRIVER_LAYERS, roadWeights) : null;
+    this.hands = limits && (limits.latency > 0 || limits.noise > 0) ? new Hands(limits, P.CONTROL_EVERY * P.DT) : null;
   }
 
   /** The network that drives this track: the road-course skill on road layouts (if the driver has one). */
@@ -216,13 +270,16 @@ export class NeuralDriver implements DriverBrain {
 
   decide(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array): void {
     const out = this.netFor(world.track).forward(this.inputs(car, world, radio, pit, caution));
-    car.inputX = out[0];
-    car.inputY = this.mirrored ? -out[1] : out[1];
+    const y = this.mirrored ? -out[1] : out[1];
+    if (this.hands) this.hands.apply(out[0], y, car);
+    else { car.inputX = out[0]; car.inputY = y; }
   }
 }
 
-export function neuralTeam(weights: Float32Array, crewChief: CrewChief | null = null, driverPits = false, driverCautions = false): Team {
-  return new Team(new NeuralDriver(weights), new TowerSpotter(), crewChief, driverPits, driverCautions);
+export function neuralTeam(
+  weights: Float32Array, crewChief: CrewChief | null = null, driverPits = false, driverCautions = false, limits?: DriverLimits,
+): Team {
+  return new Team(new NeuralDriver(weights, undefined, limits), new TowerSpotter(), crewChief, driverPits, driverCautions);
 }
 
 /**
