@@ -1,6 +1,6 @@
 import { DRIVER_LAYERS, NeuralDriver, PREVIEW_FROM, ScriptedDriver, Team } from '../ai/drivers';
 import { inputWeightMask, trainSupervised, type Example } from '../ai/network';
-import { OBS_SIZE, PREVIEW_SIZE } from '../ai/observe';
+import { DEFAULT_KNOWLEDGE, OBS_SIZE, PREVIEW_SIZE, type TrackKnowledge } from '../ai/observe';
 import { initialWeights } from '../ai/es';
 import { FUEL_RANGE, TIRE_RANGE } from '../ai/evaluate';
 import { fastestLine, RacingLineDriver } from '../ai/racingLine';
@@ -109,12 +109,12 @@ class RoadApprentice implements Controller {
  * lap's distance within the track limits, without crashing or badly hurting
  * the car).
  */
-export function roadLicenseTest(weights: Float32Array, seed: number, minHealth: number): boolean {
+export function roadLicenseTest(weights: Float32Array, seed: number, minHealth: number, knowledge?: TrackKnowledge): boolean {
   for (let k = 0; k < 3; k++) {
     const track = circuitTrack(hashSeed(seed, `test${k}`), 'club');
     const world = new World(track, { collisions: false, drafting: false });
     const car = new Car(0);
-    world.addCar(car, new Team(new NeuralDriver(weights), new TowerSpotter(), null));
+    world.addCar(car, new Team(new NeuralDriver(weights, undefined, knowledge), new TowerSpotter(), null));
     car.placeOnTrack(track, track.length - 20, 0);
     car.vx = track.tx[car.trackIdx] * ROLLING_START_SPEED;
     car.vy = track.ty[car.trackIdx] * ROLLING_START_SPEED;
@@ -200,6 +200,11 @@ export interface ApprenticeOptions {
   knocks?: number;
 }
 
+/** What a student of a teacher knows of a circuit: its teacher's line (the default for the line follower, which has none). */
+export function knowledgeOf(teacher: ApprenticeOptions['teacher']): TrackKnowledge {
+  return teacher && teacher.kind !== 'follower' ? { grip: teacher.grip, margin: teacher.margin ?? DEFAULT_KNOWLEDGE.margin } : DEFAULT_KNOWLEDGE;
+}
+
 /** The teacher of a drive that starts in a lane. */
 function teacherFor(teacher: ApprenticeOptions['teacher'], lane: number): Controller {
   if (teacher?.kind === 'traffic') {
@@ -223,7 +228,7 @@ export function apprenticeRoadCourses(weights: Float32Array, seed: number, opts:
     for (const track of tracks) {
       for (const lane of LANES) {
         const world = new World(track, { collisions: false, drafting: false });
-        const student = new NeuralDriver(weights);
+        const student = new NeuralDriver(weights, undefined, knowledgeOf(opts.teacher));
         const team = new Team(student, new TowerSpotter(), null);
         const car = new Car(0);
         if (opts.wear) worn(car, rng);
@@ -246,7 +251,7 @@ export function apprenticeRoadCourses(weights: Float32Array, seed: number, opts:
           car.tireLife = spot.tire;
           if (opts.wear) worn(car, rng);
           if (k !== slot) { world.addCar(car, teacherFor(opts.teacher, 0)); return; }
-          const student = new NeuralDriver(weights);
+          const student = new NeuralDriver(weights, undefined, knowledgeOf(opts.teacher));
           const team = new Team(student, new TowerSpotter(), null);
           world.addCar(car, new RoadApprentice(team, student, teacherFor(opts.teacher, 0), studentDrives, examples, rng,
             (opts.knocks ?? 0) * P.CONTROL_EVERY * P.DT / 60, opts.extra));

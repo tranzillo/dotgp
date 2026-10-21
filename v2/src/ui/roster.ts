@@ -13,6 +13,9 @@ import { randomLivery, withLegibleBorder, type Livery } from '../render/livery';
  */
 export type Role = 'driver' | 'spotter' | 'chief';
 
+/** A road-course style a driver was taught: the share of grip its line is taken at, how far inside the limits it runs, room it leaves alongside. */
+export interface RoadStyle { grip: number; margin: number; room: number }
+
 export interface DriverAgent {
   id: string;
   name: string;
@@ -30,8 +33,11 @@ export interface DriverAgent {
   setBackPits?: boolean;
   /** Has passed the caution lesson: drives its own cautions and restarts instead of the formation script. */
   cautionLicensed?: boolean;
-  /** The road-course skill: a second network for road circuits, its training rounds, and the license. */
-  roadCourse?: { weights: Float32Array; rounds: number; licensed: boolean; radius?: number };
+  /**
+   * The road-course skill: a second network for road circuits, its training rounds, and the license; and the
+   * style it was taught (its line: grip share, margin inside the track limits; room left alongside), if any.
+   */
+  roadCourse?: { weights: Float32Array; rounds: number; licensed: boolean; radius?: number; style?: RoadStyle };
   /**
    * Nerve: appetite for risk, 0 timid to 1 fearless (unset: middling). It
    * sets what the driver learns to care about: how much fear of an imminent
@@ -367,7 +373,10 @@ export class Roster {
    */
   static fromBundle(
     bundle: { id: string; name: string },
-    drivers: Array<{ weights: number[]; rounds?: number; nerve?: number; cautionLicensed?: boolean; roadCourse?: { weights: number[]; rounds?: number; licensed?: boolean } }>,
+    drivers: Array<{
+      weights: number[]; rounds?: number; nerve?: number; cautionLicensed?: boolean;
+      roadCourse?: { weights: number[]; rounds?: number; licensed?: boolean; style?: RoadStyle };
+    }>,
     fieldSize: number,
     rng: Rng,
   ): Roster | null {
@@ -382,7 +391,10 @@ export class Roster {
         weights: adaptWeights(Float32Array.from(src.weights)), rounds: src.rounds ?? 0, mentor: null, licensed: true,
         nerve: src.nerve, cautionLicensed: src.cautionLicensed,
         roadCourse: src.roadCourse
-          ? { weights: adaptWeights(Float32Array.from(src.roadCourse.weights)), rounds: src.roadCourse.rounds ?? 0, licensed: !!src.roadCourse.licensed }
+          ? {
+            weights: adaptWeights(Float32Array.from(src.roadCourse.weights)), rounds: src.roadCourse.rounds ?? 0, licensed: !!src.roadCourse.licensed,
+            ...(src.roadCourse.style ? { style: src.roadCourse.style } : {}),
+          }
           : undefined,
       };
       r.drivers.set(driver.id, driver);

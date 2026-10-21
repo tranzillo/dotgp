@@ -45,12 +45,14 @@ const fields: Field[] = who.map((w) => {
   if (w === 'line') return { name: w, make: () => new RacingLineDriver(0.85) };
   if (w === 'follower') return { name: w, make: () => new ScriptedDriver(0, 0.9) };
   if (w.startsWith('traffic')) return { name: w, make: () => new TrafficRacer(style(w)) };
-  const list = JSON.parse(readFileSync(w, 'utf8')).drivers as Array<{ weights: number[]; roadCourse?: { weights: number[] } }>;
+  const list = JSON.parse(readFileSync(w, 'utf8')).drivers as Array<{ weights: number[]; roadCourse?: { weights: number[]; style?: { grip: number; margin: number } } }>;
   return {
     name: w.split(/[\\/]/).pop()!,
     make: (k) => {
       const d = list[k % list.length];
-      return new Team(new NeuralDriver(adaptWeights(Float32Array.from(d.weights)), d.roadCourse ? adaptWeights(Float32Array.from(d.roadCourse.weights)) : undefined), new TowerSpotter(), null);
+      const st = d.roadCourse?.style;
+      return new Team(new NeuralDriver(adaptWeights(Float32Array.from(d.weights)), d.roadCourse ? adaptWeights(Float32Array.from(d.roadCourse.weights)) : undefined,
+        st ? { grip: st.grip, margin: st.margin } : undefined), new TowerSpotter(), null);
     },
   };
 });

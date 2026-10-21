@@ -1,4 +1,5 @@
 import { NeuralDriver, Team, type DriverBrain } from '../ai/drivers';
+import type { TrackKnowledge } from '../ai/observe';
 import { COSTS, trackPace } from '../ai/costs';
 import { danger, fearScale } from '../ai/fear';
 import { TowerSpotter } from '../ai/spotter';
@@ -35,8 +36,8 @@ class SamplingDriver implements DriverBrain {
   readonly view: NeuralDriver;
   readonly steps: Step[] = [];
 
-  constructor(private readonly learner: PpoLearner, private readonly rng: Rng) {
-    this.view = new NeuralDriver(learner.policy.weights);
+  constructor(private readonly learner: PpoLearner, private readonly rng: Rng, knowledge?: TrackKnowledge) {
+    this.view = new NeuralDriver(learner.policy.weights, undefined, knowledge);
   }
 
   decide(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array): void {
@@ -111,6 +112,8 @@ export interface RoadSetting {
   recoveries?: number;
   /** Drives start on tyres anywhere from worn to new and any fuel load (race learning's ranges). */
   wear?: boolean;
+  /** What the learner knows of the circuits (its line); default the usual. */
+  knowledge?: TrackKnowledge;
 }
 
 /**
@@ -168,7 +171,7 @@ export function roadRollout(
         car.tireLife = TIRE_RANGE[0] + rng.next() * (TIRE_RANGE[1] - TIRE_RANGE[0]);
         car.fuel = FUEL_RANGE[0] + rng.next() * (FUEL_RANGE[1] - FUEL_RANGE[0]);
       }
-      const driver = new SamplingDriver(learner, rng);
+      const driver = new SamplingDriver(learner, rng, setting.knowledge);
       const team = new Team(driver);
       return { car, team, driver, valid: new ValidProgress(car), startDist: car.dist, checkDist: car.dist, decisions: 0 };
     };
@@ -229,6 +232,8 @@ export function roadRollout(
  */
 export function packRollout(
   learner: PpoLearner, seed: number, worlds: number, classmates: Float32Array[], nerve?: number, situations?: number,
+  /** What the learner knows of the circuits, and each classmate (by index). */
+  knowledge?: TrackKnowledge, classmateKnowledge: Array<TrackKnowledge | undefined> = [],
 ): RolloutResult {
   const segments: Segment[] = [];
   const drives: DriveStat[] = [];
@@ -247,12 +252,13 @@ export function packRollout(
       car.vy = track.ty[car.trackIdx] * spot.speed;
       car.tireLife = spot.tire;
       if (k % 2 === 0) {
-        const driver = new SamplingDriver(learner, rng);
+        const driver = new SamplingDriver(learner, rng, knowledge);
         const team = new Team(driver, new TowerSpotter(), null);
         world.addCar(car, team);
         learners.push({ car, team, driver, valid: new ValidProgress(car), startDist: car.dist });
       } else {
-        world.addCar(car, new Team(new NeuralDriver(classmates[(k >> 1) % classmates.length]), new TowerSpotter(), null));
+        const c = (k >> 1) % classmates.length;
+        world.addCar(car, new Team(new NeuralDriver(classmates[c], undefined, classmateKnowledge[c]), new TowerSpotter(), null));
       }
     });
     const decisions = Math.round((layout.seconds ?? ROADCRAFT_SECONDS) / DECISION_SECONDS);
@@ -302,13 +308,13 @@ export interface StageReport {
 }
 
 /** How a policy (its mean: as it races) drives a stage: on new circuits from random straights, with the stage's training wheels or with real physics. */
-export function stageReport(weights: Float32Array, radius: number, seed: number, tracks: number, wheels: boolean): StageReport {
+export function stageReport(weights: Float32Array, radius: number, seed: number, tracks: number, wheels: boolean, knowledge?: TrackKnowledge): StageReport {
   let laps = 0, clean = 0, stopped = 0;
   for (let r = 0; r < tracks; r++) {
     const track = roadCourseTrack(hashSeed(seed, `eval${r}`), radius);
     const t = new Trial(track, [weights], {
       seconds: DRIVE_SECONDS, startS: straightStart(track, new Rng(hashSeed(seed, `start${r}`))), damageScale: roadWalls(radius),
-      wheels: wheels ? roadTrainingWheels(radius) : undefined,
+      wheels: wheels ? roadTrainingWheels(radius) : undefined, knowledge: [knowledge],
     });
     while (!t.done) t.step();
     const x = t.results()[0];

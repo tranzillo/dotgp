@@ -1,4 +1,5 @@
 import { DRIVER_LAYERS, PREVIEW_FROM } from '../ai/drivers';
+import type { TrackKnowledge } from '../ai/observe';
 import { fearScale } from '../ai/fear';
 import { inputWeightMask } from '../ai/network';
 import { OBS_SIZE } from '../ai/observe';
@@ -120,12 +121,22 @@ export function roadcraftLayout(track: Track, straightS: number, rng: Rng, situa
   return rng.next() < LAUNCH_SHARE ? launchLayout(track) : straightPackLayout(track, straightS, rng);
 }
 
+/** What each car of a round's solo laps knows ([...candidates, ...references]), from each student's knowledge. */
+export function soloKnowledge(
+  knowledge: Array<TrackKnowledge | undefined>, candidates: number, perStudent: number, students: number,
+): Array<TrackKnowledge | undefined> {
+  return [...Array.from({ length: candidates }, (_, i) => knowledge[Math.floor(i / perStudent)]), ...Array.from({ length: students }, (_, l) => knowledge[l])];
+}
+
 /** One student's drill in a circuit racecraft round: the same pack around every candidate. */
 export function roadcraftDrill(
   track: Track, slot: number, candidate: Float32Array, own: number, classmates: Float32Array[], layout: PackLayout, nerve?: number, pace?: number,
+  /** What each student knows of road circuits (by index in the class); default the usual. */
+  knowledge: Array<TrackKnowledge | undefined> = [],
 ): RacecraftDrill {
+  const mate = (k: number) => k === slot ? own : (own + k) % classmates.length;
   return new RacecraftDrill(track, slot, candidate, (k) => classmates[(own + k) % classmates.length], layout, fearScale(nerve),
-    { seconds: ROADCRAFT_SECONDS, validLaps: true, pace });
+    { seconds: ROADCRAFT_SECONDS, validLaps: true, pace, knowledge: (k) => knowledge[mate(k)] });
 }
 
 /**
@@ -137,9 +148,11 @@ export class RoadcraftTrial extends DrillTrial<RacecraftResult> {
   constructor(
     track: Track, candidates: Float32Array[], perStudent: number, slot: number, classmates: Float32Array[], show: number,
     layout: PackLayout, nerves: Array<number | undefined>, references: Float32Array[],
+    /** What each student knows of road circuits (by index); default the usual. */
+    knowledge: Array<TrackKnowledge | undefined> = [],
   ) {
     const pack = classmates.map((w) => w.slice());
-    super(candidates.map((g, i) => roadcraftDrill(track, slot, g, Math.floor(i / perStudent), pack, layout, nerves[Math.floor(i / perStudent)])),
-      perStudent, show, candidates, { track, references });
+    super(candidates.map((g, i) => roadcraftDrill(track, slot, g, Math.floor(i / perStudent), pack, layout, nerves[Math.floor(i / perStudent)], undefined, knowledge)),
+      perStudent, show, candidates, { track, references, knowledge: soloKnowledge(knowledge, candidates.length, perStudent, references.length) });
   }
 }

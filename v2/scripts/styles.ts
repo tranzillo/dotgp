@@ -77,8 +77,9 @@ drivers.forEach((d, k) => {
   const line = [0, 0, 0];
   let ln = 0;
   tracks.forEach((track, t) => {
+    const st = d.roadCourse?.style;
     const r = drive(track, new Team(new NeuralDriver(adaptWeights(Float32Array.from(d.weights)),
-      d.roadCourse ? adaptWeights(Float32Array.from(d.roadCourse.weights)) : undefined), new TowerSpotter(), null));
+      d.roadCourse ? adaptWeights(Float32Array.from(d.roadCourse.weights)) : undefined, st ? { grip: st.grip, margin: st.margin } : undefined), new TowerSpotter(), null));
     if (Number.isFinite(r.lap)) { ratio += r.lap / teacher[t]; rn++; valid++; }
     exc += r.excursions; laps += Math.max(1, r.laps);
     if (r.line) { r.line.forEach((v, j) => (line[j] += v)); ln++; }

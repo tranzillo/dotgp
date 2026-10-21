@@ -7,7 +7,7 @@ import { PIT_SERVICE } from '../sim/constants';
 import { PitAutopilot, pitDecisionS, pitRoute, type CrewChief } from './pitting';
 import {
   CAUTION_SIZE, KNOWLEDGE_AHEAD, KNOWLEDGE_SIZE, LOOKAHEAD, OBS_SIZE, observe, observeCaution, observeKnowledge, observePit, observePreview,
-  PIT_LOOKAHEAD, PIT_SIZE, PREVIEW_SIZE,
+  PIT_LOOKAHEAD, PIT_SIZE, PREVIEW_SIZE, type TrackKnowledge,
 } from './observe';
 import { Rng } from './rng';
 import { RADIO, RADIO_SIZE, TowerSpotter, type Spotter } from './spotter';
@@ -186,11 +186,15 @@ export class NeuralDriver implements DriverBrain {
   private readonly input = new Float32Array(DRIVER_LAYERS[0]);
   private readonly obs = new Float32Array(OBS_SIZE);
   private readonly preview = new Float32Array(PREVIEW_SIZE);
-  private readonly knowledge = new Float32Array(KNOWLEDGE_SIZE);
+  private readonly known = new Float32Array(KNOWLEDGE_SIZE);
   /** The last inputs were mirrored (the coming corner turns right): labels for them must be mirrored too. */
   mirrored = false;
 
-  constructor(weights: Float32Array, roadWeights?: Float32Array) {
+  constructor(
+    weights: Float32Array, roadWeights?: Float32Array,
+    /** What it knows of road circuits (its line): default, the fastest at the usual margin and 85% of grip. */
+    readonly knowledge?: TrackKnowledge,
+  ) {
     this.net = new Network(DRIVER_LAYERS, weights);
     this.roadNet = roadWeights ? new Network(DRIVER_LAYERS, roadWeights) : null;
   }
@@ -207,7 +211,7 @@ export class NeuralDriver implements DriverBrain {
     this.input.set(pit, OBS_SIZE + RADIO_SIZE);
     this.input.set(caution, OBS_SIZE + RADIO_SIZE + PIT_SIZE);
     this.input.set(observePreview(car, world.track, this.preview), PREVIEW_FROM);
-    this.input.set(observeKnowledge(car, world.track, this.knowledge), KNOWLEDGE_FROM);
+    this.input.set(observeKnowledge(car, world.track, this.known, this.knowledge), KNOWLEDGE_FROM);
     const dir = nextCornerDirection(world.track, car.s);
     if (dir !== 0) this.mirrored = dir < 0; // nothing in sight: keep the last view
     if (this.mirrored) mirrorDriverInputs(this.input);
@@ -221,8 +225,10 @@ export class NeuralDriver implements DriverBrain {
   }
 }
 
-export function neuralTeam(weights: Float32Array, crewChief: CrewChief | null = null, driverPits = false, driverCautions = false): Team {
-  return new Team(new NeuralDriver(weights), new TowerSpotter(), crewChief, driverPits, driverCautions);
+export function neuralTeam(
+  weights: Float32Array, crewChief: CrewChief | null = null, driverPits = false, driverCautions = false, knowledge?: TrackKnowledge,
+): Team {
+  return new Team(new NeuralDriver(weights, undefined, knowledge), new TowerSpotter(), crewChief, driverPits, driverCautions);
 }
 
 /**
