@@ -2,6 +2,7 @@ import { G, PHYSICS as P } from '../sim/constants';
 import type { Car } from '../sim/car';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
+import { FormationDriver, type FormationTraits } from './formation';
 import { fastestLine, followRacingLine, lineAt, type RacingLine } from './racingLine';
 
 /**
@@ -34,6 +35,25 @@ export interface RacerStyle {
   room: number;
   /** How much faster than the car ahead it must be to try a pass (m/s). */
   pass: number;
+  /**
+   * How hard the car ahead might slow that it leaves room for (m/s^2): the room a follower needs is what it loses
+   * while it reacts and then out-brakes the car ahead. Insuring against a lift (~1-2 m/s^2) it runs nose to tail in
+   * the draft, as oval packs do; against full braking it hangs back a reaction time's worth of speed. A driver's nerve.
+   * Unset: room for the car ahead stopping as hard as it can (a reaction time at its speed), as on road circuits.
+   */
+  insure?: number;
+}
+
+/**
+ * Room lost following a car that starts slowing at `lead` m/s^2, reacting after `reaction` s and then braking at
+ * `brake` m/s^2, both at `v` to begin with: until the follower is no faster (or the car ahead has stopped).
+ */
+export function followLoss(v: number, reaction: number, lead: number, brake: number): number {
+  const stopAll = v * reaction + (v * v) / (2 * brake) - (v * v) / (2 * lead); // the car ahead stops first
+  if (lead >= brake) return stopAll;
+  const level = reaction + (lead * reaction) / (brake - lead); // when the follower's speed is down to the leader's
+  if (level * lead >= v) return stopAll;
+  return 0.5 * lead * reaction * reaction + (lead * reaction) ** 2 / (2 * (brake - lead));
 }
 
 export const DEFAULT_STYLE: RacerStyle = { grip: 0.85, margin: 0.6, room: 0.5, pass: 1 };
@@ -60,11 +80,63 @@ export class TrafficRacer {
   last = { want: 0, offset: 0, low: 0, high: 0, follow: Infinity, squeezed: false, passing: false };
   private readonly lineFor: (track: Track) => RacingLine;
 
-  constructor(readonly style: RacerStyle = DEFAULT_STYLE, lineFor?: (track: Track) => RacingLine) {
+  /**
+   * Cautions and restarts: where to be comes from the formation (its place in line, giving way, round wrecks), how
+   * fast from its own following, the same as under green but insuring against the car ahead braking as hard as it
+   * can: under a caution the car ahead is about to check up, and it can't know how hard.
+   */
+  private readonly formation: FormationDriver;
+  /** Whether race control had the field pacing at its last look, and when that last changed (it reacts in its own time). */
+  private flagPacing: boolean | null = null;
+  private flagChangedAt = -Infinity;
+
+  constructor(readonly style: RacerStyle = DEFAULT_STYLE, lineFor?: (track: Track) => RacingLine, traits?: FormationTraits) {
     this.lineFor = lineFor ?? ((track) => fastestLine(track, style.margin));
+    this.formation = new FormationDriver(traits, (car, world, lane) => this.cautionCap(car, world, lane));
+  }
+
+  /** Under a caution (once it has reacted to the flag, and until it has reacted to the green): the formation's. */
+  private inFormation(car: Car, world: World): boolean {
+    const ctl = world.control;
+    if (!ctl) return false;
+    const pacing = ctl.pacing;
+    if (this.flagPacing === null) this.flagPacing = pacing;
+    else if (pacing !== this.flagPacing) { this.flagPacing = pacing; this.flagChangedAt = world.time; }
+    if (car.finished || car.pit.phase !== 'none') return false;
+    const reacted = world.time - this.flagChangedAt >= this.formation.traitsFor(car).reaction;
+    return pacing ? reacted : !reacted;
+  }
+
+  /**
+   * The fastest it will go heading for `lane` under a caution: able to stop behind the car ahead in its file (the
+   * formation's, the pace car included) even if that car stops as hard as it can. The formation's own following
+   * plans on the car ahead holding its speed, which is just what it doesn't do when the caution comes out.
+   */
+  private cautionCap(car: Car, world: World, lane: number): number {
+    const ctl = world.control;
+    if (!ctl) return Infinity;
+    const brake = 0.5 * P.TIRE_MU * G;
+    const gap = 2 * P.CAR_RADIUS + this.formation.traitsFor(car).followGap + followLoss(car.speed, REACTION, brake, brake);
+    // A wreck the lane it's heading for clears (it's going round it) isn't the car ahead: stopping behind it, it
+    // couldn't steer round it, and the whole line would queue behind. The next car ahead in the file is.
+    const clears = (o: Car) => o.retired && Math.abs(o.d - lane) >= 2 * P.CAR_RADIUS + 0.3;
+    let cap = Infinity;
+    for (const other of [...world.cars, ...(ctl.paceCarOut ? [ctl.paceCar] : [])]) {
+      if (other === car || other.cleared || clears(other)) continue;
+      if (Math.abs(other.d - lane) > 2.6 && Math.abs(other.d - car.d) > 2.6) continue; // the formation's file
+      const ds = world.track.distanceFrom(car.s, other.s);
+      if (ds <= 0 || ds > 220) continue;
+      const vOther = other.retired ? 0 : other.speed;
+      cap = Math.min(cap, Math.sqrt(vOther * vOther + 2 * brake * Math.max(0, ds - gap)));
+    }
+    return cap;
   }
 
   decide(car: Car, world: World): void {
+    if (this.inFormation(car, world)) {
+      this.formation.decide(car, world);
+      return;
+    }
     const track = world.track;
     const line = this.lineFor(track);
     const { room, pass, grip } = this.style;
@@ -85,7 +157,18 @@ export class TrafficRacer {
       let ds = other.s - car.s;
       if (ds > L / 2) ds -= L;
       else if (ds < -L / 2) ds += L;
-      if (ds < -ALONGSIDE || ds > LOOKAHEAD) continue;
+      if (ds > LOOKAHEAD) continue;
+      if (ds <= -ALONGSIDE) {
+        // Behind: a car coming up a lane over is as good as alongside if it will be there before this car could
+        // be across into its lane ("car outside!"), so it isn't moved over on.
+        const closing = other.speed - vMe;
+        const across = width / CROSS_RATE;
+        if (other.retired || closing <= 0 || -ds - ALONGSIDE > closing * across) continue;
+        if (Math.abs(other.d - car.d) < width) continue; // in its own lane: it's the car behind, its to follow
+        if (other.d > car.d) high = Math.min(high, other.d - width);
+        else low = Math.max(low, other.d + width);
+        continue;
+      }
       if (Math.abs(ds) < ALONGSIDE) {
         // Alongside: room on its side.
         if (other.d > car.d) high = Math.min(high, other.d - width);
@@ -115,9 +198,12 @@ export class TrafficRacer {
         }
       }
       // Follow: no closer than the gap, closing it no faster than it can stop.
-      const gap = 2 * P.CAR_RADIUS + 2 + REACTION * vMe;
+      const brake = 0.5 * P.TIRE_MU * G;
+      // A car heading for pit road is about to brake hard, and shows it (down to the apron): room for that.
+      const insure = this.style.insure === undefined || other.pit.phase === 'in' ? undefined : this.style.insure;
+      const gap = 2 * P.CAR_RADIUS + 2 + (insure === undefined ? REACTION * vMe : followLoss(vMe, REACTION, insure, brake));
       const spare = Math.max(0, ds - gap);
-      const cap = Math.sqrt(vOther * vOther + 2 * 0.5 * P.TIRE_MU * G * spare);
+      const cap = Math.sqrt(vOther * vOther + 2 * brake * spare);
       if (cap < followCap) { followCap = cap; followAt = ds; }
     }
 

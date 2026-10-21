@@ -47,8 +47,11 @@ export function formationTraits(nerve = 0.5, random: () => number = Math.random)
 export class FormationDriver {
   private traits: FormationTraits | null;
 
-  /** No traits given: drawn for the car the first time it drives (middling nerve). */
-  constructor(traits?: FormationTraits) {
+  /**
+   * No traits given: drawn for the car the first time it drives (middling nerve). A discipline, if given, caps
+   * every speed the formation asks for: a driver bringing its own way of keeping off the car ahead.
+   */
+  constructor(traits?: FormationTraits, private readonly discipline?: (car: Car, world: World, lane: number) => number) {
     this.traits = traits ?? null;
   }
 
@@ -73,7 +76,7 @@ export class FormationDriver {
     };
     // No place in line (just after the green, before this driver has reacted to it): hold speed and lane.
     if (!slot) {
-      followLine(car, world, () => car.d, () => follow(car.d, car.speed), 0.85);
+      this.drive(car, world, car.d, follow(car.d, car.speed));
       return;
     }
     // The caution is out but the pace car hasn't picked up the leader: no line to join yet. Slow to caution
@@ -85,7 +88,7 @@ export class FormationDriver {
       let holdLane = lane;
       const wreck = ctl.wreckAhead(car);
       if (wreck && Math.abs(wreck.d - holdLane) < 4) holdLane = car.d < wreck.d ? wreck.d - 5 : wreck.d + 5;
-      followLine(car, world, () => holdLane, () => follow(holdLane, want), 0.85);
+      this.drive(car, world, holdLane, follow(holdLane, want));
       return;
     }
     let err = t.distanceFrom(car.s, slot.s); // metres the slot is ahead of us
@@ -105,7 +108,7 @@ export class FormationDriver {
     // lights are on, a driver holds the car still on the brakes.
     if (slot.speed === 0 && ctl.flag === 'grid') {
       const want = ctl.lights > 0 ? 0 : Math.max(0, Math.min(tr.eagerness, 0.3 * err));
-      followLine(car, world, () => slot.d, () => follow(slot.d, want), 0.85);
+      this.drive(car, world, slot.d, follow(slot.d, want));
       return;
     }
     let lane = err < -ctl.lineSpacing() ? yieldLane
@@ -141,7 +144,13 @@ export class FormationDriver {
     if (wreck && Math.abs(wreck.d - lane) < 4) lane = car.d < wreck.d ? wreck.d - 5 : wreck.d + 5;
     // Never faster than lets us stop comfortably behind whatever is ahead in our lane (at our own gap).
     v = follow(lane, v);
-    followLine(car, world, () => lane, () => v, 0.85);
+    this.drive(car, world, lane, v);
+  }
+
+  /** Toward a lane at a speed, no faster than the driver's own discipline allows (if it brings one). */
+  private drive(car: Car, world: World, lane: number, v: number): void {
+    const want = this.discipline ? Math.min(v, this.discipline(car, world, lane)) : v;
+    followLine(car, world, () => lane, () => want, 0.85);
   }
 }
 

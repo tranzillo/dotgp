@@ -71,12 +71,16 @@ type Entrant = {
 };
 const limitRanges = args.get('limits')?.split(',').map((r) => r.split(':').map(Number) as [number, number]);
 /**
- * A scripted teacher in place of a drivers file: teacher:traffic[:grip] fields the traffic racer (the oval teacher
- * to be), so a teacher is benchmarked exactly as the drivers who'll learn from it.
+ * A scripted teacher in place of a drivers file: teacher:traffic[:key=value,...] fields the traffic racer (the oval
+ * teacher to be) with its style's keys set (grip, margin, room, pass, insure), so a teacher is benchmarked exactly as
+ * the drivers who'll learn from it.
  */
 const teacher = driversFile.startsWith('teacher:') ? driversFile.split(':') : null;
 const roster: Entrant[] = teacher ? [{ weights: [] }] : JSON.parse(readFileSync(driversFile, 'utf8')).drivers;
-const teacherStyle: RacerStyle = { ...DEFAULT_STYLE, ...(teacher?.[2] ? { grip: Number(teacher[2]) } : {}) };
+const teacherStyle: RacerStyle = {
+  ...DEFAULT_STYLE,
+  ...Object.fromEntries((teacher?.[2] ?? '').split(',').filter(Boolean).map((kv) => { const [k, v] = kv.split('='); return [k, Number(v)]; })),
+};
 /** A mixed field: the second file's drivers take every other grid slot. */
 const mixFile = args.get('mix');
 const mixRoster: Entrant[] | null = mixFile ? JSON.parse(readFileSync(mixFile, 'utf8')).drivers : null;
@@ -264,7 +268,8 @@ function runRace(trackName: string, seed: number): RaceStats {
       noise: limitRanges[1][0] + rng.next() * (limitRanges[1][1] - limitRanges[1][0]) };
     const limits = drawn ?? d.limits;
     if (teacher && side === 0) {
-      world.addCar(car, new Team(new TrafficRacer(teacherStyle), new TowerSpotter(), chief));
+      // The teacher drives its own cautions and restarts (the pit maneuver still drives its stops).
+      world.addCar(car, new Team(new TrafficRacer(teacherStyle), new TowerSpotter(), chief, false, true));
       continue;
     }
     world.addCar(car, neuralTeam(adaptWeights(Float32Array.from(d.weights)), chief,
@@ -406,6 +411,9 @@ function runRace(trackName: string, seed: number): RaceStats {
       if (car.retired) {
         if (out.has(car)) return;
         out.add(car);
+        // A car that has taken the flag isn't a retirement, whatever happens to it after (stopping on the
+        // cool-down lap behind a last-lap caution, say).
+        if (race.isFinished(car)) return;
         const merging = cars.some((o) => o !== car && o.pit.phase === 'out' && Math.hypot(o.x - car.x, o.y - car.y) < 40);
         const context = car.pit.phase === 'out' ? 'merging' : merging ? 'near a merging car'
           : flagBefore === 'green' ? (world.time - lastGreen < RESTART_WINDOW ? 'start/restart' : 'green')
