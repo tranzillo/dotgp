@@ -134,10 +134,19 @@ const DECOR_PAINTERS: { [K in Decoration['kind']]: (v: DecorView, deco: Extract<
     const depth = rect.d1 - rect.d0;
     const row = Math.min(6, depth * 0.35);
     v.ctx.beginPath();
-    for (let s = rect.s0 + 2; s <= rect.s1 - 2; s += spacing) {
-      for (const [a, b] of [[rect.d0 + 1, rect.d0 + 1 + row], [rect.d1 - 1 - row, rect.d1 - 1]]) {
-        const [ax, ay] = v.toScreen(s, a);
-        const [bx, by] = v.toScreen(s, b);
+    // Each row's lines `spacing` metres apart along the row itself (its middle), not along the track: a lot that curves
+    // with a turn has the same bays on its inside row as its outside (a car is as wide either side).
+    for (const [a, b] of [[rect.d0 + 1, rect.d0 + 1 + row], [rect.d1 - 1 - row, rect.d1 - 1]]) {
+      const mid = (a + b) / 2, fine = 0.1;
+      let since = spacing; // (a line at the row's start)
+      let [px, py] = v.toScreen(rect.s0 + 2, mid);
+      for (let s = rect.s0 + 2; s <= rect.s1 - 2; s += fine) {
+        const [qx, qy] = v.toScreen(s, mid);
+        since += Math.hypot(qx - px, qy - py) / v.scale;
+        [px, py] = [qx, qy];
+        if (since < spacing) continue;
+        since = 0;
+        const [ax, ay] = v.toScreen(s, a), [bx, by] = v.toScreen(s, b);
         v.ctx.moveTo(ax, ay);
         v.ctx.lineTo(bx, by);
       }
@@ -615,7 +624,9 @@ export class Renderer {
 
     const alpha = lines.globalAlpha;
     for (const region of layout.surfaces) {
-      if (!region.outline) continue;
+      // (White lines are track limits: only a racing surface's edge is drawn. Roads, lots, the garage and the rest of
+      // the paving are just pavement, edged by their colour.)
+      if (!region.outline || region.surface !== 'track') continue;
       // A course road is another layout's racing surface: its edges faint too.
       if (region.surface === 'track' && region.shape.kind === 'path') lines.globalAlpha = alpha * OTHER_LAYOUT_ALPHA;
       this.outlineRegion(lines, region);

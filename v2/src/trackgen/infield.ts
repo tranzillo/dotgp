@@ -150,7 +150,8 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
       pitRange: pit.entryRoute ? [pit.entryStart, pit.exitEnd] : [pit.wallStart, pit.wallEnd], rng,
       buildInner: (straight, radius, width) => courseInner(site, straight, radius, width),
     });
-    if (made) course = made;
+    // (The inner oval's services laid once, on the one the courses were laid round.)
+    if (made) course = { ...made, inner: made.inner && laidServices(made.inner) };
   }
   const nodes: RoadNode[] = [];
   const roads: Road[] = [];
@@ -207,8 +208,10 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
     if (!inGap(k * STEP) && ring[k] < site.pavedInner(signed(k * STEP)) + 6) { problems.push('no room for a service road round the infield'); break; }
   }
   const d = (s: number) => {
+    // (A smooth curve through the samples, Catmull-Rom: no kink at each, as a straight line between them has.)
     const f = cl.wrapS(s) / STEP, k = Math.floor(f) % n, t = f - Math.floor(f);
-    return ring[k] + (ring[(k + 1) % n] - ring[k]) * t;
+    const p0 = ring[(k - 1 + n) % n], p1 = ring[k], p2 = ring[(k + 1) % n], p3 = ring[(k + 2) % n];
+    return 0.5 * (2 * p1 + (p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (3 * p1 - p0 - 3 * p2 + p3) * t * t * t);
   };
   // The road's extent along the lap: all of it, or from past the lot's turn-1 end round to before its other end.
   const ringFrom = full ? 0 : lotZone[1] + 15;
@@ -271,6 +274,8 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
   // ---- where the service road would run beside a course a long way, the course is the road there: the service road
   // turns onto it and off it again, rather than paralleling it a few metres off (crossing one is fine) ----
   const sharedPairs = new Set<string>();
+  /** Roads paved along a smoother line than the network's (its ends where the network's are). */
+  const pavedAs = new Map<string, Array<[number, number]>>();
   {
     // (Beside: the grass between them too narrow to hold anything, the smallest lot (25 m) with its clearance either
     // side, between the service road's edge and a course's (half of about 14 m).)
@@ -309,8 +314,15 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
       let i1 = 0;
       line.forEach(([x, y], i) => { if (Math.hypot(x - ex, y - ey) < Math.hypot(line[i1][0] - ex, line[i1][1] - ey)) i1 = i; });
       if (Math.hypot(line[i1][0] - ex, line[i1][1] - ey) > BESIDE + 10) continue;
-      const q1 = { i: i1 };
-      const along = q0.i <= q1.i ? line.slice(q0.i, q1.i + 1) : line.slice(q1.i, q0.i + 1).reverse();
+      // On and off it as a slip road does: onto it a way further on than beside where the service road leaves, off it
+      // a way before beside where it carries on (the course's way round, or against it: whichever the road runs).
+      const [sx, sy] = ringPoint(ringFrom + u0), [tx, ty] = ringPoint(ringFrom + u0 + 5);
+      const li = Math.min(q0.i, line.length - 2);
+      const sgn = (tx - sx) * (line[li + 1][0] - line[li][0]) + (ty - sy) * (line[li + 1][1] - line[li][1]) >= 0 ? 1 : -1;
+      const SLIP = 6; // (points along the course's line, 5 m apart: 30 m)
+      const ia = q0.i + sgn * SLIP, ib = i1 - sgn * SLIP;
+      if (ia < 0 || ib < 0 || ia >= line.length || ib >= line.length || (ib - ia) * sgn < 2) continue;
+      const along = sgn > 0 ? line.slice(ia, ib + 1) : line.slice(ib, ia + 1).reverse();
       if (along.length < 2) continue;
       const k = n2++;
       const ja = junction(ringFrom + u0, `ring-share${k}a`), jb = junction(ringFrom + u1, `ring-share${k}b`);
@@ -320,12 +332,30 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
         { id: `share${k}`, from: `share${k}-on`, to: `share${k}-off`, points: along, width: SERVICE_WIDTH, grade: 'course' },
         { id: `share${k}-out`, from: `share${k}-off`, to: jb, points: [along[along.length - 1], ringPoint(ringFrom + u1)], width: SERVICE_WIDTH, grade: 'service' },
       );
+      // (Paved as a curve off the service road, not a corner: from a way back along it, rounded.)
+      pavedAs.set(`share${k}-in`, roundPolyline([ringPoint(ringFrom + u0 - 30), ringPoint(ringFrom + u0), along[0]], 25));
+      pavedAs.set(`share${k}-out`, roundPolyline([along[along.length - 1], ringPoint(ringFrom + u1), ringPoint(ringFrom + u1 + 30)], 25));
       shared.push([u0, u1]);
       sharedPairs.add(`${ja}|${jb}`);
     }
   }
 
   // ---- escape roads: off the apron before and after the turns, away from pit road, onto the service road ----
+  /**
+   * A slip road off the apron at s: straight off its edge at a steady angle forward (from just on the apron, so it
+   * meets it in a flare), across to the service road where that line reaches it, its ends rounded.
+   */
+  const ESCAPE_ANGLE = (35 * Math.PI) / 180;
+  const escapeRoad = (s: number) => {
+    const along = Math.max(20, (d(s) - site.apronD) / Math.tan(ESCAPE_ANGLE));
+    const join = s + along;
+    const points = roundPolyline([
+      cl.toWorld(s, site.apronD - 2),
+      cl.toWorld(s + along / 2, (site.apronD + d(s + along / 2)) / 2),
+      ringPoint(join),
+    ], 30);
+    return { join, points };
+  };
   const candidates: number[] = [];
   site.turns.forEach(([a, b], k) => {
     candidates.push(a - pick([50, 150]), b + pick([20, 60]));
@@ -343,23 +373,16 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
   for (const s of usable) {
     if (chosen.length >= plan.escapes) break;
     if (chosen.some((o) => Math.abs(signed(o - s)) < Math.min(200, L / 8))) continue;
-    // Where it meets the service road: angled forward, as far along as it goes in.
-    const join = s + 40 + 1.2 * (d(s + 40) - site.apronD);
+    const { join, points } = escapeRoad(s);
     if (!onRing(join) || !onRing(s)) continue;
-    if (densify([cl.toWorld(s + 40, site.apronD + 3), ringPoint(join)], 5).some((p) => nearCourse(p, 20))) continue;
+    if (densify(points, 5).some((p) => nearCourse(p, 20))) continue;
     chosen.push(s);
   }
   // At least one (with pit road, a second way off): short tracks rarely have room for more beside pit road.
   // (With a road course, its own roads off the oval are ways off it too, and pit road always is.)
   if (!chosen.length && !course) problems.push('no room for an escape road');
   chosen.sort((a, b) => signed(a) - signed(b)).forEach((s, k) => {
-    const join = s + 40 + 1.2 * (d(s + 40) - site.apronD);
-    // (Its bends off the apron and onto the service road rounded, as a road is laid.)
-    const points = roundPolyline([
-      cl.toWorld(s, site.innerEdge + 1),
-      cl.toWorld(s + 40, site.apronD + 3),
-      ringPoint(join),
-    ], 30);
+    const { join, points } = escapeRoad(s);
     const id = `escape${k}`;
     nodes.push({ id, kind: 'apron', at: points[0], s: signed(s) });
     const j = junction(join, `ring-escape${k}`);
@@ -481,7 +504,7 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
   junctions.sort((a, b) => a.u - b.u);
   const pts = (u0: number, u1: number) => {
     const out: Array<[number, number]> = [];
-    for (let u = u0; u < u1; u += 15) out.push(ringPoint(ringFrom + u));
+    for (let u = u0; u < u1; u += 4) out.push(ringPoint(ringFrom + u));
     out.push(ringPoint(ringFrom + u1));
     return out;
   };
@@ -492,18 +515,29 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
     // (Not where a course is the road.)
     if (sharedPairs.has(`${a.id}|${b.id}`)) continue;
     roads.push({ id: `ring${k}`, from: a.id, to: b.id, points: pts(a.u, u1), width: SERVICE_WIDTH, grade: 'service' });
+    // (Paved up to where the curve onto a course leaves it, or from where the curve off one joins it: the curve is the
+    // road there.)
+    const toCourse = /^ring-share\d+a$/.test(b.id), fromCourse = /^ring-share\d+b$/.test(a.id);
+    if ((toCourse || fromCourse) && u1 - a.u > 30 * (Number(toCourse) + Number(fromCourse)) + 10) {
+      pavedAs.set(`ring${k}`, pts(a.u + (fromCourse ? 30 : 0), u1 - (toCourse ? 30 : 0)));
+    }
   }
   // Paved as one: the roads (where they meet or cross, the corners filleted), the lots and the skidpad, its edge drawn
   // once round all of it. (A course's road is the course's to draw.)
-  paving.push(...roads.filter((r) => r.grade !== 'course').map((road): PavePiece => ({ kind: 'path', points: road.points, width: road.width })));
+  // (Roads off the oval paved on a road's width under its apron (or pit road), so no rounded end shows at its edge: the
+  // paving lies beneath the racing surfaces, and runs on under them where it meets or crosses one.)
+  paving.push(...roads.filter((r) => r.grade !== 'course').map((road): PavePiece => ({
+    kind: 'path', points: road.grade === 'escape' ? runOn(pavedAs.get(road.id) ?? road.points, road.width) : pavedAs.get(road.id) ?? road.points, width: road.width,
+  })));
   // The garage lot and its lanes from pit road too, so the roads run into it as one paved area; the lot keeps its
-  // own tone on top, its corners rounded, the edge round all of it drawn once.
+  // own tone on top, its corners rounded.
   const garageLot = roundedRect(cl, lot, 6);
-  paving.push(garageLot, ...(site.garageLanes ?? []).map((g): PavePiece => ({ kind: 'path', points: g.points, width: g.width })));
-  const rings = pave(paving, { fillet: 6 });
+  paving.push(garageLot, ...(site.garageLanes ?? []).map((g): PavePiece => ({ kind: 'path', points: runOn(g.points, g.width), width: g.width })));
+  const rings = pave(paving, { fillet: 8 });
   if (rings.length) {
-    surfaces.push({ id: 'infield-paving', surface: 'road', shape: { kind: 'polygon', rings }, outline: true });
-    surfaces.push({ id: 'garage', surface: 'garage', shape: { kind: 'polygon', rings: pave([garageLot]) } });
+    // (No edge line: the white lines mark track limits, and this isn't track.)
+    surfaces.push({ id: 'infield-paving', surface: 'road', shape: { kind: 'polygon', rings } });
+    surfaces.push({ id: 'garage', surface: 'garage', shape: { kind: 'polygon', rings: pave([garageLot], { fillet: 0 }) } });
   }
   // (Where the services don't fit round a course, the course without them rather than none.)
   if (course && problems.length) return { surfaces: [], decor: [], nodes: [], roads: [], escapeLanes: [], inner: course.inner, rovals: course.rovals, problems: [] };
@@ -522,10 +556,12 @@ function laidServices(built: TrackLayout): TrackLayout {
     ...built.infield.network,
     roads: built.infield.network.roads.map((r) => (r.grade === 'escape' ? { ...r, points: round(r.points) } : r)),
   };
-  const lot = roundedRect(new Track({ ...built, neighbours: undefined }), built.infield.garage.lot, 4);
+  const t = new Track({ ...built, neighbours: undefined });
+  const lot = roundedRect(t, built.infield.garage.lot, 4);
+  // (The lane paved on under its apron, so no rounded end shows at the apron's edge; no edge line, it isn't track.)
   const paved: SurfaceRegion[] = [
-    { id: 'infield-paving', surface: 'road', outline: true, shape: { kind: 'polygon', rings: pave([lot, ...escapeLanes.map((e): PavePiece => ({ kind: 'path', points: e.points, width: e.width }))]) } },
-    { id: 'garage', surface: 'garage', shape: { kind: 'polygon', rings: pave([lot]) } },
+    { id: 'infield-paving', surface: 'road', shape: { kind: 'polygon', rings: pave([lot, ...escapeLanes.map((e): PavePiece => ({ kind: 'path', points: runOn(e.points, e.width), width: e.width }))]) } },
+    { id: 'garage', surface: 'garage', shape: { kind: 'polygon', rings: pave([lot], { fillet: 0 }) } },
   ];
   // (In the garage's place in the drawing order; the old lane and lot out.)
   const at = built.surfaces.findIndex((r) => r.id === 'garage');
@@ -562,6 +598,14 @@ class Occupancy {
     }
     return true;
   }
+}
+
+/** A road's points with its start run on back the way it came by `by` (a road off a track, paved on under it). */
+function runOn(points: Array<[number, number]>, by: number): Array<[number, number]> {
+  if (points.length < 2) return points;
+  const [[ax, ay], [bx, by2]] = points;
+  const len = Math.hypot(ax - bx, ay - by2) || 1;
+  return [[ax + ((ax - bx) / len) * by, ay + ((ay - by2) / len) * by], ...points];
 }
 
 /** A lot along the track (an s-d rect, curving with it) as a piece of paving, its corners rounded by `round`. */
@@ -616,7 +660,7 @@ function courseInner(site: InfieldSite, straight: number, radius: number, width:
       pits: { gap: 1, entryLength: 15, exitLength: 15, blend: 0, startInset: 45, endInset: 40, stallSpacing: 11, garageSetBack: 0, garageLanes: 1 },
     }, site.seed);
     // (Open, as the infield is: its pit wall only.)
-    return laidServices({ ...built, id: `${site.id}/inner`, walls: built.walls.filter((w) => w.id === 'pit-wall') });
+    return { ...built, id: `${site.id}/inner`, walls: built.walls.filter((w) => w.id === 'pit-wall') };
   } catch {
     return null;
   }
@@ -652,11 +696,11 @@ function fitInner(plan: InnerOvalPlan, site: InfieldSite, ringPts: Array<[number
     const R = Math.max(35, plan.turnRadius * scale), S = Math.max(60, plan.straightLength * scale);
     let built: TrackLayout;
     try {
-      built = laidServices(buildLayout('oval', {
+      built = buildLayout('oval', {
         straightLength: S, turnRadius: R, easementLength: Math.round(R * 0.35), width: plan.width, apronWidth: 5,
         bankInner: plan.bankInner, bankOuter: plan.bankOuter, bankStraight: plan.bankInner * 0.3,
         name: 2 * (S + Math.PI * R) < 800 ? 'Bullring' : 'Short track', // (the lap, roughly)
-      }, site.seed));
+      }, site.seed);
     } catch {
       continue; // too small to lay out its own garage at this size
     }
@@ -671,7 +715,8 @@ function fitInner(plan: InnerOvalPlan, site: InfieldSite, ringPts: Array<[number
         inside = q.d > ringD(q.s) + CLEARANCE;
       }
       // ...and nothing of the outer infield on it.
-      if (inside && ![...ringPts, ...lotPts].some(([x, y]) => occupies(t, x, y, CLEARANCE))) return layout;
+      // (Its services laid once it has its place.)
+      if (inside && ![...ringPts, ...lotPts].some(([x, y]) => occupies(t, x, y, CLEARANCE))) return laidServices(layout);
     }
   }
   return null;
