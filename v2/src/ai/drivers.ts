@@ -304,9 +304,14 @@ export class NeuralDriver implements DriverBrain {
   decide(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array): void {
     const input = this.inputs(car, world, radio, pit, caution);
     const out = this.netAt(world.track, input).forward(input);
-    const y = this.mirrored ? -out[1] : out[1];
-    if (this.hands) this.hands.apply(out[0], y, car);
-    else { car.inputX = out[0]; car.inputY = y; }
+    this.apply(car, out[0], out[1]);
+  }
+
+  /** Give the car a request made in the driver's own frame (mirrored back if its view was), through its hands. */
+  apply(car: Car, x: number, y: number): void {
+    const wy = this.mirrored ? -y : y;
+    if (this.hands) this.hands.apply(x, wy, car);
+    else { car.inputX = x; car.inputY = wy; }
   }
 }
 

@@ -304,8 +304,13 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
       const green = examples[s].filter((e) => e.x[CAUTION_FROM] === 0), pacing = examples[s].filter((e) => e.x[CAUTION_FROM] !== 0);
       const loss = trainSupervised(DRIVER_LAYERS, d.weights, [...pick(alone[s], half), ...pick(green, half)], epochs, 0.01, () => rng.next());
       if (pacing.length) {
+        // The caution network takes the wheel the moment the flag flies, often mid-corner at racing speed, and
+        // caution moments are nearly all at caution pace: trained on those alone it forgot how to corner fast
+        // and put cars in the wall as cautions began (stable v8: most damage under caution was the outside wall,
+        // over 25 m/s; the teacher none). So it keeps racing too: half its examples are racing moments.
         d.caution ??= d.weights.slice();
-        cautionLosses.push(trainSupervised(DRIVER_LAYERS, d.caution, pick(pacing, half), epochs, 0.01, () => rng.next()));
+        const keep = [...pick(alone[s], Math.floor(half / 2)), ...pick(green, Math.floor(half / 2))];
+        cautionLosses.push(trainSupervised(DRIVER_LAYERS, d.caution, [...pick(pacing, half), ...keep], epochs, 0.01, () => rng.next()));
       }
       return loss;
     });
