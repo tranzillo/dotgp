@@ -74,6 +74,8 @@ type Entrant = {
   limits?: { latency: number; noise: number };
   /** The caution skill (a network that drives while the field is pacing). */
   caution?: { weights: number[] };
+  /** The line it knows (track knowledge): its own, as it was taught. Default the usual line. */
+  knowledge?: { grip: number; margin: number };
 };
 const limitRanges = args.get('limits')?.split(',').map((r) => r.split(':').map(Number) as [number, number]);
 /**
@@ -290,7 +292,7 @@ function runRace(trackName: string, seed: number): RaceStats {
     }
     world.addCar(car, neuralTeam(adaptWeights(Float32Array.from(d.weights)), chief,
       (d.pitLicensed && d.pitTrafficLicensed) ?? false, d.cautionLicensed ?? false,
-      undefined, {
+      d.knowledge, {
         limits: limits && { ...limits, seed: (seed * 7919 + k * 104729) >>> 0 },
         caution: d.caution && adaptWeights(Float32Array.from(d.caution.weights)),
       }));

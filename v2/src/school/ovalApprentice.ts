@@ -21,7 +21,7 @@ import { CAUTION_FROM, DRIVER_LAYERS, NeuralDriver, Team, type DriverLimits } fr
 import type { FormationTraits } from '../ai/formation';
 import { PaceCarDriver } from '../ai/formation';
 import { type Example, trainSupervised } from '../ai/network';
-import { observeCaution } from '../ai/observe';
+import { observeCaution, type TrackKnowledge } from '../ai/observe';
 import { randomTraits, StrategistCrewChief } from '../ai/pitting';
 import { Rng } from '../ai/rng';
 import { TowerSpotter } from '../ai/spotter';
@@ -67,6 +67,12 @@ export function newStableDriver(lineage: number, seed: number): StableDriver {
 export function teacherOf(d: { lineage: number; nerve: number; talent: number }): { style: RacerStyle; traits: FormationTraits } {
   const rng = new Rng(hashSeed(91, `teacher${d.lineage}`));
   return racerStyle(d.nerve, d.talent, () => rng.next());
+}
+
+/** The line a student knows: its teacher's (the fastest line at its teacher's margin, at its teacher's share of grip). */
+export function lineOf(d: StableDriver): TrackKnowledge {
+  const { style } = teacherOf(d);
+  return { grip: style.grip, margin: style.margin };
 }
 
 /** Share of the students' decisions recorded (moments a few frames apart are nearly the same). */
@@ -128,7 +134,9 @@ class OvalApprentice implements Controller {
 
   decide(car: Car, world: World): void {
     const px = car.inputX, py = car.inputY;
-    // The teacher decides every time (it keeps state: its offset, its pass, when it saw the flag), recorded or not.
+    // The teacher decides every time (it keeps state: its pass, when it saw the flag), recorded or not, from where the
+    // car really is when someone else has been driving it.
+    if (this.studentDrives || this.hands) this.teacher.takeOver(car, world);
     this.teacher.decide(car, world);
     const label = [car.inputX, car.inputY];
     car.inputX = px;
@@ -212,7 +220,7 @@ export function classroomRace(
     }
     const d = students[s];
     const limits: DriverLimits = { ...d.limits, seed: hashSeed(seed, `hands${round}:${d.lineage}`) };
-    const student = new NeuralDriver(d.weights, undefined, undefined, { limits, caution: d.caution ?? undefined });
+    const student = new NeuralDriver(d.weights, undefined, lineOf(d), { limits, caution: d.caution ?? undefined });
     const team = new Team(student, new TowerSpotter(), chief, false, true);
     world.addCar(car, new OvalApprentice(team, student, labellingTeacher(d), driving, examples[s], rng, d.limits.latency));
   }
@@ -258,7 +266,7 @@ function soloDrives(track: Track, students: StableDriver[], driving: Driving, ex
       car.tireLife = TIRE_RANGE[0] + rng.next() * (TIRE_RANGE[1] - TIRE_RANGE[0]);
       car.fuel = FUEL_RANGE[0] + rng.next() * (FUEL_RANGE[1] - FUEL_RANGE[0]);
       const limits: DriverLimits = { ...d.limits, seed: hashSeed(seed, `solo${round}:${d.lineage}:${lane}`) };
-      const student = new NeuralDriver(d.weights, undefined, undefined, { limits, caution: d.caution ?? undefined });
+      const student = new NeuralDriver(d.weights, undefined, lineOf(d), { limits, caution: d.caution ?? undefined });
       world.addCar(car, new OvalApprentice(new Team(student, new TowerSpotter(), null), student, labellingTeacher(d), driving, examples[s], rng, d.limits.latency));
       for (let k = 0; k < SOLO_SECONDS / P.DT && !car.retired; k++) world.step();
       if (car.retired) crashed++;

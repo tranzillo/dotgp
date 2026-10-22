@@ -74,6 +74,9 @@ class RoadApprentice implements Controller {
     const px = car.inputX, py = car.inputY;
     let label: [number, number] | null = null;
     if (this.rng.next() < SAMPLE) {
+      // A teacher with a plan of its own (the traffic racer's offset from its line) answers from where the car really
+      // is when the student has been driving, not from where its plan would have put it.
+      if (this.studentDrives && this.teacher instanceof TrafficRacer) this.teacher.takeOver(car, world);
       this.teacher.decide(car, world);
       label = [car.inputX, car.inputY];
       car.inputX = px;

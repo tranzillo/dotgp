@@ -27,11 +27,14 @@ describe('track knowledge', () => {
     expect(timid[KNOWLEDGE_AHEAD.length + 2]).toBeLessThan(out[KNOWLEDGE_AHEAD.length + 2]);
   });
 
-  it('is nothing on ovals', () => {
+  it('shows the line on ovals too (the oval teacher drives it): where it runs across the track, and its speed', () => {
     const oval = new Track(generateLayout({ type: 'oval', seed: 3 }));
     const car = new Car(0);
     car.placeOnTrack(oval, 100, 0);
-    expect(Array.from(observeKnowledge(car, oval, new Float32Array(KNOWLEDGE_SIZE).fill(9)))).toEqual(new Array(KNOWLEDGE_SIZE).fill(0));
+    const out = observeKnowledge(car, oval, new Float32Array(KNOWLEDGE_SIZE));
+    expect(out.every(Number.isFinite)).toBe(true);
+    // A car sitting still on the track is far below the speed its line takes.
+    expect(out[KNOWLEDGE_AHEAD.length]).toBeGreaterThan(1);
   });
 
   it('leaves drivers from before it driving as they did', () => {

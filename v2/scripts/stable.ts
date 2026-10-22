@@ -12,7 +12,7 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { cpus, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { apprenticeStable, newStableDriver, type StableDriver } from '../src/school/ovalApprentice';
+import { apprenticeStable, lineOf, newStableDriver, type StableDriver } from '../src/school/ovalApprentice';
 
 const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i++) if (process.argv[i].startsWith('--')) args.set(process.argv[i].slice(2), process.argv[++i]);
@@ -23,6 +23,7 @@ const pass = ['rounds', 'laps', 'field', 'seed', 'debris', 'epochs', 'shake'].fl
 const toJson = (d: StableDriver) => ({
   lineage: d.lineage, rounds: 0, nerve: d.nerve, talent: d.talent, limits: d.limits, cautionLicensed: true, weights: Array.from(d.weights),
   ...(d.caution ? { caution: { weights: Array.from(d.caution) } } : {}),
+  knowledge: lineOf(d),
 });
 
 if (args.has('group-only')) {

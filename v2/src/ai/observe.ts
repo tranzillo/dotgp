@@ -82,8 +82,13 @@ export const DEFAULT_KNOWLEDGE: TrackKnowledge = { grip: 0.85, margin: 0.6 };
  */
 export const KNOWLEDGE_MARGINS = [0.6, 0.9, 1.2, 1.5] as const;
 
+/**
+ * Where the driver's own line runs ahead and the speed it takes there, against the car's: on road circuits and, since
+ * 2026-10-22, ovals (the oval teacher drives the same fastest line; copying it, students explained 71% of its throttle
+ * with this against 64% without, and more with its labels taken from where the car really is). Drivers from before
+ * have zero weights from these inputs, so they drive as they did.
+ */
 export function observeKnowledge(car: Car, track: Track, out: Float32Array, knowledge: TrackKnowledge = DEFAULT_KNOWLEDGE): Float32Array {
-  if (track.kind !== 'road') return out.fill(0);
   const line = fastestLine(track, knowledge.margin);
   const speed = line.at(Math.round(knowledge.grip * car.grip * 50) / 50).speed;
   const n = line.d.length;

@@ -3,6 +3,7 @@ import type { Car } from '../sim/car';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
 import { FormationDriver, formationTraits, type FormationTraits } from './formation';
+import { SmoothFormation } from './smoothFormation';
 import { fastestLine, followRacingLine, lineAt, type RacingLine } from './racingLine';
 
 /**
@@ -42,6 +43,19 @@ export interface RacerStyle {
    * Unset: room for the car ahead stopping as hard as it can (a reaction time at its speed), as on road circuits.
    */
   insure?: number;
+  /**
+   * Racing, how hard it drives toward the line's speed when below it (1/s), in proportion; unset, flat out. On ovals
+   * (speeds nearly constant) proportional is what a student copies best (lab 2026-10-21); on circuits it made the
+   * teacher harder to copy on unseen circuits (81% -> 67% of its answers explained, 2026-10-22): out of a slow corner
+   * a proportional racer trails the line's speed by an amount that depends on its recent past, which a student can't
+   * see, while flat out is a rule it can. So oval teachers set it and road teachers don't.
+   */
+  driveGain?: number;
+  /**
+   * Cautions driven by the smooth formation (src/ai/smoothFormation.ts: the formation's intent without its jumps, so
+   * a student can copy it), as the oval stable's teachers do. Unset: the formation script, with its own following.
+   */
+  smoothCautions?: boolean;
 }
 
 /**
@@ -80,6 +94,8 @@ export function racerStyle(nerve: number, talent: number, random: () => number):
       room: 1.0 - 0.8 * nerve,
       pass: 2.0 - 1.5 * nerve,
       insure: brake * Math.pow(BOLD_INSURE / brake, nerve),
+      driveGain: OVAL_DRIVE_GAIN,
+      smoothCautions: true,
     },
     traits: formationTraits(nerve, random),
   };
@@ -88,12 +104,13 @@ export function racerStyle(nerve: number, talent: number, random: () => number):
 /** How far (along) another car counts as alongside: door to door, overlapping by more than a little. */
 const ALONGSIDE = 2 * P.CAR_RADIUS;
 /**
- * How hard it drives toward its speed when below it (1/s), racing and under caution: in proportion, as it already
- * brakes above it (racing 4, the formation 6), not flat out. A teacher's throttle has to be one a student can copy:
- * one flicking between full throttle and the brakes is learned as its average, coasting where it should brake.
+ * How hard it drives toward its speed under caution when below it (1/s): in proportion, as the formation brakes
+ * above it, not flat out. A teacher's throttle has to be one a student can copy: one flicking between full throttle
+ * and the brakes at caution speeds is learned as its average, coasting where it should brake.
  */
-const DRIVE_GAIN = 4;
 const CAUTION_DRIVE_GAIN = 6;
+/** The same for racing, on ovals (the oval stable's teachers): see RacerStyle.driveGain. */
+export const OVAL_DRIVE_GAIN = 4;
 /** How far ahead it looks for a car in its path (m). */
 const LOOKAHEAD = 60;
 /** Reaction time in the following gap (s). */
@@ -120,6 +137,7 @@ export class TrafficRacer {
    * can: under a caution the car ahead is about to check up, and it can't know how hard.
    */
   private readonly formation: FormationDriver;
+  private readonly smooth: SmoothFormation | null;
   /** Whether race control had the field pacing at its last look, and when that last changed (it reacts in its own time). */
   private flagPacing: boolean | null = null;
   private flagChangedAt = -Infinity;
@@ -129,6 +147,7 @@ export class TrafficRacer {
     // Under caution it drives toward its speed smoothly (as it brakes above it), not flat out below it: a teacher's
     // throttle has to be one a student can copy.
     this.formation = new FormationDriver(traits, (car, world, lane) => this.cautionCap(car, world, lane), CAUTION_DRIVE_GAIN);
+    this.smooth = style.smoothCautions ? new SmoothFormation((car) => this.formation.traitsFor(car)) : null;
   }
 
   /** Under a caution (once it has reacted to the flag, and until it has reacted to the green): the formation's. */
@@ -168,9 +187,20 @@ export class TrafficRacer {
     return cap;
   }
 
+  /**
+   * Plan from where the car really is: its offset from the line now, not the one it was heading for. A teacher
+   * labelling someone else's driving (a student at the wheel, or its own hands shaken) must answer "what to do from
+   * here"; left to itself its offset follows its own plan wherever the car goes, and its labels answer a car that
+   * isn't there, which no student can learn from what it sees.
+   */
+  takeOver(car: Car, world: World): void {
+    this.offset = car.d - lineAt(this.lineFor(world.track), car.s).d;
+  }
+
   decide(car: Car, world: World): void {
     if (this.inFormation(car, world)) {
-      this.formation.decide(car, world);
+      if (this.smooth && world.control?.flag !== 'grid') this.smooth.decide(car, world);
+      else this.formation.decide(car, world);
       return;
     }
     const track = world.track;
@@ -265,10 +295,14 @@ export class TrafficRacer {
       let cap = Infinity;
       if (Math.abs(offset) > 0.3) {
         for (let a = ahead; a <= ahead + 80; a += 5) {
-          // A path beside the line, `offset` across: curvature k / (1 - k offset), tighter on the inside.
-          const k = lineAt(line, car.s + a).kappa;
+          // A path beside the line, `offset` across: curvature k / (1 - k offset), tighter on the inside. The
+          // banking there carries the car round as on the line (the banked curve's limit, as the line's profile has
+          // it): flat-ground grip alone held an oval's banked turns to a crawl beside the line.
+          const at = lineAt(line, car.s + a), k = at.kappa;
           const arc = Math.abs(k / Math.max(0.2, 1 - k * offset));
-          const limit = arc > 1e-6 ? Math.sqrt(cornerMu / arc) : Infinity;
+          const bank = Math.sign(k) * track.bankAt(track.indexAt(car.s + a), at.d + offset);
+          const c = Math.cos(bank), sn = Math.sin(bank), mu = P.TIRE_MU * grip;
+          const limit = arc > 1e-6 ? Math.sqrt((G * (sn + mu * c)) / Math.max(0.05, c - mu * sn) / arc) : Infinity;
           cap = Math.min(cap, Math.sqrt(limit * limit + 2 * 0.8 * cornerMu * (a - ahead)));
         }
       }
@@ -277,6 +311,6 @@ export class TrafficRacer {
       return cap;
     };
     this.last = { want, offset, low, high, follow: followCap, squeezed: low > high, passing };
-    followRacingLine(car, world, line, grip, offset, capAt, DRIVE_GAIN);
+    followRacingLine(car, world, line, grip, offset, capAt, this.style.driveGain);
   }
 }
