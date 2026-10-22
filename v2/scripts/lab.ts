@@ -19,9 +19,15 @@
  *       { "kind": "solo", "a": "$house", "b": "trained.json" },        (solo driving on circuits and mirrored ovals)
  *       { "kind": "circuits", "a": "$house", "b": "trained.json" },    (races on road circuits: 6 circuits x 3 seeds by default)
  *       { "kind": "promote", "candidate": "trained.json" } ] }
+ * The oval stable (forty individuals, see scripts/stable.ts):
+ *       { "kind": "stable", "out": "stable.json", "rounds": 12 },                     (apprenticeship to their own teachers)
+ *       { "kind": "stableCautions", "in": "stable.json", "out": "c.json", "ppo": true },  (caution drills; ES unless ppo)
+ *       { "kind": "stableRaces", "in": "stable.json", "out": "r.json", "rounds": 120 },   (PPO in 40-car races, anchored)
+ *       { "kind": "bench", "a": "$house", "b": "r.json", "field": 40, "tracks": "short,speedway,flat,ovals:3", "h2h": true },
  * File names are in the experiment's results folder; $house is the house drivers (lab/house.json), $bundled
  * the drivers shipped with the commit. Promotion replaces the house drivers only if the last benchmark says
- * the candidate is no worse on any track (retirements, lap time) and better on at least one (retirements).
+ * the candidate is no worse on any track (retirements, lap time; and, where the bench measured them, places
+ * head to head and the share of driving left to scripts) and better on at least one (retirements).
  */
 import { execFileSync, spawn } from 'node:child_process';
 import { appendFileSync, copyFileSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -44,7 +50,10 @@ const BENCH_JOBS = 6;
 type Step =
   | { kind: 'class'; lesson: string; in: string; out: string; rounds?: number; seed?: number }
   | { kind: 'season'; in: string; out: string; races?: number; nerve?: number; tracks?: string }
-  | { kind: 'bench'; a: string; b?: string; seeds?: number; tracks?: string; laps?: number }
+  | { kind: 'bench'; a: string; b?: string; seeds?: number; tracks?: string; laps?: number; field?: number; pace?: number; h2h?: boolean }
+  | { kind: 'stable'; out: string; drivers?: number; group?: number; rounds?: number; laps?: number; field?: number; seed?: number; shake?: number }
+  | { kind: 'stableCautions'; in: string; out: string; rounds?: number; ppo?: boolean; seed?: number }
+  | { kind: 'stableRaces'; in: string; out: string; rounds?: number; laps?: number; field?: number; debris?: number; anchorLr?: number; seed?: number }
   | { kind: 'solo'; a: string; b?: string; tracks?: number; seconds?: number }
   | { kind: 'circuits'; a: string; b?: string; tracks?: number; seeds?: number }
   | { kind: 'promote'; candidate: string };
@@ -157,7 +166,8 @@ async function runExperiment(file: string): Promise<void> {
       } else if (step.kind === 'bench') {
         const json = join(dir, 'bench.json');
         await runScript('bench', [path(step.a), ...(step.b ? [path(step.b)] : []), '--seeds', String(step.seeds ?? 8),
-          '--tracks', step.tracks ?? 'short,speedway,flat', '--jobs', String(BENCH_JOBS), '--json', json, ...(step.laps ? ['--laps', String(step.laps)] : [])], log);
+          '--tracks', step.tracks ?? 'short,speedway,flat', '--jobs', String(BENCH_JOBS), '--json', json, ...(step.laps ? ['--laps', String(step.laps)] : []),
+          ...(step.field ? ['--field', String(step.field)] : []), ...(step.pace ? ['--pace', String(step.pace)] : []), ...(step.h2h ? ['--h2h', '1'] : [])], log);
         bench = JSON.parse(readFileSync(json, 'utf8')) as BenchReport;
         notes.push(`bench ${benchLine(bench)}`);
       } else if (step.kind === 'solo') {
@@ -173,6 +183,18 @@ async function runExperiment(file: string): Promise<void> {
         const m = JSON.parse(readFileSync(json, 'utf8')).metrics as Record<string, { values: Array<{ mean: number }>; verdict?: string }>;
         notes.push(`circuits ${(['retirements', 'trackLimits', 'bestLapPerKm'] as const).map((k) =>
           `${k} ${m[k].values.map((v) => v.mean.toFixed(1)).join('→')}${m[k].verdict ? ` (${m[k].verdict})` : ''}`).join(', ')}`);
+      } else if (step.kind === 'stable') {
+        await runScript('stable', ['--out', path(step.out), '--jobs', String(Math.min(5, BENCH_JOBS)),
+          ...opt({ drivers: step.drivers, group: step.group, rounds: step.rounds, laps: step.laps, field: step.field, seed: step.seed, shake: step.shake })], log);
+        notes.push(`stable ${step.drivers ?? 40} drivers, ${step.rounds ?? 10} apprenticeship rounds`);
+      } else if (step.kind === 'stableCautions') {
+        await runScript('stableCautions', ['--in', path(step.in), '--out', path(step.out), '--jobs', String(Math.min(5, BENCH_JOBS)),
+          ...opt({ rounds: step.rounds, seed: step.seed, ppo: step.ppo ? 1 : undefined })], log);
+        notes.push(`caution practice (${step.ppo ? 'PPO' : 'ES'}) ${step.rounds ?? (step.ppo ? 100 : 40)} rounds`);
+      } else if (step.kind === 'stableRaces') {
+        await runScript('stableRaces', ['--in', path(step.in), '--out', path(step.out), '--jobs', String(Math.min(5, BENCH_JOBS)),
+          ...opt({ rounds: step.rounds, laps: step.laps, field: step.field, debris: step.debris, 'anchor-lr': step.anchorLr, seed: step.seed })], log);
+        notes.push(`race practice ${step.rounds ?? 100} races`);
       } else if (step.kind === 'promote') {
         notes.push(promote(path(step.candidate), bench, name));
       }
@@ -190,6 +212,11 @@ async function runExperiment(file: string): Promise<void> {
   console.log(line);
 }
 
+/** Command-line options for the ones given. */
+function opt(o: Record<string, number | undefined>): string[] {
+  return Object.entries(o).flatMap(([k, v]) => (v === undefined ? [] : [`--${k}`, String(v)]));
+}
+
 /** Retirements per track, B against A (or A's alone). */
 function benchLine(b: BenchReport): string {
   return Object.entries(b.tracks).map(([track, m]) => {
@@ -202,7 +229,9 @@ function benchLine(b: BenchReport): string {
 function promote(candidate: string, bench: BenchReport | null, name: string): string {
   if (!bench || bench.files.length !== 2) return 'promote: skipped (needs a bench of house vs candidate first)';
   const tracks = Object.entries(bench.tracks);
-  const worse = tracks.filter(([, m]) => m.retirements.verdict === 'B worse' || m.lapTime.verdict === 'B worse').map(([t]) => t);
+  // Where the bench measured them: losing head to head (mixed fields), or leaving more of the driving to scripts.
+  const worse = tracks.filter(([, m]) => m.retirements.verdict === 'B worse' || m.lapTime.verdict === 'B worse'
+    || m.h2h_place?.verdict === 'B worse' || m.scripted?.verdict === 'B worse').map(([t]) => t);
   const better = tracks.filter(([, m]) => m.retirements.verdict === 'B better').map(([t]) => t);
   if (worse.length) return `promote: rejected (worse on ${worse.join(', ')})`;
   if (!better.length) return 'promote: rejected (not better anywhere)';

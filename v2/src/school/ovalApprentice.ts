@@ -75,6 +75,13 @@ export function lineOf(d: StableDriver): TrackKnowledge {
   return { grip: style.grip, margin: style.margin };
 }
 
+/**
+ * More to record with what a student saw (experiments: what else would it need to see?): appended to each recorded
+ * moment's inputs; the students themselves never see it. Unset in training.
+ */
+let recordExtra: ((car: Car, world: World) => Float32Array) | null = null;
+export function setRecordExtra(f: ((car: Car, world: World) => Float32Array) | null): void { recordExtra = f; }
+
 /** Share of the students' decisions recorded (moments a few frames apart are nearly the same). */
 const SAMPLE = 0.3;
 
@@ -155,7 +162,14 @@ class OvalApprentice implements Controller {
     this.team.spotter.call(car, world, this.team.radio);
     this.team.observePit(car, world);
     observeCaution(car, world, this.team.cautionInputs);
-    const x = this.student.inputs(car, world, this.team.radio, this.team.pitInputs, this.team.cautionInputs).slice();
+    const seen = this.student.inputs(car, world, this.team.radio, this.team.pitInputs, this.team.cautionInputs);
+    let x = seen.slice();
+    if (recordExtra) {
+      const more = recordExtra(car, world);
+      x = new Float32Array(seen.length + more.length);
+      x.set(seen);
+      x.set(more, seen.length);
+    }
     car.inputX = ax;
     car.inputY = ay;
     const clamp = (v: number) => Math.max(-0.95, Math.min(0.95, v));
