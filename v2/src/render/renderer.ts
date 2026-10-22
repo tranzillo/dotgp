@@ -40,7 +40,7 @@ export interface RenderOfficials {
   wreckers: Array<{ x: number; y: number; phase: string }>;
 }
 import { G, PHYSICS as P } from '../sim/constants';
-import type { Decoration, Edge, LineStyle, Marking, SRange, Surface, SurfaceRegion, TrackRect } from '../sim/layout';
+import { layoutKind, type Decoration, type Edge, type LineStyle, type Marking, type SRange, type Surface, type SurfaceRegion, type TrackRect } from '../sim/layout';
 import type { Track } from '../sim/track';
 import { Exhaust } from './exhaust';
 import { numberColor, PACE_CAR_LIVERY, RACING_SURFACE, type Livery } from './livery';
@@ -537,13 +537,29 @@ export class Renderer {
     base.fillRect(0, 0, this.base.width, this.base.height);
     const lines = this.lines.getContext('2d')!;
     lines.clearRect(0, 0, this.lines.width, this.lines.height);
+    // An oval's pavement is the oval's: a road course's surfaces (and, as scenery, its lines) never show on it, where
+    // the course runs on the oval or is leaving or rejoining it.
+    const ovals = tracks.filter((t) => layoutKind(t.layout) !== 'road');
+    const offOvals = (ctx: CanvasRenderingContext2D, t: Track, scenery: boolean) => {
+      if (!ovals.length || layoutKind(t.layout) !== 'road' || (scenery && t === own)) return false;
+      ctx.save();
+      this.clipOffPavement(ctx, ovals);
+      return true;
+    };
     try {
-      for (const t of tracks) { this.track = t; this.drawBase(base); }
+      for (const t of tracks) {
+        const clipped = offOvals(base, t, false);
+        this.track = t;
+        this.drawBase(base);
+        if (clipped) base.restore();
+      }
       // Every layout's lines are painted, as at a real track; the one being raced bright, the rest faint.
       for (const t of tracks) {
+        const clipped = offOvals(lines, t, true);
         this.track = t;
         lines.globalAlpha = t === own ? 1 : OTHER_LAYOUT_ALPHA;
         this.drawLines(lines);
+        if (clipped) lines.restore();
       }
       lines.globalAlpha = 1;
     } finally {
@@ -551,6 +567,23 @@ export class Renderer {
     }
     if (this.debugLayers.banking) this.drawBankLabels(lines);
     this.trackDirty = false;
+  }
+
+  /**
+   * Clip to everywhere but these ovals' pavement (outer edge in to the inner edge of apron and pit road): the canvas,
+   * and each pavement ring, even-odd (nested rings alternate out and in).
+   */
+  private clipOffPavement(ctx: CanvasRenderingContext2D, ovals: Track[]): void {
+    const was = this.track;
+    ctx.beginPath();
+    ctx.rect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    for (const o of ovals) {
+      this.track = o;
+      this.ring(ctx, (s) => o.outerEdgeAt(s));
+      this.ring(ctx, (s) => o.pavedInnerD(s));
+    }
+    this.track = was;
+    ctx.clip('evenodd');
   }
 
   /** One track's surfaces, banking sheen and decoration. */

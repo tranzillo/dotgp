@@ -1,9 +1,10 @@
 import { Rng } from '../ai/rng';
 import { Centerline } from '../sim/centerline';
 import {
-  evalEdge, evalProfile, LAYOUT_VERSION,
+  evalEdge, evalProfile, LAYOUT_VERSION, layoutKind,
   type Barrier, type Decoration, type Marking, type Profile, type RovalSpec, type SurfaceRegion, type TrackLayout, type Wall,
 } from '../sim/layout';
+import { G, PHYSICS as P } from '../sim/constants';
 import { Track } from '../sim/track';
 import {
   CHARACTERS, CIRCUIT_PIT, dressCourse, geometrySamples, markChicanes, pitZone,
@@ -12,6 +13,7 @@ import {
 import { integrate, ovalPose, poseSection, sliceSections, type Pose } from './course';
 import { placeLayout } from './geometry';
 import { garageLot, pitLane, standardMarkings } from './stages';
+import { hazardWalls } from './walls';
 
 /**
  * Road courses on an oval, generated as circuits are (trackgen/circuit.ts):
@@ -43,6 +45,8 @@ export interface RovalSite {
    * lanes are laid across the infield (they can't be cut short).
    */
   pitRange: [number, number];
+  /** The racing surface's banking at s (radians): what speed the field carries where a course leaves or rejoins it. */
+  bankAt?: (s: number) => number;
   rng: Rng;
   /**
    * Builds the inner oval the courses share road with (unplaced): a flat short oval with this front straight, turn
@@ -89,8 +93,8 @@ function cut(site: RovalSite): { join: number; leave: number } | null {
       // (A few tries at where: just before the turn it turns in at, or a little way into it, and likewise just after
       // the turn it comes back at; clear of pit road, whose lanes can reach a way round the turns either side.)
       for (let t = 0; t < 6; t++) {
-        const leave = a + (t < 3 ? -pickIn(rng, [8, 30]) : pickIn(rng, [0.05, 0.35]) * (a1 - a));
-        const join = b - (t < 3 ? -pickIn(rng, [8, 30]) : pickIn(rng, [0.05, 0.35]) * (b - b0));
+        const leave = a + (t < 3 ? -pickIn(rng, [8, 150]) : pickIn(rng, [0.05, 0.35]) * (a1 - a));
+        const join = b - (t < 3 ? -pickIn(rng, [8, 150]) : pickIn(rng, [0.05, 0.35]) * (b - b0));
         // Skipping one turn's entry round to another's exit: at least the one turn, never the whole lap.
         const skipped = cl.distanceFrom(leave, join), kept = cl.distanceFrom(join, leave);
         if (skipped < 150 || kept < 150) continue;
@@ -141,6 +145,8 @@ interface Way {
   length: number;
   /** A ring's track (none for a road). */
   track?: Centerline;
+  /** A ring's speed at s: what the field carries there (m/s). */
+  speed?: (s: number) => number;
   /** Where a road starts. */
   start: Pose;
   oneWay: boolean;
@@ -171,6 +177,14 @@ function wayPose(w: Way, s: number, d: 1 | -1): Pose {
     p = { x: e.x, y: e.y, h: e.h, k };
   }
   return d > 0 ? p : { x: p.x, y: p.y, h: p.h + Math.PI, k: -p.k };
+}
+
+/** How far a ring runs straight from s, going d times its own way (up to 400 m; a road's: as far as you like). */
+function straightRoom(w: Way, s: number, d: 1 | -1): number {
+  if (!w.track) return Infinity;
+  let x = 0;
+  while (x < 400 && Math.abs(w.track.curvatureAt(s + d * x)) < 1e-4) x += 5;
+  return x;
 }
 
 /** A way's sections from s0 to s1, travelling its own way (d 1) or back (round a ring's start if need be). */
@@ -210,6 +224,25 @@ function straightsOf(sections: Sec[], min: number): Array<[number, number]> {
 /** Names for the layouts, longest first: the speedway's road courses, then the inner oval's. */
 const NAMES = { speedway: ['Grand Prix', 'National', 'Club', 'Sprint', 'Classic'], inner: ['Short course', 'Infield', 'Kart'] };
 const MAX_LAYOUTS = 7;
+/** A layout of a venue with others shares more than this of its lap with one of them. */
+const LINKED = 0.3;
+
+/** The share of lap a's points (every 10 m or so) on lap b's road: within 3 m of b's line (b taken every metre). */
+export function sharedShare(a: Array<[number, number]>, b: Array<[number, number]>): number {
+  const g = new PointGrid(10);
+  for (let i = 0; i < b.length; i++) {
+    const [x0, y0] = b[i], [x1, y1] = b[(i + 1) % b.length];
+    const m = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0)));
+    if (m > 30) { g.add(x0, y0); continue; } // (a lap's seam: not a road)
+    for (let k = 0; k < m; k++) g.add(x0 + ((x1 - x0) * k) / m, y0 + ((y1 - y0) * k) / m);
+  }
+  return a.filter(([x, y]) => g.near(x, y, 3)).length / a.length;
+}
+
+/** How much road two laps share, as a share of the shorter. */
+export function linkShare(a: Array<[number, number]>, b: Array<[number, number]>): number {
+  return Math.max(sharedShare(a, b), sharedShare(b, a));
+}
 
 function tryNetwork(site: RovalSite): { inner: TrackLayout | null; rovals: RovalSpec[]; score: number } | null {
   const { cl, rng } = site;
@@ -232,13 +265,16 @@ function tryNetwork(site: RovalSite): { inner: TrackLayout | null; rovals: Roval
   }) : () => true;
   /** Free of both tracks. */
   const ground = (x: number, y: number, m: number) => onInfield(x, y, m) && offInner(x, y, m);
-  const ring = (track: Centerline, sections: Sec[], oneWay: boolean, pit: [number, number]): Way => ({
-    sections, length: track.length, track, start: ovalPose(track, 0), oneWay, pit, points: [], straights: [],
+  const ring = (track: Centerline, sections: Sec[], oneWay: boolean, pit: [number, number], bankAt: (s: number) => number): Way => ({
+    sections, length: track.length, track, speed: ringSpeeds(track, bankAt), start: ovalPose(track, 0), oneWay, pit, points: [], straights: [],
   });
+  const banked = site.bankAt ?? (() => 0), flatRing = () => 0;
   // (Without an inner oval, the speedway stands in for it as way 1, which nothing meets.)
   const ways: Way[] = [
-    ring(cl, cl.spec.sections as Sec[], true, site.pitRange),
-    it && inner ? ring(it, inner.centerline.sections as Sec[], false, [inner.pit.entryStart, inner.pit.exitEnd]) : ring(cl, cl.spec.sections as Sec[], true, site.pitRange),
+    ring(cl, cl.spec.sections as Sec[], true, site.pitRange, banked),
+    it && inner
+      ? ring(it, inner.centerline.sections as Sec[], false, [inner.pit.entryStart, inner.pit.exitEnd], flatRing)
+      : ring(cl, cl.spec.sections as Sec[], true, site.pitRange, banked),
   ];
   const junctions: Junction[] = [];
 
@@ -279,8 +315,10 @@ function tryNetwork(site: RovalSite): { inner: TrackLayout | null; rovals: Roval
   /** Lays a road between two spots if it fits (a few tries). */
   const lay = (a: Spot, b: Spot, tries: number) => {
     const from = wayPose(ways[a.way], a.at, a.t), to = wayPose(ways[b.way], b.at, b.t);
+    const speeds: [number | undefined, number | undefined] = [ways[a.way].speed?.(a.at), ways[b.way].speed?.(b.at)];
+    const rooms: [number, number] = [straightRoom(ways[a.way], a.at, a.t), straightRoom(ways[b.way], b.at, -b.t as 1 | -1)];
     for (let t = 0; t < tries; t++) {
-      const road = connect(from, to, free, rng, width, scale, cl.extent);
+      const road = connect(from, to, free, rng, width, scale, cl.extent, speeds, rooms);
       if (fits(road, a, b)) { add(road, a, b); return true; }
     }
     return false;
@@ -406,9 +444,22 @@ function tryNetwork(site: RovalSite): { inner: TrackLayout | null; rovals: Roval
   const speedway = byHost(false), short = byHost(true);
   if (!speedway.length) return null;
   const keep = [...speedway.slice(0, NAMES.speedway.length), ...short.slice(0, NAMES.inner.length)].slice(0, MAX_LAYOUTS);
+  // The layouts are cross-sections of one network: each shares a good part of the shorter lap with another (a short
+  // course mostly on the Grand Prix's road is a small part of the Grand Prix's lap, as Iowa's are). One that shares
+  // little with any is another venue's, not this one's: left out, the least linked first, until the rest are linked
+  // (or one is left).
+  const linkOf = (i: number) => Math.max(0, ...keep.map((m, j) => (j === i ? 0 : linkShare(keep[i].lap, m.lap))));
+  while (keep.length > 1) {
+    const links = keep.map((_, i) => linkOf(i));
+    const worst = links.indexOf(Math.min(...links));
+    if (links[worst] > LINKED) break;
+    keep.splice(worst, 1);
+  }
+  if (!keep.some((m) => m.spec.host !== 'inner')) return null;
+  const named = { speedway: 0, inner: 0 };
   const rovals: RovalSpec[] = keep.map((m, i) => {
-    const list = m.spec.host === 'inner' ? NAMES.inner : NAMES.speedway;
-    return { id: `roval-${i}`, name: list[(m.spec.host === 'inner' ? short : speedway).indexOf(m)], ...m.spec };
+    const kind = m.spec.host === 'inner' ? 'inner' : 'speedway';
+    return { id: `roval-${i}`, name: NAMES[kind][named[kind]++], ...m.spec };
   });
 
   // How much of the infield the network spreads over (the hull of its roads and the inner oval).
@@ -499,7 +550,7 @@ function extraJunction(site: RovalSite, sc: { join: number; leave: number }, off
   const [p0, p1] = site.pitRange;
   const options: number[] = [];
   for (const [a, b] of turns) {
-    const s = off ? a - pickIn(rng, [8, 30]) : b + pickIn(rng, [8, 30]);
+    const s = off ? a - pickIn(rng, [8, 150]) : b + pickIn(rng, [8, 150]);
     const join = off ? sc.join : s, leave = off ? s : sc.leave;
     const kept = cl.distanceFrom(join, leave);
     const along = (x: number) => cl.distanceFrom(join, x);
@@ -654,6 +705,8 @@ function closeLap(sections: Sec[], from: Pose, to: Pose): Sec[] | null {
 function connect(
   from: Pose, to: Pose, free: (x: number, y: number, m: number) => boolean, rng: Rng, width: number, scale: number,
   area: { minX: number; maxX: number; minY: number; maxY: number },
+  speeds: [number | undefined, number | undefined] = [undefined, undefined],
+  rooms: [number, number] = [Infinity, Infinity],
 ): Sec[] | null {
   const names = Object.keys(CHARACTERS);
   const ch = CHARACTERS[names[rng.int(names.length)]];
@@ -684,24 +737,59 @@ function connect(
     }
     frontier = next;
   }
-  const lead = (p: Pose) => (Math.abs(p.k) > 1e-6 ? 0 : pickIn(rng, [45, 90]));
   for (let t = 0; t < 6; t++) {
-    const leads: [number, number] = [lead(from), lead(to)];
+    // Off a track (or onto one) where the field is quick: a bend designed for a speed, a share of what it carries
+    // there, its radius what the tyres hold at that speed. A sweep: fast, at a shallow angle, no hard braking; or a
+    // bend at a more moderate speed, braked for on the track, at a steeper angle. (Nothing designed off a road.)
+    const ends = speeds.map((v, i) => {
+      if (v === undefined) return null;
+      const sweep = rng.next() < 0.4;
+      const design = v * pickIn(rng, sweep ? [0.4, 0.55] : [0.22, 0.38]);
+      // (Leaving or joining partway round a turn, it turns tighter than the turn does.)
+      const k = Math.abs((i ? to : from).k);
+      let radius = Math.min((design * design) / (P.TIRE_MU * G), k > 1e-6 ? 0.8 / k : Infinity);
+      let slant = (pickIn(rng, sweep ? [12, 30] : [25, 55]) * Math.PI) / 180;
+      // On a straight, the bend's run-in fits before the track turns (or, after it, its run-out once the track has
+      // straightened): shallower if it must, and failing that slower.
+      if (k <= 1e-6) {
+        const fit = rooms[i] - 15;
+        // (Right at a turn, no straight to lay a bend on: off as any road is.)
+        if (fit < 10) return null;
+        if (radius * Math.tan(slant / 2) > fit) slant = Math.max((12 * Math.PI) / 180, 2 * Math.atan(fit / radius));
+        if (radius * Math.tan(slant / 2) > fit) radius = fit / Math.tan(slant / 2);
+      }
+      return { radius, slant, lead: radius * Math.tan(slant / 2) + 15 };
+    });
+    // (On a straight, a lead along it to the bend: at least as long as the bend's run-in, and no further than the
+    // track runs straight.)
+    const lead = (p: Pose, i: 0 | 1) => {
+      if (Math.abs(p.k) > 1e-6) return 0;
+      const want = Math.max(pickIn(rng, [45, 90]), ends[i]?.lead ?? 0);
+      return ends[i] ? Math.min(want, Math.max(ends[i]!.lead, rooms[i])) : want;
+    };
+    const leads: [number, number] = [lead(from, 0), lead(to, 1)];
     const eA: [number, number] = [from.x + leads[0] * Math.cos(from.h), from.y + leads[0] * Math.sin(from.h)];
     const eB: [number, number] = [to.x - leads[1] * Math.cos(to.h), to.y - leads[1] * Math.sin(to.h)];
     // Off a track and onto one at a slant, to whichever side is open.
-    const slant = (p: Pose, e: [number, number], dir: 1 | -1): [number, number] | null => {
+    const slant = (p: Pose, e: [number, number], dir: 1 | -1, end: (typeof ends)[number]): [number, number] | null => {
       const first = rng.next() < 0.5 ? 1 : -1;
+      // (Far enough on for the bend to run out before the next.)
+      const out = end ? end.radius * Math.tan(end.slant / 2) + 30 : 0;
       for (let k = 0; k < 8; k++) {
         const side = k % 2 ? -first : first;
-        const a = p.h + side * pickIn(rng, [25, 60]) * Math.PI / 180, far = pickIn(rng, [60, 120]) * Math.max(0.7, scale);
+        // (At a shallow slant, on far enough to be clear of the track's pavement: the road runs on beside it a while.)
+        const clearOf = end ? Math.min(400, 60 / Math.sin(Math.max(end.slant, 0.1))) : 0;
+        const far = Math.max(out, clearOf, pickIn(rng, [60, 120]) * Math.max(0.7, scale));
+        // (Partway round a turn, off it at more than the turn itself bends over that far, or it's still on it.)
+        const own = end ? Math.max(end.slant, Math.abs(p.k) > 1e-6 ? (far * Math.abs(p.k)) / 2 + (15 * Math.PI) / 180 : 0) : 0;
+        const a = p.h + side * (end ? own : (pickIn(rng, [25, 60]) * Math.PI) / 180);
         const q: [number, number] = [e[0] + dir * far * Math.cos(a), e[1] + dir * far * Math.sin(a)];
         const c = cellOf(...q);
         if (c >= 0 && clear[c] >= 2) return q;
       }
       return null;
     };
-    const pA = slant(from, eA, 1), pB = slant(to, eB, -1);
+    const pA = slant(from, eA, 1, ends[0]), pB = slant(to, eB, -1, ends[1]);
     if (!pA || !pB) continue;
     // A point or two on the way, in open ground well away from everything (the emptiest the likeliest), in order.
     const vias: Array<[number, number]> = [];
@@ -747,10 +835,103 @@ function connect(
     const roomy = (p: [number, number], q: [number, number]) => Math.hypot(p[0] - q[0], p[1] - q[1]) > 50;
     pts = pts.filter((p, i) => i === 0 || i === pts.length - 1 || (roomy(p, pts[i - 1]) && roomy(p, pB)));
     pts = withoutKinks(from, to, pts);
-    const sections = poseSection(from, to, pts, leads, rng, width, { radiusScale: ch.radius, minStraight: 12 });
-    if (sections) return sections;
+    const floors: Array<number | undefined> = [ends[0]?.radius, ...pts.map(() => undefined), ends[1]?.radius];
+    const sections = poseSection(from, to, pts, leads, rng, width, { radiusScale: ch.radius, minStraight: 12, floors });
+    if (sections && paced(sections, speeds)) return sections;
   }
   return null;
+}
+
+/** Top speed: where the engine's power is all spent against drag. */
+const TOP_SPEED = Math.cbrt((2 * P.ENGINE_POWER) / (P.AIR_DENSITY * P.CDA));
+const drag = (v: number) => (0.5 * P.AIR_DENSITY * P.CDA * v * v) / P.DRY_MASS;
+/** Full braking at v (tyres and drag), and full drive (engine, less drag). */
+const braking = (v: number) => P.TIRE_MU * G + drag(v);
+const drive = (v: number) => Math.min(P.MAX_DRIVE_ACCEL, P.ENGINE_POWER / (P.DRY_MASS * Math.max(v, 1))) - drag(v);
+
+/**
+ * The speed the field carries round a ring (on its centerline, with its
+ * banking), every 2 m: as fast as the tyres hold each turn, flat out from the
+ * slowest point, braking for what comes. As racingLine's profile is, less the
+ * friction ellipse: what a junction there takes in or hands back.
+ */
+export function ringSpeeds(track: Centerline, bankAt: (s: number) => number): (s: number) => number {
+  const n = Math.max(8, Math.ceil(track.length / 2)), ds = track.length / n, mu = P.TIRE_MU;
+  const v = new Float64Array(n);
+  let slowest = 0;
+  for (let k = 0; k < n; k++) {
+    const th = bankAt(track.signedS(k * ds)), c = Math.cos(th), sn = Math.sin(th);
+    const cap = (G * (sn + mu * c)) / Math.max(0.05, c - mu * sn);
+    const kap = Math.abs(track.curvatureAt(k * ds));
+    v[k] = kap > 1e-6 ? Math.min(TOP_SPEED, Math.sqrt(cap / kap)) : TOP_SPEED;
+    if (v[k] < v[slowest]) slowest = k;
+  }
+  for (let j = 1; j < n; j++) {
+    const k = (slowest + j - 1) % n, nx = (slowest + j) % n;
+    v[nx] = Math.min(v[nx], Math.sqrt(v[k] * v[k] + 2 * drive(v[k]) * ds));
+  }
+  for (let j = 1; j < n; j++) {
+    const k = (slowest - j + n) % n, nx = (k + 1) % n;
+    v[k] = Math.min(v[k], Math.sqrt(v[nx] * v[nx] + 2 * braking(v[nx]) * ds));
+  }
+  return (s) => v[Math.round(track.wrapS(s) / ds) % n];
+}
+
+/**
+ * A road off a track at speed (in, m/s) and onto one (out), paced as a
+ * junction should be: its first bend is never braked through for something
+ * after it (there is room past it to brake for the next corner), and its last
+ * is reached at its own speed (room before it to accelerate out of the corner
+ * before). Flat road, the tyres' grip, full braking and drive.
+ */
+function paced(sections: Sec[], [vIn, vOut]: [number | undefined, number | undefined]): boolean {
+  if (vIn === undefined && vOut === undefined) return true;
+  const du = 2, mu = P.TIRE_MU;
+  const kap: number[] = [];
+  for (const [len, k0, k1] of sections) {
+    const m = Math.max(1, Math.round(len / du));
+    for (let i = 0; i < m; i++) kap.push(Math.abs(k0 + ((k1 - k0) * (i + 0.5)) / m));
+  }
+  const n = kap.length;
+  const vmax = kap.map((k) => (k > 1e-6 ? Math.sqrt((mu * G) / k) : TOP_SPEED));
+  // (The first and last bends: the runs of curving road in from either end, in order along the road.)
+  const bend = (from: number, dir: 1 | -1) => {
+    let i = from;
+    while (i >= 0 && i < n && kap[i] <= 1e-6) i += dir;
+    const out: number[] = [];
+    while (i >= 0 && i < n && kap[i] > 1e-6) { out.push(i); i += dir; }
+    return dir > 0 ? out : out.reverse();
+  };
+  /** A bend's apex (its tightest point) and what comes after it. */
+  const apexOn = (run: number[]) => {
+    let at = 0;
+    run.forEach((i, j) => { if (kap[i] > kap[run[at]]) at = j; });
+    return { apex: run[at], exit: run.slice(at) };
+  };
+  if (vIn !== undefined) {
+    const back = new Float64Array(n);
+    back[n - 1] = vmax[n - 1];
+    for (let i = n - 2; i >= 0; i--) back[i] = Math.min(vmax[i], Math.sqrt(back[i + 1] ** 2 + 2 * braking(back[i + 1]) * du));
+    // (Its apex at its own speed, and out of it no braking below that for what comes next.)
+    const run = bend(0, 1);
+    if (run.length) {
+      const { apex, exit } = apexOn(run);
+      const v = 0.97 * Math.min(vmax[apex], vIn);
+      if (exit.some((i) => back[i] < v)) return false;
+    }
+  }
+  if (vOut !== undefined) {
+    const fwd = new Float64Array(n);
+    fwd[0] = Math.min(vmax[0], vIn ?? TOP_SPEED);
+    for (let i = 1; i < n; i++) fwd[i] = Math.min(vmax[i], Math.sqrt(fwd[i - 1] ** 2 + 2 * Math.max(0, drive(fwd[i - 1])) * du));
+    // (Its apex reached at its own speed.)
+    const run = bend(n - 1, -1);
+    if (run.length) {
+      const { apex } = apexOn(run);
+      if (fwd[apex] < 0.97 * Math.min(vmax[apex], vOut)) return false;
+    }
+  }
+  return true;
 }
 
 /** A cheapest way between two cells (8 ways round), dearer near the edge of open ground (cells < 10 clear). */
@@ -1149,44 +1330,38 @@ function compile(venue: TrackLayout, spec: RovalSpec): TrackLayout {
   }
 
   // ---- the course's cross-section: an open infield ----
-  // Flat, mown ground all round: no barriers along the course and no run-off fields, but kerbs at the corners; tyre
-  // walls (and a little gravel) round the outside of a hairpin at the end of a long leg; concrete where the course runs
-  // close by the oval (or into the garage's way).
+  // Flat, mown ground all round: no barriers along the course and no run-off fields, but kerbs at the corners and a
+  // little gravel round the outside of a hairpin at the end of a long leg. (Walls only where a car running off would
+  // reach something: the venue lays those, trackgen/walls.ts.)
   const corners = cornersOf(spec.sections, courseStart, part, part, L).map((c, i) => {
-    const tyres = c.turn > (120 * Math.PI) / 180 && c.before > 150;
-    return { ...c, ...(spec.corners[i] ?? {}), runoff: 'gravel' as const, depthScale: tyres ? 0.35 : 0, tyres };
+    const trap = c.turn > (120 * Math.PI) / 180 && c.before > 150;
+    return { ...c, ...(spec.corners[i] ?? {}), runoff: 'gravel' as const, depthScale: trap ? 0.35 : 0, trap };
   });
   const course: Course = { width: spec.width, verge: spec.verge, corners };
   const dressed = dressCourse(course, cl, zone, { spec: centerline, bound, range: courseRange, walls: [null, null] });
   const ownWalls: Wall[] = [];
-  const kOf = (u: number) => Math.round((((sOf(u) % L) + L) % L) / step) % n;
-  ([[bound.left, 0, 1], [bound.right, 1, -1]] as const).forEach(([arr, j, sign]) => {
-    // Concrete: wherever the oval's pavement (or the garage) is near, past the junctions where the course meets it.
-    const near = (u: number) => spec.host !== 'inner' && u > part + 60 && u < Lr - 60 && arr[kOf(u)] < half + 15;
-    let from: number | null = null;
-    for (let u = part; u <= Lr; u += step) {
-      const on = u < Lr && near(u);
-      if (on && from === null) from = u;
-      if (!on && from !== null) {
-        if (u - from > 20) {
-          const a = sOf(from) - 10;
-          ownWalls.push({ id: `concrete-${j ? 'right' : 'left'}${ownWalls.length}`, range: [a, a + (u - from) + 20], d: sign > 0 ? dressed.wallLines[0] : dressed.wallLines[1], thickness: 0.8, faces: sign > 0 ? 'out' : 'in', caps: true });
-        }
-        from = null;
-      }
+  // (Of the circuit dressing: kerbs, and the gravel round those hairpins; no verges, no other run-off.)
+  const keepSurface = (id: string) => id.startsWith('kerb') || corners.some((c, i) => c.trap && new RegExp(`^runoff${i}[lr]`).test(id));
+  // None of it on an oval's pavement (the speedway's or the inner oval's): where the course is still on a track it
+  // leaves or is coming back onto, that track is the oval's, unmarked. A kerb goes whole (with its tapered ends) or
+  // not at all.
+  const ovals = [venue, ...(venue.neighbours ?? []).filter((nb) => layoutKind(nb) !== 'road')].map((o) => new Track({ ...o, neighbours: undefined }));
+  const onOvalPavement = (x: number, y: number) => ovals.some((t) => {
+    const q = t.near(x, y, t.reach);
+    return !!q && q.d > t.outerEdgeAt(q.s) - 0.5 && q.d < t.pavedInnerD(q.s) + 0.5;
+  });
+  const group = (id: string) => id.replace(/-(in|out)$/, '');
+  const offPavement = new Map<string, boolean>();
+  for (const r of dressed.surfaces) {
+    if (!keepSurface(r.id) || r.shape.kind !== 'band' || !r.shape.range) continue;
+    const { range: [a, b], d0, d1 } = r.shape;
+    let clear = true;
+    for (let s = a; s <= b && clear; s += 2) {
+      for (const d of [evalEdge(d0, s, L), evalEdge(d1, s, L)]) if (onOvalPavement(...cl.toWorld(s, d))) clear = false;
     }
-  });
-  corners.forEach((c, i) => {
-    if (!c.tyres) return;
-    const outside = c.spec.angle > 0 ? 1 : 0; // (a left-hander's outside is on the right)
-    ownWalls.push({
-      id: `tyres${i}`, range: [c.s0 - 10, c.s1 + 15], d: dressed.wallLines[outside], thickness: 1.2,
-      faces: outside ? 'in' : 'out', caps: true,
-    });
-  });
-  // (Of the circuit dressing: kerbs, and the gravel round the hairpins with tyre walls; no verges, no other run-off.)
-  const keepSurface = (id: string) => id.startsWith('kerb') || corners.some((c, i) => c.tyres && new RegExp(`^runoff${i}[lr]`).test(id));
-  const dressedSurfaces = dressed.surfaces.filter((r) => keepSurface(r.id));
+    offPavement.set(group(r.id), (offPavement.get(group(r.id)) ?? true) && clear);
+  }
+  const dressedSurfaces = dressed.surfaces.filter((r) => keepSurface(r.id) && offPavement.get(group(r.id)) !== false);
 
   // ---- profiles round the lap: the oval's on its part, the course's on its own, easing between over RAMP m ----
   const profile = (onOvalAt: (os: number) => number, onCourse: (s: number) => number): Profile => {
@@ -1335,7 +1510,43 @@ export function venueWithCourses(oval: TrackLayout): TrackLayout[] {
     for (const [x, y] of pts) grid.add(x, y);
     return { t, pts, grid };
   });
-  return all.map((layout, i) => {
+  // Every layout's walls are solid whichever is raced (from either side): none may stand on another's racing surface
+  // or apron. Where one would, it stops short (padded), and goes on past. (Not a course's pit wall on the oval it pits
+  // from: it is that oval's own.)
+  const onSurface = (k: number, x: number, y: number) => {
+    const t = lines[k].t;
+    const q = t.near(x, y, t.reach);
+    return !!q && q.d > t.outerEdgeAt(q.s) + 0.5 && q.d < t.innerEdgeAt(q.s) + all[k].crossSection.apronWidth - 0.5;
+  };
+  // (And the walls each needs where cars running off another would reach it.)
+  const guards = hazardWalls(all, lines.map((l) => l.t));
+  const walled = all.map((layout, i) => {
+    const t = lines[i].t;
+    const walls: Wall[] = [];
+    for (const w of [...layout.walls, ...guards[i]]) {
+      const others = all.map((_, j) => j).filter((j) => j !== i && !(w.id === 'pit-wall' && host(layout) === all[j].id));
+      const [a, b] = w.range ?? [0, t.length];
+      const step = 1, n = Math.max(1, Math.ceil((b - a) / step));
+      const blocked = Array.from({ length: n + 1 }, (_, k) => {
+        const s = a + ((b - a) * k) / n;
+        const [x, y] = t.toWorld(s, typeof w.d === 'number' ? w.d : t.edgeAt(w.d, s));
+        return others.some((j) => onSurface(j, x, y));
+      });
+      if (!blocked.some(Boolean)) { walls.push(w); continue; }
+      // The stretches clear of the others, each its own wall with padded ends (none shorter than a few metres).
+      for (let k = 0, piece = 0; k <= n;) {
+        if (blocked[k]) { k++; continue; }
+        let e = k;
+        while (e + 1 <= n && !blocked[e + 1]) e++;
+        const s0 = a + ((b - a) * k) / n, s1 = a + ((b - a) * e) / n;
+        // (A guard cut down to a stub protects nothing: none.)
+        if (s1 - s0 > (w.id.startsWith('guard') ? 20 : 4)) walls.push({ ...w, id: `${w.id}~${piece++}`, range: [s0, s1], caps: true, attenuators: true });
+        k = e + 1;
+      }
+    }
+    return { ...layout, walls };
+  });
+  return walled.map((layout, i) => {
     const closures: Barrier[] = [];
     all.forEach((other, j) => {
       if (j === i || host(layout) === other.id || host(other) === layout.id) return;
@@ -1345,30 +1556,40 @@ export function venueWithCourses(oval: TrackLayout): TrackLayout[] {
       const apart = theirs.map(([x, y]) => !mine.near(x, y, 8));
       if (apart.every(Boolean)) return;
       const clear = theirs.map(([x, y]) => !mine.near(x, y, 20));
-      const across = (k: number, id: string) => {
-        const s = k * 2;
-        closures.push({ id, thickness: 1, points: [t.toWorld(s, t.outerEdgeAt(s) - 0.5), t.toWorld(s, t.innerEdgeAt(s) + 0.5)] });
-      };
-      // (At least 12 m into the stretch it doesn't share, and clear of mine.)
       const n = theirs.length;
+      const wrap = (k: number) => ((k % n) + n) % n;
+      const barrierAt = (k: number): Array<[number, number]> => {
+        const s = wrap(k) * 2;
+        return [t.toWorld(s, t.outerEdgeAt(s) - 0.5), t.toWorld(s, t.innerEdgeAt(s) + 0.5)];
+      };
+      // (Nowhere on my road: every point along it clear of my racing surface.)
+      const me = lines[i].t;
+      const offMine = ([[ax, ay], [bx, by]]: Array<[number, number]>) => {
+        for (let f = 0; f <= 1.001; f += 0.05) {
+          const q = me.near(ax + (bx - ax) * f, ay + (by - ay) * f, me.reach);
+          if (q && q.d > me.outerEdgeAt(q.s) - 1 && q.d < me.innerEdgeAt(q.s) + 1) return false;
+        }
+        return true;
+      };
+      // At least 12 m into the stretch it doesn't share, and clear of mine (where they part at a shallow angle, a
+      // long way on). If it never is, none: an open road beats a barrier across mine.
+      const close = (k: number, dir: 1 | -1, id: string) => {
+        for (let at = k + dir * (dir > 0 ? 6 : 7); Math.abs(at - k) < 200; at += dir) {
+          if (!clear[wrap(at)]) continue;
+          const pts = barrierAt(at);
+          if (offMine(pts)) { closures.push({ id, thickness: 1, points: pts }); return; }
+        }
+      };
       for (let k = 0; k < n; k++) {
         const prev = apart[(k - 1 + n) % n];
-        if (apart[k] && !prev) {
-          let at = k + 6;
-          while (at < k + 80 && !clear[at % n]) at++;
-          across(at % n, `${other.id}-closed-${k}`);
-        }
-        if (!apart[k] && prev) {
-          let at = k - 7;
-          while (at > k - 80 && !clear[((at % n) + n) % n]) at--;
-          across(((at % n) + n) % n, `${other.id}-closed-${k}`);
-        }
+        if (apart[k] && !prev) close(k, 1, `${other.id}-closed-${k}`);
+        if (!apart[k] && prev) close(k, -1, `${other.id}-closed-${k}`);
       }
     });
     return {
       ...layout,
       barriers: [...(layout.barriers ?? []), ...closures],
-      neighbours: all.filter((_, j) => j !== i).map((l) => ({ ...l, neighbours: undefined, barriers: undefined })),
+      neighbours: walled.filter((_, j) => j !== i).map((l) => ({ ...l, neighbours: undefined, barriers: undefined })),
     };
   });
 }
@@ -1377,3 +1598,4 @@ export function venueWithCourses(oval: TrackLayout): TrackLayout[] {
 function venueRoadLayouts(oval: TrackLayout): TrackLayout[] {
   return venueWithCourses(oval).filter((l) => l.kind === 'road');
 }
+

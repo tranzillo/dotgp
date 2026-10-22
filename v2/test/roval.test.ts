@@ -6,7 +6,7 @@ import { Car } from '../src/sim/car';
 import { Track } from '../src/sim/track';
 import { World } from '../src/sim/world';
 import type { TrackLayout } from '../src/sim/layout';
-import { chicane, generateLayout, integrate, rovalLayouts, venueLayouts } from '../src/trackgen';
+import { chicane, generateLayout, integrate, linkShare, rovalLayouts, sharedShare, venueLayouts } from '../src/trackgen';
 import { validateLayout } from '../src/trackgen/validate';
 import { multiLayoutVenue, venueSeries } from '../src/venue/venue';
 
@@ -105,12 +105,12 @@ describe('road courses through the infield', () => {
         for (let s = 0; s < t.length; s += 10) pts.push(t.toWorld(s, 0));
         return pts;
       });
-      const shareOf = (a: Array<[number, number]>, b: Array<[number, number]>) =>
-        a.filter(([x, y]) => b.some(([u, v]) => Math.hypot(x - u, y - v) < 3)).length / a.length;
+      // (On the other's road: within 3 m of its line, wherever along it its own samples fall.)
+      const shareOf = sharedShare;
       laps.forEach((lap, i) => {
         // Each shares road with another beyond the front stretch (the network's), and none is another with a detour.
         const shares = laps.map((other, j) => (j === i ? 0 : shareOf(lap, other)));
-        expect(Math.max(...shares), layouts[i].name).toBeGreaterThan(0.25);
+        expect(Math.max(...laps.map((other, j) => (j === i ? 0 : linkShare(lap, other)))), layouts[i].name).toBeGreaterThan(0.25);
         laps.forEach((other, j) => { if (j !== i) expect(shares[j] > 0.88 && shareOf(other, lap) > 0.88, `${layouts[i].name} ~ ${layouts[j].name}`).toBe(false); });
       });
       for (const layout of layouts) {
@@ -124,6 +124,62 @@ describe('road courses through the infield', () => {
       expect(oval0.neighbours!.every((n) => !n.barriers?.length)).toBe(true);
     }
     expect(found).toBe(true);
+  });
+
+  it("keeps every layout's walls off the others' racing surfaces, and the courses' kerbs off the ovals' pavement", () => {
+    for (const oval of ovals) {
+      const layouts = venueLayouts(oval);
+      for (const layout of layouts) {
+        const own = new Track({ ...layout, neighbours: undefined });
+        const onMe = (x: number, y: number) => {
+          const q = own.near(x, y, own.reach);
+          return !!q && q.d > own.outerEdgeAt(q.s) + 1 && q.d < own.innerEdgeAt(q.s) - 1;
+        };
+        // (Walls are solid from either side whichever layout is raced.)
+        for (const nl of layout.neighbours ?? []) {
+          const nb = new Track({ ...nl, neighbours: undefined });
+          for (const w of nl.walls) {
+            const [a, b] = w.range ?? [0, nb.length];
+            for (let s = a; s < b; s += 2) {
+              const [x, y] = nb.toWorld(s, typeof w.d === 'number' ? w.d : nb.edgeAt(w.d, s));
+              expect(onMe(x, y), `${nl.name} ${w.id} on ${layout.name}`).toBe(false);
+            }
+          }
+        }
+        if (layout.kind !== 'road') continue;
+        const ovalTracks = layouts.filter((l) => l.kind !== 'road').map((l) => new Track({ ...l, neighbours: undefined }));
+        for (const r of layout.surfaces) {
+          if (r.surface !== 'kerb' || r.shape.kind !== 'band' || !r.shape.range) continue;
+          for (let s = r.shape.range[0]; s <= r.shape.range[1]; s += 2) {
+            const [x, y] = own.toWorld(s, own.edgeAt(r.shape.d0, s));
+            const on = ovalTracks.some((o) => { const q = o.near(x, y, o.reach); return !!q && q.d > o.outerEdgeAt(q.s) && q.d < o.pavedInnerD(q.s); });
+            expect(on, `${layout.name} ${r.id}`).toBe(false);
+          }
+        }
+      }
+    }
+  });
+
+  it('links every layout of a venue to another: each shares a good part of the shorter lap', () => {
+    let multi = 0;
+    for (const variant of ['speedway', 'superspeedway']) {
+      for (let seed = 1; seed <= 8; seed++) {
+        const oval = generateLayout({ type: 'oval', seed, variant });
+        if ((oval.infield.rovals?.length ?? 0) < 2) continue;
+        multi++;
+        const laps = rovalLayouts(oval).map((l) => {
+          const t = new Track({ ...l, neighbours: undefined });
+          const pts: Array<[number, number]> = [];
+          for (let s = 0; s < t.length; s += 10) pts.push(t.toWorld(s, 0));
+          return { name: l.name, pts };
+        });
+        for (const a of laps) {
+          const best = Math.max(...laps.map((b) => (b === a ? 0 : linkShare(a.pts, b.pts))));
+          expect(best, `${variant} ${seed} ${a.name}`).toBeGreaterThan(0.25);
+        }
+      }
+    }
+    expect(multi).toBeGreaterThan(2);
   });
 
   it('lays a road course across an infield too small for an inner oval', () => {

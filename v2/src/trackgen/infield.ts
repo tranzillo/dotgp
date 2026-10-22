@@ -2,10 +2,12 @@ import type { Rng } from '../ai/rng';
 import type { Centerline } from '../sim/centerline';
 import type { Decoration, EscapeLane, PitLane, Road, RoadNode, RovalSpec, SurfaceRegion, TrackLayout, TrackRect } from '../sim/layout';
 import { Track } from '../sim/track';
+import { integrate, ovalPose } from './course';
 import { buildLayout } from './generator';
 import { generateRoval } from './roval';
 import { shapedOval } from './oval';
 import { CLEARANCE, densify, occupies, placeLayout } from './geometry';
+import { pave, roundPolyline, type PavePiece } from './paving';
 
 /**
  * The infield of a generated oval, laid out round its pit road and garage:
@@ -89,8 +91,12 @@ export interface InfieldSite {
   pavedInner: (s: number) => number;
   pit: PitLane;
   lot: TrackRect;
+  /** The garage's lanes from pit road (paved with the lot and the roads). */
+  garageLanes?: Array<{ points: Array<[number, number]>; width: number }>;
   /** The turns (not front-stretch bends): where each starts and ends. */
   turns: Array<[number, number]>;
+  /** The racing surface's banking at s (radians; its inside, where courses leave and rejoin it). */
+  bankAt?: (s: number) => number;
   rng: Rng;
   /** The outer track's id and seed (for the inner oval's). */
   id: string;
@@ -125,8 +131,8 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
   const pick = ([a, b]: Range) => a + rng.next() * (b - a);
   const problems: string[] = [];
 
-  // ---- a road course, first. Where one goes in, the infield is its: the services (placeholders, to be redone) come
-  // later, round it ----
+  // ---- a road course, first. Where one goes in, the services are laid round it (crossing it where they must) ----
+  let course: { inner: TrackLayout | null; rovals: RovalSpec[] } | null = null;
   if (plan.course) {
     // The garage, and room enough round it that it stays the front stretch's: nothing of a course nearer its back
     // edge than the front stretch is (as the layouts' validation asks).
@@ -140,17 +146,19 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
     };
     // First the inner oval (in one half of the infield), then the courses that share its road and the oval's.
     const made = generateRoval({
-      cl, pavedInner: site.pavedInner, turns: site.turns, keepOut,
+      cl, pavedInner: site.pavedInner, turns: site.turns, bankAt: site.bankAt, keepOut,
       pitRange: pit.entryRoute ? [pit.entryStart, pit.exitEnd] : [pit.wallStart, pit.wallEnd], rng,
       buildInner: (straight, radius, width) => courseInner(site, straight, radius, width),
     });
-    if (made) return { surfaces: [], decor: [], nodes: [], roads: [], escapeLanes: [], inner: made.inner, rovals: made.rovals, problems };
+    if (made) course = made;
   }
   const nodes: RoadNode[] = [];
   const roads: Road[] = [];
   const surfaces: SurfaceRegion[] = [];
   const decor: Decoration[] = [];
   const escapeLanes: EscapeLane[] = [];
+  /** What's paved besides the roads (lots, the skidpad): paved with them at the end. */
+  const paving: PavePiece[] = [];
 
   // ---- room: how far in from the centerline the infield is still this side's, every STEP m ----
   const n = Math.ceil(L / STEP);
@@ -167,10 +175,10 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
     const r = signed(s);
     const base = site.pavedInner(r) + offset * (1 + (plan.ringTurnFactor - 1) * turnShare(s));
     if (!behindLot) return base;
-    // Round the back of the garage lot, easing out to it and back.
+    // Round the back of the garage lot, against it (paved as one with it), easing out to it and back.
     const into = r < lotZone[0] ? (r - (lotZone[0] - ramp)) / ramp : r > lotZone[1] ? ((lotZone[1] + ramp) - r) / ramp : 1;
     const t = Math.min(1, Math.max(0, into));
-    return Math.max(base, base + (lot.d1 + 12 - base) * t * t * (3 - 2 * t));
+    return Math.max(base, base + (lot.d1 + SERVICE_WIDTH / 2 - base) * t * t * (3 - 2 * t));
   };
   /**
    * The road along the lap, every STEP m: where it wants to be, smoothed (a running maximum, never nearer the track
@@ -191,7 +199,7 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
   // Behind the garage (a full ring) if there's room for that, otherwise it stops at the lot's ends (a C).
   let ring = profile(offset, true);
   let full = true;
-  for (let r = lotZone[0]; r <= lotZone[1] && full; r += STEP) if (ring[at(r)] < lot.d1 + 8) full = false;
+  for (let r = lotZone[0]; r <= lotZone[1] && full; r += STEP) if (ring[at(r)] < lot.d1 + SERVICE_WIDTH / 2 - 1) full = false;
   if (!full) ring = profile(offset, false);
   const inGap = (s: number) => !full && cl.inRange(s, [lotZone[0] - 15, lotZone[1] + 15]);
   // It needs some grass between it and the pavement everywhere it runs.
@@ -205,7 +213,12 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
   // The road's extent along the lap: all of it, or from past the lot's turn-1 end round to before its other end.
   const ringFrom = full ? 0 : lotZone[1] + 15;
   const ringLength = full ? L : cl.distanceFrom(lotZone[1] + 15, lotZone[0] - 15);
-  const onRing = (s: number) => full || cl.distanceFrom(ringFrom, s) <= ringLength;
+  /** Stretches of the road (by distance along it from ringFrom) where a road course is the road instead. */
+  const shared: Array<[number, number]> = [];
+  const onRing = (s: number) => {
+    const u = cl.distanceFrom(ringFrom, s);
+    return (full || u <= ringLength) && !shared.some(([u0, u1]) => u > u0 - 20 && u < u1 + 20);
+  };
 
   // Junctions on the road, by distance along it from ringFrom; roads between them come at the end.
   const junctions: Array<{ u: number; id: string }> = [];
@@ -232,10 +245,85 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
     }
   }
 
-  // (No road course here: nothing for the services to keep clear of.)
+  // The road courses' own roads (lots, pads and the inner oval keep clear of them; roads may cross them), and the
+  // stretches of the oval where they leave and rejoin it (no escape road there).
   const coursePts: Array<[number, number]> = [];
   const courseZones: Array<[number, number]> = [];
+  const innerCl = course?.inner ? new Track({ ...course.inner, neighbours: undefined }) : null;
+  const courseLines: Array<Array<[number, number]>> = [];
+  for (const spec of course?.rovals ?? []) {
+    const host = spec.host === 'inner' ? innerCl! : cl;
+    const from = ovalPose(host, spec.leave);
+    const line = integrate(spec.sections, from.x, from.y, from.h, 5).points;
+    coursePts.push(...line);
+    // (For the service road to take to: its stretches off the oval's pavement only, never the oval itself.)
+    let piece: Array<[number, number]> = [];
+    for (const p of [...line, null]) {
+      const q = p && cl.near(p[0], p[1], 120);
+      if (p && (!q || q.d > site.pavedInner(cl.signedS(q.s)) + SERVICE_WIDTH)) { piece.push(p); continue; }
+      if (piece.length > 1) courseLines.push(piece);
+      piece = [];
+    }
+    if (spec.host !== 'inner') courseZones.push([spec.leave - 60, spec.leave + 200], [spec.join - 200, spec.join + 60]);
+  }
   const nearCourse = ([x, y]: [number, number], gap: number) => coursePts.some(([u, v]) => Math.hypot(x - u, y - v) < gap);
+
+  // ---- where the service road would run beside a course a long way, the course is the road there: the service road
+  // turns onto it and off it again, rather than paralleling it a few metres off (crossing one is fine) ----
+  const sharedPairs = new Set<string>();
+  {
+    // (Beside: the grass between them too narrow to hold anything, the smallest lot (25 m) with its clearance either
+    // side, between the service road's edge and a course's (half of about 14 m).)
+    const BESIDE = SERVICE_WIDTH / 2 + 7 + 25 + 2 * 10, LONGEST_CROSSING = 80;
+    const nearest = ([x, y]: [number, number]) => {
+      let best: { line: number; i: number; dist: number } | null = null;
+      courseLines.forEach((line, li) => line.forEach(([u, v], i) => {
+        const dist = Math.hypot(x - u, y - v);
+        if (dist < BESIDE && (!best || dist < best.dist)) best = { line: li, i, dist };
+      }));
+      return best as { line: number; i: number; dist: number } | null;
+    };
+    // Every STEP m along the road: the course point it runs beside (near it and running the same way, either way round).
+    const steps = Math.floor(ringLength / STEP);
+    const beside = Array.from({ length: steps + 1 }, (_, m) => {
+      const s = ringFrom + m * STEP, p = ringPoint(s), q = nearest(p);
+      if (!q) return null;
+      const line = courseLines[q.line], a = line[Math.max(0, q.i - 1)], b = line[Math.min(line.length - 1, q.i + 1)];
+      const [px, py] = ringPoint(s + 5);
+      const cos = ((px - p[0]) * (b[0] - a[0]) + (py - p[1]) * (b[1] - a[1])) / (Math.hypot(px - p[0], py - p[1]) * Math.hypot(b[0] - a[0], b[1] - a[1]) || 1);
+      return Math.abs(cos) > 0.85 ? q : null;
+    });
+    for (let m = 0, n2 = 0; m <= steps;) {
+      const q0 = beside[m];
+      if (!q0) { m++; continue; }
+      // (Beside any course: layouts that share road lie on each other, and the nearest flips between them.)
+      let e = m;
+      while (e + 1 <= steps && beside[e + 1]) e++;
+      const u0 = m * STEP, u1 = e * STEP;
+      m = e + 1;
+      // (Longer than a crossing, and clear of where the garage meets the road.)
+      if (u1 - u0 < LONGEST_CROSSING || junctions.some((j) => j.u > u0 - 30 && j.u < u1 + 30)) continue;
+      // Along one course's line from beside where it starts to beside where it ends (if that line is still beside it).
+      const line = courseLines[q0.line];
+      const [ex, ey] = ringPoint(ringFrom + u1);
+      let i1 = 0;
+      line.forEach(([x, y], i) => { if (Math.hypot(x - ex, y - ey) < Math.hypot(line[i1][0] - ex, line[i1][1] - ey)) i1 = i; });
+      if (Math.hypot(line[i1][0] - ex, line[i1][1] - ey) > BESIDE + 10) continue;
+      const q1 = { i: i1 };
+      const along = q0.i <= q1.i ? line.slice(q0.i, q1.i + 1) : line.slice(q1.i, q0.i + 1).reverse();
+      if (along.length < 2) continue;
+      const k = n2++;
+      const ja = junction(ringFrom + u0, `ring-share${k}a`), jb = junction(ringFrom + u1, `ring-share${k}b`);
+      nodes.push({ id: `share${k}-on`, kind: 'junction', at: along[0] }, { id: `share${k}-off`, kind: 'junction', at: along[along.length - 1] });
+      roads.push(
+        { id: `share${k}-in`, from: ja, to: `share${k}-on`, points: [ringPoint(ringFrom + u0), along[0]], width: SERVICE_WIDTH, grade: 'service' },
+        { id: `share${k}`, from: `share${k}-on`, to: `share${k}-off`, points: along, width: SERVICE_WIDTH, grade: 'course' },
+        { id: `share${k}-out`, from: `share${k}-off`, to: jb, points: [along[along.length - 1], ringPoint(ringFrom + u1)], width: SERVICE_WIDTH, grade: 'service' },
+      );
+      shared.push([u0, u1]);
+      sharedPairs.add(`${ja}|${jb}`);
+    }
+  }
 
   // ---- escape roads: off the apron before and after the turns, away from pit road, onto the service road ----
   const candidates: number[] = [];
@@ -262,14 +350,16 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
     chosen.push(s);
   }
   // At least one (with pit road, a second way off): short tracks rarely have room for more beside pit road.
-  if (!chosen.length) problems.push('no room for an escape road');
+  // (With a road course, its own roads off the oval are ways off it too, and pit road always is.)
+  if (!chosen.length && !course) problems.push('no room for an escape road');
   chosen.sort((a, b) => signed(a) - signed(b)).forEach((s, k) => {
     const join = s + 40 + 1.2 * (d(s + 40) - site.apronD);
-    const points: Array<[number, number]> = [
+    // (Its bends off the apron and onto the service road rounded, as a road is laid.)
+    const points = roundPolyline([
       cl.toWorld(s, site.innerEdge + 1),
       cl.toWorld(s + 40, site.apronD + 3),
       ringPoint(join),
-    ];
+    ], 30);
     const id = `escape${k}`;
     nodes.push({ id, kind: 'apron', at: points[0], s: signed(s) });
     const j = junction(join, `ring-escape${k}`);
@@ -281,12 +371,13 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
   const ringPts: Array<[number, number]> = [];
   for (let u = 0; u <= ringLength; u += STEP) ringPts.push(ringPoint(ringFrom + u));
   let inner: TrackLayout | null = null;
-  if (plan.inner && !problems.length) inner = fitInner(plan.inner, site, [...ringPts, ...coursePts], d);
+  if (course) inner = course.inner;
+  else if (plan.inner && !problems.length) inner = fitInner(plan.inner, site, [...ringPts, ...coursePts], d);
   const innerTrack = inner ? new Track(inner) : null;
 
   // ---- roads across the infield (not through an inner oval, nor the garage) ----
   const links: Array<Array<[number, number]>> = [];
-  if (!inner) {
+  if (!inner && !course) {
     for (let k = 0, tries = 0; k < plan.crossLinks && tries < 30; tries++) {
       const a = rng.next() * L;
       const b = a + L / 2 + (rng.next() - 0.5) * L * 0.2;
@@ -306,6 +397,21 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
 
   // ---- parking lots off the service road, where there's room left ----
   const lots: TrackRect[] = [];
+  // ---- one map of what's laid (roads, courses, then each lot and pad as it goes in): every feature clear of all of it,
+  // not each kind tested against a few others ----
+  const laid = new Occupancy();
+  for (const r of roads) laid.path(r.points, r.width / 2);
+  for (const [x, y] of coursePts) laid.add(x, y, 7);
+  for (let u = 0; u <= ringLength; u += 5) if (onRing(ringFrom + u)) laid.add(...ringPoint(ringFrom + u), SERVICE_WIDTH / 2);
+  /** A lot's ground (an s-d rect), sampled every few metres. */
+  const ground = (r: TrackRect): Array<[number, number]> => {
+    const pts: Array<[number, number]> = [];
+    for (let s = r.s0; s <= r.s1 + 1e-6; s += Math.max(1, (r.s1 - r.s0) / Math.ceil((r.s1 - r.s0) / 4))) {
+      for (let dd = r.d0; dd <= r.d1 + 1e-6; dd += Math.max(1, (r.d1 - r.d0) / Math.ceil((r.d1 - r.d0) / 4))) pts.push(cl.toWorld(s, dd));
+    }
+    return pts;
+  };
+
   for (let k = 0, tries = 0; k < plan.lots && tries < 40; tries++) {
     // Bigger lots at bigger tracks.
     const size = Math.min(2.5, Math.max(0.7, L / 2500));
@@ -320,19 +426,23 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
     const rect: TrackRect = { s0: r0, s1: r0 + length, d0, d1: d0 + pick([25, 45]) * Math.max(1, size * 0.8) };
     const corners: Array<[number, number]> = [];
     for (let s = rect.s0; s <= rect.s1; s += 10) corners.push(cl.toWorld(s, rect.d1 + 8));
+    const area = ground(rect);
     const ok = [...Array(Math.ceil(length / STEP) + 1).keys()].every((i) => rect.d1 + 10 <= room[at(rect.s0 + i * STEP)])
       && lots.every((o) => !cl.inRange(rect.s0, [o.s0 - 30, o.s1 + 30]) && !cl.inRange(rect.s1, [o.s0 - 30, o.s1 + 30]))
-      && links.every((pts) => pts.every(([x, y]) => { const q = cl.near(x, y, rect.d1 + 30); return !q || !(cl.inRange(q.s, [rect.s0 - 15, rect.s1 + 15]) && q.d > rect.d0 - 15); }))
       && (!innerTrack || !corners.some(([x, y]) => occupies(innerTrack, x, y, 10)))
-      && !corners.some((p) => nearCourse(p, 20)) && !nearCourse(cl.toWorld((rect.s0 + rect.s1) / 2, (rect.d0 + rect.d1) / 2), 30);
+      && area.every(([x, y]) => laid.clear(x, y, 5));
     if (!ok) continue;
     lots.push(rect);
+    for (const [x, y] of area) laid.add(x, y, 3);
     const sm = (rect.s0 + rect.s1) / 2;
     const j = junction(sm, `ring-lot${k}`);
     nodes.push({ id: `lot${k}`, kind: 'junction', at: cl.toWorld(sm, rect.d0 + 2) });
     roads.push({ id: `lot-lane${k}`, from: j, to: `lot${k}`, points: [ringPoint(sm), cl.toWorld(sm, rect.d0 + 2)], width: LANE_WIDTH, grade: 'service' });
-    surfaces.push({ id: `lot${k}`, surface: 'garage', shape: { kind: 'rect', rect }, outline: true });
-    decor.push({ kind: 'bays', rect, spacing: 3 });
+    laid.path(roads[roads.length - 1].points, LANE_WIDTH / 2);
+    // (Paved with the roads, its corners rounded.)
+    paving.push(roundedRect(cl, rect, 6));
+    // (Its bays clear of its rounded corners.)
+    decor.push({ kind: 'bays', rect: { s0: rect.s0 + 6, s1: rect.s1 - 6, d0: rect.d0 + 2, d1: rect.d1 - 2 }, spacing: 3 });
     k++;
   }
 
@@ -347,20 +457,22 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
       if (dc + r + 12 > room[at(s)]) continue;
       const [x, y] = cl.toWorld(s, dc);
       const rim = Array.from({ length: 24 }, (_, i): [number, number] => [x + (r + 10) * Math.cos(i * Math.PI / 12), y + (r + 10) * Math.sin(i * Math.PI / 12)]);
-      const inLot = ([px, py]: [number, number]) => lots.some((rect) => {
-        const q = cl.near(px, py, rect.d1 + 20);
-        return !!q && cl.inRange(q.s, [rect.s0, rect.s1]) && q.d > rect.d0 && q.d < rect.d1;
-      });
-      const clear = !rim.some(inLot)
-        && links.every((pts) => pts.every(([px, py]) => Math.hypot(px - x, py - y) > r + 12))
-        && (!innerTrack || !rim.some(([px, py]) => occupies(innerTrack, px, py, 8)))
-        && !rim.some((p) => nearCourse(p, 14)) && !nearCourse([x, y], r + 14);
+      // (The disc's ground: rings of points out to its rim.)
+      const disc: Array<[number, number]> = [[x, y]];
+      for (let rr = 4; rr <= r + 1e-6; rr += 4) {
+        const m = Math.ceil((2 * Math.PI * rr) / 4);
+        for (let i = 0; i < m; i++) disc.push([x + rr * Math.cos((2 * Math.PI * i) / m), y + rr * Math.sin((2 * Math.PI * i) / m)]);
+      }
+      const clear = (!innerTrack || !rim.some(([px, py]) => occupies(innerTrack, px, py, 8)))
+        && disc.every(([px, py]) => laid.clear(px, py, 8));
       if (!clear) continue;
+      for (const [px, py] of disc) laid.add(px, py, 3);
       const j = junction(s, 'ring-skidpad');
       nodes.push({ id: 'skidpad', kind: 'junction', at: cl.toWorld(s, dc - r) });
       roads.push({ id: 'skidpad-lane', from: j, to: 'skidpad', points: [ringPoint(s), cl.toWorld(s, dc - r)], width: LANE_WIDTH, grade: 'service' });
+      laid.path(roads[roads.length - 1].points, LANE_WIDTH / 2);
       // A disc: a road of no length, as wide as the circle.
-      surfaces.push({ id: 'skidpad', surface: 'road', shape: { kind: 'path', points: [[x, y], [x + 0.01, y]], width: 2 * r } });
+      paving.push({ kind: 'disc', at: [x, y], radius: r });
       break;
     }
   }
@@ -377,17 +489,88 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
   for (let k = 0; k < span; k++) {
     const a = junctions[k], b = junctions[(k + 1) % junctions.length];
     const u1 = b.u > a.u ? b.u : b.u + L;
+    // (Not where a course is the road.)
+    if (sharedPairs.has(`${a.id}|${b.id}`)) continue;
     roads.push({ id: `ring${k}`, from: a.id, to: b.id, points: pts(a.u, u1), width: SERVICE_WIDTH, grade: 'service' });
   }
-  // Drawn as roads (the network's polylines are the surfaces).
-  // Course roads are racing surface (and drawn over the service roads they cross).
-  for (const road of [...roads.filter((r) => r.grade !== 'course'), ...roads.filter((r) => r.grade === 'course')]) {
-    surfaces.push({
-      id: `road-${road.id}`, surface: road.grade === 'course' ? 'track' : 'road',
-      shape: { kind: 'path', points: road.points, width: road.width }, outline: true,
-    });
+  // Paved as one: the roads (where they meet or cross, the corners filleted), the lots and the skidpad, its edge drawn
+  // once round all of it. (A course's road is the course's to draw.)
+  paving.push(...roads.filter((r) => r.grade !== 'course').map((road): PavePiece => ({ kind: 'path', points: road.points, width: road.width })));
+  // The garage lot and its lanes from pit road too, so the roads run into it as one paved area; the lot keeps its
+  // own tone on top, its corners rounded, the edge round all of it drawn once.
+  const garageLot = roundedRect(cl, lot, 6);
+  paving.push(garageLot, ...(site.garageLanes ?? []).map((g): PavePiece => ({ kind: 'path', points: g.points, width: g.width })));
+  const rings = pave(paving, { fillet: 6 });
+  if (rings.length) {
+    surfaces.push({ id: 'infield-paving', surface: 'road', shape: { kind: 'polygon', rings }, outline: true });
+    surfaces.push({ id: 'garage', surface: 'garage', shape: { kind: 'polygon', rings: pave([garageLot]) } });
   }
-  return { surfaces, decor, nodes, roads, escapeLanes, inner, rovals: [], problems };
+  // (Where the services don't fit round a course, the course without them rather than none.)
+  if (course && problems.length) return { surfaces: [], decor: [], nodes: [], roads: [], escapeLanes: [], inner: course.inner, rovals: course.rovals, problems: [] };
+  return { surfaces, decor, nodes, roads, escapeLanes, inner, rovals: course?.rovals ?? [], problems };
+}
+
+/**
+ * An inner oval's services laid as the infield's are (the oval builder's are a polyline escape lane and a square lot,
+ * kept as they are for the presets drivers are trained on): the escape lane's bends rounded (its surface and its road
+ * in the network alike), and the lane and the garage lot paved as one, the lot's corners rounded and its tone kept.
+ */
+function laidServices(built: TrackLayout): TrackLayout {
+  const round = (pts: Array<[number, number]>) => roundPolyline(pts, 25);
+  const escapeLanes = built.infield.escapeLanes.map((e) => ({ ...e, points: round(e.points) }));
+  const network = built.infield.network && {
+    ...built.infield.network,
+    roads: built.infield.network.roads.map((r) => (r.grade === 'escape' ? { ...r, points: round(r.points) } : r)),
+  };
+  const lot = roundedRect(new Track({ ...built, neighbours: undefined }), built.infield.garage.lot, 4);
+  const paved: SurfaceRegion[] = [
+    { id: 'infield-paving', surface: 'road', outline: true, shape: { kind: 'polygon', rings: pave([lot, ...escapeLanes.map((e): PavePiece => ({ kind: 'path', points: e.points, width: e.width }))]) } },
+    { id: 'garage', surface: 'garage', shape: { kind: 'polygon', rings: pave([lot]) } },
+  ];
+  // (In the garage's place in the drawing order; the old lane and lot out.)
+  const at = built.surfaces.findIndex((r) => r.id === 'garage');
+  const surfaces = built.surfaces.filter((r) => r.id !== 'garage' && !(/^escape\d+$/.test(r.id) && r.shape.kind === 'path'));
+  surfaces.splice(at < 0 ? surfaces.length : Math.min(at, surfaces.length), 0, ...paved);
+  return { ...built, surfaces, infield: { ...built.infield, escapeLanes, ...(network ? { network } : {}) } };
+}
+
+/**
+ * What's laid on the infield so far, as discs (a road: one every few metres along it, as wide as the road): a point
+ * is clear with a margin if no disc comes within it. Hashed on a grid, so asking is quick wherever it's asked.
+ */
+class Occupancy {
+  private cells = new Map<number, Array<[number, number, number]>>();
+  private biggest = 0;
+  constructor(private readonly size = 8) {}
+  private key(i: number, j: number) { return (i + 32768) * 65536 + (j + 32768); }
+  add(x: number, y: number, r: number): void {
+    const k = this.key(Math.floor(x / this.size), Math.floor(y / this.size));
+    const cell = this.cells.get(k);
+    if (cell) cell.push([x, y, r]); else this.cells.set(k, [[x, y, r]]);
+    this.biggest = Math.max(this.biggest, r);
+  }
+  /** A road (or lane) along a polyline, this half-width. */
+  path(points: Array<[number, number]>, half: number): void {
+    for (const [x, y] of densify(points, 3)) this.add(x, y, half);
+  }
+  clear(x: number, y: number, margin: number): boolean {
+    const reach = this.biggest + margin;
+    const i0 = Math.floor((x - reach) / this.size), i1 = Math.floor((x + reach) / this.size);
+    const j0 = Math.floor((y - reach) / this.size), j1 = Math.floor((y + reach) / this.size);
+    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+      for (const [u, v, r] of this.cells.get(this.key(i, j)) ?? []) if (Math.hypot(x - u, y - v) < r + margin) return false;
+    }
+    return true;
+  }
+}
+
+/** A lot along the track (an s-d rect, curving with it) as a piece of paving, its corners rounded by `round`. */
+function roundedRect(cl: Centerline, rect: TrackRect, round: number): PavePiece {
+  const ring: Array<[number, number]> = [];
+  const steps = Math.max(1, Math.ceil((rect.s1 - rect.s0 - 2 * round) / 5));
+  for (let k = 0; k <= steps; k++) ring.push(cl.toWorld(rect.s0 + round + ((rect.s1 - rect.s0 - 2 * round) * k) / steps, rect.d0 + round));
+  for (let k = steps; k >= 0; k--) ring.push(cl.toWorld(rect.s0 + round + ((rect.s1 - rect.s0 - 2 * round) * k) / steps, rect.d1 - round));
+  return { kind: 'polygon', ring, round };
 }
 
 /**
@@ -433,7 +616,7 @@ function courseInner(site: InfieldSite, straight: number, radius: number, width:
       pits: { gap: 1, entryLength: 15, exitLength: 15, blend: 0, startInset: 45, endInset: 40, stallSpacing: 11, garageSetBack: 0, garageLanes: 1 },
     }, site.seed);
     // (Open, as the infield is: its pit wall only.)
-    return { ...built, id: `${site.id}/inner`, walls: built.walls.filter((w) => w.id === 'pit-wall') };
+    return laidServices({ ...built, id: `${site.id}/inner`, walls: built.walls.filter((w) => w.id === 'pit-wall') });
   } catch {
     return null;
   }
@@ -469,11 +652,11 @@ function fitInner(plan: InnerOvalPlan, site: InfieldSite, ringPts: Array<[number
     const R = Math.max(35, plan.turnRadius * scale), S = Math.max(60, plan.straightLength * scale);
     let built: TrackLayout;
     try {
-      built = buildLayout('oval', {
+      built = laidServices(buildLayout('oval', {
         straightLength: S, turnRadius: R, easementLength: Math.round(R * 0.35), width: plan.width, apronWidth: 5,
         bankInner: plan.bankInner, bankOuter: plan.bankOuter, bankStraight: plan.bankInner * 0.3,
         name: 2 * (S + Math.PI * R) < 800 ? 'Bullring' : 'Short track', // (the lap, roughly)
-      }, site.seed);
+      }, site.seed));
     } catch {
       continue; // too small to lay out its own garage at this size
     }

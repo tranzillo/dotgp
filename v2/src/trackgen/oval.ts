@@ -726,6 +726,12 @@ function buildOval(params: AnyOvalParams, ctx: GenContext): TrackLayout {
     ? alongLap(lap, n, outside, (c) => (outside(c) + outside((c + 1) % n)) / 2 - (p.corners[c].widening ?? 0))
     : -innerEdge;
   const apronD = innerEdge + p.apronWidth;
+  // Banking follows curvature into each corner's own banking; the paved infield is much flatter.
+  const banking = {
+    bankInner: alongLap(lap, n, () => p.bankStraight, (c) => p.corners[c].bankInner),
+    bankOuter: alongLap(lap, n, () => p.bankStraight, (c) => p.corners[c].bankOuter),
+    bankInfield: alongLap(lap, n, () => p.bankStraight * 0.5, (c) => p.corners[c].bankInner * 0.4),
+  };
 
   // Pit road along the front stretch; the blend line runs through turn 1 a little way down the straight after it.
   // The entry taper shortens where the last turn is short (a rectangle's 90-degree corner): it leaves after the turn's middle.
@@ -769,7 +775,8 @@ function buildOval(params: AnyOvalParams, ctx: GenContext): TrackLayout {
     const paved = pavedInner;
     const inf = buildInfield(p.infield, {
       cl, innerEdge, apronD, pavedInner: (s) => evalProfile(paved, s, L), pit, lot: garage.lot,
-      turns: turnSpans(p, lap), rng: ctx.rng('infield'), id, seed: ctx.seed,
+      garageLanes: pitSurfaces.flatMap((r) => (r.id.startsWith('garage-lane') && r.shape.kind === 'path' ? [{ points: r.shape.points, width: r.shape.width }] : [])),
+      turns: turnSpans(p, lap), bankAt: (s) => evalProfile(banking.bankInner, s, L), rng: ctx.rng('infield'), id, seed: ctx.seed,
     });
     if (inf.problems.length) throw new Error(inf.problems.join('; '));
     network.nodes.push(...inf.nodes);
@@ -797,17 +804,14 @@ function buildOval(params: AnyOvalParams, ctx: GenContext): TrackLayout {
   }
   // The pit complex's own surfaces: the grass island in front of a set-back pit road over the apron, garage lanes and
   // the infield's roads and lots with the roads.
-  const surfaces = standardSurfaces(edgeIn, edgeOut, pavedInner, pit, garage, p.infield && network ? [] : escapeLanes);
+  // (Where the infield paved the garage with its roads, its lot and lanes are the infield's.)
+  const pavedGarage = infieldSurfaces.some((r) => r.id === 'garage');
+  const surfaces = standardSurfaces(edgeIn, edgeOut, pavedInner, pit, garage, p.infield && network ? [] : escapeLanes)
+    .filter((r) => !(pavedGarage && r.id === 'garage'));
   const after = (rid: string) => surfaces.findIndex((r) => r.id === rid) + 1;
   surfaces.splice(after('apron'), 0, ...pitSurfaces.filter((r) => r.id === 'pit-island'));
-  surfaces.splice(after('infield'), 0, ...pitSurfaces.filter((r) => r.id !== 'pit-island'), ...infieldSurfaces);
+  surfaces.splice(after('infield'), 0, ...pitSurfaces.filter((r) => r.id !== 'pit-island' && !(pavedGarage && r.id.startsWith('garage-lane'))), ...infieldSurfaces);
 
-  // Banking follows curvature into each corner's own banking; the paved infield is much flatter.
-  const banking = {
-    bankInner: alongLap(lap, n, () => p.bankStraight, (c) => p.corners[c].bankInner),
-    bankOuter: alongLap(lap, n, () => p.bankStraight, (c) => p.corners[c].bankOuter),
-    bankInfield: alongLap(lap, n, () => p.bankStraight * 0.5, (c) => p.corners[c].bankInner * 0.4),
-  };
   const { name, ...rest } = params;
   return {
     version: LAYOUT_VERSION,

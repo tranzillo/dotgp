@@ -21,6 +21,68 @@ const withServices = (variant: string, count: number, seed = 1): TrackLayout[] =
 };
 const generated = (variant: string, count: number) => withServices(variant, count).map((l) => new Track(l));
 
+describe('infields with road courses', () => {
+  const withCourses = (variant: string, count: number): TrackLayout[] => {
+    const out: TrackLayout[] = [];
+    for (let s = 1; out.length < count && s < 40; s++) {
+      const layout = generateLayout({ type: 'oval', seed: s, variant });
+      if (layout.infield.rovals?.length) out.push(layout);
+    }
+    return out;
+  };
+  const venues = [...withCourses('intermediate', 2), ...withCourses('speedway', 2), ...withCourses('superspeedway', 2)];
+  /** Each venue's courses' own roads (off the ovals' pavement), every 5 m. */
+  const courseRoads = (l: TrackLayout) => {
+    const oval = new Track({ ...l, neighbours: undefined });
+    return venueLayouts(l).filter((c) => c.kind === 'road').flatMap((c) => {
+      const t = new Track({ ...c, neighbours: undefined });
+      const pts: Array<[number, number]> = [];
+      for (let s = 0; s < t.length; s += 5) {
+        const p = t.toWorld(s, 0), q = oval.near(p[0], p[1], 120);
+        if (!q || q.d > oval.pavedInnerD(q.s) + 8) pts.push(p);
+      }
+      return pts;
+    });
+  };
+
+  it('lays the services round them as one network, every way off the oval reaching a garage', () => {
+    expect(venues.length).toBeGreaterThan(4);
+    for (const l of venues) {
+      const t = new Track(l);
+      expect(l.surfaces.some((r) => r.id === 'infield-paving'), l.name).toBe(true);
+      for (const n of t.roads.accesses) expect(t.roads.pathToGarage(n.id), `${l.name} ${n.id}`).not.toBeNull();
+      expect(validateLayout(l, t).filter((p) => p.severity === 'error')).toEqual([]);
+    }
+  });
+
+  it('takes the service road onto a course where it would run beside one, and keeps lots off them', () => {
+    for (const l of venues) {
+      const course = courseRoads(l);
+      const near = ([x, y]: [number, number], r: number) => course.some(([u, v]) => Math.hypot(x - u, y - v) < r);
+      // No stretch of service road 100 m long a few metres off a course the whole way (crossing one, or turning onto
+      // it, is short).
+      for (const road of l.infield.network!.roads.filter((r) => r.grade === 'service')) {
+        let run = 0, longest = 0;
+        for (let i = 1; i < road.points.length; i++) {
+          const [a, b] = [road.points[i - 1], road.points[i]];
+          const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+          run = near(b, 25) ? run + len : 0;
+          longest = Math.max(longest, run);
+        }
+        expect(longest, `${l.name} ${road.id}`).toBeLessThan(100);
+      }
+      const t = new Track({ ...l, neighbours: undefined });
+      for (const d of l.decor) {
+        if (d.kind !== 'bays') continue;
+        const { s0, s1, d0, d1 } = d.rect;
+        for (const [s, dd] of [[s0, d0], [s1, d0], [s0, d1], [s1, d1], [(s0 + s1) / 2, (d0 + d1) / 2]] as const) {
+          expect(near(t.toWorld(s, dd), 8), `${l.name} lot`).toBe(false);
+        }
+      }
+    }
+  });
+});
+
 describe('generated infields', () => {
   const tracks = [...generated('short', 2), ...generated('intermediate', 2), ...generated('speedway', 2), ...generated('superspeedway', 2)];
 
@@ -90,24 +152,31 @@ describe('generated infields', () => {
     expect(inners.length).toBeGreaterThan(3);
     const places = new Set(inners.map((l) => `${Math.round(l.placement!.x / 50)},${Math.round(l.placement!.y / 50)},${l.placement!.angle}`));
     expect(places.size).toBeGreaterThan(1);
-    const pads = layouts.filter((l) => l.surfaces.some((r) => r.id === 'skidpad'));
+    const pads = layouts.filter((l) => l.infield.network?.nodes.some((n) => n.id === 'skidpad'));
     expect(pads.length).toBeGreaterThan(0);
     for (const l of pads) {
       const t = new Track(l);
-      const pad = l.surfaces.find((r) => r.id === 'skidpad')!.shape as { points: Array<[number, number]>; width: number };
-      const [x, y] = pad.points[0];
-      const p = t.project(x, y);
-      expect(t.surfaceAt(p.s, p.d, x, y)).toBe('road'); // a disc you can drive on
-      expect(t.roads.nodes.has('skidpad')).toBe(true);
+      // Its lane reaches its rim; across the disc from there is paved (a disc you can drive on).
+      const rim = l.infield.network!.nodes.find((n) => n.id === 'skidpad')!.at;
+      const lane = l.infield.network!.roads.find((r) => r.id === 'skidpad-lane')!.points;
+      const [ax, ay] = lane[0], ux = rim[0] - ax, uy = rim[1] - ay, len = Math.hypot(ux, uy);
+      for (const into of [5, 20]) {
+        const x = rim[0] + (ux / len) * into, y = rim[1] + (uy / len) * into;
+        const p = t.project(x, y);
+        expect(t.surfaceAt(p.s, p.d, x, y)).toBe('road');
+      }
     }
   });
 
   it('parks lots off the service road, clear of each other and the infield\'s middle', () => {
     for (const t of tracks) {
-      const lots = t.layout.surfaces.filter((r) => r.id.startsWith('lot') && r.shape.kind === 'rect');
-      expect(t.layout.decor.filter((d) => d.kind === 'bays')).toHaveLength(lots.length);
-      for (const r of lots) {
-        const rect = (r.shape as { rect: { s0: number; s1: number; d0: number; d1: number } }).rect;
+      // (Each lot paved with the roads, its bays marked.)
+      const lots = t.layout.decor.flatMap((d) => (d.kind === 'bays' ? [d.rect] : []));
+      expect(lots).toHaveLength(t.layout.infield.network?.nodes.filter((n) => /^lot\d/.test(n.id)).length ?? 0);
+      for (const rect of lots) {
+        const [mx, my] = t.toWorld((rect.s0 + rect.s1) / 2, (rect.d0 + rect.d1) / 2);
+        const m = t.project(mx, my);
+        expect(t.surfaceAt(m.s, m.d, mx, my)).toBe('road');
         // The back of the lot is still on this side of the infield.
         const [x, y] = t.toWorld((rect.s0 + rect.s1) / 2, rect.d1);
         const p = t.project(x, y);

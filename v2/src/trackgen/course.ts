@@ -93,7 +93,7 @@ export function ovalPose(cl: Centerline, s: number): Pose {
  */
 export function poseSection(
   a: Pose, b: Pose, waypoints: Array<[number, number]>, lead: [number, number], rng: Rng, width: number,
-  opts: { radiusScale?: number; minStraight?: number; radii?: Array<number | undefined> } = {},
+  opts: { radiusScale?: number; minStraight?: number; radii?: Array<number | undefined>; floors?: Array<number | undefined> } = {},
 ): Array<[number, number, number]> | null {
   const scale = opts.radiusScale ?? 1, MIN_STRAIGHT = opts.minStraight ?? MIN_SECTION_STRAIGHT;
   const { x: ax, y: ay, h: ha, k: kA } = a;
@@ -114,8 +114,10 @@ export function poseSection(
   if (turns.some((t) => Math.abs(t) > (172 * Math.PI) / 180)) return null; // doubling straight back on itself
   // (A waypoint's own radius, if it has one: the vertices of a lead and the oval's ends have none.)
   const own = (i: number) => opts.radii?.[i - 1];
+  // (A vertex's least radius, if it has one: a corner taken at a speed it is designed for, never tightened past it.)
+  const floor = (i: number) => opts.floors?.[i] ?? MIN_RADIUS;
   const corners: CornerSpec[] = turns.map((t, i) => {
-    const radius = Math.max(MIN_RADIUS, own(i) ?? preferredRadius(rng, t) * scale, width * 1.2);
+    const radius = Math.max(floor(i), own(i) ?? preferredRadius(rng, t) * scale, width * 1.2);
     return { angle: t, radius, ease: easeFor(radius, t) };
   });
   // Leaving a turn into the infield means turning tighter than it, the same way (and joining one, likewise).
@@ -140,7 +142,7 @@ export function poseSection(
         const c = corners[k];
         if (!c) continue;
         const was = span(c);
-        c.radius = Math.max(MIN_RADIUS, c.radius * 0.8);
+        c.radius = Math.max(floor(k), c.radius * 0.8);
         c.ease = easeFor(c.radius, c.angle);
         edges[i] += was - span(c);
       }
