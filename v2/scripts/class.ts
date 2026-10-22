@@ -32,6 +32,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { cpus } from 'node:os';
 import { adaptWeights } from '../src/ai/drivers';
+import { KNOWLEDGE_MARGINS } from '../src/ai/observe';
 import { Classroom, LESSONS, type LessonId } from '../src/school/classroom';
 import { hashSeed, PRESETS, presetLayout } from '../src/trackgen';
 import { SchoolPool } from './pool';
@@ -84,8 +85,10 @@ interface RoadStyle { grip: number; margin: number; room: number }
 const styleFor = (k: number): RoadStyle | undefined => {
   if (!args.has('styles')) return undefined;
   const rng = new Rng(hashSeed(seed, `style-D${k}`));
-  return { grip: 0.8 + 0.1 * rng.next(), margin: 0.6 + 0.9 * rng.next(), room: 0.5 + rng.next() };
+  // Margins in steps (each a line to work out per circuit; a field shares a few).
+  return { grip: 0.8 + 0.1 * rng.next(), margin: KNOWLEDGE_MARGINS[rng.int(KNOWLEDGE_MARGINS.length)], room: 0.5 + rng.next() };
 };
+const knowledgeFor = (style: RoadStyle | undefined) => (style ? { grip: style.grip, margin: style.margin } : undefined);
 const apprenticeshipFor = (k: number) => {
   const style = styleFor(k);
   const t = apprenticeship?.teacher;
@@ -116,6 +119,8 @@ const students = file.drivers.map((d, k) => ({
   rounds: road ? d.roadCourse?.rounds ?? 0 : 0,
   licensed: d.licensed ?? true, pitLicensed: d.pitLicensed, pitTrafficLicensed: d.pitTrafficLicensed,
   cautionLicensed: d.cautionLicensed, roadLicensed: d.roadCourse?.licensed, roadRadius: d.roadCourse?.radius, nerve: d.nerve,
+  // What it knows of road circuits: its style's line (its saved style, or the one drawn for it now), else the usual.
+  knowledge: road ? knowledgeFor(d.roadCourse?.style ?? (lesson === 'circuits' && !d.roadCourse ? styleFor(k) : undefined)) : undefined,
 }));
 // New road-course skills study the line follower one per thread (the classroom would do them one after another).
 // (Each with its own style, if drawn: the classroom would give them all the class's.)

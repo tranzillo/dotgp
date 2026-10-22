@@ -6,7 +6,10 @@ import {
 import { Trial, type TrialOptions, type TrialResult } from '../ai/evaluate';
 import { apprenticePitStops, cleanStop, PitTrial, REFRESHER_ROUNDS, type PitTrialResult } from './pitLesson';
 import { anchored, DrillTrial, racingKept, SOLO_OPTIONS } from './drill';
-import { ROADCRAFT_WEIGHTS, roadcraftLayout, RoadcraftTrial, situationLayout, situationsOn, type Situation } from './roadcraftLesson';
+import {
+  ROADCRAFT_WEIGHTS, roadcraftLayout, RoadcraftTrial, situationLayout, situationsOn, soloKnowledge, type Situation,
+} from './roadcraftLesson';
+import type { TrackKnowledge } from '../ai/observe';
 import { apprenticeRoadCourses, ROAD_WEIGHTS, roadLicenseTest, type ApprenticeOptions } from './roadLesson';
 import { bestValidLap } from '../sim/limits';
 import { PACK_SIZE, RacecraftTrial, randomLayout, type PackLayout, type RacecraftResult } from './racecraftLesson';
@@ -145,6 +148,8 @@ export interface StudentSpec {
   roadRadius?: number;
   /** Appetite for risk (0 timid .. 1 fearless): what fear costs it in lessons that score it. */
   nerve?: number;
+  /** What it knows of road circuits (its line); default the usual. */
+  knowledge?: TrackKnowledge;
 }
 
 export interface ClassSpec {
@@ -188,6 +193,8 @@ export interface RoadcraftRound {
   references: Float32Array[];
   /** The track's own pace (m/s): progress converts to seconds at it. */
   pace: number;
+  /** What each student knows of road circuits (its line); default the usual. */
+  knowledge: Array<TrackKnowledge | undefined>;
 }
 
 /**
@@ -551,7 +558,9 @@ export class Classroom {
     } else if (this.roadcraftRound) {
       const r = this.roadcraftRound;
       const drills = await runner.roadcraft(r);
-      const solo = await runner.ghost(r.layout, [...r.candidates, ...r.references], { ...SOLO_OPTIONS, pace: r.pace });
+      const solo = await runner.ghost(r.layout, [...r.candidates, ...r.references], {
+        ...SOLO_OPTIONS, pace: r.pace, knowledge: soloKnowledge(r.knowledge, r.candidates.length, r.perStudent, r.references.length),
+      });
       this.finishRound(anchored(drills.results, solo.results, r.perStudent, r.candidates.length, this.track.length, r.pace), drills.time);
     } else {
       throw new Error(`${this.lesson.id} rounds can't be run elsewhere`);
@@ -643,12 +652,14 @@ export class Classroom {
         layout: this.track.layout, pack: this.roadcraftPack(), slot: 0,
         candidates, perStudent: 1 + 2 * lesson.pairs, classmates: this.students.map((s) => s.weights.slice()),
         nerves: this.students.map((s) => s.nerve), references: this.students.map((s) => s.reference), pace: trackPace(this.track),
+        knowledge: this.students.map((s) => s.knowledge),
       };
       this.roadcraftRound.slot = this.round % this.roadcraftRound.pack.spots.length;
     }
     const r = this.roadcraftRound;
     const drill: LessonTrial | null = r
-      ? new RoadcraftTrial(this.track, r.candidates, r.perStudent, r.slot, r.classmates, this.round % this.students.length, r.pack, r.nerves, r.references)
+      ? new RoadcraftTrial(this.track, r.candidates, r.perStudent, r.slot, r.classmates, this.round % this.students.length, r.pack, r.nerves, r.references,
+        r.knowledge)
       : lesson.id === 'cautions'
       ? new CautionTrial(this.track, candidates, 1 + 2 * lesson.pairs, this.drillSlot, this.round % this.students.length,
         this.students.map((s) => s.reference), this.drillSpread, this.students.map((s) => s.weights))
@@ -674,6 +685,8 @@ export class Classroom {
         // the corners are still being tightened nothing it does scores (no-teacher lab, 2026-10-18: 250 rounds and
         // the curriculum never moved). Apprenticed skills start at full tightness, so for them it's always on.
         validLaps: lesson.validLaps && (lesson.id !== 'circuits' || this.roadRadius <= ROAD_FULL_RADIUS),
+        // Each candidate knows what its student knows of road circuits.
+        knowledge: candidates.map((_, i) => this.students[Math.floor(i / (1 + 2 * lesson.pairs))]?.knowledge),
       };
       this.trial = new Trial(this.track, candidates, opts);
       this.ghostRound = { genomes: candidates, opts };
@@ -773,7 +786,7 @@ export class Classroom {
       // The road-course license: once the curriculum is at full tightness, a test on three new club circuits
       // from the line (a full lap, no crash, on every one). A lucky clean round isn't enough.
       if (!s.roadLicensed && this.lesson.id === 'circuits' && this.roadRadius <= ROAD_FULL_RADIUS && this.walls >= 1) {
-        if (roadLicenseTest(s.weights, hashSeed(this.seed, `${s.id}-test${this.round}`), LICENSE_HEALTH)) {
+        if (roadLicenseTest(s.weights, hashSeed(this.seed, `${s.id}-test${this.round}`), LICENSE_HEALTH, s.knowledge)) {
           s.roadLicensed = true;
           graduated = true;
           this.say(`${s.name} passed the road-course test: three new circuits, a clean lap on each`);

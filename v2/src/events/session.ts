@@ -1,6 +1,8 @@
 import type { Flag } from '../sim/raceControl';
 import { bestValidLap } from '../sim/limits';
 import { NeuralDriver, Team } from '../ai/drivers';
+import { fastestLine } from '../ai/racingLine';
+import { DEFAULT_KNOWLEDGE, type TrackKnowledge } from '../ai/observe';
 import { COSTS } from '../ai/costs';
 import { danger, fearScale } from '../ai/fear';
 import { PaceCarDriver, formationTraits } from '../ai/formation';
@@ -44,6 +46,8 @@ export interface EntrantSpec {
   /** roadWeights: the driver's road-course skill (drives road circuits instead of its main network). */
   driver: {
     id: string; weights: Float32Array; roadWeights?: Float32Array; pits?: boolean; setBackPits?: boolean; cautions?: boolean; nerve?: number;
+    /** What it knows of road circuits (its line); default the usual. */
+    roadKnowledge?: TrackKnowledge;
     /** The caution skill (drives while the field is pacing), and the driver's human limits (latency, motor noise). */
     cautionWeights?: Float32Array; limits?: { latency: number; noise: number };
   };
@@ -260,6 +264,11 @@ export class Session {
   constructor(spec: SessionSpec) {
     this.kind = spec.kind;
     this.track = new Track(spec.layout);
+    // Drivers' track knowledge (the circuit's lines, one per margin in the field), worked out now rather than at
+    // the first decision mid-race.
+    if (this.track.kind === 'road') {
+      for (const m of new Set(spec.entrants.map((e) => e.driver.roadKnowledge?.margin ?? DEFAULT_KNOWLEDGE.margin))) fastestLine(this.track, m);
+    }
     const contact = spec.kind !== 'ghost';
     // Race pace is for races' pit windows (and practice for them); a qualifying run is a few laps on fresh tires.
     const wearScale = spec.kind === 'ghost' || spec.kind === 'qualifying' ? 1 : spec.pace;
@@ -278,7 +287,8 @@ export class Session {
       if (contact) placeOnGrid(car, this.track, k, true);
       else this.rollingStart(car); // ghosts share one spot
       const limits = entrant.driver.limits && { ...entrant.driver.limits, seed: (spec.seed ^ ((k + 1) * 0x85ebca6b)) >>> 0 };
-      const driver = new NeuralDriver(entrant.driver.weights, entrant.driver.roadWeights, limits, entrant.driver.cautionWeights);
+      const driver = new NeuralDriver(entrant.driver.weights, entrant.driver.roadWeights, entrant.driver.roadKnowledge,
+        { limits, caution: entrant.driver.cautionWeights });
       const chief = qualifying ? new RunChief((c) => this.qualifying!.wantsIn(c)) : contact ? makeChief(entrant.chief.brain) : null;
       const team = new Team(driver, new TowerSpotter(entrant.spotter.skill), chief,
         // Its own stops where it has learned to make them: a pit road set back across grass needs that too.

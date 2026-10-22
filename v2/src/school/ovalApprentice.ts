@@ -212,7 +212,7 @@ export function classroomRace(
     }
     const d = students[s];
     const limits: DriverLimits = { ...d.limits, seed: hashSeed(seed, `hands${round}:${d.lineage}`) };
-    const student = new NeuralDriver(d.weights, undefined, limits, d.caution ?? undefined);
+    const student = new NeuralDriver(d.weights, undefined, undefined, { limits, caution: d.caution ?? undefined });
     const team = new Team(student, new TowerSpotter(), chief, false, true);
     world.addCar(car, new OvalApprentice(team, student, labellingTeacher(d), driving, examples[s], rng, d.limits.latency));
   }
@@ -258,7 +258,7 @@ function soloDrives(track: Track, students: StableDriver[], driving: Driving, ex
       car.tireLife = TIRE_RANGE[0] + rng.next() * (TIRE_RANGE[1] - TIRE_RANGE[0]);
       car.fuel = FUEL_RANGE[0] + rng.next() * (FUEL_RANGE[1] - FUEL_RANGE[0]);
       const limits: DriverLimits = { ...d.limits, seed: hashSeed(seed, `solo${round}:${d.lineage}:${lane}`) };
-      const student = new NeuralDriver(d.weights, undefined, limits, d.caution ?? undefined);
+      const student = new NeuralDriver(d.weights, undefined, undefined, { limits, caution: d.caution ?? undefined });
       world.addCar(car, new OvalApprentice(new Team(student, new TowerSpotter(), null), student, labellingTeacher(d), driving, examples[s], rng, d.limits.latency));
       for (let k = 0; k < SOLO_SECONDS / P.DT && !car.retired; k++) world.step();
       if (car.retired) crashed++;

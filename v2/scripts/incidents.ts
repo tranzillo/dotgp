@@ -290,7 +290,10 @@ function runRace(trackName: string, seed: number): RaceStats {
     }
     world.addCar(car, neuralTeam(adaptWeights(Float32Array.from(d.weights)), chief,
       (d.pitLicensed && d.pitTrafficLicensed) ?? false, d.cautionLicensed ?? false,
-      limits && { ...limits, seed: (seed * 7919 + k * 104729) >>> 0 }, d.caution && adaptWeights(Float32Array.from(d.caution.weights))));
+      undefined, {
+        limits: limits && { ...limits, seed: (seed * 7919 + k * 104729) >>> 0 },
+        caution: d.caution && adaptWeights(Float32Array.from(d.caution.weights)),
+      }));
   }
   const race = new Race(world, laps, new PaceCarDriver(), withRules ? { rulebook: OVAL_RULES, seed } : undefined);
   const ctl = race.control!;

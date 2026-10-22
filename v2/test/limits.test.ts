@@ -33,14 +33,14 @@ function drive(driver: NeuralDriver, n: number): Array<[number, number]> {
 describe('human limits', () => {
   it('without them, the car gets exactly what the network decides', () => {
     const w = weights();
-    expect(drive(new NeuralDriver(w), 20)).toEqual(drive(new NeuralDriver(w, undefined, { latency: 0, noise: 0, seed: 1 }), 20));
+    expect(drive(new NeuralDriver(w), 20)).toEqual(drive(new NeuralDriver(w, undefined, undefined, { limits: { latency: 0, noise: 0, seed: 1 } }), 20));
   });
 
   it('latency: the car answers what the driver decided a reaction time ago', () => {
     const w = weights();
     const plain = drive(new NeuralDriver(w), 20);
     const ticks = 3;
-    const late = drive(new NeuralDriver(w, undefined, { latency: ticks * P.CONTROL_EVERY * P.DT, noise: 0, seed: 1 }), 20);
+    const late = drive(new NeuralDriver(w, undefined, undefined, { limits: { latency: ticks * P.CONTROL_EVERY * P.DT, noise: 0, seed: 1 } }), 20);
     // The same stationary car decides the same each time, so after the delay the inputs match.
     expect(late.slice(ticks)).toEqual(plain.slice(0, 20 - ticks));
     expect(late[0]).toEqual([0, 0]); // the car keeps what it had until the first decision comes through
@@ -49,8 +49,8 @@ describe('human limits', () => {
   it('motor noise strays from what was meant in proportion to its size, smoothly, and replays exactly', () => {
     const w = weights();
     const meant = drive(new NeuralDriver(w), 400);
-    const a = drive(new NeuralDriver(w, undefined, { latency: 0, noise: 0.05, seed: 9 }), 400);
-    const b = drive(new NeuralDriver(w, undefined, { latency: 0, noise: 0.05, seed: 9 }), 400);
+    const a = drive(new NeuralDriver(w, undefined, undefined, { limits: { latency: 0, noise: 0.05, seed: 9 } }), 400);
+    const b = drive(new NeuralDriver(w, undefined, undefined, { limits: { latency: 0, noise: 0.05, seed: 9 } }), 400);
     expect(a).toEqual(b);
     const rel = a.map(([x], k) => (x - meant[k][0]) / Math.abs(meant[k][0]));
     const sd = Math.sqrt(rel.reduce((s, r) => s + r * r, 0) / rel.length);

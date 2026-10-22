@@ -33,7 +33,7 @@ interface DriverEntry {
   pitLicensed?: boolean;
   pitTrafficLicensed?: boolean;
   cautionLicensed?: boolean;
-  roadCourse?: { weights: number[] };
+  roadCourse?: { weights: number[]; style?: { grip: number; margin: number } };
 }
 
 interface RaceJob { file: string; track: number; seed: number; field: number; km: number; pace: number }
@@ -82,7 +82,9 @@ function runRace(job: RaceJob): CircuitRace {
     const d = drivers[(k + job.seed) % drivers.length];
     const car = new Car(slot);
     placeOnGrid(car, track, slot, true);
-    const brain = new NeuralDriver(adaptWeights(Float32Array.from(d.weights)), d.roadCourse ? adaptWeights(Float32Array.from(d.roadCourse.weights)) : undefined);
+    const style = d.roadCourse?.style;
+    const brain = new NeuralDriver(adaptWeights(Float32Array.from(d.weights)), d.roadCourse ? adaptWeights(Float32Array.from(d.roadCourse.weights)) : undefined,
+      style ? { grip: style.grip, margin: style.margin } : undefined);
     world.addCar(car, new Team(brain, new TowerSpotter(), new StrategistCrewChief(randomTraits(() => rng.next())),
       !!(d.pitLicensed && d.pitTrafficLicensed), d.cautionLicensed ?? false));
   }

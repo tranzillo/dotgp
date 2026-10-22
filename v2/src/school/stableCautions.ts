@@ -36,7 +36,7 @@ export interface CautionPracticeOptions {
 
 /** A stable driver in a drill, driving its own cautions (its caution skill, or the one given), with its human limits. */
 function stableTeam(d: StableDriver, seed: number, caution?: Float32Array): Team {
-  const driver = new NeuralDriver(d.weights, undefined, { ...d.limits, seed }, caution ?? d.caution ?? undefined);
+  const driver = new NeuralDriver(d.weights, undefined, undefined, { limits: { ...d.limits, seed }, caution: caution ?? d.caution ?? undefined });
   return new Team(driver, new TowerSpotter(), null, false, true);
 }
 

@@ -67,18 +67,25 @@ export function observePreview(car: Car, track: Track, out: Float32Array): Float
  * walked it, driven it in the simulator, run practice). At points ahead,
  * where its line runs (across the road, relative to the car) and the speed it
  * takes there (against the car's own, on tyres as worn as these). Road
- * courses only (zero on ovals). For now every driver knows the same line, the
- * circuit's fastest (at the usual margin) at 85% of the tyres' grip.
+ * courses only (zero on ovals). Its line is its own: the circuit's fastest,
+ * kept its margin inside the track limits, at its share of the tyres' grip.
  */
 export const KNOWLEDGE_AHEAD = [0, 15, 30, 50, 80, 120] as const;
 export const KNOWLEDGE_SIZE = 2 * KNOWLEDGE_AHEAD.length;
-/** The share of the tyres' grip the known speeds are for. */
-export const KNOWLEDGE_GRIP = 0.85;
 
-export function observeKnowledge(car: Car, track: Track, out: Float32Array): Float32Array {
+/** What a driver knows of a circuit: its line (how far inside the track limits) and the share of grip it takes it at. */
+export interface TrackKnowledge { grip: number; margin: number }
+export const DEFAULT_KNOWLEDGE: TrackKnowledge = { grip: 0.85, margin: 0.6 };
+/**
+ * The margins a driver's line can keep (m). Each margin is its own line to
+ * work out for a circuit, so they come in steps: a field shares a few.
+ */
+export const KNOWLEDGE_MARGINS = [0.6, 0.9, 1.2, 1.5] as const;
+
+export function observeKnowledge(car: Car, track: Track, out: Float32Array, knowledge: TrackKnowledge = DEFAULT_KNOWLEDGE): Float32Array {
   if (track.kind !== 'road') return out.fill(0);
-  const line = fastestLine(track);
-  const speed = line.at(Math.round(KNOWLEDGE_GRIP * car.grip * 50) / 50).speed;
+  const line = fastestLine(track, knowledge.margin);
+  const speed = line.at(Math.round(knowledge.grip * car.grip * 50) / 50).speed;
   const n = line.d.length;
   KNOWLEDGE_AHEAD.forEach((a, j) => {
     const f = ((((car.s + a) / line.step) % n) + n) % n, i = Math.floor(f), k = (i + 1) % n, t = f - i;

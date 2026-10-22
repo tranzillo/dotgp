@@ -43,7 +43,7 @@ export interface SoloReport {
 const report: SoloReport = { files, seconds, results: [] };
 const tracks = Object.fromEntries(Object.entries(KINDS).map(([kind, make]) => [kind, Array.from({ length: perKind }, (_, k) => make(k))]));
 for (const file of files) {
-  const drivers = JSON.parse(readFileSync(file, 'utf8')).drivers as Array<{ weights: number[]; roadCourse?: { weights: number[] } }>;
+  const drivers = JSON.parse(readFileSync(file, 'utf8')).drivers as Array<{ weights: number[]; roadCourse?: { weights: number[]; style?: { grip: number; margin: number } } }>;
   const out: SoloReport['results'][number] = {};
   for (const [kind, list] of Object.entries(tracks)) {
     // Road circuits are driven by the road-course skill where a driver has one, as in races.
@@ -51,7 +51,9 @@ for (const file of files) {
     const genomes = drivers.map((d) => adaptWeights(Float32Array.from(road ? d.roadCourse?.weights ?? d.weights : d.weights)));
     let distance = 0, crashed = 0, stopped = 0, laps = 0, validLaps = 0, trackLimits = 0, n = 0;
     for (const track of list) {
-      const trial = new Trial(track, genomes, { seconds });
+      // Each driver knows its style's line (if it was taught one).
+      const knowledge = road ? drivers.map((d) => (d.roadCourse?.style ? { grip: d.roadCourse.style.grip, margin: d.roadCourse.style.margin } : undefined)) : undefined;
+      const trial = new Trial(track, genomes, { seconds, knowledge });
       while (!trial.done) trial.step();
       const results = trial.results();
       trial.world.cars.forEach((car, k) => {

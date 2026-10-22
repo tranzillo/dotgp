@@ -3,6 +3,7 @@ import { Trial, type TrialOptions, type TrialResult } from '../ai/evaluate';
 import type { Car } from '../sim/car';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
+import type { TrackKnowledge } from '../ai/observe';
 
 /** One candidate's drill: its own small world, the candidate driving one car in it. */
 export interface Drill<R> {
@@ -30,6 +31,8 @@ export interface SoloAnchor {
   track: Track;
   /** Each student as it drove when the class began. */
   references: Float32Array[];
+  /** What each solo car's driver knows of road circuits ([...candidates, ...references]); default the usual. */
+  knowledge?: Array<TrackKnowledge | undefined>;
 }
 
 /** Seconds of solo laps per round, and seconds of score per second of solo pace lost (losing pace is never worth it). */
@@ -81,7 +84,7 @@ export class DrillTrial<R extends { fitness: number }> {
     this.lapLength = anchor?.track.length ?? 1;
     this.pace = anchor ? trackPace(anchor.track) : 1;
     this.solo = anchor && candidates.length
-      ? new Trial(anchor.track, [...candidates, ...anchor.references], { ...SOLO_OPTIONS, pace: this.pace })
+      ? new Trial(anchor.track, [...candidates, ...anchor.references], { ...SOLO_OPTIONS, pace: this.pace, knowledge: anchor.knowledge })
       : null;
   }
 

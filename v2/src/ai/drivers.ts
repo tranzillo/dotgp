@@ -7,7 +7,7 @@ import { PHYSICS as P, PIT_SERVICE } from '../sim/constants';
 import { PitAutopilot, pitDecisionS, pitRoute, type CrewChief } from './pitting';
 import {
   CALLS_SIZE, CAUTION_SIZE, KNOWLEDGE_AHEAD, KNOWLEDGE_SIZE, LOOKAHEAD, OBS_SIZE, observe, observeCalls, observeCaution, observeKnowledge, observePit, observePreview,
-  PIT_LOOKAHEAD, PIT_SIZE, PREVIEW_SIZE,
+  PIT_LOOKAHEAD, PIT_SIZE, PREVIEW_SIZE, type TrackKnowledge,
 } from './observe';
 import { Rng } from './rng';
 import { RADIO, RADIO_SIZE, TowerSpotter, type Spotter } from './spotter';
@@ -200,6 +200,14 @@ export interface DriverLimits {
   /** Seeds the noise (a driver's own, so a race replays exactly). */
   seed: number;
 }
+/** A driver's optional parts beyond its networks for ovals and road circuits. */
+export interface NeuralDriverExtras {
+  /** Its human limits (latency, motor noise). */
+  limits?: DriverLimits;
+  /** Its caution skill: a network that drives while the field is pacing. */
+  caution?: Float32Array;
+}
+
 /** How long motor noise takes to drift (s): an Ornstein-Uhlenbeck process with this correlation time. */
 const MOTOR_NOISE_TAU = 0.25;
 
@@ -241,7 +249,7 @@ export class NeuralDriver implements DriverBrain {
   private readonly input = new Float32Array(DRIVER_LAYERS[0]);
   private readonly obs = new Float32Array(OBS_SIZE);
   private readonly preview = new Float32Array(PREVIEW_SIZE);
-  private readonly knowledge = new Float32Array(KNOWLEDGE_SIZE);
+  private readonly known = new Float32Array(KNOWLEDGE_SIZE);
   private readonly calls = new Float32Array(CALLS_SIZE);
   /**
    * The caution skill: a network of its own that drives while the field is pacing (cautions, pace laps, the run to
@@ -254,7 +262,14 @@ export class NeuralDriver implements DriverBrain {
   /** The driver's latency and motor noise, if it has human limits (none: the car gets exactly what it decides, at once). */
   private readonly hands: Hands | null;
 
-  constructor(weights: Float32Array, roadWeights?: Float32Array, limits?: DriverLimits, cautionWeights?: Float32Array) {
+  constructor(
+    weights: Float32Array, roadWeights?: Float32Array,
+    /** What it knows of road circuits (its line): default, the fastest at the usual margin and 85% of grip. */
+    readonly knowledge?: TrackKnowledge,
+    /** Its human limits (latency, motor noise), and its caution skill (a network for when the field is pacing). */
+    extras: NeuralDriverExtras = {},
+  ) {
+    const { limits, caution: cautionWeights } = extras;
     this.net = new Network(DRIVER_LAYERS, weights);
     this.roadNet = roadWeights ? new Network(DRIVER_LAYERS, roadWeights) : null;
     this.cautionNet = cautionWeights ? new Network(DRIVER_LAYERS, cautionWeights) : null;
@@ -278,7 +293,7 @@ export class NeuralDriver implements DriverBrain {
     this.input.set(pit, OBS_SIZE + RADIO_SIZE);
     this.input.set(caution, OBS_SIZE + RADIO_SIZE + PIT_SIZE);
     this.input.set(observePreview(car, world.track, this.preview), PREVIEW_FROM);
-    this.input.set(observeKnowledge(car, world.track, this.knowledge), KNOWLEDGE_FROM);
+    this.input.set(observeKnowledge(car, world.track, this.known, this.knowledge), KNOWLEDGE_FROM);
     this.input.set(observeCalls(car, world, this.calls), CALLS_FROM);
     const dir = nextCornerDirection(world.track, car.s);
     if (dir !== 0) this.mirrored = dir < 0; // nothing in sight: keep the last view
@@ -296,10 +311,10 @@ export class NeuralDriver implements DriverBrain {
 }
 
 export function neuralTeam(
-  weights: Float32Array, crewChief: CrewChief | null = null, driverPits = false, driverCautions = false, limits?: DriverLimits,
-  cautionWeights?: Float32Array,
+  weights: Float32Array, crewChief: CrewChief | null = null, driverPits = false, driverCautions = false, knowledge?: TrackKnowledge,
+  extras: NeuralDriverExtras = {},
 ): Team {
-  return new Team(new NeuralDriver(weights, undefined, limits, cautionWeights), new TowerSpotter(), crewChief, driverPits, driverCautions);
+  return new Team(new NeuralDriver(weights, undefined, knowledge, extras), new TowerSpotter(), crewChief, driverPits, driverCautions);
 }
 
 /**
