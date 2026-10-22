@@ -6,7 +6,7 @@ import { genomeSize, Network, widenNetwork } from './network';
 import { PHYSICS as P, PIT_SERVICE } from '../sim/constants';
 import { PitAutopilot, pitDecisionS, pitRoute, type CrewChief } from './pitting';
 import {
-  CALLS_SIZE, CAUTION_SIZE, KNOWLEDGE_AHEAD, KNOWLEDGE_SIZE, LOOKAHEAD, OBS_SIZE, observe, observeCalls, observeCaution, observeKnowledge, observePit, observePreview,
+  CALLS_SIZE, PIT_CALLS_SIZE, observePitCalls, CAUTION_SIZE, KNOWLEDGE_AHEAD, KNOWLEDGE_SIZE, LOOKAHEAD, OBS_SIZE, observe, observeCalls, observeCaution, observeKnowledge, observePit, observePreview,
   PIT_LOOKAHEAD, PIT_SIZE, PREVIEW_SIZE, type TrackKnowledge,
 } from './observe';
 import { Rng } from './rng';
@@ -21,8 +21,12 @@ export const KNOWLEDGE_FROM = PREVIEW_FROM + PREVIEW_SIZE;
 export const CAUTION_FROM = OBS_SIZE + RADIO_SIZE + PIT_SIZE;
 /** Where race control's caution calls start in the driver's inputs (after track knowledge). */
 export const CALLS_FROM = KNOWLEDGE_FROM + KNOWLEDGE_SIZE;
-/** Driver network: own-car observations + the spotter's radio + a pit stop in progress + a caution + the road ahead + the caution calls -> acceleration request. */
-export const DRIVER_LAYERS = [CALLS_FROM + CALLS_SIZE, 32, 24, 2] as const;
+/** Where the spotter's calls about other cars' pit stops start (after the caution calls). */
+export const PIT_CALLS_FROM = CALLS_FROM + CALLS_SIZE;
+/** Driver network: own-car observations + the spotter's radio + a pit stop in progress + a caution + the road ahead + the caution calls + others' pit stops -> acceleration request. */
+export const DRIVER_LAYERS = [PIT_CALLS_FROM + PIT_CALLS_SIZE, 32, 24, 2] as const;
+/** Before the calls about others' pit stops. */
+export const CALLS_DRIVER_LAYERS = [CALLS_FROM + CALLS_SIZE, 32, 24, 2] as const;
 /** Earlier drivers, still loadable via adaptWeights: before the caution calls, before track knowledge, before the preview, before caution inputs, before pit inputs, and solo-era (no radio). */
 export const KNOWLEDGE_DRIVER_LAYERS = [KNOWLEDGE_FROM + KNOWLEDGE_SIZE, 32, 24, 2] as const;
 export const PREVIEW_DRIVER_LAYERS = [PREVIEW_FROM + PREVIEW_SIZE, 32, 24, 2] as const;
@@ -34,7 +38,7 @@ export const LEGACY_DRIVER_LAYERS = [OBS_SIZE, 16, 12, 2] as const;
 /** Upgrade saved weights to the current driver network, preserving behaviour (new inputs start ignored). */
 export function adaptWeights(w: Float32Array): Float32Array {
   if (w.length === genomeSize(DRIVER_LAYERS)) return w;
-  for (const old of [KNOWLEDGE_DRIVER_LAYERS, PREVIEW_DRIVER_LAYERS, CAUTION_DRIVER_LAYERS, PIT_DRIVER_LAYERS, RADIO_DRIVER_LAYERS, LEGACY_DRIVER_LAYERS]) {
+  for (const old of [CALLS_DRIVER_LAYERS, KNOWLEDGE_DRIVER_LAYERS, PREVIEW_DRIVER_LAYERS, CAUTION_DRIVER_LAYERS, PIT_DRIVER_LAYERS, RADIO_DRIVER_LAYERS, LEGACY_DRIVER_LAYERS]) {
     if (w.length === genomeSize(old)) {
       const rng = new Rng(w.length);
       return widenNetwork(old, w, DRIVER_LAYERS, () => rng.next());
@@ -251,6 +255,7 @@ export class NeuralDriver implements DriverBrain {
   private readonly preview = new Float32Array(PREVIEW_SIZE);
   private readonly known = new Float32Array(KNOWLEDGE_SIZE);
   private readonly calls = new Float32Array(CALLS_SIZE);
+  private readonly pitCalls = new Float32Array(PIT_CALLS_SIZE);
   /**
    * The caution skill: a network of its own that drives while the field is pacing (cautions, pace laps, the run to
    * the restart), so learning cautions can't cost the driver its racing. None: the main network drives those too.
@@ -295,6 +300,7 @@ export class NeuralDriver implements DriverBrain {
     this.input.set(observePreview(car, world.track, this.preview), PREVIEW_FROM);
     this.input.set(observeKnowledge(car, world.track, this.known, this.knowledge), KNOWLEDGE_FROM);
     this.input.set(observeCalls(car, world, this.calls), CALLS_FROM);
+    this.input.set(observePitCalls(car, world, this.pitCalls), PIT_CALLS_FROM);
     const dir = nextCornerDirection(world.track, car.s);
     if (dir !== 0) this.mirrored = dir < 0; // nothing in sight: keep the last view
     if (this.mirrored) mirrorDriverInputs(this.input);

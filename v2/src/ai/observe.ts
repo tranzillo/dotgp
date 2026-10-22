@@ -138,6 +138,42 @@ export const CAUTION_SIZE = 7;
 
 export const CALLS_SIZE = 5;
 
+export const PIT_CALLS_SIZE = 3;
+/** The radio's reach ahead (m) and what counts as in our lane (m): as the spotter calls the cars ahead. */
+const PIT_CALL_AHEAD = 120;
+const PIT_CALL_LANE = 3.5;
+
+/**
+ * What a spotter says about other cars' pit stops: the car ahead in our lane
+ * is diving for pit road ("he's pitting": it's about to brake hard, and drops
+ * to the apron to show it), so is the next car ahead in any lane, and a car
+ * coming out of the pits is merging ahead of us (slow, on the apron, coming
+ * up). Each by how near it is (1 touching, 0 out of range). The radio's other
+ * channels don't say why a car is slow; the oval teacher gives a car heading
+ * in room for full braking, and drivers couldn't see why (stable v9: drivers
+ * hitting pitting cars were the speedway's leading cause of retirements).
+ */
+export function observePitCalls(car: Car, world: World, out: Float32Array): Float32Array {
+  out.fill(0);
+  if (!world.opts.collisions) return out;
+  const L = world.track.length;
+  let lane = Infinity, any = Infinity, laneCar: Car | null = null, anyCar: Car | null = null;
+  for (const other of world.cars) {
+    if (other === car || other.cleared || other.retired) continue;
+    if (other.surface === 'pit' && car.surface !== 'pit') continue; // behind the pit wall: not traffic
+    let ds = other.s - car.s;
+    if (ds > L / 2) ds -= L;
+    else if (ds < -L / 2) ds += L;
+    if (ds <= 0 || ds > PIT_CALL_AHEAD) continue;
+    if (Math.abs(other.d - car.d) < PIT_CALL_LANE && ds < lane) { lane = ds; laneCar = other; }
+    else if (ds < any) { any = ds; anyCar = other; }
+    if (other.pit.phase === 'out') out[2] = Math.max(out[2], 1 - ds / PIT_CALL_AHEAD);
+  }
+  if (laneCar?.pit.phase === 'in') out[0] = 1 - lane / PIT_CALL_AHEAD;
+  if (anyCar?.pit.phase === 'in') out[1] = 1 - any / PIT_CALL_AHEAD;
+  return out;
+}
+
 /**
  * What race control and the spotter tell a driver under caution, beyond where
  * its place is: whether the line has formed yet (the pace car has picked up
