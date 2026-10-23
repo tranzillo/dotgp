@@ -15,7 +15,10 @@ export type { Projection } from './centerline';
  * past it is what's there (grass, another track), not more racing surface.
  */
 const OPEN_BEYOND = 3;
-/** How far before the pit wall's nose a car not pitting keeps clear of its line (m). */
+/**
+ * How far before the pit wall's nose a car not pitting keeps clear of its line (m). Lane changes under the
+ * formation are gentle: at 40 m/s on a circuit straight, 60 m wasn't time to get across.
+ */
 const PIT_WALL_APPROACH = 60;
 
 /** Pit lane as the sim uses it: the layout's pit plus derived world positions. */
@@ -212,7 +215,7 @@ export class Track extends Centerline {
    * track's edge than a car's width (the track limits allow a car's centre there), so a car on the inside line,
    * holding a lane under caution or backing out of an aborted pit entry, met it head on.
    */
-  pitWallClear(s: number, clearance = 0.5): number {
+  pitWallClear(s: number, clearance = 1): number {
     if (!this.inRange(s, [this.pit.wallStart - PIT_WALL_APPROACH, this.pit.wallEnd])) return Infinity;
     return this.pit.wallD + this.pitOffset(s) - PHYSICS.CAR_RADIUS - clearance;
   }

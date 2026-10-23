@@ -111,8 +111,13 @@ const ALONGSIDE = 2 * P.CAR_RADIUS;
 const CAUTION_DRIVE_GAIN = 6;
 /** The same for racing, on ovals (the oval stable's teachers): see RacerStyle.driveGain. */
 export const OVAL_DRIVE_GAIN = 4;
-/** How far ahead it looks for a car in its path (m). */
+/**
+ * How far ahead it looks for a car in its path (m): at least this, and as far as it takes to stop from its speed at
+ * the following brake (plus a reaction). At 55 m/s on a circuit straight, 60 m was 1.1 s: a car slowing for pit
+ * road came into view too late to brake for (circuits: the commonest teacher crash).
+ */
 const LOOKAHEAD = 60;
+const lookahead = (v: number) => Math.max(LOOKAHEAD, v * REACTION + (v * v) / (2 * 0.5 * P.TIRE_MU * G));
 /** Reaction time in the following gap (s). */
 const REACTION = 0.4;
 /** How fast it moves across the road to a new offset (m/s). */
@@ -171,7 +176,10 @@ export class TrafficRacer {
     const ctl = world.control;
     if (!ctl) return Infinity;
     const brake = 0.5 * P.TIRE_MU * G;
-    const gap = 2 * P.CAR_RADIUS + this.formation.traitsFor(car).followGap + followLoss(car.speed, REACTION, brake, brake);
+    const gapBehind = (other: Car) => 2 * P.CAR_RADIUS + this.formation.traitsFor(car).followGap
+      // A car heading for pit road brakes hard for it: room for full braking (circuits' safety cars: cars at 40 m/s
+      // ran into pitters slowing for pit road before the pickup).
+      + followLoss(car.speed, REACTION, other.pit.phase === 'in' ? P.TIRE_MU * G : brake, brake);
     // A wreck the lane it's heading for clears (it's going round it) isn't the car ahead: stopping behind it, it
     // couldn't steer round it, and the whole line would queue behind. The next car ahead in the file is.
     const clears = (o: Car) => o.retired && Math.abs(o.d - lane) >= 2 * P.CAR_RADIUS + 0.3;
@@ -182,7 +190,7 @@ export class TrafficRacer {
       const ds = world.track.distanceFrom(car.s, other.s);
       if (ds <= 0 || ds > 220) continue;
       const vOther = other.retired ? 0 : other.speed;
-      cap = Math.min(cap, Math.sqrt(vOther * vOther + 2 * brake * Math.max(0, ds - gap)));
+      cap = Math.min(cap, Math.sqrt(vOther * vOther + 2 * brake * Math.max(0, ds - gapBehind(other))));
     }
     return cap;
   }
@@ -218,12 +226,13 @@ export class TrafficRacer {
     let low = here.lo, high = here.hi; // absolute bounds on d now
     let followCap = Infinity, followAt = 0;
     let yieldTo = Infinity; // the speed of the slowest car alongside and ahead of it, to drop back behind if squeezed
+    const reach = lookahead(vMe);
     for (const other of world.cars) {
       if (other === car || other.cleared || other.waiting) continue;
       let ds = other.s - car.s;
       if (ds > L / 2) ds -= L;
       else if (ds < -L / 2) ds += L;
-      if (ds > LOOKAHEAD) continue;
+      if (ds > reach) continue;
       if (ds <= -ALONGSIDE) {
         // Behind: a car coming up a lane over is as good as alongside if it will be there before this car could
         // be across into its lane ("car outside!"), so it isn't moved over on.
@@ -268,8 +277,10 @@ export class TrafficRacer {
       }
       // Follow: no closer than the gap, closing it no faster than it can stop.
       const brake = 0.5 * P.TIRE_MU * G;
-      // A car heading for pit road is about to brake hard, and shows it (down to the apron): room for that.
-      const insure = this.style.insure === undefined || other.pit.phase === 'in' ? undefined : this.style.insure;
+      // A car heading for pit road is about to brake hard, and shows it (down to the apron): room for that, full
+      // braking. (Before, it got the reaction gap, which plans on the car ahead braking no harder than this one's
+      // own following brake: under a safety car on circuits, cars at 40 m/s ran into pitters slowing for pit road.)
+      const insure = other.pit.phase === 'in' ? P.TIRE_MU * G : this.style.insure;
       const gap = 2 * P.CAR_RADIUS + 2 + (insure === undefined ? REACTION * vMe : followLoss(vMe, REACTION, insure, brake));
       const spare = Math.max(0, ds - gap);
       const cap = Math.sqrt(vOther * vOther + 2 * brake * spare);
