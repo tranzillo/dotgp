@@ -13,12 +13,14 @@ What we've learned training drivers, from both funnels, with the evidence. Newes
    - **On/off control.** The line followers drove flat out below their target speed. A network learns the average of on and off: it coasts where the teacher braked. Proportional drive (`driveGain`) made caution throttle about 20x easier to copy (9934fbc). The pit maneuver had the same flaw (8561497: watching-round loss 0.027 → 0.0047).
      - Caveat: on circuits the smooth racing throttle made the teacher *harder* to copy on unseen circuits (81% → 67% of its answers explained). A proportional racer trails the line's speed out of slow corners by an amount the student can't see. So it's an oval style setting, off for road teachers.
    - **Threshold rules.** The formation script decides by in/out bands: near your place or not, in a file or not. A smooth network averages across a jump, and a car slightly out of place is always near one. `src/ai/smoothFormation.ts` keeps the intent with bands. Student-driven caution throttle went from 71-73% explained to 78%.
+   - **Demonstrations only near the teacher's own states.** A teacher that is always at the right speed never shows what to do when far below it. Racing-line students learned to brake by position alone and parked in hairpins after a slow approach. Speed knocks in the apprenticeship (the car's speed cut to a random share while the student drives) cut club stops 15% → 3% (b3d0818). The oval noise-injection rounds (`--shake`) attack the same gap.
    - **Hidden teacher state.** The traffic racer's planned offset followed its own plan while a student drove, so its labels answered for a car that wasn't there. `takeOver()` re-anchors it before every label, in both disciplines. Steering on student-driven moments went from 74% to 82% explained.
 3. **Perception beats capacity.** Bigger networks never fit better: 32x24 to 256x128 on circuits; 32x24 to 128x96 on ovals. What the driver can see does matter:
    - Track knowledge (its line and the line's speed ahead): circuits 58% → 86% explained (b75b1d9), ovals 64% → 71%.
    - Race control's caution calls, and the spotter's calls about other cars' pit stops: small gains.
    - Seeing the 6 nearest cars ahead instead of the radio's 5 changed nothing (c662970).
    - Rule: when the teacher acts on something, the student needs a way to perceive it.
+   - **Style survives only if it's perceived.** With every circuit driver knowing the same line, practice washed styles out (laps within 84-87%). When each knows its own style's line, styles survive practice and racecraft: laps spread 4.6%, ordered by grip share (b2a885f).
 4. **A skill trained only on its own situation forgets everything else.**
    - Every drill lesson that trained the whole network cost drivers their racing: the Cautions and pit lessons in the lab.
    - Skill networks fix it by construction. Each skill is a network of its own: oval racing, oval cautions, road racing, road cautions, pits.
@@ -30,12 +32,19 @@ What we've learned training drivers, from both funnels, with the evidence. Newes
    - In DAgger the teacher labels from where the student's limits leave the car.
    - In ES, a student's variations share their noise so it doesn't pick the winner.
    - Switching limits off didn't make oval students safer (18-32 out still), so they aren't the oval gap.
+   - **Train through them.** The circuit field given limits it never trained with: 3.3 retirements a race, 1.4 safety cars, 17 of 20 finishing. Trained through them: 0.5, 0.2, 19.6. Against no limits, the trained field has believable mistakes (track-limit offences 7.8 → 25.7) and keeps its pace (−1.1%) (97b275f).
 8. **Measure what you want, in full races.**
    - Short races hid how oval wrecks pile up over 150 km (30-lap tests looked fine).
    - The bench reports retirements, lap time, passes, time alongside and drafting, the share driven by scripts, and twins (same-spot lane and speed against the car ahead).
    - Head to head in mixed fields (`--h2h`) catches what separate fields don't. The oval stable laps 10-20% faster than the house drivers but finishes 3-4 places worse, because it crashes more.
 9. **Every training score in seconds** (b1b2807): progress at the track's pace, damage taken and done by fault at 120 s a unit, fear (seconds of an imminent hit) and trauma scaled by nerve. Scores from different tracks and situations are then comparable.
-10. **No scripts in races, eventually.** Scripts are teachers in class, never drivers in races. The bench measures their share. Ovals: the formation script is gone from the stable's races, and the pit maneuver remains. Circuits: formation 9.4%, pit maneuver 0.14% (ca4f1c5).
+10. **Check the physics and the measuring stick before concluding.** Three "learning failures" were measurement or physics:
+    - Every no-teacher circuit learner "learned to stop": brakes pushed a crawling car backwards (d3bb2e3).
+    - Solo crash rates counted cars stuck in the gravel as crashes (1b76a5b).
+    - Pit drills cut superspeedway stops off mid-merge (172869d).
+
+    Trace a few cases before believing a number.
+11. **No scripts in races, eventually.** Scripts are teachers in class, never drivers in races. The bench measures their share. Ovals: the formation script is gone from the stable's races, and the pit maneuver remains. Circuits: formation 9.4%, pit maneuver 0.14% (ca4f1c5).
 
 ## Ovals: where it stands (2026-10-23)
 
@@ -57,12 +66,14 @@ What we've learned training drivers, from both funnels, with the evidence. Newes
 
 ## Circuits: where it stands (2026-10-23)
 
-- The best pipeline:
-  - a traffic-racer teacher with track knowledge
-  - apprenticeship with knocks, packs and worn tyres
-  - PPO practice, then ES racecraft (b75b1d9)
-- Styled students race within noise of their teachers on retirements, 1.7% slower, cleaner on track limits (c40082a).
-- Road cautions and a pit skill are under way (8561497).
+- **The teacher:** a traffic racer on the circuit's computed fastest line (`racingLine.ts`), at the driver's style (grip share, margin, room), following and leaving room, never passing (scripted passing cost more than it gained). Its throttle is flat out below target: smooth throttle made it harder to copy on circuits.
+- **The pipeline** (`class.ts --teacher traffic:G --knocks 2 --apprentice-rounds 24 --apprentice-epochs 8 --packs 2 --wear [--styles] [--limits]`, then `ppo.ts` 300 iterations `--wear`, then `class.ts --lesson roadcraft` 150 rounds):
+  - Apprenticeship with speed knocks, pack drills and worn tyres, each student knowing its own line, through its human limits.
+  - PPO practice (300 iterations; longer drifts riskier).
+  - ES racecraft (cuts corner-cutting in traffic: valid laps 75% → 96%, at 1.7% of pace).
+- **Results:** against the line-follower pipeline, best lap 13% faster, damage done −80% or more, 96% valid laps (b2a885f). Styled students race within noise of their own teachers, 1.7% slower and cleaner on track limits (c40082a).
+- **Not working:** PPO racecraft (worse in traffic); learning from scratch (curricula stall at 43-58 m corners); chicanes beyond what the line already gives.
+- **Under way:** the oval stable's 40 individuals learning road courses under their own personalities (`class.ts` derives a stable driver's road style from its nerve and talent); road cautions and a pit skill (8561497, 172869d).
 
 ## Open questions across funnels
 
