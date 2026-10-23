@@ -155,7 +155,10 @@ export class FormationDriver {
   /** Toward a lane at a speed, no faster than the driver's own discipline allows (if it brings one). */
   private drive(car: Car, world: World, lane: number, v: number): void {
     const want = this.discipline ? Math.min(v, this.discipline(car, world, lane)) : v;
-    followLine(car, world, () => lane, () => want, 0.85, false, this.driveGain);
+    // Never at the pit wall's nose unless pitting (it stands closer to the edge than a car's width).
+    const t = world.track;
+    const laneAt = car.pit.phase === 'none' ? (s: number) => Math.min(lane, t.pitWallClear(s)) : () => lane;
+    followLine(car, world, laneAt, () => want, 0.85, false, this.driveGain);
   }
 }
 

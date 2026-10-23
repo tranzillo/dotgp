@@ -305,6 +305,8 @@ const BOX_WAIT_LIMIT = 10;
 const ABORT_DISTANCE = 140;
 /** ... but not before the car has had this far past the pit entry (m) to move over. */
 const ABORT_GRACE = 40;
+/** Speed an aborted pit entry backs out at (m/s). */
+const ABORT_SPEED = 18;
 
 export class PitAutopilot {
   /** The lane the car was in when the crew chief called it in (the route starts from there). */
@@ -379,7 +381,9 @@ export class PitAutopilot {
         car.inputY = 0;
         return;
       }
-      followLine(car, world, (s) => track.innerEdgeAt(s) - 2.5, () => Infinity, 0.75, false, this.driveGain);
+      // Slowly enough to be back across before the nose (at racing speed it isn't, and the nose is a car's width
+      // from the edge).
+      followLine(car, world, (s) => Math.min(track.innerEdgeAt(s) - 2.5, track.pitWallClear(s)), () => ABORT_SPEED, 0.75, false, this.driveGain);
       return;
     }
     if (pit.phase === 'in') {

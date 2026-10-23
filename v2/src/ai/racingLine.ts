@@ -95,6 +95,8 @@ function corridor(track: Track, step: number, margin: number): Corridor {
       if (wall.faces === 'in' && mid + half > c.lo[k] - P.CAR_RADIUS - 2) c.lo[k] = Math.max(c.lo[k], mid + half + P.CAR_RADIUS + margin);
       if (wall.faces === 'out' && mid - half < c.hi[k] + P.CAR_RADIUS + 2) c.hi[k] = Math.min(c.hi[k], mid - half - P.CAR_RADIUS - margin);
     }
+    // Clear of the pit wall's nose and the wall along pit road (it isn't among the track's walls).
+    c.hi[k] = Math.min(c.hi[k], track.pitWallClear(s, margin));
     if (c.lo[k] > c.hi[k]) c.lo[k] = c.hi[k] = (c.lo[k] + c.hi[k]) / 2;
   }
   return c;

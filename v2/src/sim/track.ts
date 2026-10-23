@@ -1,4 +1,5 @@
 import { Centerline } from './centerline';
+import { PHYSICS } from './constants';
 import { PolygonIndex } from './polygon';
 import { legacyNetwork, RoadGraph } from './roads';
 import {
@@ -14,6 +15,8 @@ export type { Projection } from './centerline';
  * past it is what's there (grass, another track), not more racing surface.
  */
 const OPEN_BEYOND = 3;
+/** How far before the pit wall's nose a car not pitting keeps clear of its line (m). */
+const PIT_WALL_APPROACH = 60;
 
 /** Pit lane as the sim uses it: the layout's pit plus derived world positions. */
 export interface PitGeometry extends PitLane {
@@ -193,6 +196,17 @@ export class Track extends Centerline {
   /** True where the pit wall stands. */
   inPitWallZone(s: number): boolean {
     return this.inRange(s, [this.pit.wallStart, this.pit.wallEnd]);
+  }
+
+  /**
+   * The furthest toward pit road (+d) a car not pitting can be, its side clear of the pit wall by `clearance`, from
+   * PIT_WALL_APPROACH m before the wall's nose to its end; Infinity elsewhere. The wall's nose stands closer to the
+   * track's edge than a car's width (the track limits allow a car's centre there), so a car on the inside line,
+   * holding a lane under caution or backing out of an aborted pit entry, met it head on.
+   */
+  pitWallClear(s: number, clearance = 0.5): number {
+    if (!this.inRange(s, [this.pit.wallStart - PIT_WALL_APPROACH, this.pit.wallEnd])) return Infinity;
+    return this.pit.wallD + this.pitOffset(s) - PHYSICS.CAR_RADIUS - clearance;
   }
 
   /**
