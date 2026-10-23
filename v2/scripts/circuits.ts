@@ -140,7 +140,7 @@ function runRace(job: RaceJob): CircuitRace {
       world.cars.forEach((car, k) => {
         const team = world.controllers[k];
         if (car.retired || car.finished || !(team instanceof Team)) return;
-        if (team.mode === 'pit' && !team.driverPits) byPit++;
+        if (team.mode === 'pit') byPit++;
         else if (team.mode === 'formation') byFormation++;
         else byDriver++;
       });

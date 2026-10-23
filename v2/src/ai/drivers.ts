@@ -112,7 +112,8 @@ export class Team implements Controller {
     observeCaution(car, world, this.cautionInputs);
     if (!this.driverPits && (car.pit.phase !== 'none' || this.autopilot.aborting)) { this.mode = 'pit'; this.autopilot.decide(car, world, this.spotter); }
     else if (!this.driverCautions && this.inFormation(car, world)) { this.mode = 'formation'; this.formation.decide(car, world); }
-    else { this.mode = car.pit.phase === 'none' ? 'driver' : 'pit'; this.driver.decide(car, world, this.radio, this.pitInputs, this.cautionInputs); }
+    // The driver drives (its own stops too, if it drives them): a script's share is only what a script drove.
+    else { this.mode = 'driver'; this.driver.decide(car, world, this.radio, this.pitInputs, this.cautionInputs); }
   }
 
   /**

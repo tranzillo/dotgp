@@ -27,8 +27,8 @@ const DRILL_SECONDS = 100;
 /** Laps of score per unit of health the rest of the field lost in contact with the student. */
 
 /** The field around the student (m ahead of it at the start, lane). */
-const PITTERS: Array<[number, number]> = [[40, 2], [90, -1]];
-const RACERS: Array<[number, number]> = [[-60, 3], [-100, -3], [130, 0], [200, -3]];
+export const PITTERS: Array<[number, number]> = [[40, 2], [90, -1]];
+export const RACERS: Array<[number, number]> = [[-60, 3], [-100, -3], [130, 0], [200, -3]];
 /** Lanes the student may start its in-lap in (the lesson's drills use the first; the refresher all). */
 const STUDENT_LANES = [0, -3, 3];
 

@@ -21,7 +21,9 @@ import type { Track } from '../sim/track';
 import { World, type Controller } from '../sim/world';
 import { hashSeed } from '../trackgen';
 import { apprenticeTrack } from './ovalApprentice';
-import { inLapStart, START_SPEED } from './pitLesson';
+import { inLapStart, startInLap, START_SPEED } from './pitLesson';
+import { PITTERS, RACERS } from './pitTrafficLesson';
+import { DEFAULT_STYLE, TrafficRacer } from '../ai/trafficRacer';
 import { circuitTrack } from './roadLesson';
 
 /** A driver as far as pit stops go: its skills (the pit skill once it has one), its line and its human limits. */
@@ -85,9 +87,13 @@ const TEACHING_DRIVE_GAIN = 4;
 const DRILL_SECONDS = 200;
 const AFTER_MERGE = 5;
 
-/** One drill: the car on its in-lap with a stop called, the student or the maneuver driving. Returns whether the stop got done. */
-function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number, examples: Example[], seed: number): boolean {
-  const world = new World(track, { collisions: false, drafting: false });
+/**
+ * One drill: the car on its in-lap with a stop called, the student or the maneuver driving; in traffic, two cars
+ * ahead stopping too (the maneuver driving them) and four racing past (traffic racers), as the pit-traffic lesson
+ * places them. Returns whether the stop got done.
+ */
+function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number, examples: Example[], seed: number, traffic = false): boolean {
+  const world = new World(track, { collisions: traffic, drafting: traffic });
   const limits: DriverLimits | undefined = d.limits && { ...d.limits, seed };
   const student = new NeuralDriver(d.weights, d.road, d.knowledge, { limits, pit: d.pit ?? undefined });
   const team = new Team(student, new TowerSpotter(), null, studentDrives);
@@ -104,6 +110,22 @@ function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number
   // A teacher's throttle has to be one a student can copy: in proportion, not flat out below its speed.
   team.autopilot.driveGain = TEACHING_DRIVE_GAIN;
   team.autopilot.begin(car);
+  if (traffic) {
+    const racer = () => new TrafficRacer(track.kind === 'road' ? { ...DEFAULT_STYLE, pass: Infinity } : DEFAULT_STYLE);
+    for (const [ahead, l] of PITTERS) {
+      const other = new Car(world.cars.length);
+      const t = new Team(racer(), new TowerSpotter(), null, false, true);
+      world.addCar(other, t);
+      startInLap(other, t, track, ahead, l);
+      setSpeed(other, track, speed);
+    }
+    for (const [ahead, l] of RACERS) {
+      const other = new Car(world.cars.length);
+      world.addCar(other, new Team(racer(), new TowerSpotter(), null, false, true));
+      other.placeOnTrack(track, s + ahead, l);
+      setSpeed(other, track, track.kind === 'road' ? Math.min(START_SPEED, speedAt(track, s + ahead)) : START_SPEED);
+    }
+  }
   let serviced = false;
   const phase = (): PitState['phase'] => car.pit.phase;
   let done = -1;
@@ -113,6 +135,12 @@ function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number
     if (done < 0 && serviced && phase() === 'none') done = k;
   }
   return serviced && phase() === 'none' && !car.retired;
+}
+
+/** A car at a speed along the track. */
+function setSpeed(car: Car, track: Track, speed: number): void {
+  car.vx = track.tx[car.trackIdx] * speed;
+  car.vy = track.ty[car.trackIdx] * speed;
 }
 
 /** The speed the fastest line takes at a point (85% of grip), for a start that isn't already off the road. */
@@ -136,9 +164,10 @@ export function apprenticePitSkill(students: PitStudent[], seed: number, options
     let stops = 0, completed = 0;
     students.forEach((d, i) => {
       for (const track of tracks) {
-        for (const lane of [-2, 2]) {
+        // One stop alone, one in traffic (as stops are in races: others pitting, the field racing past).
+        for (const [lane, traffic] of [[-2, false], [2, true]] as const) {
           stops++;
-          if (drill(track, d, round > 0, lane, examples[i], hashSeed(seed, `hands${round}:${d.lineage}:${track.length}:${lane}`))) completed++;
+          if (drill(track, d, round > 0, lane, examples[i], hashSeed(seed, `hands${round}:${d.lineage}:${track.length}:${lane}`), traffic)) completed++;
         }
       }
     });
