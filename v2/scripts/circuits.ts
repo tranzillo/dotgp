@@ -6,6 +6,10 @@
  * the same circuits, grids and seeds, and B is judged against A race by race.
  *
  *   npx tsx scripts/circuits.ts [A.json] [B.json] [--tracks 6] [--seeds 2] [--field 20] [--km 25] [--pace 4] [--jobs N] [--json out.json]
+ *     [--script-cautions 1]
+ *
+ * Drivers drive their own cautions if licensed (with their caution skill, if they have one); --script-cautions: the
+ * formation script drives everyone's (to judge racing apart from cautions).
  *
  * Circuits alternate club and GP. Drivers drive their road-course skill where
  * they have one (their oval network otherwise), cycling through the file.
@@ -40,11 +44,17 @@ interface DriverEntry {
   pitLicensed?: boolean;
   pitTrafficLicensed?: boolean;
   cautionLicensed?: boolean;
-  roadCourse?: { weights: number[]; style?: { grip: number; margin: number; room?: number } };
+  roadCourse?: { weights: number[]; style?: { grip: number; margin: number; room?: number }; caution?: { weights: number[] } };
   limits?: { latency: number; noise: number };
+  /** A caution skill: the network that drives while the field is pacing; and one for road circuits, if it has its own. */
+  caution?: { weights: number[] };
 }
 
-interface RaceJob { file: string; track: number; seed: number; field: number; km: number; pace: number }
+interface RaceJob {
+  file: string; track: number; seed: number; field: number; km: number; pace: number;
+  /** Cautions driven by the formation script for everyone, whatever they've learned (to judge racing apart). */
+  scriptCautions?: boolean;
+}
 
 /** One race, summed up. Counts are per race (the whole field). */
 export interface CircuitRace {
@@ -105,9 +115,10 @@ function runRace(job: RaceJob): CircuitRace {
     // As it is: its style's line, its human limits (if it has them; seeded by race and slot, so both files' cars match).
     const m = makeupOf(d, hashSeed(job.seed, `hands${job.track}:${slot}`));
     const brain = new NeuralDriver(adaptWeights(Float32Array.from(d.weights)), d.roadCourse ? adaptWeights(Float32Array.from(d.roadCourse.weights)) : undefined,
-      m.knowledge, { limits: m.limits });
+      m.knowledge, { limits: m.limits, caution: d.caution && !job.scriptCautions ? adaptWeights(Float32Array.from(d.caution.weights)) : undefined,
+        roadCaution: d.roadCourse?.caution && !job.scriptCautions ? adaptWeights(Float32Array.from(d.roadCourse.caution.weights)) : undefined });
     world.addCar(car, new Team(brain, new TowerSpotter(), new StrategistCrewChief(randomTraits(() => rng.next())),
-      !!(d.pitLicensed && d.pitTrafficLicensed), d.cautionLicensed ?? false));
+      !!(d.pitLicensed && d.pitTrafficLicensed), !job.scriptCautions && (d.cautionLicensed ?? false)));
   }
   const race = new Race(world, laps, new PaceCarDriver(), { rulebook: CIRCUIT_RULES, seed: job.seed });
   const ctl = race.control!;
@@ -188,7 +199,7 @@ async function main(): Promise<void> {
   const jobs = Math.max(1, Number(args.get('jobs') ?? cpus().length - 1));
 
   const queue: RaceJob[] = [];
-  for (const file of files) for (let t = 0; t < tracks; t++) for (let seed = 1; seed <= seeds; seed++) queue.push({ file, track: t, seed, field, km, pace });
+  for (const file of files) for (let t = 0; t < tracks; t++) for (let seed = 1; seed <= seeds; seed++) queue.push({ file, track: t, seed, field, km, pace, scriptCautions: args.has('script-cautions') });
   const results = new Map<RaceJob, CircuitRace>();
   const t0 = Date.now();
   const todo = [...queue];

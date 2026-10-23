@@ -70,7 +70,7 @@ export function teacherOf(d: { lineage: number; nerve: number; talent: number })
 }
 
 /** The line a student knows: its teacher's (the fastest line at its teacher's margin, at its teacher's share of grip). */
-export function lineOf(d: StableDriver): TrackKnowledge {
+export function lineOf(d: { lineage: number; nerve: number; talent: number }): TrackKnowledge {
   const { style } = teacherOf(d);
   return { grip: style.grip, margin: style.margin };
 }
@@ -118,8 +118,8 @@ class ShakenHands {
   }
 }
 
-/** Records (what the student saw, what its teacher would do) whoever drives. */
-class OvalApprentice implements Controller {
+/** Records (what the student saw, what its teacher would do) whoever drives (ovals, and road circuits' cautions). */
+export class OvalApprentice implements Controller {
   private readonly hands: ShakenHands | null;
   private readonly studentDrives: boolean;
 

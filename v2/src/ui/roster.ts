@@ -37,9 +37,11 @@ export interface DriverAgent {
    * The road-course skill: a second network for road circuits, its training rounds, and the license; and the
    * style it was taught (its line: grip share, margin inside the track limits; room left alongside), if any.
    */
-  roadCourse?: { weights: Float32Array; rounds: number; licensed: boolean; radius?: number; style?: RoadStyle };
+  roadCourse?: { weights: Float32Array; rounds: number; licensed: boolean; radius?: number; style?: RoadStyle; caution?: { weights: Float32Array } };
   /** The caution skill: a network of its own that drives while the field is pacing (cautions, pace laps, restarts). */
   caution?: { weights: Float32Array };
+  /** Its pit skill: a network that drives its own pit stops, on ovals and circuits. */
+  pit?: { weights: Float32Array };
   /** Human limits: seconds from seeing to the car answering, and motor noise (share of an input it strays by). */
   limits?: { latency: number; noise: number };
   /**
@@ -366,8 +368,14 @@ export class Roster {
       teams: this.teams,
       drivers: [...this.drivers.values()].map((d) => ({
         ...d, weights: Array.from(d.weights),
-        ...(d.roadCourse ? { roadCourse: { ...d.roadCourse, weights: Array.from(d.roadCourse.weights) } } : {}),
+        ...(d.roadCourse ? {
+          roadCourse: {
+            ...d.roadCourse, weights: Array.from(d.roadCourse.weights),
+            ...(d.roadCourse.caution ? { caution: { weights: Array.from(d.roadCourse.caution.weights) } } : {}),
+          },
+        } : {}),
         ...(d.caution ? { caution: { weights: Array.from(d.caution.weights) } } : {}),
+        ...(d.pit ? { pit: { weights: Array.from(d.pit.weights) } } : {}),
       })),
       spotters: [...this.spotters.values()],
       chiefs: [...this.chiefs.values()].map((c) => ({
@@ -387,8 +395,9 @@ export class Roster {
     bundle: { id: string; name: string },
     drivers: Array<{
       weights: number[]; rounds?: number; nerve?: number; cautionLicensed?: boolean;
-      roadCourse?: { weights: number[]; rounds?: number; licensed?: boolean; style?: RoadStyle };
-      caution?: { weights: number[] }; limits?: { latency: number; noise: number };
+      roadCourse?: { weights: number[]; rounds?: number; licensed?: boolean; style?: RoadStyle; caution?: { weights: number[] } };
+      caution?: { weights: number[] }; limits?: { latency: number; noise: number }; pit?: { weights: number[] };
+      pitLicensed?: boolean; pitTrafficLicensed?: boolean;
     }>,
     fieldSize: number,
     rng: Rng,
@@ -407,9 +416,12 @@ export class Roster {
           ? {
             weights: adaptWeights(Float32Array.from(src.roadCourse.weights)), rounds: src.roadCourse.rounds ?? 0, licensed: !!src.roadCourse.licensed,
             ...(src.roadCourse.style ? { style: src.roadCourse.style } : {}),
+            ...(src.roadCourse.caution ? { caution: { weights: adaptWeights(Float32Array.from(src.roadCourse.caution.weights)) } } : {}),
           }
           : undefined,
         caution: src.caution ? { weights: adaptWeights(Float32Array.from(src.caution.weights)) } : undefined,
+        pit: src.pit ? { weights: adaptWeights(Float32Array.from(src.pit.weights)) } : undefined,
+        pitLicensed: src.pitLicensed, pitTrafficLicensed: src.pitTrafficLicensed,
         limits: src.limits,
       };
       r.drivers.set(driver.id, driver);
@@ -434,13 +446,18 @@ export class Roster {
     const d = data as Record<string, unknown>;
     if (d && d.version === 3) {
       r.counter = Number(d.counter) || 0;
-      for (const x of d.drivers as Array<Omit<DriverAgent, 'roadCourse' | 'caution'> & {
-        weights: number[]; roadCourse?: { weights: number[]; rounds: number; licensed: boolean }; caution?: { weights: number[] };
+      for (const x of d.drivers as Array<Omit<DriverAgent, 'roadCourse' | 'caution' | 'pit'> & {
+        weights: number[]; roadCourse?: { weights: number[]; rounds: number; licensed: boolean; caution?: { weights: number[] } }; caution?: { weights: number[] };
+        pit?: { weights: number[] };
       }>) {
         r.drivers.set(x.id, {
           ...x, weights: adaptWeights(Float32Array.from(x.weights)), licensed: x.licensed ?? (x.rounds > 0 || x.mentor !== null),
-          roadCourse: x.roadCourse ? { ...x.roadCourse, weights: adaptWeights(Float32Array.from(x.roadCourse.weights)) } : undefined,
+          roadCourse: x.roadCourse ? {
+            ...x.roadCourse, weights: adaptWeights(Float32Array.from(x.roadCourse.weights)),
+            caution: x.roadCourse.caution ? { weights: adaptWeights(Float32Array.from(x.roadCourse.caution.weights)) } : undefined,
+          } : undefined,
           caution: x.caution ? { weights: adaptWeights(Float32Array.from(x.caution.weights)) } : undefined,
+          pit: x.pit ? { weights: adaptWeights(Float32Array.from(x.pit.weights)) } : undefined,
         });
       }
       for (const x of d.spotters as SpotterAgent[]) r.spotters.set(x.id, x);

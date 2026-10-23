@@ -19,6 +19,8 @@ export const PREVIEW_FROM = OBS_SIZE + RADIO_SIZE + PIT_SIZE + CAUTION_SIZE;
 export const KNOWLEDGE_FROM = PREVIEW_FROM + PREVIEW_SIZE;
 /** Where the caution inputs start (the first: the field is pacing). */
 export const CAUTION_FROM = OBS_SIZE + RADIO_SIZE + PIT_SIZE;
+/** Where the pit inputs start: the first two say the car is on an in-lap or out of the box (zero otherwise). */
+export const PIT_FROM = OBS_SIZE + RADIO_SIZE;
 /** Where race control's caution calls start in the driver's inputs (after track knowledge). */
 export const CALLS_FROM = KNOWLEDGE_FROM + KNOWLEDGE_SIZE;
 /** Where the spotter's calls about other cars' pit stops start (after the caution calls). */
@@ -210,6 +212,17 @@ export interface NeuralDriverExtras {
   limits?: DriverLimits;
   /** Its caution skill: a network that drives while the field is pacing. */
   caution?: Float32Array;
+  /**
+   * Its caution skill on road circuits (formation laps, safety cars), if it has one of its own: cautions there
+   * are learned apart, so learning them can't cost it its oval cautions. Without one, its caution skill drives.
+   */
+  roadCaution?: Float32Array;
+  /**
+   * Its pit skill: a network that drives its pit stops (in-lap from the call, pit road, the box, out and merging),
+   * on ovals and circuits alike, so learning stops can't cost it its racing. Without one, its racing skill drives
+   * them (if it drives its own stops at all).
+   */
+  pit?: Float32Array;
 }
 
 /**
@@ -293,6 +306,8 @@ export class NeuralDriver implements DriverBrain {
    * the restart), so learning cautions can't cost the driver its racing. None: the main network drives those too.
    */
   readonly cautionNet: Network | null;
+  readonly roadCautionNet: Network | null;
+  readonly pitNet: Network | null;
   /** The last inputs were mirrored (the coming corner turns right): labels for them must be mirrored too. */
   mirrored = false;
 
@@ -306,10 +321,12 @@ export class NeuralDriver implements DriverBrain {
     /** Its human limits (latency, motor noise), and its caution skill (a network for when the field is pacing). */
     extras: NeuralDriverExtras = {},
   ) {
-    const { limits, caution: cautionWeights } = extras;
+    const { limits, caution: cautionWeights, roadCaution, pit } = extras;
     this.net = new Network(DRIVER_LAYERS, weights);
     this.roadNet = roadWeights ? new Network(DRIVER_LAYERS, roadWeights) : null;
     this.cautionNet = cautionWeights ? new Network(DRIVER_LAYERS, cautionWeights) : null;
+    this.roadCautionNet = roadCaution ? new Network(DRIVER_LAYERS, roadCaution) : null;
+    this.pitNet = pit ? new Network(DRIVER_LAYERS, pit) : null;
     this.hands = limits && (limits.latency > 0 || limits.noise > 0) ? new Hands(limits, P.CONTROL_EVERY * P.DT) : null;
   }
 
@@ -320,7 +337,10 @@ export class NeuralDriver implements DriverBrain {
 
   /** The network for these inputs: the caution skill while the field is pacing (if the driver has one), else the track's. */
   netAt(track: Track, input: Float32Array): Network {
-    return this.cautionNet && input[CAUTION_FROM] !== 0 ? this.cautionNet : this.netFor(track);
+    // A stop (under green or caution) is the pit skill's.
+    if (this.pitNet && (input[PIT_FROM] !== 0 || input[PIT_FROM + 1] !== 0)) return this.pitNet;
+    if (input[CAUTION_FROM] === 0) return this.netFor(track);
+    return (track.kind === 'road' ? this.roadCautionNet ?? this.cautionNet : this.cautionNet) ?? this.netFor(track);
   }
 
   /** The network's input for this moment (also what an apprentice is shown), mirrored when the next corner turns right. */

@@ -309,6 +309,11 @@ const ABORT_GRACE = 40;
 export class PitAutopilot {
   /** The lane the car was in when the crew chief called it in (the route starts from there). */
   fromLane = 0;
+  /**
+   * Its throttle toward its speed when below it: in proportion (this gain, 1/s), as a teacher has to drive to be
+   * copied, or (unset) flat out, as in races. See followLine.
+   */
+  driveGain?: number;
   /** Distance from the box (m) where the merge began, once the spotter cleared it. */
   private mergeFrom = NaN;
   /** World time the car started waiting in its box for a gap. */
@@ -374,7 +379,7 @@ export class PitAutopilot {
         car.inputY = 0;
         return;
       }
-      followLine(car, world, (s) => track.innerEdgeAt(s) - 2.5, () => Infinity, 0.75);
+      followLine(car, world, (s) => track.innerEdgeAt(s) - 2.5, () => Infinity, 0.75, false, this.driveGain);
       return;
     }
     if (pit.phase === 'in') {
@@ -410,7 +415,7 @@ export class PitAutopilot {
         return Math.min(follow, PIT_SERVICE.SPEED_LIMIT - 1, Math.sqrt(2 * 3 * Math.max(0, pit.boxS - r)));
       };
       // Well under the cornering limit, leaving grip to work down the track.
-      followLine(car, world, lane, cap, 0.75, path.laid);
+      followLine(car, world, lane, cap, 0.75, path.laid, this.driveGain);
     } else if (pit.phase === 'out') {
       // Merge: from the merge zone on, wait on the apron for the spotter's "clear".
       const blend = track.distanceFrom(pit.boxS, track.pit.blendEnd);
@@ -442,7 +447,7 @@ export class PitAutopilot {
       }
       const follow = hold ? 0 : this.followLimit(car, world, lane);
       const cap = (s: number) => Math.min(follow, track.signedS(s) < track.pit.wallEnd ? PIT_SERVICE.SPEED_LIMIT - 1 : path.outCap(track.signedS(s)));
-      followLine(car, world, lane, cap, 0.9, path.laid);
+      followLine(car, world, lane, cap, 0.9, path.laid, this.driveGain);
     } else {
       car.inputX = 0;
       car.inputY = 0;

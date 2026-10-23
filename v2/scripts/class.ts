@@ -39,6 +39,7 @@ import { hashSeed, PRESETS, presetLayout } from '../src/trackgen';
 import { SchoolPool } from './pool';
 import { Rng } from '../src/ai/rng';
 import { apprenticeRoadCourses, initialRoadWeights } from '../src/school/roadLesson';
+import { teacherOf } from '../src/school/ovalApprentice';
 
 const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i++) {
@@ -80,10 +81,17 @@ const apprenticeship = ['apprentice-epochs', 'apprentice-rounds', 'teacher', 'kn
 /** A road teacher's style (grip share, margin inside the track limits, room alongside). */
 interface RoadStyle { grip: number; margin: number; room: number }
 /**
- * --styles: each student apprentices under its own style of the racing-line teacher, drawn for it (grip 80-90%, line
- * 0.6-1.5 m inside the limits, 0.5-1.5 m left alongside), so a class grows into a field of different racers.
+ * A student's road style. A driver with a personality (nerve and talent, as the oval stable's individuals have) has
+ * the one its personality makes, as its oval teacher is made (the same line: one driver in both disciplines).
+ * Otherwise, with --styles, one drawn for it (grip 80-90%, line 0.6-1.5 m inside the limits, 0.5-1.5 m left
+ * alongside), so a class grows into a field of different racers.
  */
 const styleFor = (k: number): RoadStyle | undefined => {
+  const d = file.drivers[k];
+  if (d.nerve !== undefined && d.talent !== undefined && d.lineage !== undefined) {
+    const { style } = teacherOf({ lineage: d.lineage, nerve: d.nerve, talent: d.talent });
+    return { grip: style.grip, margin: style.margin, room: style.room };
+  }
   if (!args.has('styles')) return undefined;
   const rng = new Rng(hashSeed(seed, `style-D${k}`));
   // Margins in steps (each a line to work out per circuit; a field shares a few).
@@ -104,6 +112,9 @@ interface DriverEntry {
   pitTrafficLicensed?: boolean;
   cautionLicensed?: boolean;
   nerve?: number;
+  /** An oval stable individual: its talent and lineage (with nerve, its personality). */
+  talent?: number;
+  lineage?: number;
   /** The road-course skill (Road courses trains this, not `weights`). */
   roadCourse?: { weights: number[]; rounds?: number; licensed?: boolean; radius?: number; style?: RoadStyle };
   /** Human limits: seconds from seeing to the car answering, and motor noise (as the roster keeps them). */
