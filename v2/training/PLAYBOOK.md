@@ -77,11 +77,8 @@ What we've learned training drivers, from both funnels, with the evidence. Newes
 
 ## Open questions across funnels
 
-- **Why do circuit students copy their teachers nearly whole and oval students not?** Candidate differences:
-  - ES racecraft after PPO on circuits
-  - shorter races (25 km against 150 km)
-  - smaller fields
-  - safety cars against pace-car cautions
-  - students practising among other students on ovals
+- **Why do circuit students copy their teachers nearly whole and oval students not?** *Answered (2026-10-23, experiments/2026-10-23-circuit-race-length): they don't, in oval-like races.* The circuit benchmark (20 cars, 25 km) was the easy case. At 40 cars over 25 km, circuit students lose 6.2 cars a race to their teachers' 0.2: contact, barriers, beached, first-lap pile-ups. So the copy gap is about traffic density in both disciplines, and it's a shared problem.
+  - Implication: circuit lessons drill packs of 12 for 50 s and benchmark 20 cars. Both should go to full fields, as the oval stable's classroom races do.
+- **Circuit teachers in long races:** they lose 2.7 cars (20-car field) and 8.6 (40-car field) over 150 km, against about 1 for oval teachers. Students' track-limit offences reach 188-297 a race. Suspected cause: worn tyres at 4x pace. Not traced yet.
 - **Copy fidelity in student-driven moments** is about 83-92% under green and 77-85% under caution on ovals. What does it reach on circuits, and what limits it?
 - **Race practice on ovals** moved the practice races but not the benchmark. Is it the frozen field around the students, too few iterations, or a reward that can't see what full races punish?
