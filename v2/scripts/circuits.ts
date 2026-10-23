@@ -9,6 +9,11 @@
  *
  * Circuits alternate club and GP. Drivers drive their road-course skill where
  * they have one (their oval network otherwise), cycling through the file.
+ *
+ * teacher:drivers.json races the file's teachers instead: each driver's own
+ * (a traffic racer with its road style, not passing, as in its
+ * apprenticeship), driving its own safety cars: how well a field of students
+ * could race at best, to measure what copying lost.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { cpus } from 'node:os';
@@ -27,13 +32,14 @@ import { World } from '../src/sim/world';
 import { CIRCUIT_RULES } from '../src/rules/rulebook';
 import { generateLayout, hashSeed } from '../src/trackgen';
 import { ask, tsWorker } from './pool';
+import { DEFAULT_STYLE, TrafficRacer } from '../src/ai/trafficRacer';
 
 interface DriverEntry {
   weights: number[];
   pitLicensed?: boolean;
   pitTrafficLicensed?: boolean;
   cautionLicensed?: boolean;
-  roadCourse?: { weights: number[]; style?: { grip: number; margin: number } };
+  roadCourse?: { weights: number[]; style?: { grip: number; margin: number; room?: number } };
 }
 
 interface RaceJob { file: string; track: number; seed: number; field: number; km: number; pace: number }
@@ -71,7 +77,8 @@ function benchTrack(k: number): Track {
 }
 
 function runRace(job: RaceJob): CircuitRace {
-  const drivers = (JSON.parse(readFileSync(job.file, 'utf8')) as { drivers: DriverEntry[] }).drivers;
+  const teachers = job.file.startsWith('teacher:');
+  const drivers = (JSON.parse(readFileSync(teachers ? job.file.slice('teacher:'.length) : job.file, 'utf8')) as { drivers: DriverEntry[] }).drivers;
   const track = benchTrack(job.track);
   const laps = Math.max(3, Math.round((job.km * 1000) / track.length));
   const world = new World(track, { collisions: true, drafting: true, wearScale: job.pace });
@@ -83,6 +90,13 @@ function runRace(job: RaceJob): CircuitRace {
     const car = new Car(slot);
     placeOnGrid(car, track, slot, true);
     const style = d.roadCourse?.style;
+    if (teachers) {
+      const racer = new TrafficRacer({
+        ...DEFAULT_STYLE, ...(style ? { grip: style.grip, margin: style.margin } : {}), room: d.roadCourse?.style?.room ?? DEFAULT_STYLE.room, pass: Infinity,
+      });
+      world.addCar(car, new Team(racer, new TowerSpotter(), new StrategistCrewChief(randomTraits(() => rng.next())), false, true));
+      continue;
+    }
     const brain = new NeuralDriver(adaptWeights(Float32Array.from(d.weights)), d.roadCourse ? adaptWeights(Float32Array.from(d.roadCourse.weights)) : undefined,
       style ? { grip: style.grip, margin: style.margin } : undefined);
     world.addCar(car, new Team(brain, new TowerSpotter(), new StrategistCrewChief(randomTraits(() => rng.next())),
