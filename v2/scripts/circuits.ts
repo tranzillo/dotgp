@@ -32,6 +32,7 @@ import { World } from '../src/sim/world';
 import { CIRCUIT_RULES } from '../src/rules/rulebook';
 import { generateLayout, hashSeed } from '../src/trackgen';
 import { ask, tsWorker } from './pool';
+import { PHYSICS as P } from '../src/sim/constants';
 import { DEFAULT_STYLE, TrafficRacer } from '../src/ai/trafficRacer';
 
 interface DriverEntry {
@@ -63,6 +64,9 @@ export interface CircuitRace {
   /** Excursions under green by where they went: across the inside of a corner (a cut), or wide. */
   cuts: number;
   wide: number;
+  /** Shares of the racing cars' time driven by a script: the pit maneuver, the formation (safety cars). */
+  scriptPit: number;
+  scriptFormation: number;
   /** Share of laps completed within the track limits. */
   validLaps: number;
   timePenalties: number;
@@ -117,8 +121,19 @@ function runRace(job: RaceJob): CircuitRace {
   const out = new Set<Car>();
   let firstLap = 0, byWall = 0, byCar = 0, stopped = 0, cuts = 0, wide = 0;
   const off = new Set<Car>();
+  // Who drove each racing car, decision by decision: the driver, or a script (the pit maneuver, the formation).
+  let byDriver = 0, byPit = 0, byFormation = 0;
   while (race.state !== 'finished' && world.time < laps * 400) {
     race.step();
+    if (world.tick % P.CONTROL_EVERY === 0) {
+      world.cars.forEach((car, k) => {
+        const team = world.controllers[k];
+        if (car.retired || car.finished || !(team instanceof Team)) return;
+        if (team.mode === 'pit' && !team.driverPits) byPit++;
+        else if (team.mode === 'formation') byFormation++;
+        else byDriver++;
+      });
+    }
     for (const car of world.cars) {
       const past = pastTrackLimits(car, track);
       if (past && !off.has(car) && ctl.flag === 'green') {
@@ -148,6 +163,8 @@ function runRace(job: RaceJob): CircuitRace {
     validLaps: lapCount ? world.cars.reduce((a, c) => a + c.lapValid.filter(Boolean).length, 0) / lapCount : NaN,
     timePenalties: race.stewards?.record.filter((p) => p.penalty === 'time').length ?? 0, safetyCars: ctl.cautions,
     bestLapPerKm: best.length ? best[Math.floor(best.length / 2)] / (track.length / 1000) : NaN,
+    scriptPit: byPit / Math.max(1, byDriver + byPit + byFormation),
+    scriptFormation: byFormation / Math.max(1, byDriver + byPit + byFormation),
   };
 }
 
@@ -193,6 +210,7 @@ async function main(): Promise<void> {
     ['wide', '  running wide', 1], ['cuts', '  cutting a corner', 1], ['validLaps', 'valid laps (share)', 2],
     ['timePenalties', 'time penalties', 1], ['safetyCars', 'safety cars', 1], ['finished', 'finished', 1],
     ['bestLapPerKm', 'best valid lap (s/km, median)', 2],
+    ['scriptPit', 'scripted: pit maneuver (share)', 4], ['scriptFormation', 'scripted: formation (share)', 4],
   ];
   const higherBetter = new Set<keyof CircuitRace>(['finished', 'validLaps']);
   console.log(`circuit races: ${tracks} circuits x ${seeds} seeds, ${field} cars, ~${km} km, ${pace}x pace; ${files.map((f, i) => `${'AB'[i] ?? i}: ${f.split(/[\\/]/).pop()}`).join(', ')}`);
