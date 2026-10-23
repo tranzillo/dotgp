@@ -18,9 +18,10 @@ import { TowerSpotter } from '../ai/spotter';
 import { Car, type PitState } from '../sim/car';
 import { PHYSICS as P } from '../sim/constants';
 import type { Track } from '../sim/track';
-import { World, type Controller } from '../sim/world';
+import { World } from '../sim/world';
 import { hashSeed } from '../trackgen';
 import { apprenticeTrack } from './ovalApprentice';
+import { Recorder } from './recorder';
 import { inLapStart, startInLap, START_SPEED } from './pitLesson';
 import { PITTERS, RACERS } from './pitTrafficLesson';
 import { DEFAULT_STYLE, TrafficRacer } from '../ai/trafficRacer';
@@ -34,37 +35,6 @@ export interface PitStudent {
   weights: Float32Array;
   road?: Float32Array;
   pit: Float32Array | null;
-}
-
-/** Records (what the student saw, what the pit maneuver would do) during the stop, whoever drives. */
-class PitRecorder implements Controller {
-  constructor(private readonly team: Team, private readonly student: NeuralDriver, private readonly examples: Example[]) {}
-
-  decide(car: Car, world: World): void {
-    const px = car.inputX, py = car.inputY;
-    const stopping = car.pit.phase !== 'none';
-    let label: [number, number] | null = null;
-    if (stopping) {
-      // The maneuver's answer from here (it also keeps track of the stop as it goes).
-      this.team.spotter.call(car, world, this.team.radio);
-      this.team.autopilot.decide(car, world, this.team.spotter);
-      label = [car.inputX, car.inputY];
-      car.inputX = px;
-      car.inputY = py;
-    }
-    // Whoever drives this run decides: the maneuver (watching) or the student's pit skill.
-    this.team.decide(car, world);
-    if (!label) return;
-    const ax = car.inputX, ay = car.inputY;
-    car.inputX = px;
-    car.inputY = py;
-    const x = this.student.inputs(car, world, this.team.radio, this.team.pitInputs, this.team.cautionInputs).slice();
-    if (this.student.mirrored) label[1] = -label[1]; // the maneuver steers in the world's frame; the student saw it mirrored
-    car.inputX = ax;
-    car.inputY = ay;
-    const clamp = (v: number) => Math.max(-0.95, Math.min(0.95, v));
-    this.examples.push({ x, y: Float32Array.of(clamp(label[0]), clamp(label[1])), mask: Float32Array.of(1, 1) });
-  }
 }
 
 export interface PitSkillOptions {
@@ -98,7 +68,8 @@ function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number
   const student = new NeuralDriver(d.weights, d.road, d.knowledge, { limits, pit: d.pit ?? undefined });
   const team = new Team(student, new TowerSpotter(), null, studentDrives);
   const car = new Car(0);
-  world.addCar(car, new PitRecorder(team, student, examples));
+  // Every moment of the stop is recorded (a stop is short, and each part of it happens once).
+  world.addCar(car, new Recorder(team, student, null, { kind: studentDrives ? 'student' : 'teacher' }, examples, new Rng(seed), { skill: 'stops', sample: 1 }));
   const s = inLapStart(track);
   car.placeOnTrack(track, s, lane);
   // On ovals at the in-lap's usual speed; on circuits at what the line takes there.

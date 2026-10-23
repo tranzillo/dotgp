@@ -21,7 +21,7 @@ import { CAUTION_FROM, DRIVER_LAYERS, NeuralDriver, Team, type DriverLimits } fr
 import type { FormationTraits } from '../ai/formation';
 import { PaceCarDriver } from '../ai/formation';
 import { type Example, trainSupervised } from '../ai/network';
-import { observeCaution, type TrackKnowledge } from '../ai/observe';
+import type { TrackKnowledge } from '../ai/observe';
 import { randomTraits, StrategistCrewChief } from '../ai/pitting';
 import { Rng } from '../ai/rng';
 import { TowerSpotter } from '../ai/spotter';
@@ -32,7 +32,8 @@ import { FUEL_RANGE, TIRE_RANGE } from '../ai/evaluate';
 import { placeOnGrid, ROLLING_START_SPEED } from '../sim/grid';
 import { Race } from '../sim/race';
 import { Track } from '../sim/track';
-import type { Controller, World } from '../sim/world';
+import { Recorder, type Driving } from './recorder';
+import type { World } from '../sim/world';
 import { World as SimWorld } from '../sim/world';
 import { FLAT_TRACK, generateLayout, hashSeed, ovalTrack, SHORT_TRACK, SPEEDWAY } from '../trackgen';
 
@@ -81,104 +82,6 @@ export function lineOf(d: { lineage: number; nerve: number; talent: number }): T
  */
 let recordExtra: ((car: Car, world: World) => Float32Array) | null = null;
 export function setRecordExtra(f: ((car: Car, world: World) => Float32Array) | null): void { recordExtra = f; }
-
-/** Share of the students' decisions recorded (moments a few frames apart are nearly the same). */
-const SAMPLE = 0.3;
-
-/**
- * Who drives a student's car in a round: its teacher (the student watches); its teacher through shaken hands (the
- * student's own latency and a drifting error on top, `sigma` of the inputs' range, so the car ends up off its line
- * and the teacher shows the way back: noise injection); or the student itself (DAgger).
- */
-export type Driving = { kind: 'teacher' } | { kind: 'shaken'; sigma: number } | { kind: 'student' };
-
-/** How long a shaken teacher's drifting error takes to change (s). */
-const SHAKE_TAU = 0.5;
-
-/** A teacher's hands shaken: its decisions arrive late (the student's latency) and off by a drifting error. */
-class ShakenHands {
-  private readonly queue: Array<[number, number]> = [];
-  private readonly delay: number;
-  private readonly keep = Math.exp(-(P.CONTROL_EVERY * P.DT) / SHAKE_TAU);
-  private nx = 0;
-  private ny = 0;
-
-  constructor(latency: number, private readonly sigma: number, private readonly rng: Rng) {
-    this.delay = Math.round(latency / (P.CONTROL_EVERY * P.DT));
-  }
-
-  apply(x: number, y: number, car: Car): void {
-    this.queue.push([x, y]);
-    const [ax, ay] = this.queue.length > this.delay ? this.queue.shift()! : [car.inputX, car.inputY];
-    const fresh = Math.sqrt(1 - this.keep * this.keep);
-    this.nx = this.keep * this.nx + fresh * this.rng.gaussian();
-    this.ny = this.keep * this.ny + fresh * this.rng.gaussian();
-    car.inputX = ax + this.sigma * this.nx;
-    car.inputY = ay + this.sigma * this.ny;
-  }
-}
-
-/** Records (what the student saw, what its teacher would do) whoever drives (ovals, and road circuits' cautions). */
-export class OvalApprentice implements Controller {
-  private readonly hands: ShakenHands | null;
-  private readonly studentDrives: boolean;
-
-  constructor(
-    readonly team: Team,
-    private readonly student: NeuralDriver,
-    private readonly teacher: TrafficRacer,
-    driving: Driving,
-    private readonly examples: Example[],
-    private readonly rng: Rng,
-    latency = 0,
-  ) {
-    this.studentDrives = driving.kind === 'student';
-    this.hands = driving.kind === 'shaken' ? new ShakenHands(latency, driving.sigma, rng) : null;
-  }
-
-  /** The scripted maneuver drives the stops (not taught here); otherwise the student or its teacher. */
-  get mode(): string { return this.team.mode; }
-
-  decide(car: Car, world: World): void {
-    const px = car.inputX, py = car.inputY;
-    // The teacher decides every time (it keeps state: its pass, when it saw the flag), recorded or not, from where the
-    // car really is when someone else has been driving it.
-    if (this.studentDrives || this.hands) this.teacher.takeOver(car, world);
-    this.teacher.decide(car, world);
-    const label = [car.inputX, car.inputY];
-    car.inputX = px;
-    car.inputY = py;
-    // The team always runs (the crew chief calls the stops, the maneuver drives them); watching, the teacher drives.
-    this.team.decide(car, world);
-    if (!this.studentDrives && car.pit.phase === 'none') {
-      if (this.hands) this.hands.apply(label[0], label[1], car);
-      else { car.inputX = label[0]; car.inputY = label[1]; }
-    }
-    if (car.pit.phase !== 'none' || this.rng.next() >= SAMPLE) return;
-    // What the student saw at this moment (its last command included).
-    const ax = car.inputX, ay = car.inputY;
-    car.inputX = px;
-    car.inputY = py;
-    this.team.spotter.call(car, world, this.team.radio);
-    this.team.observePit(car, world);
-    observeCaution(car, world, this.team.cautionInputs);
-    const seen = this.student.inputs(car, world, this.team.radio, this.team.pitInputs, this.team.cautionInputs);
-    let x = seen.slice();
-    if (recordExtra) {
-      const more = recordExtra(car, world);
-      x = new Float32Array(seen.length + more.length);
-      x.set(seen);
-      x.set(more, seen.length);
-    }
-    car.inputX = ax;
-    car.inputY = ay;
-    // The teacher steers in the world's frame; a student seeing a right-hander sees it mirrored (never on ovals, always
-    // half the corners on road circuits).
-    if (this.student.mirrored) label[1] = -label[1];
-    const clamp = (v: number) => Math.max(-0.95, Math.min(0.95, v));
-    this.examples.push({ x, y: Float32Array.of(clamp(label[0]), clamp(label[1])), mask: Float32Array.of(1, 1) });
-  }
-}
 
 /** The ovals a round is raced on: the presets in turn, and generated ovals of every size and shape between. */
 export function apprenticeTrack(round: number, seed: number): Track {
@@ -239,7 +142,7 @@ export function classroomRace(
     const limits: DriverLimits = { ...d.limits, seed: hashSeed(seed, `hands${round}:${d.lineage}`) };
     const student = new NeuralDriver(d.weights, undefined, lineOf(d), { limits, caution: d.caution ?? undefined });
     const team = new Team(student, new TowerSpotter(), chief, false, true);
-    world.addCar(car, new OvalApprentice(team, student, labellingTeacher(d), driving, examples[s], rng, d.limits.latency));
+    world.addCar(car, new Recorder(team, student, labellingTeacher(d), driving, examples[s], rng, { latency: d.limits.latency, extra: recordExtra ?? undefined }));
   }
   const race = new Race(world, opts.laps, new PaceCarDriver());
   const debrisPerSecond = opts.debris / 30; // a lap's roughly half a minute
@@ -284,7 +187,7 @@ function soloDrives(track: Track, students: StableDriver[], driving: Driving, ex
       car.fuel = FUEL_RANGE[0] + rng.next() * (FUEL_RANGE[1] - FUEL_RANGE[0]);
       const limits: DriverLimits = { ...d.limits, seed: hashSeed(seed, `solo${round}:${d.lineage}:${lane}`) };
       const student = new NeuralDriver(d.weights, undefined, lineOf(d), { limits, caution: d.caution ?? undefined });
-      world.addCar(car, new OvalApprentice(new Team(student, new TowerSpotter(), null), student, labellingTeacher(d), driving, examples[s], rng, d.limits.latency));
+      world.addCar(car, new Recorder(new Team(student, new TowerSpotter(), null), student, labellingTeacher(d), driving, examples[s], rng, { latency: d.limits.latency, extra: recordExtra ?? undefined }));
       for (let k = 0; k < SOLO_SECONDS / P.DT && !car.retired; k++) world.step();
       if (car.retired) crashed++;
     }

@@ -27,7 +27,8 @@ import { Race } from '../sim/race';
 import type { Track } from '../sim/track';
 import { World } from '../sim/world';
 import { hashSeed } from '../trackgen';
-import { lineOf, OvalApprentice, teacherOf, type Driving } from './ovalApprentice';
+import { lineOf, teacherOf } from './ovalApprentice';
+import { Recorder, type Driving } from './recorder';
 import { circuitTrack } from './roadLesson';
 
 /** A stable driver as far as road cautions go: who it is, its road skill, and its road caution skill (once it has one). */
@@ -105,7 +106,7 @@ function classroomRace(
     const team = new Team(student, new TowerSpotter(), chief, false, true);
     // The labelling teacher reacts to flags at once (the student's latency is its delay).
     const { style, traits } = roadTeacherOf(d);
-    world.addCar(car, new OvalApprentice(team, student, new TrafficRacer(style, undefined, { ...traits, reaction: 0 }), driving, examples[s], rng, d.limits.latency));
+    world.addCar(car, new Recorder(team, student, new TrafficRacer(style, undefined, { ...traits, reaction: 0 }), driving, examples[s], rng, { latency: d.limits.latency }));
   }
   const race = new Race(world, opts.laps, new PaceCarDriver(), { rulebook: CIRCUIT_RULES, seed: hashSeed(seed, `race${round}`) });
   const debrisPerSecond = opts.debris / 90; // a circuit lap's roughly a minute and a half
