@@ -6,6 +6,9 @@
  * roadCourse.caution.
  *
  *   npx tsx scripts/roadCautions.ts --in bundle.json --out out.json [--group 8] [--rounds 8] [--field 20] [--laps 6] [--seed 1] [--jobs N]
+ *     [--racing 1] [--knocks 2]
+ *
+ * --racing 1: road racing too (solo drives each round; the road skill learns from them and the races' green moments).
  *   npx tsx scripts/roadCautions.ts --in bundle.json --group-only <first> --count <n> --out part.json ...   (one group)
  */
 import { spawn } from 'node:child_process';
@@ -20,7 +23,7 @@ for (let i = 2; i < process.argv.length; i++) if (process.argv[i].startsWith('--
 const inFile = args.get('in'), out = args.get('out');
 if (!inFile || !out) throw new Error('--in bundle.json --out out.json');
 const seed = Number(args.get('seed') ?? 1);
-const pass = ['rounds', 'field', 'laps', 'seed', 'debris', 'starts'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
+const pass = ['rounds', 'field', 'laps', 'seed', 'debris', 'starts', 'racing', 'knocks'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
 
 interface Entry {
   lineage: number; nerve: number; talent: number; limits: { latency: number; noise: number }; weights: number[];
@@ -42,11 +45,17 @@ if (args.has('group-only')) {
     ...(args.has('laps') ? { laps: Number(args.get('laps')) } : {}),
     ...(args.has('debris') ? { debris: Number(args.get('debris')) } : {}),
     ...(args.has('starts') ? { starts: Number(args.get('starts')) } : {}),
+    ...(args.has('racing') ? { racing: args.get('racing') !== '0' } : {}),
+    ...(args.has('knocks') ? { knocks: Number(args.get('knocks')) } : {}),
     onRound: (round, r) => console.log(`group ${first} round ${round} ${r.track}: ${r.out} out, ${r.safetyCars} safety cars, `
-      + `${r.pacing} pacing moments, loss ${r.loss.toFixed(4)} (${r.seconds.toFixed(0)} s)`),
+      + `${r.pacing} pacing moments, loss ${r.loss.toFixed(4)}`
+      + (r.roadLoss !== undefined ? `, racing loss ${r.roadLoss.toFixed(4)}, solo crashes ${r.soloCrashes}/${3 * count}` : '') + ` (${r.seconds.toFixed(0)} s)`),
   });
   writeFileSync(out, JSON.stringify({
-    drivers: entries.map((e, i) => ({ ...e, roadCourse: { ...e.roadCourse, caution: { weights: Array.from(students[i].roadCaution!) } } })),
+    drivers: entries.map((e, i) => ({
+      ...e,
+      roadCourse: { ...e.roadCourse, weights: Array.from(students[i].road), caution: { weights: Array.from(students[i].roadCaution!) } },
+    })),
   }));
 } else {
   const group = Number(args.get('group') ?? 8);
