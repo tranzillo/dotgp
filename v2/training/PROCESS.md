@@ -44,8 +44,7 @@ Skills: `oval.racing`, `oval.cautions`, `road.racing`, `road.cautions`, `pits`. 
 4. **Bundle.** The skill goes into the shared candidate bundle (`public/drivers/`, one file, the 40 individuals by lineage, an `index.json` note naming each skill's version and the machine that trained it).
    - The other machine builds on the latest candidate. Never on a private copy.
 5. **Readiness.** The whole matrix, the candidate against its own teachers, logged in RESULTS.md with its table under `experiments/`.
-   - *Ready:* no worse than the teachers (paired, race by race), within a few percent of their pace, no scripted driving, and at most 10% of the field out.
-   - The 10% absolute cap is proposed, for the user to confirm.
+   - *Ready:* no worse than the teachers (paired, race by race), within a few percent of their pace, no scripted driving, and at most 10% of the field out (the absolute cap: user-approved 2026-10-23).
 
 ## Shared code, one copy
 
