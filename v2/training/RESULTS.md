@@ -48,3 +48,7 @@ Races are 20 cars, about 25 km, 6 circuits x 3 seeds (`scripts/circuits.ts`); so
 - 2026-10-23 **scripted share** @ca4f1c5 · circuit — the human-limits circuit field: formation 9.4% of car-time, pit maneuver 0.14%.
 - 2026-10-23 **road cautions, pit skill** @8561497 · both — skill networks for road cautions and pit stops; pit smoke test 0-6 of 32 stops completed (needs rounds and practice).
 - 2026-10-23 **pit skill, more data** @172869d · both — 4 drivers, 12 rounds of 4 ovals + 4 circuits, drills run to the merge: 42/48 stops done on held-out ovals and 42/48 on held-out circuits. The 90 s drill had been cutting superspeedway stops off mid-merge (blend lane most of a lap after the box).
+
+## The first milestone (readiness: drivers against their own teachers)
+
+- 2026-10-23 **readiness: oval stable v10** @8627ff6 · oval · lab — 0 of 14 oval cells ready (presets + a generated oval of each size class, 20 and 40 cars, 150 km, 4 seeds). Pace within 0.4-2.5% of teachers everywhere. Students lose 9-18 of 20 and 27-38 of 40 where teachers lose 0-2 (flat track within noise: 1.3 and 13). The teachers themselves aren't clean on bigger generated ovals: intermediate 2.5 / 10.0, speedway 0 / 8.8, superspeedway 6.5 / 18.8 (20 / 40 cars). Pit maneuver 13-49% of car-time. Table: experiments/2026-10-23-readiness-oval-stable/.
