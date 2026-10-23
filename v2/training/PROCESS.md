@@ -29,7 +29,13 @@ Skills: `oval.racing`, `oval.cautions`, `road.racing`, `road.cautions`, `pits`. 
 
 1. **Teacher.** A scripted teacher for the skill, built from the driver's personality (`styleOf(personality, discipline)` once it exists; `racerStyle` / `roadTeacherOf` today).
    - *Copyable:* no on/off control, no threshold rules, labels from where the car is (`takeOver`), steering mirrored with the student's view.
-   - *Gate:* a field of teachers is clean in every readiness cell the skill drives in: at most 5% of the field out on average, no wall hits by the maneuver. Measured by readiness's teacher columns alone.
+   - *Gate:* a field of teachers is clean in every readiness cell the skill drives in. Measured by readiness's "teachers clean" column:
+     - at most 5% of the field out on average
+     - **at most 10% of pit stops called for damage**
+     - no wall hits by the maneuver
+
+     Retirements alone passed teachers that trade paint all race. On a 40-car short oval, teachers lost nobody but did 9.3 units of damage by fault, and 70% of their stops were repairs.
+   - Readiness reports damage done by fault per car per 100 km, and stops by reason (fuel, tyres, damage, caution, penalty), so a clean-but-bruising field shows as one.
 2. **Apprenticeship.** DAgger: the teacher drives the first round, then the students drive through their own human limits while the teacher labels from where they are. The mix is the same on both disciplines:
    - **Solo moments**, about half: lanes, worn tyres, speed knocks.
    - **Full-field classroom races** (40 cars, full rules, debris cautions or safety cars), so traffic, cautions, restarts and pit road appear as often as in real races.
@@ -44,7 +50,16 @@ Skills: `oval.racing`, `oval.cautions`, `road.racing`, `road.cautions`, `pits`. 
 4. **Bundle.** The skill goes into the shared candidate bundle (`public/drivers/`, one file, the 40 individuals by lineage, an `index.json` note naming each skill's version and the machine that trained it).
    - The other machine builds on the latest candidate. Never on a private copy.
 5. **Readiness.** The whole matrix, the candidate against its own teachers, logged in RESULTS.md with its table under `experiments/`.
-   - *Ready:* no worse than the teachers (paired, race by race), within a few percent of their pace, no scripted driving, and at most 10% of the field out (the absolute cap: user-approved 2026-10-23).
+   - *Ready:*
+     - no worse than the teachers (paired, race by race) on retirements **and on damage done by fault**
+     - within 3% of their pace
+     - no scripted driving (under 1% of car-time)
+     - at most 10% of the field out (the absolute cap: user-approved 2026-10-23)
+     - **at most 10% of pit stops called for damage** (user-approved 2026-10-23)
+   - *Two tiers* (`scripts/readiness.ts --tier`):
+     - **quick:** 2 seeds, 20 cars, 2 circuits; about 10 minutes for ovals. For iterating.
+     - **full** (the default): 4 seeds, 20 and 40 cars, 4 circuits; about an hour for the whole matrix. For gates and bundles.
+   - *Copy fidelity* (stage 2's gate) gets one tool, `scripts/fidelity.ts` (to come, oval machine): any skill and either discipline, held-out student-driven moments fitted by situation, with the share of the teacher's answers explained.
 
 ## Shared code, one copy
 

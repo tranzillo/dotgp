@@ -8,11 +8,16 @@
  * drivers could race like at best), paired race by race:
  *   - ovals: the presets and a generated oval of each size class, full distance (150 km), 20 and 40 cars (bench.ts)
  *   - circuits: club and GP, full distance (150 km) at 20 and 40 cars, and the 25 km sprint at 20 (circuits.ts)
- * A cell is ready when the drivers are no worse than their teachers on retirements (within noise, race by race),
- * within PACE_SLACK of their pace, and drive everything themselves (scripted share under SCRIPT_SLACK).
+ * A cell is ready when the drivers are no worse than their teachers on retirements and on damage done by fault (within
+ * noise, race by race), lose at most OUT_CAP of the field, have at most REPAIR_CAP of their stops called for damage
+ * (contact that never retires anyone still wears cars down until the crew calls them in), are within PACE_SLACK of
+ * their teachers' pace, and drive everything themselves (scripted share under SCRIPT_SLACK). The teachers' own gate
+ * (training/PROCESS.md, stage 1) is reported beside it: at most TEACHER_OUT of the field out, at most REPAIR_CAP of
+ * stops for damage.
  *
- *   npx tsx scripts/readiness.ts drivers.json [--seeds 4] [--fields 20,40] [--circuits 4] [--only ovals|circuits] [--jobs N]
- *     [--json out.json] [--md out.md]
+ *   npx tsx scripts/readiness.ts drivers.json [--tier quick|full] [--seeds 4] [--fields 20,40] [--circuits 4] [--only ovals|circuits]
+ *     [--jobs N] [--json out.json] [--md out.md]
+ *   --tier quick (2 seeds, 20 cars, 2 circuits: for iterating); full (the default: 4 seeds, 20 and 40 cars, 4 circuits: for gates)
  *
  * Not covered yet: rovals and venue rings (no race benchmark races them), qualifying.
  */
@@ -30,15 +35,21 @@ for (let i = 2; i < process.argv.length; i++) {
 }
 const bundle = positional[0];
 if (!bundle) throw new Error('usage: readiness.ts drivers.json [...]');
-const seeds = args.get('seeds') ?? '4';
-const fields = (args.get('fields') ?? '20,40').split(',');
-const circuitCount = args.get('circuits') ?? '4';
+const quick = args.get('tier') === 'quick';
+const seeds = args.get('seeds') ?? (quick ? '2' : '4');
+const fields = (args.get('fields') ?? (quick ? '20' : '20,40')).split(',');
+const circuitCount = args.get('circuits') ?? (quick ? '2' : '4');
 const only = args.get('only');
 const jobs = args.get('jobs') ?? String(Math.max(1, cpus().length - 1));
 
 /** A cell is ready within this much of its teachers' pace, and with less than this share of driving scripted. */
 const PACE_SLACK = 0.03;
 const SCRIPT_SLACK = 0.01;
+/** At most this share of the field out a race (user-approved cap, 2026-10-23), and of stops called for damage. */
+const OUT_CAP = 0.1;
+const REPAIR_CAP = 0.1;
+/** The teachers' gate: at most this share of the field out. */
+const TEACHER_OUT = 0.05;
 
 /** The ovals: the presets, and one generated oval of each size class (fixed seeds: every run sees the same). */
 const OVALS = ['short', 'speedway', 'flat',
@@ -63,6 +74,15 @@ interface Cell {
   /** The drivers' pace against their teachers' (+ slower). */
   paceGap: number;
   scripted: number;
+  /** Damage done by fault, per car per 100 km, and the paired verdict. */
+  teachersHarm: number;
+  driversHarm: number;
+  harmVerdict: string;
+  /** Share of stops the crew called for damage. */
+  teachersRepair: number;
+  driversRepair: number;
+  /** The teachers' own gate. */
+  teachersClean: boolean;
   ready: boolean;
 }
 
@@ -71,9 +91,15 @@ const cells: Cell[] = [];
 const t0 = Date.now();
 /** The drivers' pace against their teachers': no laps at all (a field that couldn't lap) is as far off as can be. */
 const gap = (drivers: number, teachers: number) => (drivers > 0 && teachers > 0 ? drivers / teachers - 1 : Infinity);
-const judge = (c: Omit<Cell, 'ready'>): Cell => ({
-  ...c, ready: c.outVerdict !== 'B worse' && c.paceGap <= PACE_SLACK && c.scripted < SCRIPT_SLACK,
+const share = (part: number, whole: number) => (whole > 0 ? part / whole : 0);
+const judge = (c: Omit<Cell, 'ready' | 'teachersClean'>): Cell => ({
+  ...c,
+  teachersClean: c.teachersOut <= TEACHER_OUT * c.field && c.teachersRepair <= REPAIR_CAP,
+  ready: c.outVerdict !== 'B worse' && c.harmVerdict !== 'B worse' && c.driversOut <= OUT_CAP * c.field
+    && c.driversRepair <= REPAIR_CAP && c.paceGap <= PACE_SLACK && c.scripted < SCRIPT_SLACK,
 });
+/** Per car per 100 km. */
+const per100 = (harm: number, field: number, km: number) => harm / field / (km / 100);
 
 if (only !== 'circuits') {
   for (const field of fields) {
@@ -87,6 +113,10 @@ if (only !== 'circuits') {
         kind: 'oval', name: track.startsWith('oval:') ? `generated ${track.split(':')[2]}` : track, field: Number(field), km: 150,
         teachersOut: m.retirements.values[0].mean, driversOut: m.retirements.values[1].mean, outVerdict: m.retirements.verdict ?? '',
         paceGap: gap(lap[1].mean, lap[0].mean), scripted: m.scripted.values[1].mean,
+        teachersHarm: per100(m.harm.values[0].mean, Number(field), 150), driversHarm: per100(m.harm.values[1].mean, Number(field), 150),
+        harmVerdict: m.harm.verdict ?? '',
+        teachersRepair: share(m.damageStops.values[0].mean, m.stops.values[0].mean),
+        driversRepair: share(m.damageStops.values[1].mean, m.stops.values[1].mean),
       }));
     }
   }
@@ -103,6 +133,10 @@ if (only !== 'ovals') {
       kind: 'circuit', name: km === '25' ? 'club + GP (sprint)' : 'club + GP', field: Number(field), km: Number(km),
       teachersOut: m.retirements.values[0].mean, driversOut: m.retirements.values[1].mean, outVerdict: m.retirements.verdict ?? '',
       paceGap: gap(lap[1].mean, lap[0].mean), scripted: m.scriptPit.values[1].mean + m.scriptFormation.values[1].mean,
+      teachersHarm: per100(m.harm.values[0].mean, Number(field), Number(km)), driversHarm: per100(m.harm.values[1].mean, Number(field), Number(km)),
+      harmVerdict: m.harm.verdict ?? '',
+      teachersRepair: share(m.damageStops.values[0].mean, m.stops.values[0].mean),
+      driversRepair: share(m.damageStops.values[1].mean, m.stops.values[1].mean),
     }));
   }
 }
@@ -110,11 +144,16 @@ rmSync(dir, { recursive: true, force: true });
 
 const pct = (x: number) => (Number.isFinite(x) ? `${(100 * x).toFixed(1)}%` : 'no laps');
 const lines = [
-  `Readiness of ${bundle.split(/[\\/]/).pop()} (${seeds} seeds a cell, ${((Date.now() - t0) / 60000).toFixed(0)} min): ${cells.filter((c) => c.ready).length} of ${cells.length} cells ready`,
+  `Readiness of ${bundle.split(/[\\/]/).pop()} (${quick ? 'quick tier, ' : ''}${seeds} seeds a cell, ${((Date.now() - t0) / 60000).toFixed(0)} min): `
+    + `${cells.filter((c) => c.ready).length} of ${cells.length} cells ready; teachers clean in ${cells.filter((c) => c.teachersClean).length}`,
   '',
-  '| Where | Cars | km | Out: teachers | Out: drivers | vs teachers | Pace gap | Scripted | Ready |',
-  '|---|---|---|---|---|---|---|---|---|',
-  ...cells.map((c) => `| ${c.kind === 'oval' ? 'oval: ' : ''}${c.name} | ${c.field} | ${c.km} | ${c.teachersOut.toFixed(1)} | ${c.driversOut.toFixed(1)} | ${c.outVerdict} | ${pct(c.paceGap)} | ${pct(c.scripted)} | ${c.ready ? 'yes' : '**no**'} |`),
+  'Out: cars out a race. Damage: done by fault, per car per 100 km. Repairs: share of stops called for damage. Each pair is teachers / drivers.',
+  '',
+  '| Where | Cars | km | Out | vs teachers | Damage | vs teachers | Repairs | Pace gap | Scripted | Teachers clean | Ready |',
+  '|---|---|---|---|---|---|---|---|---|---|---|---|',
+  ...cells.map((c) => `| ${c.kind === 'oval' ? 'oval: ' : ''}${c.name} | ${c.field} | ${c.km} | ${c.teachersOut.toFixed(1)} / ${c.driversOut.toFixed(1)} | ${c.outVerdict} `
+    + `| ${c.teachersHarm.toFixed(3)} / ${c.driversHarm.toFixed(3)} | ${c.harmVerdict} | ${pct(c.teachersRepair)} / ${pct(c.driversRepair)} `
+    + `| ${pct(c.paceGap)} | ${pct(c.scripted)} | ${c.teachersClean ? 'yes' : '**no**'} | ${c.ready ? 'yes' : '**no**'} |`),
   '',
   'Not covered yet: rovals and venue rings, qualifying.',
 ];

@@ -102,6 +102,8 @@ const metrics: Array<[keyof RaceSummary, string, number, boolean | null]> = [
   ['multiCar', 'multi-car wrecks', 1, true],
   ['harm', 'damage done (by fault)', 1, true],
   ['cautions', 'cautions', 1, true],
+  ['stops', 'pit stops', 1, null],
+  ['damageStops', '  called for damage', 1, true],
   ['lapTime', 'lap time (s, tires 60%+)', 2, true],
   // The goal is no scripted driving: the share of car-time a script drives, and cars out while one did.
   ['scripted', 'share driven by scripts', 3, true],
