@@ -50,7 +50,8 @@ export function grooveChance(car: { groove: number }): number {
 }
 
 /** Width (m) of the rubber a car lays down. */
-export const GROOVE_WIDTH = P.CAR_RADIUS * 1.4;
+/** (Asked each time: the car's size can be an experiment's.) */
+export const grooveWidth = () => P.CAR_RADIUS * 1.4;
 
 /** The skid stroke for this stretch of travel, or null if the car isn't marking. */
 export function skidStroke(car: { skid: number; surface: Surface }): Stroke | null {

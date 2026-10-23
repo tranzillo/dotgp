@@ -1,5 +1,6 @@
 import type { Rng } from '../ai/rng';
 import type { Centerline } from '../sim/centerline';
+import { EXPERIMENT } from '../sim/experiment';
 import type { Decoration, EscapeLane, PitLane, Road, RoadNode, RovalSpec, SurfaceRegion, TrackLayout, TrackRect } from '../sim/layout';
 import { Track } from '../sim/track';
 import { integrate, ovalPose } from './course';
@@ -653,7 +654,8 @@ function courseInner(site: InfieldSite, straight: number, radius: number, width:
   try {
     const built = buildLayout('oval', {
       ...shapedOval({
-        straightLength: straight, turnRadius: radius, easementLength: Math.round(radius * 0.35), width, apronWidth: 4,
+        // (Its width is the courses' already: built, it would be scaled by the experiment a second time.)
+        straightLength: straight, turnRadius: radius, easementLength: Math.round(radius * 0.35), width: width / EXPERIMENT.widthScale, apronWidth: 4,
         bankInner: 0, bankOuter: 0, bankStraight: 0,
         name: 2 * (straight + Math.PI * radius) < 800 ? 'Bullring' : 'Short track',
       }),

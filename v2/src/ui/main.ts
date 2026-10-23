@@ -1,3 +1,5 @@
+// (First: the experiment switches in the address apply before anything is built.)
+import { EXPERIMENT, experimentName } from '../sim/experiment';
 import type { PracticeRequest, PracticeRound } from '../ai/practice.worker';
 import { Rng } from '../ai/rng';
 import { EventHost, type EventHandle } from '../events/host';
@@ -23,7 +25,7 @@ import { SIGNATURE_BINS } from '../sim/car';
 import { G, PHYSICS as P } from '../sim/constants';
 import { Track } from '../sim/track';
 import {
-  CIRCUIT_CLASSES, complexLayouts, generateTrack, MEGA_COMPLEX, venueLayouts, OVAL_SHAPES, OVAL_SIZE_CLASSES, PRESETS, presetLayout, presetTrack, type OvalShape,
+  CIRCUIT_CLASSES, complexLayouts, generateTrack, MEGA_COMPLEX, venueLayouts, OVAL_SHAPES, OVAL_SIZE_CLASSES, PRESETS, presetLayout, presetTrack, REAL_TRACKS, realLayout, type OvalShape,
 } from '../trackgen';
 import { layoutLabel, layoutsFor, multiLayoutVenue, singleLayoutVenue, venueSeries, type Venue, type VenueLayout } from '../venue/venue';
 import { AgentPage } from './agentPage';
@@ -140,6 +142,9 @@ function addGeneratedVenue(type: 'oval' | 'circuit', seed = Math.floor(Math.rand
   const chosen = String(t.layout.params.variant);
   const kind = [chosen, type === 'oval' ? String(t.layout.params.shape ?? '') : ''].filter(Boolean).join(' ');
   const source = `${type}:${seed}:${chosen}${shape ? `:${shape}` : ''}`;
+  // (The same venue asked for another way: a seed with any size, then its code.)
+  const same = venues.find((v) => v.source === source);
+  if (same) return same;
   // A track with another in its infield (an inner oval) is a venue of both.
   const venue = t.neighbours.length || t.layout.infield.rovals?.length
     ? {
@@ -1835,7 +1840,7 @@ $('startExhibition').onclick = () => {
 
 // Generate: adds a venue to the list (and picks it), starts nothing.
 const sizesOf = (type: 'oval' | 'circuit') => Object.keys(type === 'oval' ? OVAL_SIZE_CLASSES : CIRCUIT_CLASSES);
-const shapeFits = (shape: OvalShape, size: string | null) => (size ? !!OVAL_SIZE_CLASSES[size].shapes[shape] : true);
+const shapeFits = (shape: OvalShape, size: string | null) => (size && OVAL_SIZE_CLASSES[size] ? !!OVAL_SIZE_CLASSES[size].shapes[shape] : true);
 buttonGroup('genKindButtons', [['Oval', 'oval'], ['Road circuit', 'circuit']] as Array<[string, 'oval' | 'circuit']>, () => gen.type, (t) => {
   gen.type = t;
   gen.size = null;
@@ -1853,15 +1858,104 @@ buttonGroup('genSizeButtons', () => [['Any', null], ...sizesOf(gen.type).map((k)
 buttonGroup('genShapeButtons', () => [['Any', null], ...OVAL_SHAPES.map((k) => [k[0].toUpperCase() + k.slice(1), k])] as Array<[string, OvalShape | null]>,
   () => gen.shape, (s) => { gen.shape = s; },
   (s) => (s && !shapeFits(s, gen.size) ? `No ${s} ${gen.size} ovals` : null));
+/**
+ * What the seed field asks for: nothing (a random seed); a seed (with the kind, size and shape picked above); or a
+ * venue's code, kind:seed[:size[:shape]], or a link with one in it (that venue exactly: it sets the kind, size and
+ * shape too). Null if it's none of those.
+ */
+function seedAsked(text: string): { seed?: number; type?: 'oval' | 'circuit'; size?: string | null; shape?: OvalShape | null; real?: string } | null {
+  const raw = text.trim();
+  if (!raw) return {};
+  const code = /[?&]track=([^&#\s]+)/.exec(raw)?.[1] ?? raw;
+  if (/^\d+$/.test(code)) return { seed: Number(code) };
+  const [kind, seedText, size, shape] = decodeURIComponent(code).toLowerCase().split(':');
+  if (kind === 'real') return REAL_TRACKS.some((t) => t.id === seedText) ? { real: seedText } : null;
+  if ((kind !== 'oval' && kind !== 'circuit') || !/^\d+$/.test(seedText ?? '')) return null;
+  if (size && !sizesOf(kind).includes(size)) return null;
+  if (shape && (kind !== 'oval' || !OVAL_SHAPES.includes(shape as OvalShape))) return null;
+  return { seed: Number(seedText), type: kind, size: size || null, shape: (shape || null) as OvalShape | null };
+}
+const seedField = $('genSeed') as HTMLInputElement;
+seedField.oninput = () => seedField.classList.toggle('bad', seedAsked(seedField.value) === null);
+seedField.onkeydown = (e) => { if (e.key === 'Enter') $('generate').click(); };
 $('generate').onclick = () => {
-  // A shape with any size: one of the sizes that has it.
+  const asked = seedAsked(seedField.value);
+  if (!asked) {
+    news(`Seed: a number (123), a venue's code (oval:123:speedway, circuit:45:gp, real:monza) or a link with ?track= in it`);
+    return;
+  }
+  if (asked.real) { void addReal(asked.real); return; }
+  // A code picks the kind, size and shape (and shows them picked).
+  if (asked.type) {
+    gen.type = asked.type;
+    gen.size = asked.size ?? null;
+    gen.shape = asked.shape ?? null;
+    $('genShapeRow').hidden = gen.type !== 'oval';
+    buttonGroups.forEach((render) => render());
+  }
+  const seed = asked.seed ?? Math.floor(Math.random() * 1e9);
+  // A shape with any size: one of the sizes that has it (the seed's, so a seed makes the same venue each time).
   const sizes = sizesOf(gen.type).filter((k) => gen.type !== 'oval' || !gen.shape || shapeFits(gen.shape, k));
-  const variant = gen.size ?? (gen.shape ? sizes[rng.int(sizes.length)] : undefined);
-  const venue = addGeneratedVenue(gen.type, Math.floor(Math.random() * 1e9), variant, gen.shape ?? undefined);
+  const variant = gen.size ?? (gen.shape ? sizes[seed % sizes.length] : undefined);
+  const venue = addGeneratedVenue(gen.type, seed, variant, gen.shape ?? undefined);
   pickDraft(venue);
   const t = venue.layouts[0].track;
-  news(`New venue: ${venue.name}, ${t.length.toFixed(0)} m. Race there from Exhibition (pick a series and Start). Open it again with ?track=${venue.source}`);
+  showVenueCode(venue.source!);
+  news(`New venue: ${venue.name}, ${t.length.toFixed(0)} m. Race there from Exhibition (pick a series and Start). Its code: ${venue.source}`);
 };
+/**
+ * A real track (trackgen/realtrack.ts) as a venue: its survey fetched (public/tracks), laid out, and added to the list
+ * (once). Null, with the reason in the news, if it can't be laid out.
+ */
+async function realVenue(id: string): Promise<Venue | null> {
+  const source = `real:${id}`;
+  const known = venues.find((v) => v.source === source);
+  if (known) return known;
+  const real = REAL_TRACKS.find((t) => t.id === id);
+  if (!real) return null;
+  try {
+    const res = await fetch(`/tracks/${real.file}`);
+    if (!res.ok) throw new Error(`${real.name}: its survey didn't load (${res.status})`);
+    const track = new Track(realLayout(real, await res.text()));
+    const venue = singleLayoutVenue(track, { id: `real-${id}`, name: `${track.name} (real ${real.kind})`, source });
+    venues.push(venue);
+    return venue;
+  } catch (e) {
+    news(`Couldn't lay out ${real.name}: ${(e as Error).message.replace(/^invalid \w+ layout: /, '')}`);
+    return null;
+  }
+}
+/** Adds a real track and picks it (starts nothing). */
+async function addReal(id: string): Promise<void> {
+  const venue = await realVenue(id);
+  if (!venue) return;
+  pickDraft(venue);
+  showVenueCode(venue.source!);
+  news(`New venue: ${venue.name}, ${venue.layouts[0].track.length.toFixed(0)} m. Race there from Exhibition (pick a series and Start).`);
+}
+{
+  const select = $('realTrack') as HTMLSelectElement;
+  select.replaceChildren(...REAL_TRACKS.map((t) => Object.assign(document.createElement('option'), { value: t.id, textContent: `${t.name}${t.kind === 'oval' ? ' (oval)' : ''}` })));
+  $('addReal').onclick = () => { void addReal(select.value); };
+}
+
+/** The venue just generated: its code (to type in Seed again) and a link that opens it. */
+function showVenueCode(source: string): void {
+  const el = $('genCode');
+  const link = `${location.origin}${location.pathname}?track=${source}`;
+  el.replaceChildren('Code ', Object.assign(document.createElement('code'), { textContent: source }));
+  const copy = (label: string, text: string) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.title = label === 'Copy code' ? 'Paste it in Seed to make this venue again' : link;
+    b.onclick = () => {
+      void navigator.clipboard?.writeText(text).then(() => { b.textContent = 'Copied'; setTimeout(() => { b.textContent = label; }, 1200); });
+    };
+    return b;
+  };
+  el.append(copy('Copy code', source), copy('Copy link', link));
+  el.hidden = false;
+}
 buttonGroup('fieldButtons', FIELD_SIZES.map((n) => [String(n), n] as [string, number]), () => fieldSize, (n) => {
   const practising = !!trainer;
   fieldSize = n;
@@ -2143,6 +2237,7 @@ function startPractice(): void {
     traffic: true,
     drivers: drivers.map((d) => ({ weights: Array.from(d.weights), rounds: d.rounds, licensed: d.licensed })),
     chiefs: chiefs.flatMap((c, index) => (c.brain.kind === 'neural' ? [{ index, weights: Array.from(c.brain.weights), rounds: c.rounds }] : [])),
+    experiment: experimentName(),
   };
   trainer.postMessage(msg);
   $('practice').textContent = 'Stop practice';
@@ -2536,6 +2631,11 @@ async function boot(): Promise<void> {
   // Rosters saved before trained crew chiefs existed: bring their chiefs up to date.
   const upgraded = roster.upgradeScriptedChiefs();
   if (upgraded) news(`${upgraded} crew chiefs switched to learned strategy (descended from the trained chiefs)`);
+  // An experiment by eye: cars drawn at their real size (legible dots would hide the change).
+  if (EXPERIMENT.car || EXPERIMENT.widthScale !== 1) {
+    renderer.dotMode = 'real';
+    news(`Experiment: ${[EXPERIMENT.car ? `cars ${EXPERIMENT.car} m wide` : '', EXPERIMENT.widthScale !== 1 ? `racing surfaces ×${EXPERIMENT.widthScale}` : ''].filter(Boolean).join(', ')}. Drivers weren't trained for this: expect messier racing.`);
+  }
   if (params.has('field')) fieldSize = Number(params.get('field'));
   if (params.has('zoom')) zoom = Number(params.get('zoom'));
   if (params.has('laps')) raceLaps = Number(params.get('laps'));
@@ -2544,8 +2644,19 @@ async function boot(): Promise<void> {
   // ?track=oval:<seed>[:<variant>[:<shape>]] or ?track=circuit:<seed>[:club|gp] opens a generated venue (an exhibition race there).
   const [kind, seedText, variant, shape] = (params.get('track') ?? '').split(':');
   if ((kind === 'oval' || kind === 'circuit') && seedText) {
-    pickDraft(addGeneratedVenue(kind, Number(seedText), variant || undefined, (shape || undefined) as OvalShape | undefined));
+    const venue = addGeneratedVenue(kind, Number(seedText), variant || undefined, (shape || undefined) as OvalShape | undefined);
+    pickDraft(venue);
+    showVenueCode(venue.source!);
     applyDraft();
+  } else if (kind === 'real' && seedText) {
+    // ?track=real:<id>: a real track (fetched: the season's round starts meanwhile, and an exhibition there replaces it).
+    toNextRound();
+    void realVenue(seedText).then((venue) => {
+      if (!venue) return;
+      pickDraft(venue);
+      showVenueCode(venue.source!);
+      $('startExhibition').click();
+    });
   } else {
     toNextRound();
   }

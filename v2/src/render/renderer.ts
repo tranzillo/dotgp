@@ -44,7 +44,7 @@ import { layoutKind, type Decoration, type Edge, type LineStyle, type Marking, t
 import type { Track } from '../sim/track';
 import { Exhaust } from './exhaust';
 import { numberColor, PACE_CAR_LIVERY, RACING_SURFACE, type Livery } from './livery';
-import { GROOVE_DISPLAY_ALPHA, GROOVE_STROKE_ALPHA, GROOVE_WIDTH, grooveChance, skidStroke, STROKE_FIELDS } from './marks';
+import { GROOVE_DISPLAY_ALPHA, GROOVE_STROKE_ALPHA, grooveChance, grooveWidth, skidStroke, STROKE_FIELDS } from './marks';
 
 const COLORS = {
   background: '#0d0d0f',
@@ -822,7 +822,7 @@ export class Renderer {
     groove.lineCap = 'round';
     skids.lineCap = 'round';
     groove.strokeStyle = `rgba(${COLORS.rubber},${GROOVE_STROKE_ALPHA})`;
-    groove.lineWidth = GROOVE_WIDTH * MARK_RES;
+    groove.lineWidth = grooveWidth() * MARK_RES;
     for (let k = 0; k + STROKE_FIELDS <= strokes.length; k += STROKE_FIELDS) {
       const [x0, y0] = this.toMarks(strokes[k], strokes[k + 1]);
       const [x1, y1] = this.toMarks(strokes[k + 2], strokes[k + 3]);

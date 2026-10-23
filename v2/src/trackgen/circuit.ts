@@ -34,13 +34,57 @@ export interface CornerSpec {
   angle: number;
   radius: number;
   ease: number;
+  /** The eased length out, where it differs from in (a real corner's: tightening in, opening out). Default: ease. */
+  easeOut?: number;
 }
+
+/** A corner's eased length out. */
+const easeOutOf = (c: CornerSpec) => c.easeOut ?? c.ease;
 
 /**
  * The lap from the start line: half the main straight, then each element in
  * turn (a straight, or a corner), then the rest of the main straight.
  */
-export type CircuitElement = { straight: number } | { corner: CornerSpec };
+export type CircuitElement = { straight: number } | { corner: CornerSpec } | { curve: Array<[number, number, number]> };
+
+/** A measured curve's heading change (a real track's, as curvature sections). */
+const curveTurn = (sections: Array<[number, number, number]>) => sections.reduce((a, [len, k0, k1]) => a + (len * (k0 + k1)) / 2, 0);
+
+/**
+ * The corners of a measured curve (a real track's), from its curvature: each
+ * stretch turning one way (turning at least 3 degrees; gentler than
+ * straightK, straight between them), its arc where it turns at 85% of its
+ * tightest or more, eased in and out either side.
+ */
+export function curveCorners(
+  sections: Array<[number, number, number]>, straightK = 1 / 1500,
+): Array<{ s0: number; a0: number; a1: number; s1: number; spec: CornerSpec }> {
+  const out: Array<{ s0: number; a0: number; a1: number; s1: number; spec: CornerSpec }> = [];
+  let s = 0, i = 0;
+  const sign = ([, k0, k1]: [number, number, number]) => (Math.max(Math.abs(k0), Math.abs(k1)) < straightK ? 0 : Math.sign(k0 + k1));
+  while (i < sections.length) {
+    const dir = sign(sections[i]);
+    if (!dir) { s += sections[i][0]; i++; continue; }
+    let j = i, len = 0, peak = 0;
+    while (j < sections.length && sign(sections[j]) === dir) {
+      len += sections[j][0];
+      peak = Math.max(peak, Math.abs(sections[j][1]), Math.abs(sections[j][2]));
+      j++;
+    }
+    const run = sections.slice(i, j), angle = curveTurn(run);
+    if (Math.abs(angle) >= (3 * Math.PI) / 180) {
+      let a0 = -1, a1 = 0, at = 0;
+      for (const [l, k0, k1] of run) {
+        if (Math.max(Math.abs(k0), Math.abs(k1)) >= 0.85 * peak) { if (a0 < 0) a0 = at; a1 = at + l; }
+        at += l;
+      }
+      out.push({ s0: s, a0: s + a0, a1: s + a1, s1: s + len, spec: { angle, radius: 1 / peak, ease: a0, easeOut: len - a1 } });
+    }
+    s += len;
+    i = j;
+  }
+  return out;
+}
 
 export interface CircuitParams {
   /** Main straight length (the start line is in its middle). */
@@ -59,6 +103,8 @@ export interface CircuitParams {
   apexWall?: boolean[];
   /** Per corner: grass to the barrier and no run-off, where the corner needs little (slow, off a short straight). */
   bare?: boolean[];
+  /** A measured curve's stretches gentler than this (1/m) count as straight between its corners (default 1/1500). */
+  straightK?: number;
 }
 
 interface SizeClass {
@@ -121,10 +167,10 @@ export function tangentLength(c: CornerSpec): number {
 /** Curvature sections for a corner. */
 export function cornerSections(c: CornerSpec): Array<[number, number, number]> {
   const k = Math.sign(c.angle) / c.radius;
-  const arc = Math.abs(c.angle) * c.radius - c.ease;
+  const arc = Math.abs(c.angle) * c.radius - (c.ease + easeOutOf(c)) / 2;
   const out: Array<[number, number, number]> = [[c.ease, 0, k]];
   if (arc > 1e-6) out.push([arc, k, k]);
-  out.push([c.ease, k, 0]);
+  out.push([easeOutOf(c), k, 0]);
   return out;
 }
 
@@ -235,6 +281,7 @@ export function circuitCenterline(p: CircuitParams): CenterlineSpec {
   const sections: Array<[number, number, number]> = [[p.main / 2, 0, 0]];
   for (const e of p.elements) {
     if ('straight' in e) sections.push([e.straight, 0, 0]);
+    else if ('curve' in e) sections.push(...e.curve);
     else sections.push(...cornerSections(e.corner));
   }
   sections.push([p.main / 2, 0, 0]);
@@ -265,7 +312,7 @@ function lapEnd(spec: CenterlineSpec): { x: number; y: number; heading: number }
  * straight lengths, so this is the smallest change (weighted toward longer
  * straights) that cancels the gap, with no straight below its minimum.
  */
-function closeLoop(p: CircuitParams): boolean {
+export function closeLoop(p: CircuitParams): boolean {
   const spec = circuitCenterline(p);
   const end = lapEnd(spec);
   if (Math.abs(end.heading - 2 * Math.PI) > 1e-6) return false;
@@ -275,7 +322,7 @@ function closeLoop(p: CircuitParams): boolean {
   items.push({ el: null, heading: 0, len: p.main }); // the main straight (both halves run at heading 0)
   for (const e of p.elements) {
     if ('straight' in e) items.push({ el: e, heading: h, len: e.straight });
-    else h += e.corner.angle;
+    else h += 'curve' in e ? curveTurn(e.curve) : e.corner.angle;
   }
   const r = [-end.x, -end.y];
   const free = items.map((it) => it.len > 60);
@@ -361,16 +408,35 @@ function cornersAlong(p: CircuitParams, L: number): CornerAt[] {
   const signed = (x: number) => (x > L / 2 ? x - L : x);
   for (const e of p.elements) {
     if ('straight' in e) { s += e.straight; run += e.straight; continue; }
+    if ('curve' in e) {
+      // A measured curve: its corners as its curvature has them, the straight bits between them counted as straight.
+      let end = 0;
+      for (const c of curveCorners(e.curve, p.straightK)) {
+        const s0 = signed(s + c.s0);
+        out.push({
+          s0, a0: s0 + (c.a0 - c.s0), a1: s0 + (c.a1 - c.s0), s1: s0 + (c.s1 - c.s0), spec: c.spec,
+          runoff: p.runoff[k] ?? 'gravel', apexWall: p.apexWall?.[k] ?? false, bare: p.bare?.[k] ?? false,
+          before: run + (c.s0 - end), after: 0, chicane: -1, turn: Math.abs(c.spec.angle),
+        });
+        k++;
+        run = 0;
+        end = c.s1;
+      }
+      const len = e.curve.reduce((a, sec) => a + sec[0], 0);
+      run += len - end;
+      s += len;
+      continue;
+    }
     const c = e.corner;
-    const arc = Math.max(0, Math.abs(c.angle) * c.radius - c.ease);
+    const arc = Math.max(0, Math.abs(c.angle) * c.radius - (c.ease + easeOutOf(c)) / 2);
     const s0 = signed(s);
     out.push({
-      s0, a0: s0 + c.ease, a1: s0 + c.ease + arc, s1: s0 + 2 * c.ease + arc, spec: c,
+      s0, a0: s0 + c.ease, a1: s0 + c.ease + arc, s1: s0 + c.ease + arc + easeOutOf(c), spec: c,
       runoff: p.runoff[k] ?? 'gravel', apexWall: p.apexWall?.[k] ?? false, bare: p.bare?.[k] ?? false,
       before: run, after: 0, chicane: -1, turn: Math.abs(c.angle),
     });
     k++;
-    s += 2 * c.ease + arc;
+    s += c.ease + arc + easeOutOf(c);
     run = 0;
   }
   // The last corner leads onto the main straight.
@@ -1387,7 +1453,8 @@ function validateCircuit(layout: TrackLayout, track: Track): Problem[] {
     const want = c.depth(c.mid, L);
     const out = c.spec.angle < 0 ? g.left : g.right;
     const room = out.wall[k] - BARRIER / 2 - out.edge[k];
-    if (room < 0.6 * want) problems.push({ severity: 'error', message: `turn ${i + 1}'s run-off is squeezed by another part of the circuit` });
+    // (A real track's run-off is what it is: noted, not refused.)
+    if (room < 0.6 * want) problems.push({ severity: p.character === 'real' ? 'warning' : 'error', message: `turn ${i + 1}'s run-off is squeezed by another part of the circuit` });
   });
   for (let x = pit.entryStart; x <= pit.exitEnd; x += GEO_STEP) {
     const k = sample(x);

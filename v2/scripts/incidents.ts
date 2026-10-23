@@ -34,7 +34,7 @@ const STYLED_RACERS = 40;
 import { PaceCarDriver } from '../src/ai/formation';
 import { randomTraits, StrategistCrewChief } from '../src/ai/pitting';
 import { Rng } from '../src/ai/rng';
-import { GROOVE_DISPLAY_ALPHA, GROOVE_STROKE_ALPHA, GROOVE_WIDTH, grooveChance, skidStroke } from '../src/render/marks';
+import { GROOVE_DISPLAY_ALPHA, GROOVE_STROKE_ALPHA, grooveWidth, grooveChance, skidStroke } from '../src/render/marks';
 import { Car } from '../src/sim/car';
 import { PHYSICS as P } from '../src/sim/constants';
 import { placeOnGrid } from '../src/sim/grid';
@@ -219,7 +219,7 @@ class MarkGrid {
       this.last.set(car, [car.x, car.y]);
       if (!prev || Math.hypot(car.x - prev[0], car.y - prev[1]) > 30) continue;
       const g = GROOVE_STROKE_ALPHA * grooveChance(car);
-      if (g > 0) this.stroke(this.groove, prev, [car.x, car.y], GROOVE_WIDTH, g);
+      if (g > 0) this.stroke(this.groove, prev, [car.x, car.y], grooveWidth(), g);
       const skid = skidStroke(car);
       if (skid) this.stroke(this.skid, prev, [car.x, car.y], skid.width, skid.alpha);
     }

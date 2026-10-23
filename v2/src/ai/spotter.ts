@@ -29,7 +29,8 @@ export const RADIO = {
 } as const;
 export const RADIO_SIZE = 16;
 
-const ALONGSIDE_DS = 4 * P.CAR_RADIUS + 1.5; // longitudinal overlap window (m)
+/** Longitudinal overlap window (m). (Asked each time: the car's size can be an experiment's.) */
+const alongsideDs = () => 4 * P.CAR_RADIUS + 1.5;
 const ALONGSIDE_DD = 6; // lateral window (m)
 const SAME_LANE_DD = 3.5;
 const AHEAD_RANGE = 120;
@@ -101,7 +102,7 @@ export class TowerSpotter implements Spotter {
       const dd = other.d - car.d;
 
       // Alongside: overlapping longitudinally, in an adjacent lane.
-      if (Math.abs(ds) < ALONGSIDE_DS && Math.abs(dd) < ALONGSIDE_DD) {
+      if (Math.abs(ds) < alongsideDs() && Math.abs(dd) < ALONGSIDE_DD) {
         const prox = 1 - clamp01((Math.abs(dd) - r2) / (ALONGSIDE_DD - r2));
         const rel = clamp(ds / (2 * r2), -1, 1);
         if (dd >= 0 && prox > radio[RADIO.LOW_PROX]) {
@@ -117,7 +118,7 @@ export class TowerSpotter implements Spotter {
       const gapAhead = track.wrapS(other.s - car.s);
       // Slow because they're pitting isn't a hazard; slow on the racing surface is. (Speed last: it's a square root.)
       const pitting = other.pit.phase !== 'none' && !other.retired;
-      if (gapAhead > ALONGSIDE_DS && gapAhead < hazardGap && !pitting && (other.retired || other.speed < HAZARD_SPEED)) {
+      if (gapAhead > alongsideDs() && gapAhead < hazardGap && !pitting && (other.retired || other.speed < HAZARD_SPEED)) {
         hazardGap = gapAhead;
         hazardD = other.d;
       }
@@ -182,7 +183,7 @@ export class TowerSpotter implements Spotter {
       let ds = other.s - car.s;
       if (ds > L / 2) ds -= L;
       else if (ds < -L / 2) ds += L;
-      if (Math.abs(ds) < ALONGSIDE_DS + 2) return false;
+      if (Math.abs(ds) < alongsideDs() + 2) return false;
       if (ds < 0 && -ds < this.skill.behindRange) {
         const closing = alongSpeed(other, world) - myAlong;
         if (closing > 0 && -ds / closing < MERGE_TIME_GAP) return false;

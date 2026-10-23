@@ -109,6 +109,12 @@
       button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
       button:disabled { opacity: .4; cursor: default; }
       input[type=file] { display: none; }
+      /* A venue's seed, or its code (kind:seed:size[:shape]) to recreate it. */
+      #genSeed { width: 190px; height: 28px; background: #1d1d21; color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; font: 12px var(--mono); }
+      #genSeed:focus { outline: none; border-color: #6a6a72; }
+      #genSeed.bad { border-color: #c0504d; }
+      #genCode code { font: 12px var(--mono); color: var(--text); user-select: all; }
+      #genCode button { margin-left: 6px; padding: 2px 7px; font-size: 12px; }
       table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
       th { color: var(--muted); font-weight: 500; text-align: right; padding: 3px 4px; border-bottom: 1px solid var(--line); }
       td { text-align: right; padding: 4px 3px; border-bottom: 1px solid #1c1c20; white-space: nowrap; }
@@ -289,8 +295,11 @@
           <div class="row"><span class="label">Kind</span><span id="genKindButtons" class="row inline"></span></div>
           <div class="row"><span class="label" title="Size class (any: the seed picks)">Size</span><span id="genSizeButtons" class="row inline"></span></div>
           <div class="row" id="genShapeRow"><span class="label" title="Oval shape (any: the size class's mix). Drivers practise on all of them in the Track variety lesson">Shape</span><span id="genShapeButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="Empty: a new random venue. A seed: that venue, with the kind and size above. A venue's code (oval:123:speedway) or link: that venue exactly">Seed</span><input type="text" id="genSeed" placeholder="random, a seed, or a code" spellcheck="false" autocomplete="off"></div>
           <div class="row"><button id="generate" title="Add a venue to the Exhibition list (starts nothing)">Generate</button></div>
-          <p class="note">Generating adds a venue to the list without starting anything. Pick a venue, series, layout and session, then Start.</p>
+          <p class="note" id="genCode" hidden></p>
+          <div class="row"><span class="label" title="A real track's line, from survey data (public/tracks), laid out as DotGP lays out its own: its pits, run-off and banking are DotGP's. Clockwise tracks are mirrored">Real track</span><select id="realTrack"></select><button id="addReal" title="Add it to the Exhibition list (starts nothing)">Add</button></div>
+          <p class="note">Generating adds a venue to the list without starting anything. Pick a venue, series, layout and session, then Start. The same seed and settings always make the same venue.</p>
         </section>
 
         <section data-view="paddock" hidden>

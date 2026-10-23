@@ -102,7 +102,8 @@ export function racerStyle(nerve: number, talent: number, random: () => number):
 }
 
 /** How far (along) another car counts as alongside: door to door, overlapping by more than a little. */
-const ALONGSIDE = 2 * P.CAR_RADIUS;
+/** (Asked each time: the car's size can be an experiment's.) */
+const alongside = () => 2 * P.CAR_RADIUS;
 /**
  * How hard it drives toward its speed under caution when below it (1/s): in proportion, as the formation brakes
  * above it, not flat out. A teacher's throttle has to be one a student can copy: one flicking between full throttle
@@ -235,18 +236,18 @@ export class TrafficRacer {
       if (ds > L / 2) ds -= L;
       else if (ds < -L / 2) ds += L;
       if (ds > reach) continue;
-      if (ds <= -ALONGSIDE) {
+      if (ds <= -alongside()) {
         // Behind: a car coming up a lane over is as good as alongside if it will be there before this car could
         // be across into its lane ("car outside!"), so it isn't moved over on.
         const closing = other.speed - vMe;
         const across = width / CROSS_RATE;
-        if (other.retired || closing <= 0 || -ds - ALONGSIDE > closing * across) continue;
+        if (other.retired || closing <= 0 || -ds - alongside() > closing * across) continue;
         if (Math.abs(other.d - car.d) < width) continue; // in its own lane: it's the car behind, its to follow
         if (other.d > car.d) high = Math.min(high, other.d - width);
         else low = Math.max(low, other.d + width);
         continue;
       }
-      if (Math.abs(ds) < ALONGSIDE) {
+      if (Math.abs(ds) < alongside()) {
         // Alongside: room on its side.
         if (other.d > car.d) high = Math.min(high, other.d - width);
         else low = Math.max(low, other.d + width);

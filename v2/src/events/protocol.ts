@@ -18,7 +18,8 @@ export type EventSpec = { what: 'session'; spec: SessionSpec } | { what: 'class'
  * a second.
  */
 export type ToEvent =
-  | { type: 'start'; event: EventSpec; attached: boolean; speed: number; runDetached: boolean; warm: number }
+  /** experiment: the page's experiment switches (sim/experiment.ts), to apply before anything is built. */
+  | { type: 'start'; event: EventSpec; attached: boolean; speed: number; runDetached: boolean; warm: number; experiment?: string }
   | { type: 'attach'; speed: number }
   | { type: 'detach' }
   | { type: 'speed'; speed: number }

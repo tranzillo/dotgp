@@ -27,7 +27,8 @@ const CONTACT_SETTLE = 1;
 const CONTACT_MIN_HARM = 0.1;
 const CONTACT_FAULT = 0.6;
 /** A car's length: cars closer than this along the track are alongside; a pass is done when one is a car length clear. */
-const CAR_LENGTH = 2 * P.CAR_RADIUS;
+/** (Asked each time: the car's size can be an experiment's.) */
+const carLength = () => 2 * P.CAR_RADIUS;
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
@@ -200,7 +201,7 @@ export class Detector {
         if (a.id >= b.id) continue;
         const key = `${a.id}:${b.id}`;
         const gap = this.ahead(a, b);
-        if (Math.abs(gap) < CAR_LENGTH) {
+        if (Math.abs(gap) < carLength()) {
           still.add(key);
           const m = this.alongside.get(key) ?? { a, b, aStartedAhead: gap > 0, moments: 0, aBelow: 0, bBelow: 0 };
           m.moments++;
@@ -256,7 +257,7 @@ export class Detector {
         if (car.retired || car.pit.phase !== 'none') { this.restartAhead.delete(car); continue; }
         if (!crossed(car)) continue;
         this.restartAhead.delete(car);
-        const passed = wasAhead.filter((o) => !o.retired && o.pit.phase === 'none' && !crossed(o) && this.ahead(car, o) > CAR_LENGTH);
+        const passed = wasAhead.filter((o) => !o.retired && o.pit.phase === 'none' && !crossed(o) && this.ahead(car, o) > carLength());
         if (!passed.length) continue;
         out.push({
           offence: 'jumped-restart', car, time: now, against: passed[0], severity: Math.min(1, passed.length / 2),

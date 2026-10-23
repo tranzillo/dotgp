@@ -1,4 +1,5 @@
 import { Rng } from '../ai/rng';
+import { scaledWidths } from '../sim/experiment';
 import type { TrackLayout } from '../sim/layout';
 import { Track } from '../sim/track';
 import { validateLayout, type Problem } from './validate';
@@ -82,7 +83,7 @@ export function generateLayout(opts: GenerateOptions): TrackLayout {
     const params = { ...type.sample(ctx.rng('params'), variant, opts.params), ...opts.params };
     let layout: TrackLayout;
     try {
-      layout = type.build(params, ctx);
+      layout = type.build(scaledWidths(params), ctx);
     } catch (e) {
       // Parameters this seed can't lay out (no room for its infield, say): another seed.
       failures.push(`seed ${seed}: ${(e as Error).message}`);
@@ -104,7 +105,7 @@ export function generateLayout(opts: GenerateOptions): TrackLayout {
 /** Lay out a track from fixed parameters (presets, tests). Throws if it isn't valid. */
 export function buildLayout<P extends object>(typeId: string, params: P, seed = 0): TrackLayout {
   const type = trackType(typeId);
-  const layout = type.build(params, context(seed));
+  const layout = type.build(scaledWidths(params), context(seed));
   const problems = check(type, layout);
   const errors = problems.filter((p) => p.severity === 'error');
   if (errors.length) throw new Error(`invalid ${typeId} layout: ${errors.map((e) => e.message).join('; ')}`);

@@ -1,4 +1,5 @@
 /// <reference lib="webworker" />
+import { applyExperiment } from '../sim/experiment';
 import { PHYSICS as P } from '../sim/constants';
 import type { EventProgress, FromEvent, ToEvent } from './protocol';
 import type { StrokeCollector } from '../render/marks';
@@ -57,6 +58,8 @@ self.onmessage = (e: MessageEvent<ToEvent>) => {
   const msg = e.data;
   switch (msg.type) {
     case 'start':
+      // (The page's experiment switches, before anything is built.)
+      applyExperiment(msg.experiment ?? '');
       if (msg.event.what === 'session') {
         const s = new Session(msg.event.spec);
         if (msg.warm > 0) s.advance(msg.warm);

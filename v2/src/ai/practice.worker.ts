@@ -1,4 +1,6 @@
 /// <reference lib="webworker" />
+import { applyExperiment } from '../sim/experiment';
+import type { Track } from '../sim/track';
 import { PRESETS, presetTrack } from '../trackgen';
 import { ChiefTrainer } from './chiefTraining';
 import { adaptWeights } from './drivers';
@@ -13,6 +15,8 @@ export type PracticeRequest =
     drivers: Array<{ weights: number[]; rounds: number; licensed: boolean }>;
     /** Learned crew chiefs in the field (scripted ones don't practise). index = roster position. */
     chiefs: Array<{ index: number; weights: number[]; rounds: number }>;
+    /** The page's experiment switches (sim/experiment.ts), applied before the tracks are built. */
+    experiment?: string;
   }
   | { type: 'stop' };
 
@@ -33,7 +37,8 @@ export interface PracticeRound {
 /** A crew chief strategy round runs every few driver rounds (they cost more). */
 const CHIEF_EVERY = 3;
 
-const tracks = Object.keys(PRESETS).map(presetTrack);
+/** The preset tracks, built once the page's experiment switches are in force. */
+let tracks: Track[] = [];
 let trainer: EsTrainer | null = null;
 let chiefTrainer: ChiefTrainer | null = null;
 let chiefIndex: number[] = [];
@@ -44,6 +49,10 @@ self.onmessage = (e: MessageEvent<PracticeRequest>) => {
   if (msg.type === 'stop') {
     running = false;
     return;
+  }
+  if (!tracks.length) {
+    applyExperiment(msg.experiment ?? '');
+    tracks = Object.keys(PRESETS).map(presetTrack);
   }
   trainer = new EsTrainer(tracks, {
     lineages: msg.drivers.length,

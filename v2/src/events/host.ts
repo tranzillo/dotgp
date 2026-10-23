@@ -1,4 +1,5 @@
 import type { EventRef } from '../records/activity';
+import { experimentName } from '../sim/experiment';
 import type { RoundReport, RoundTape } from '../school/classroom';
 import type { TrackLayout } from '../sim/layout';
 import type { EventProgress, EventSpec, FromEvent, ToEvent } from './protocol';
@@ -84,7 +85,7 @@ export class EventHost {
       console.error(`event ${handle.ref.label} failed:`, e.message);
     };
     this.events.push(handle);
-    this.send(handle, { type: 'start', event, attached: opts.attach, speed: this.speed, runDetached: opts.runDetached, warm: opts.warm ?? 0 });
+    this.send(handle, { type: 'start', event, attached: opts.attach, speed: this.speed, runDetached: opts.runDetached, warm: opts.warm ?? 0, experiment: experimentName() });
     return handle;
   }
 

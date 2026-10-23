@@ -1,5 +1,6 @@
 import { Rng } from '../ai/rng';
 import { Centerline } from '../sim/centerline';
+import { EXPERIMENT } from '../sim/experiment';
 import {
   evalEdge, evalProfile, LAYOUT_VERSION, layoutKind,
   type Barrier, type Decoration, type Marking, type Profile, type RovalSpec, type SurfaceRegion, type TrackLayout, type Wall,
@@ -247,7 +248,7 @@ export function linkShare(a: Array<[number, number]>, b: Array<[number, number]>
 function tryNetwork(site: RovalSite): { inner: TrackLayout | null; rovals: RovalSpec[]; score: number } | null {
   const { cl, rng } = site;
   if (!site.buildInner) return null;
-  const width = Math.round(pickIn(rng, [11, 14]) * 2) / 2;
+  const width = (Math.round(pickIn(rng, [11, 14]) * 2) / 2) * EXPERIMENT.widthScale;
   const verge = Math.round(pickIn(rng, [3, 6]));
   const scale = Math.min(1.2, Math.max(0.45, cl.length / 4000));
   const onInfield = infieldTest(site);
