@@ -530,30 +530,45 @@ export function circuitFromSurvey(
  * close.
  */
 export function ovalFromFit(
-  fit: Fit, opts: { name: string; bank: number; bankStraight?: number; apronWidth?: number; shape?: OvalShape },
+  fit: Fit, opts: { name: string; bank: number; bankStraight?: number; doglegBank?: number; apronWidth?: number; shape?: OvalShape },
 ): ShapedOvalParams | null {
-  // From the first straight: pieces straight, turn, straight, turn...
-  const k0 = fit.pieces.findIndex((p) => 'straight' in p);
-  if (k0 < 0) return null;
-  const order = fit.pieces.map((_, j) => fit.pieces[(k0 + j) % fit.pieces.length]);
+  // The front stretch: the straights (and a tri-oval's dogleg bends) the start line is on, or, if the survey's start
+  // line is in a turn (pit road along both straights: Bristol, Martinsville), the nearest straight's middle. The lap's
+  // first straight is the front stretch's first.
+  const P = fit.pieces.length;
+  const isTurn = (p: FitPiece) => 'corner' in p && p.corner.angle >= Math.PI / 3;
+  const lengthOf = (p: FitPiece) => pieceLength(p);
+  const at = (j: number) => fit.pieces[((j % P) + P) % P];
+  let startPiece = fit.startPiece, startAt = fit.startAt;
+  if (isTurn(at(startPiece))) {
+    // (Whichever straight is nearer: the one after the turn, or before it.)
+    const after = (() => { let j = startPiece + 1, d = lengthOf(at(startPiece)) - startAt; while (!('straight' in at(j))) { d += lengthOf(at(j)); j++; } return { j, d }; })();
+    const before = (() => { let j = startPiece - 1, d = startAt; while (!('straight' in at(j))) { d += lengthOf(at(j)); j--; } return { j, d }; })();
+    const pick = after.d <= before.d ? after.j : before.j;
+    startPiece = ((pick % P) + P) % P;
+    startAt = lengthOf(at(pick)) / 2;
+  }
+  let k0 = startPiece;
+  while (!isTurn(at(k0 - 1))) k0--;
+  while (!('straight' in at(k0))) k0++; // (the first straight of it)
+  if (!fit.pieces.some((p) => 'straight' in p)) return null;
+  const order = fit.pieces.map((_, j) => at(k0 + j));
   const straights: ShapedOvalParams['straights'] = [], corners: ShapedOvalParams['corners'] = [];
   for (let j = 0; j < order.length; j += 2) {
     const st = order[j], c = order[j + 1];
     if (!st || !c || !('straight' in st) || !('corner' in c) || c.corner.angle <= 0) return null;
     straights.push({ length: st.straight });
+    // (A bend of under 60 degrees is the front stretch's dogleg, as a tri-oval's: banked as published for it.)
+    const dogleg = c.corner.angle < Math.PI / 3;
+    const bank = (((dogleg ? opts.doglegBank ?? opts.bankStraight ?? 0 : opts.bank) * Math.PI) / 180);
     corners.push({
       angle: c.corner.angle, radius: c.corner.radius, easeIn: c.corner.ease, easeOut: c.corner.easeOut,
-      bankInner: (opts.bank * Math.PI) / 180, bankOuter: (opts.bank * Math.PI) / 180,
+      bankInner: bank, bankOuter: bank, ...(dogleg ? { dogleg: true } : {}),
     });
   }
   // The start line: how far it is round from the first straight's beginning.
-  const lengthOf = (p: FitPiece) => pieceLength(p);
-  let before = 0;
-  for (let j = 0; j < fit.startPiece; j++) before += lengthOf(fit.pieces[j]);
-  let first = 0;
-  for (let j = 0; j < k0; j++) first += lengthOf(fit.pieces[j]);
-  const total = fit.pieces.reduce((a, p) => a + lengthOf(p), 0);
-  const start = (((before + fit.startAt - first) % total) + total) % total;
+  let start = startAt;
+  for (let j = k0; ((j % P) + P) % P !== startPiece; j++) start += lengthOf(at(j));
   const params: ShapedOvalParams = {
     shape: opts.shape ?? 'rectangle', straights, corners, start, width: fit.width,
     apronWidth: opts.apronWidth ?? 8, bankStraight: ((opts.bankStraight ?? 0) * Math.PI) / 180, name: opts.name,
@@ -567,12 +582,17 @@ export interface RealTrack {
   name: string;
   file: string;
   kind: 'circuit' | 'oval';
-  /** An oval's turn banking (deg: published figures, the survey has none), and its straights'. */
+  /** An oval's turn banking (deg: published figures, the survey has none), its straights', and a tri-oval's dogleg. */
   bank?: number;
   bankStraight?: number;
+  doglegBank?: number;
+  /** Smoothing of the survey (m): more for OpenStreetMap's sparse points than for a survey's. */
+  smooth?: number;
+  /** Curvature (1/m) below which it counts as straight (default 1/1200): less for a long, gently curving front stretch. */
+  straightK?: number;
 }
 
-/** The real tracks (TUMFTM's racetrack-database: public/tracks/tumftm/README.md). Suzuka crosses itself: left out. */
+/** The real tracks (TUMFTM's racetrack-database: public/tracks/tumftm/README.md, and OpenStreetMap). Suzuka crosses itself: left out. */
 export const REAL_TRACKS: RealTrack[] = [
   { id: 'austin', name: 'Circuit of the Americas', file: 'tumftm/Austin.csv', kind: 'circuit' },
   { id: 'brandshatch', name: 'Brands Hatch', file: 'tumftm/BrandsHatch.csv', kind: 'circuit' },
@@ -598,6 +618,14 @@ export const REAL_TRACKS: RealTrack[] = [
   { id: 'spielberg', name: 'Red Bull Ring', file: 'tumftm/Spielberg.csv', kind: 'circuit' },
   { id: 'yasmarina', name: 'Yas Marina', file: 'tumftm/YasMarina.csv', kind: 'circuit' },
   { id: 'zandvoort', name: 'Zandvoort', file: 'tumftm/Zandvoort.csv', kind: 'circuit' },
+  // From OpenStreetMap (public/tracks/osm/README.md), banking from published figures.
+  { id: 'daytona', name: 'Daytona International Speedway', file: 'osm/Daytona.csv', kind: 'oval', bank: 31, bankStraight: 3, doglegBank: 18, smooth: 20 },
+  { id: 'talladega', name: 'Talladega Superspeedway', file: 'osm/Talladega.csv', kind: 'oval', bank: 33, bankStraight: 2, doglegBank: 16.5, smooth: 20 },
+  // (Charlotte's and Bristol's banking, and the widths, as commonly cited: to check against the tracks'. Michigan's survey
+  // is in public/tracks/osm, but its long curving front stretch doesn't fit an oval's straights and turns yet.)
+  { id: 'charlotte', name: 'Charlotte Motor Speedway', file: 'osm/Charlotte.csv', kind: 'oval', bank: 24, bankStraight: 5, smooth: 20 },
+  { id: 'bristol', name: 'Bristol Motor Speedway', file: 'osm/Bristol.csv', kind: 'oval', bank: 26, bankStraight: 5, smooth: 12 },
+  { id: 'martinsville', name: 'Martinsville Speedway', file: 'osm/Martinsville.csv', kind: 'oval', bank: 12, bankStraight: 0, smooth: 12 },
 ];
 
 /** A survey from a TUMFTM-style CSV: x, y, width right, width left (m) a row, '#' comments. */
@@ -614,7 +642,9 @@ export function parseSurvey(csv: string): Survey {
 export function realLayout(track: RealTrack, csv: string): TrackLayout {
   const survey = parseSurvey(csv);
   if (track.kind === 'oval') {
-    const params = ovalFromFit(fitSurvey(survey), { name: track.name, bank: track.bank ?? 0, bankStraight: track.bankStraight });
+    const params = ovalFromFit(fitSurvey(survey, { smooth: track.smooth, straightK: track.straightK }), {
+      name: track.name, bank: track.bank ?? 0, bankStraight: track.bankStraight, doglegBank: track.doglegBank,
+    });
     if (!params) throw new Error(`${track.name}: its survey doesn't fit an oval's straights and turns`);
     return buildLayout('oval', params);
   }

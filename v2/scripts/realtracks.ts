@@ -18,7 +18,7 @@ for (const real of REAL_TRACKS.filter((t) => !only.length || only.includes(t.id)
   // How far the fitted line strays from the survey's.
   let off = '';
   if (real.kind === 'oval') {
-    const e = fitError(fitSurvey(parseSurvey(csv)));
+    const e = fitError(fitSurvey(parseSurvey(csv), { smooth: real.smooth, straightK: real.straightK }));
     off = `off by ${e.mean.toFixed(1)} m (worst ${e.max.toFixed(1)})`;
   } else {
     const made = circuitFromSurvey(parseSurvey(csv), { name: real.name });
