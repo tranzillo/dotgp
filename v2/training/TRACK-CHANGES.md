@@ -1,0 +1,61 @@
+# Coming track changes that affect training (from the track-generation work)
+
+Agreed with the user on 2026-10-23. These change geometry that trained skills
+depend on, pit stops most of all. Each lands in its own commits with a
+`pitsurvey` / `realtracks` report, so the training machines can pick when to
+retrain on them. Several respond to `feedback/pit-layout.md`.
+
+## 1. Pit lanes (being built now)
+
+One pit module for every track: generated ovals and circuits, rovals, and
+real tracks. Every generated track will pass these as hard checks:
+
+- **The nose clear of the racing surface.** The pit wall's face sits at
+  least a car's width plus 1 m inside the track edge, with an attenuator on
+  the nose. A painted pit-entry line runs before it and counts as a track
+  limit for cars not pitting.
+- **Room to slow off the racing line.**
+  - Circuits: an entry lane of at least 200 m. Where the last corner turns
+    towards pit road, the lane splits off on its inside before that corner.
+  - Ovals: the lane leaves the apron after the last turn.
+- **Pit road can run alongside corners, on the inside.** It isn't limited
+  to the main straight any more: it can start before the last corner and
+  end past turn 1, as real pit lanes do. `entryStart..blendEnd` may span
+  corners, so code that assumed a straight pit lane should check.
+- **Boxes sized to pit road,** up to 40. Short ovals still race smaller
+  fields (`Track.maxField`) until pit road on both straights arrives.
+- **A bounded blend:** a few seconds at track speed after the exit, not
+  down the next straight.
+- **Cross-sections** in real proportions:
+  - Ovals: a travel lane, boxes, then an inside pit wall with a crew strip
+    behind it.
+  - Circuits: the pit wall on the track side, a fast lane, then the boxes
+    with garages facing them.
+- **The paddock** sized to the room actually there.
+
+The pit lane stays on the left (positive d). Clockwise real tracks stay
+mirrored in the sim and are only drawn the right way round. Pit lanes on
+either side are a later milestone.
+
+## 2. Real tracks as benchmarks (in now)
+
+`src/trackgen/realtrack.ts` lays out real tracks from survey data
+(`public/tracks/`): 24 circuits (TUMFTM) and 6 NASCAR ovals
+(OpenStreetMap).
+
+- In the app: `?track=real:<id>`.
+- `npx tsx scripts/realtracks.ts` reports fit, layout and best lap for
+  each.
+- Real lap times to calibrate against: Daytona pole 49.465 s (we're 45.2),
+  Indianapolis pole 49.469 s (we're 58.2).
+
+Calibrating to a Cup car needs per-track power packages and more cornering
+grip. That's a physics change, to be planned with both machines.
+
+## 3. Car width (decided in principle, not scheduled)
+
+- Cars 2 m wide instead of 3 m (`PHYSICS.CAR_RADIUS` 1.5 to 1.0), with
+  track widths brought down to real ones (3- to 5-wide racing).
+- Try it by eye: `?car=2&widths=0.75` (`src/sim/experiment.ts`).
+- It changes every trained driver's sense of room. The plan is to land it
+  together with the calibration above, as one retrain.

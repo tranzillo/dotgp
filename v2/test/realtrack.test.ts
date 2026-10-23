@@ -33,4 +33,16 @@ describe('real tracks from survey data', () => {
     for (let s = 0; s < t.length; s += 10) steepest = Math.max(steepest, t.bankAt(t.indexAt(s), 0));
     expect(steepest * 180 / Math.PI).toBeGreaterThan(28);
   });
+
+  it("lays an oval whose front stretch curves all the way (Michigan's D) as measured", () => {
+    const layout = realLayout(REAL_TRACKS.find((t) => t.id === 'michigan')!, csvOf('michigan'));
+    const t = new Track(layout);
+    expect(Math.abs(t.length - 3219)).toBeLessThan(30); // 2 miles
+    expect(validateLayout(layout, t).filter((p) => p.severity === 'error')).toEqual([]);
+  });
+
+  it('draws a clockwise circuit the right way round (raced as its mirror image)', () => {
+    expect(realLayout(REAL_TRACKS.find((t) => t.id === 'monza')!, csvOf('monza')).params.drawnMirrored).toBe(true);
+    expect(realLayout(REAL_TRACKS.find((t) => t.id === 'austin')!, csvOf('austin')).params.drawnMirrored).toBeUndefined();
+  });
 });

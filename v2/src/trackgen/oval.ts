@@ -47,10 +47,18 @@ export interface OvalCorner {
   widening?: number;
   /** A bend in the front stretch (tri-oval, quad-oval), not one of the turns: pit road runs along it. */
   dogleg?: boolean;
+  /**
+   * A real oval's turn as measured, as curvature sections (length, curvature at its start and end), in place of the
+   * radius and easements (which then only summarise it).
+   */
+  sections?: Array<[number, number, number]>;
 }
 
 export interface OvalStraight {
+  /** Its length (with sections: theirs in all). */
   length: number;
+  /** A real oval's straight as measured, as curvature sections: it may bend gently (Michigan's D-shaped front stretch). */
+  sections?: Array<[number, number, number]>;
   /** Racing surface width along it (default: the track's width). */
   width?: number;
 }
@@ -585,8 +593,25 @@ interface Piece {
 function pieces(p: ShapedOvalParams): Piece[] {
   const out: Piece[] = [];
   p.straights.forEach((st, i) => {
-    if (st.length > 0) out.push({ len: st.length, k0: 0, k1: 0, straight: i, t0: 0, t1: 1 });
+    if (st.sections) for (const [len, k0, k1] of st.sections) out.push({ len, k0, k1, straight: i, t0: 0, t1: 1 });
+    else if (st.length > 0) out.push({ len: st.length, k0: 0, k1: 0, straight: i, t0: 0, t1: 1 });
     const c = p.corners[i];
+    if (c.sections) {
+      // As measured: easing in until it turns at 85% of its tightest, its arc while it does, easing out after (t: how
+      // far through the ease, by curvature, so banking follows it).
+      const peak = Math.max(...c.sections.map(([, k0, k1]) => Math.max(Math.abs(k0), Math.abs(k1))));
+      const tight = (sec: [number, number, number]) => Math.max(Math.abs(sec[1]), Math.abs(sec[2])) >= 0.85 * peak;
+      const first = c.sections.findIndex(tight);
+      let last = c.sections.length - 1;
+      while (!tight(c.sections[last])) last--;
+      c.sections.forEach(([len, k0, k1], j) => {
+        const share = (k: number) => Math.min(1, Math.abs(k) / (0.85 * peak));
+        if (j < first) out.push({ len, k0, k1, corner: i, part: 'in', t0: share(k0), t1: share(k1) });
+        else if (j > last) out.push({ len, k0, k1, corner: i, part: 'out', t0: 1 - share(k0), t1: 1 - share(k1) });
+        else out.push({ len, k0, k1, corner: i, part: 'arc', t0: 0, t1: 1 });
+      });
+      return;
+    }
     const k = 1 / c.radius;
     const arc = c.angle * c.radius - (c.easeIn + c.easeOut) / 2;
     if (arc <= 0) throw new Error(`corner ${i + 1}: easements too long for its radius`);

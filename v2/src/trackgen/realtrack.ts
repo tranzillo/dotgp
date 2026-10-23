@@ -1,4 +1,4 @@
-import type { TrackLayout } from '../sim/layout';
+import type { Profile, TrackLayout } from '../sim/layout';
 import { closeLoop, curveCorners, type CircuitElement, type CircuitParams } from './circuit';
 import { integrate } from './course';
 import { buildLayout } from './generator';
@@ -17,6 +17,8 @@ export interface Survey {
   points: Array<[number, number]>;
   /** Racing surface width at each point (m), if known. */
   widths?: number[];
+  /** ...and how much of it is to the right of the centreline and to the left (driving), if known. */
+  halves?: Array<[number, number]>;
 }
 
 export type FitPiece = { straight: number } | { corner: { angle: number; radius: number; ease: number; easeOut: number } };
@@ -37,6 +39,8 @@ export interface Fit {
 }
 
 const STEP = 2;
+/** Curvature knots along a measured lap (m). */
+const KNOT = 4;
 /** No real corner is tighter than this (m). */
 const MIN_RADIUS = 10;
 
@@ -382,19 +386,12 @@ export function circuitFromFit(fit: Fit, opts: { name: string; verge?: number })
 }
 
 /**
- * A survey as a road circuit's parameters, its corners as measured: the
- * centreline smoothed (over `smooth` m), its curvature against its own
- * length every KNOT m (a curve rebuilt from its own curvature closes on
- * itself), gentler than `straightK` straight. The straight the start line is
- * on is the main straight (the start line moves to its middle); the rest
- * alternate straights and measured curves, closed exactly by the smallest
- * change to the straights. Null if the start line isn't on a straight long
- * enough for a main straight, or it doesn't close.
+ * A survey's curvature as measured: turning left overall (mirrored if it
+ * doesn't), resampled every STEP m, smoothed (over `smooth` m), curvature
+ * against the smoothed line's own length (a curve rebuilt from its own
+ * curvature closes on itself), sampled every KNOT m from the start line.
  */
-export function circuitFromSurvey(
-  survey: Survey, opts: { name: string; verge?: number; smooth?: number; straightK?: number },
-): { params: CircuitParams; mirrored: boolean; resampled: Array<[number, number]>; origin: { x: number; y: number; h: number } } | null {
-  const KNOT = 4, straightK = opts.straightK ?? 1 / 1500;
+function measure(survey: Survey, smooth: number) {
   let pts = survey.points;
   let area = 0;
   for (let i = 0; i < pts.length; i++) {
@@ -404,7 +401,7 @@ export function circuitFromSurvey(
   const mirrored = area < 0;
   if (mirrored) pts = pts.map(([x, y]) => [-x, y]);
   const raw = resample(pts, STEP);
-  const sigma = (opts.smooth ?? 5) / STEP;
+  const sigma = smooth / STEP;
   const xs = smoothClosed(raw.map((p) => p[0]), sigma), ys = smoothClosed(raw.map((p) => p[1]), sigma);
   const n = xs.length;
   // Along the smoothed line: segment lengths and headings, curvature at each vertex.
@@ -426,6 +423,65 @@ export function circuitFromSurvey(
     const t = (s - cum[i]) / (seg[i] || 1);
     kAt.push(kv[i] + (kv[(i + 1) % n] - kv[i]) * t);
   }
+  return { mirrored, pts, raw, xs, ys, n, seg, head, cum, L, m, knot, kAt };
+}
+
+/**
+ * Curvature sections (every `knot` m, from the knots' curvature) closed
+ * exactly: a whole turn (scaled), and back where they started, by two smooth
+ * waves of curvature added along them (each turning nothing in all; `weight`
+ * where they may go, 0 at sections that must keep their shape), sized to
+ * cancel the gap. Null if it won't close.
+ */
+function closeCurvature(
+  k: number[], knot: number, pre: Array<[number, number, number]>, post: Array<[number, number, number]>, weight: (u: number) => number,
+): Array<[number, number, number]> | null {
+  const q = k.length - 1;
+  const fixed = [...pre, ...post].reduce((acc, [len, k0, k1]) => acc + (len * (k0 + k1)) / 2, 0);
+  const build = (c: [number, number]) => {
+    const kk = k.map((v, j) => {
+      const u = j / q;
+      return v + weight(u) * (c[0] * Math.sin(2 * Math.PI * u) + c[1] * Math.cos(2 * Math.PI * u));
+    });
+    const turn = kk.reduce((acc, v, j) => (j ? acc + (knot * (v + kk[j - 1])) / 2 : acc), 0);
+    const f = (2 * Math.PI - fixed) / turn;
+    const sections: Array<[number, number, number]> = [];
+    for (let j = 1; j <= q; j++) sections.push([knot, kk[j - 1] * f, kk[j] * f]);
+    return sections;
+  };
+  const gap = (c: [number, number]) => {
+    const e = integrate([...pre, ...build(c), ...post], 0, 0, 0).end;
+    return [e.x, e.y];
+  };
+  let c: [number, number] = [0, 0];
+  for (let iter = 0; iter < 6; iter++) {
+    const g = gap(c);
+    if (Math.hypot(g[0], g[1]) < 0.05) break;
+    const e = 1e-7, g1 = gap([c[0] + e, c[1]]), g2 = gap([c[0], c[1] + e]);
+    const J = [[(g1[0] - g[0]) / e, (g2[0] - g[0]) / e], [(g1[1] - g[1]) / e, (g2[1] - g[1]) / e]];
+    const det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
+    if (Math.abs(det) < 1e-12) return null;
+    c = [c[0] - (J[1][1] * g[0] - J[0][1] * g[1]) / det, c[1] - (-J[1][0] * g[0] + J[0][0] * g[1]) / det];
+  }
+  const g = gap(c);
+  return Math.hypot(g[0], g[1]) > 0.5 ? null : build(c);
+}
+
+/**
+ * A survey as a road circuit's parameters, its corners as measured: the
+ * centreline smoothed (over `smooth` m), its curvature against its own
+ * length every KNOT m (a curve rebuilt from its own curvature closes on
+ * itself), gentler than `straightK` straight. The straight the start line is
+ * on is the main straight (the start line moves to its middle); the rest
+ * alternate straights and measured curves, closed exactly by the smallest
+ * change to the straights. Null if the start line isn't on a straight long
+ * enough for a main straight, or it doesn't close.
+ */
+export function circuitFromSurvey(
+  survey: Survey, opts: { name: string; verge?: number; smooth?: number; straightK?: number },
+): { params: CircuitParams; mirrored: boolean; resampled: Array<[number, number]>; origin: { x: number; y: number; h: number } } | null {
+  const straightK = opts.straightK ?? 1 / 1500;
+  const { mirrored, pts, raw, xs, ys, n, seg, head, cum, L, m, knot, kAt } = measure(survey, opts.smooth ?? 5);
   // The main straight: the stretch round the start line gentler than straightK on average over 50 m (survey noise
   // makes a straight's curvature flicker), made dead straight; or, if the line isn't on one, the longest such
   // stretch (the start line moves to its middle). The rest keeps its curvature as measured (straightening gentle bends
@@ -480,41 +536,53 @@ export function circuitFromSurvey(
     rest[q - nb + d] += (outOf / triArea) * tri(d);
   }
   rest[0] = 0; rest[q] = 0;
-  const curveOf = (c: [number, number]) => {
-    const k = rest.map((v, j) => {
-      const u = j / q, w = Math.sin(Math.PI * u) ** 2; // (nothing at the ends: they meet the main straight)
-      return v + w * (c[0] * Math.sin(2 * Math.PI * u) + c[1] * Math.cos(2 * Math.PI * u));
-    });
-    const turn = k.reduce((acc, v, j) => (j ? acc + (knot * (v + k[j - 1])) / 2 : acc), 0);
-    const f = (2 * Math.PI) / turn;
-    const sections: Array<[number, number, number]> = [];
-    for (let j = 1; j <= q; j++) sections.push([knot, k[j - 1] * f, k[j] * f]);
-    return sections;
-  };
-  const gap = (c: [number, number]) => {
-    const e = integrate([[main / 2, 0, 0], ...curveOf(c), [main / 2, 0, 0]], 0, 0, 0).end;
-    return [e.x, e.y];
-  };
-  let c: [number, number] = [0, 0];
-  for (let iter = 0; iter < 6; iter++) {
-    const g = gap(c);
-    if (Math.hypot(g[0], g[1]) < 0.05) break;
-    const e = 1e-7, g1 = gap([c[0] + e, c[1]]), g2 = gap([c[0], c[1] + e]);
-    const J = [[(g1[0] - g[0]) / e, (g2[0] - g[0]) / e], [(g1[1] - g[1]) / e, (g2[1] - g[1]) / e]];
-    const det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
-    if (Math.abs(det) < 1e-12) return null;
-    c = [c[0] - (J[1][1] * g[0] - J[0][1] * g[1]) / det, c[1] - (-J[1][0] * g[0] + J[0][0] * g[1]) / det];
-  }
-  const g = gap(c);
-  if (Math.hypot(g[0], g[1]) > 0.5) return null;
-  const curve = curveOf(c);
+  // (Nothing added at the ends: they meet the main straight.)
+  const closed = closeCurvature(rest, knot, [[main / 2, 0, 0]], [[main / 2, 0, 0]], (u) => Math.sin(Math.PI * u) ** 2);
+  if (!closed) return null;
+  const curve = closed;
   const elements: CircuitElement[] = [{ curve }];
+  // Its widths either side as surveyed, along the lap from the main straight's middle (mirrored: right is left), over
+  // 30 m (satellite widths are noisy).
+  let edges: CircuitParams['edges'];
+  if (survey.halves && survey.halves.length === pts.length) {
+    const cumO = [0];
+    for (let i = 1; i <= pts.length; i++) {
+      const [p, q] = [pts[i - 1], pts[i % pts.length]];
+      cumO.push(cumO[i - 1] + Math.hypot(q[0] - p[0], q[1] - p[1]));
+    }
+    const sideAt = (side: 0 | 1) => {
+      const out: number[] = [];
+      for (let i = 0, j = 0; i < n; i++) {
+        const sr = i * STEP;
+        while (cumO[j + 1] < sr) j++;
+        const t = (sr - cumO[j]) / (cumO[j + 1] - cumO[j] || 1);
+        const a = survey.halves![j][side], b = survey.halves![(j + 1) % pts.length][side];
+        out.push(a + (b - a) * t);
+      }
+      return smoothClosed(out, 15 / STEP);
+    };
+    const right = sideAt(mirrored ? 1 : 0), left = sideAt(mirrored ? 0 : 1);
+    const sMid0 = ((((a + b) / 2) * knot) % L + L) % L;
+    const profile = (v: number[]): Profile => {
+      const keys: Array<[number, number]> = [];
+      for (let i = 0; i < n; i += 5) {
+        let x = cum[i] - sMid0;
+        x = ((x % L) + L) % L;
+        if (x > L / 2) x -= L;
+        keys.push([x, v[i]]);
+      }
+      keys.sort((p, q) => p[0] - q[0]);
+      return { keys: keys.filter((k, i) => i === 0 || k[0] - keys[i - 1][0] > 1e-6), ease: 'linear' };
+    };
+    edges = { left: profile(left), right: profile(right) };
+  }
   const corners = curveCorners(curve, straightK).length;
   const widths = survey.widths ?? [];
   const sorted = [...widths].sort((p, q) => p - q);
   const params: CircuitParams = {
     main, elements, width: sorted.length ? sorted[Math.floor(sorted.length / 2)] : 12, verge: opts.verge ?? 12,
     runoff: Array.from({ length: corners }, () => 'runoff' as const), character: 'real', name: opts.name, straightK,
+    ...(edges ? { edges } : {}),
   };
   // Where the lap (from the main straight's middle) starts on the survey, and which way it heads.
   const origin = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2, h: phi };
@@ -621,8 +689,8 @@ export const REAL_TRACKS: RealTrack[] = [
   // From OpenStreetMap (public/tracks/osm/README.md), banking from published figures.
   { id: 'daytona', name: 'Daytona International Speedway', file: 'osm/Daytona.csv', kind: 'oval', bank: 31, bankStraight: 3, doglegBank: 18, smooth: 20 },
   { id: 'talladega', name: 'Talladega Superspeedway', file: 'osm/Talladega.csv', kind: 'oval', bank: 33, bankStraight: 2, doglegBank: 16.5, smooth: 20 },
-  // (Charlotte's and Bristol's banking, and the widths, as commonly cited: to check against the tracks'. Michigan's survey
-  // is in public/tracks/osm, but its long curving front stretch doesn't fit an oval's straights and turns yet.)
+  // (Charlotte's, Bristol's and Michigan's banking, and the widths, as commonly cited: to check against the tracks'.)
+  { id: 'michigan', name: 'Michigan International Speedway', file: 'osm/Michigan.csv', kind: 'oval', bank: 18, bankStraight: 5, doglegBank: 12, smooth: 20 },
   { id: 'charlotte', name: 'Charlotte Motor Speedway', file: 'osm/Charlotte.csv', kind: 'oval', bank: 24, bankStraight: 5, smooth: 20 },
   { id: 'bristol', name: 'Bristol Motor Speedway', file: 'osm/Bristol.csv', kind: 'oval', bank: 26, bankStraight: 5, smooth: 12 },
   { id: 'martinsville', name: 'Martinsville Speedway', file: 'osm/Martinsville.csv', kind: 'oval', bank: 12, bankStraight: 0, smooth: 12 },
@@ -631,7 +699,11 @@ export const REAL_TRACKS: RealTrack[] = [
 /** A survey from a TUMFTM-style CSV: x, y, width right, width left (m) a row, '#' comments. */
 export function parseSurvey(csv: string): Survey {
   const rows = csv.split('\n').filter((l) => l.trim() && !l.startsWith('#')).map((l) => l.split(',').map(Number));
-  return { points: rows.map((r) => [r[0], r[1]]), widths: rows[0]?.length >= 4 ? rows.map((r) => r[2] + r[3]) : undefined };
+  const sides = rows[0]?.length >= 4;
+  return {
+    points: rows.map((r) => [r[0], r[1]]),
+    ...(sides ? { widths: rows.map((r) => r[2] + r[3]), halves: rows.map((r) => [r[2], r[3]] as [number, number]) } : {}),
+  };
 }
 
 /**
@@ -642,14 +714,113 @@ export function parseSurvey(csv: string): Survey {
 export function realLayout(track: RealTrack, csv: string): TrackLayout {
   const survey = parseSurvey(csv);
   if (track.kind === 'oval') {
-    const params = ovalFromFit(fitSurvey(survey, { smooth: track.smooth, straightK: track.straightK }), {
-      name: track.name, bank: track.bank ?? 0, bankStraight: track.bankStraight, doglegBank: track.doglegBank,
+    const made = ovalFromSurvey(survey, {
+      name: track.name, bank: track.bank ?? 0, bankStraight: track.bankStraight, doglegBank: track.doglegBank, smooth: track.smooth,
     });
-    if (!params) throw new Error(`${track.name}: its survey doesn't fit an oval's straights and turns`);
-    return buildLayout('oval', params);
+    if (!made) throw new Error(`${track.name}: its survey doesn't close, or has no turns`);
+    const layout = buildLayout('oval', made.params);
+    return { ...layout, params: { ...layout.params, surveyOrigin: made.origin } };
   }
   const made = circuitFromSurvey(survey, { name: track.name });
   if (!made) throw new Error(`${track.name}: no straight long enough for a main straight, or the lap doesn't close`);
-  const layout = buildLayout('circuit', { ...made.params, name: made.mirrored ? `${track.name} (mirrored)` : track.name });
-  return layout;
+  const layout = buildLayout('circuit', { ...made.params, name: track.name });
+  // A clockwise track is raced as its mirror image (DotGP's laps turn left), and drawn the right way round. Where its
+  // start line is on the survey (mirrored with it), for laying the two over each other.
+  return { ...layout, params: { ...layout.params, surveyOrigin: made.origin, ...(made.mirrored ? { drawnMirrored: true } : {}) } };
+}
+
+/**
+ * A survey as an oval's parameters, every straight and turn as measured (a
+ * straight may bend gently, as Michigan's D-shaped front stretch does): the
+ * lap closed exactly (two smooth waves of curvature, a few thousandths of a
+ * degree a metre); turns where its curvature (averaged over 20 m) is
+ * tighter than `turnK` (bends of under 60 degrees the front stretch's
+ * doglegs), banked as given; the straights between. The front stretch is the
+ * one the start line is on (a start line in a turn moves to the nearest
+ * straight's middle: pit road along both straights, Bristol). Null if it
+ * won't close, or has no turns.
+ */
+export function ovalFromSurvey(
+  survey: Survey, opts: { name: string; bank: number; bankStraight?: number; doglegBank?: number; smooth?: number; turnK?: number; apronWidth?: number },
+): { params: ShapedOvalParams; origin: { x: number; y: number; h: number } } | null {
+  const { m, knot, kAt, xs, ys, head } = measure(survey, opts.smooth ?? 12);
+  const closed = closeCurvature([...kAt, kAt[0]], knot, [], [], () => 1);
+  if (!closed) return null;
+  // Curvature at each knot (as closed), averaged over 20 m, and which knots are in turns.
+  const kk = closed.map((sec) => sec[1]);
+  const w = Math.max(1, Math.round(10 / knot));
+  const at = (j: number) => kk[((j % m) + m) % m];
+  const turnK = opts.turnK ?? 1 / 800;
+  const inTurn = kk.map((_, j) => {
+    let acc = 0;
+    for (let d = -w; d <= w; d++) acc += at(j + d);
+    return acc / (2 * w + 1) > turnK;
+  });
+  // (A gap of under 40 m between two stretches of turn is still the turn.)
+  const gapMax = Math.round(40 / knot);
+  for (let j = 0; j < m; j++) {
+    if (inTurn[j] || !inTurn[(j - 1 + m) % m]) continue;
+    let e = j;
+    while (e - j < gapMax && !inTurn[e % m]) e++;
+    if (e - j < gapMax) for (let x = j; x < e; x++) inTurn[x % m] = true;
+  }
+  if (!inTurn.some(Boolean) || inTurn.every(Boolean)) return null;
+  // Runs from the start of a straight: straight, turn, straight, turn...
+  let s0 = 0;
+  while (!(!inTurn[s0] && inTurn[(s0 - 1 + m) % m])) s0++;
+  const runs: Array<{ turn: boolean; from: number; len: number }> = [];
+  for (let c = 0; c < m; c++) {
+    const j = (s0 + c) % m, last = runs[runs.length - 1];
+    if (last && last.turn === inTurn[j]) last.len++;
+    else runs.push({ turn: inTurn[j], from: j, len: 1 });
+  }
+  const sectionsOf = (r: { from: number; len: number }) => Array.from({ length: r.len }, (_, c) => closed[(r.from + c) % m]);
+  const turnOf = (secs: Array<[number, number, number]>) => secs.reduce((a, [len, k0, k1]) => a + (len * (k0 + k1)) / 2, 0);
+  // Pair them: straights[i] runs into corners[i].
+  type Pair = { straight: Array<[number, number, number]>; from: number; corner: Array<[number, number, number]> };
+  const pairs: Pair[] = [];
+  for (let r = 0; r + 1 < runs.length; r += 2) pairs.push({ straight: sectionsOf(runs[r]), from: runs[r].from, corner: sectionsOf(runs[r + 1]) });
+  const dogleg = (p: Pair) => turnOf(p.corner) < Math.PI / 3;
+  // The start line (knot 0): on a straight, or moved to the nearest straight's middle.
+  const startPair = (() => {
+    const offs = pairs.map((p) => (((0 - p.from) % m) + m) % m);
+    // (On a straight, or a front-stretch dogleg: the start line stays where it is.)
+    const onStraight = pairs.findIndex((p, i) => offs[i] < p.straight.length || (dogleg(p) && offs[i] < p.straight.length + p.corner.length));
+    if (onStraight >= 0) return { i: onStraight, at: offs[onStraight] * knot, knot: 0 };
+    // (In a turn: the straight before it or after it, whichever is nearer.)
+    const into = pairs.findIndex((p, i) => offs[i] < p.straight.length + p.corner.length);
+    const before = (offs[into] - pairs[into].straight.length) * knot;
+    const next = (into + 1) % pairs.length;
+    const after = (pairs[into].corner.length - (offs[into] - pairs[into].straight.length)) * knot;
+    const i = before <= after ? into : next;
+    return { i, at: (pairs[i].straight.length * knot) / 2, knot: (pairs[i].from + Math.floor(pairs[i].straight.length / 2)) % m };
+  })();
+  // The front stretch begins after the last real turn before the line (doglegs are part of it).
+  let first = startPair.i, start = startPair.at;
+  while (dogleg(pairs[(first - 1 + pairs.length) % pairs.length])) {
+    first = (first - 1 + pairs.length) % pairs.length;
+    start += (pairs[first].straight.length + pairs[first].corner.length) * knot;
+  }
+  const order = pairs.map((_, j) => pairs[(first + j) % pairs.length]);
+  const deg = (x: number) => (x * Math.PI) / 180;
+  const params: ShapedOvalParams = {
+    shape: 'rectangle',
+    straights: order.map((p) => ({ length: p.straight.length * knot, sections: p.straight })),
+    corners: order.map((p) => {
+      const angle = turnOf(p.corner);
+      const peak = Math.max(...p.corner.map(([, k0, k1]) => Math.max(Math.abs(k0), Math.abs(k1))));
+      const tight = (sec: [number, number, number]) => Math.max(Math.abs(sec[1]), Math.abs(sec[2])) >= 0.85 * peak;
+      const a = p.corner.findIndex(tight), b = p.corner.length - 1 - [...p.corner].reverse().findIndex(tight);
+      const bank = deg(dogleg(p) ? opts.doglegBank ?? opts.bankStraight ?? 0 : opts.bank);
+      return {
+        angle, radius: 1 / peak, easeIn: a * knot, easeOut: (p.corner.length - 1 - b) * knot,
+        bankInner: bank, bankOuter: bank, sections: p.corner, ...(dogleg(p) ? { dogleg: true } : {}),
+      };
+    }),
+    start, width: survey.widths?.length ? [...survey.widths].sort((x, y) => x - y)[Math.floor(survey.widths.length / 2)] : 15,
+    apronWidth: opts.apronWidth ?? 8, bankStraight: deg(opts.bankStraight ?? 0), name: opts.name,
+  };
+  // Where the start line is on the survey, heading which way: from knot 0's pose along the lap as closed.
+  const e = integrate(closed.slice(0, startPair.knot), xs[0], ys[0], head[0]).end;
+  return { params, origin: { x: e.x, y: e.y, h: e.h } };
 }

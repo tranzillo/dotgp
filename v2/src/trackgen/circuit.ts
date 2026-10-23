@@ -105,6 +105,8 @@ export interface CircuitParams {
   bare?: boolean[];
   /** A measured curve's stretches gentler than this (1/m) count as straight between its corners (default 1/1500). */
   straightK?: number;
+  /** A real track's half widths either side along the lap (m; signed s), in place of width and the corners' widening. */
+  edges?: { left: Profile; right: Profile };
 }
 
 interface SizeClass {
@@ -390,11 +392,13 @@ export interface Course {
   width: number;
   verge: number;
   corners: CornerAt[];
+  /** A real track's half widths either side along the lap (m; signed s), in place of width and the corners' widening. */
+  edges?: { left: Profile; right: Profile };
 }
 
 /** A circuit's course. */
 function courseOf(p: CircuitParams, L: number): Course {
-  return { width: p.width, verge: p.verge, corners: cornersAlong(p, L) };
+  return { width: p.width, verge: p.verge, corners: cornersAlong(p, L), ...(p.edges ? { edges: p.edges } : {}) };
 }
 
 /** Corners joined by straights shorter than this, whose turns cancel, are a chicane. */
@@ -999,11 +1003,12 @@ function crossSection(
   const step = L / n;
   const half = p.width / 2;
   const corners = p.corners.map((c) => ({ ...c, ...cornerNeeds(c, p.width) }));
-  const side = (c: Float64Array, far: Float64Array): Side => ({
-    edge: new Float64Array(n).fill(half), clear: c, far, line: new Float64Array(n).fill(NaN), taper: new Float64Array(n).fill(NaN), runoff: new Float64Array(n),
+  const side = (c: Float64Array, far: Float64Array, measured?: Profile): Side => ({
+    edge: measured ? Float64Array.from({ length: n }, (_, k) => evalProfile(measured, k * step, L)) : new Float64Array(n).fill(half), clear: c, far, line: new Float64Array(n).fill(NaN), taper: new Float64Array(n).fill(NaN), runoff: new Float64Array(n),
     owner: new Int32Array(n).fill(-1), want: new Float64Array(n), wall: new Float64Array(n),
   });
-  const left = side(clear.left, clear.farLeft), right = side(clear.right, clear.farRight);
+  // (A real track's measured edges, or the width and the corners' widening on top.)
+  const left = side(clear.left, clear.farLeft, p.edges?.left), right = side(clear.right, clear.farRight, p.edges?.right);
   // A left-hander's inside is on the left.
   const outsideOf = (c: CornerAt) => (c.spec.angle > 0 ? right : left);
   const insideOf = (c: CornerAt) => (c.spec.angle > 0 ? left : right);
@@ -1014,7 +1019,7 @@ function crossSection(
     s[k] = x;
     corners.forEach((c, i) => {
       const out = outsideOf(c), ins = insideOf(c);
-      const w = c.widen(x, L);
+      const w = p.edges ? { in: 0, out: 0 } : c.widen(x, L);
       out.edge[k] = Math.max(out.edge[k], half + w.out);
       ins.edge[k] = Math.max(ins.edge[k], half + w.in);
       const depth = c.depth(x, L);
@@ -1023,9 +1028,10 @@ function crossSection(
     // The pit side of the main straight keeps its edge: the pit lane leaves and rejoins it there.
     left.edge[k] = half + (left.edge[k] - half) * (1 - plateau(x, pit.entryStart - 10, pit.blendEnd + 10, 40, 40, L));
   }
-  for (const { edge, clear } of [left, right]) {
+  for (const [{ edge, clear }, measured] of [[left, p.edges?.left], [right, p.edges?.right]] as const) {
     closeGaps(edge, 10);
-    for (let k = 0; k < n; k++) edge[k] = Math.max(half, Math.min(edge[k], clear[k] - WIDEN_ROOM));
+    // (No narrower than the width, or a real track's own edge where it's narrower.)
+    for (let k = 0; k < n; k++) edge[k] = Math.max(measured ? Math.min(half, evalProfile(measured, k * step, L)) : half, Math.min(edge[k], clear[k] - WIDEN_ROOM));
     smoothDown(edge);
   }
 

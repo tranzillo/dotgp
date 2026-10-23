@@ -219,6 +219,11 @@ export class Renderer {
   private scale = 1;
   private offsetX = 0;
   private offsetY = 0;
+  /**
+   * -1 to draw the world mirrored left to right: a real clockwise track is raced as its mirror image (DotGP's laps
+   * turn left; trackgen/realtrack.ts), and drawn the right way round.
+   */
+  private mirror: 1 | -1 = 1;
   private dpr = 1;
   private zoom = 1;
   private focusX = 0;
@@ -253,6 +258,7 @@ export class Renderer {
 
   setTrack(track: Track): void {
     this.track = track;
+    this.mirror = track.layout.params?.drawnMirrored ? -1 : 1;
     const b = track.bounds;
     for (const c of [this.groove, this.marks]) {
       c.width = Math.ceil((b.maxX - b.minX) * MARK_RES);
@@ -326,7 +332,7 @@ export class Renderer {
     const cy = this.zoom > 1 ? this.focusY : (b.minY + b.maxY) / 2;
     const scale = this.fitScale * this.zoom;
     const ins = this.insets, px = this.dpr;
-    const offsetX = this.canvas.width / 2 + ((ins.left - ins.right) / 2) * px - cx * scale;
+    const offsetX = this.canvas.width / 2 + ((ins.left - ins.right) / 2) * px - this.mirror * cx * scale;
     const offsetY = this.canvas.height / 2 + ((ins.top - ins.bottom) / 2) * px + cy * scale;
     if (scale !== this.scale || offsetX !== this.offsetX || offsetY !== this.offsetY) {
       this.scale = scale;
@@ -338,7 +344,7 @@ export class Renderer {
 
   /** World (y up) to canvas pixels (y down). */
   private toScreen(x: number, y: number): [number, number] {
-    return [this.offsetX + x * this.scale, this.offsetY - y * this.scale];
+    return [this.offsetX + this.mirror * x * this.scale, this.offsetY - y * this.scale];
   }
 
   /** World (y up) to mark-layer pixels. */
@@ -857,10 +863,15 @@ export class Renderer {
     const b = track.bounds;
     const [mx, my] = this.toScreen(b.minX, b.maxY);
     const mw = (b.maxX - b.minX) * this.scale, mh = (b.maxY - b.minY) * this.scale;
+    // (The marks are laid in world order: drawn mirrored when the world is.)
+    ctx.save();
+    ctx.translate(mx, my);
+    ctx.scale(this.mirror, 1);
     ctx.globalAlpha = GROOVE_DISPLAY_ALPHA;
-    ctx.drawImage(this.groove, mx, my, mw, mh);
+    ctx.drawImage(this.groove, 0, 0, mw, mh);
     ctx.globalAlpha = 1;
-    ctx.drawImage(this.marks, mx, my, mw, mh);
+    ctx.drawImage(this.marks, 0, 0, mw, mh);
+    ctx.restore();
     ctx.drawImage(this.lines, 0, 0);
 
     const minR = (this.dotMode === 'legible' ? 8 : 2.5) * this.dpr;
@@ -912,7 +923,7 @@ export class Renderer {
         const arrow = (ax: number, ay: number, color: string) => {
           const m = Math.hypot(ax, ay);
           if (m < 0.05 * G) return;
-          const ux = ax / m, uy = ay / m;
+          const ux = (this.mirror * ax) / m, uy = ay / m;
           const len = r + FORCE_PX * (m / G);
           const ex = x + ux * len, ey = y - uy * len;
           ctx.strokeStyle = color;
