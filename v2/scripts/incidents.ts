@@ -27,6 +27,7 @@ import { adaptWeights, neuralTeam, Team } from '../src/ai/drivers';
 import { TowerSpotter } from '../src/ai/spotter';
 import { DEFAULT_STYLE, racerStyle, type RacerStyle, TrafficRacer } from '../src/ai/trafficRacer';
 import { hashSeed } from '../src/trackgen/generator';
+import { teacherOf } from '../src/school/ovalApprentice';
 
 /** teacher:styles fields this many individual racers. */
 const STYLED_RACERS = 40;
@@ -86,7 +87,13 @@ const limitRanges = args.get('limits')?.split(',').map((r) => r.split(':').map(N
  * the drivers who'll learn from it.
  */
 const teacher = driversFile.startsWith('teacher:') ? driversFile.split(':') : null;
-const roster: Entrant[] = teacher ? [{ weights: [] }] : JSON.parse(readFileSync(driversFile, 'utf8')).drivers;
+/**
+ * teacher:drivers.json: each driver's own teacher (the traffic racer its nerve and talent make, as in its
+ * apprenticeship), cycling round the grid exactly as the file's drivers would: what a field of these drivers could
+ * race like at best, and paired with the file itself, what copying lost.
+ */
+const teacherFile = teacher && driversFile.endsWith('.json') ? driversFile.slice('teacher:'.length) : null;
+const roster: Entrant[] = teacher && !teacherFile ? [{ weights: [] }] : JSON.parse(readFileSync(teacherFile ?? driversFile, 'utf8')).drivers;
 const teacherStyle: RacerStyle = {
   ...DEFAULT_STYLE,
   ...Object.fromEntries((teacher?.[2] ?? '').split(',').filter(Boolean).map((kv) => { const [k, v] = kv.split('='); return [k, Number(v)]; })),
@@ -282,7 +289,11 @@ function runRace(trackName: string, seed: number): RaceStats {
       // teacher:styles: a field of individuals, 40 of them cycling round the grid like a roster, each with its own
       // nerve and talent (fixed per individual, whatever the race).
       let racer = new TrafficRacer(teacherStyle);
-      if (teacher[1] === 'styles') {
+      if (teacherFile) {
+        const who = d as Entrant & { lineage: number; nerve: number; talent: number };
+        const { style, traits } = teacherOf(who);
+        racer = new TrafficRacer(style, undefined, traits);
+      } else if (teacher[1] === 'styles') {
         const who = new Rng(hashSeed(77, `racer${(k + seed) % STYLED_RACERS}`));
         const nerve = 0.15 + 0.7 * who.next(), talent = who.next();
         const { style, traits } = racerStyle(nerve, talent, () => who.next());
