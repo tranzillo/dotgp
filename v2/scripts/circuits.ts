@@ -15,9 +15,10 @@
  * they have one (their oval network otherwise), cycling through the file.
  *
  * teacher:drivers.json races the file's teachers instead: each driver's own
- * (a traffic racer with its road style, not passing, as in its
- * apprenticeship), driving its own safety cars: how well a field of students
- * could race at best, to measure what copying lost.
+ * (roadTeacherOf: a traffic racer with its personality's road style and
+ * caution manners, not passing, as in its apprenticeship), driving its own
+ * safety cars: how well a field of students could race at best, to measure
+ * what copying lost.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { cpus } from 'node:os';
@@ -38,9 +39,14 @@ import { generateLayout, hashSeed } from '../src/trackgen';
 import { ask, tsWorker } from './pool';
 import { PHYSICS as P } from '../src/sim/constants';
 import { DEFAULT_STYLE, TrafficRacer } from '../src/ai/trafficRacer';
+import { roadTeacherOf } from '../src/school/roadCautions';
 
 interface DriverEntry {
   weights: number[];
+  /** An individual's personality (its teacher's): stable drivers have them. */
+  lineage?: number;
+  nerve?: number;
+  talent?: number;
   pitLicensed?: boolean;
   pitTrafficLicensed?: boolean;
   cautionLicensed?: boolean;
@@ -110,7 +116,11 @@ function runRace(job: RaceJob): CircuitRace {
     placeOnGrid(car, track, slot, true);
     const style = d.roadCourse?.style;
     if (teachers) {
-      const racer = new TrafficRacer({
+      // An individual's own teacher, as in its apprenticeship (its personality's style and caution manners, smooth
+      // cautions); a driver without a personality: its road style on the default, the formation driving its cautions.
+      const own = d.lineage !== undefined && d.nerve !== undefined && d.talent !== undefined
+        ? roadTeacherOf({ lineage: d.lineage, nerve: d.nerve, talent: d.talent }) : null;
+      const racer = own ? new TrafficRacer(own.style, undefined, own.traits) : new TrafficRacer({
         ...DEFAULT_STYLE, ...(style ? { grip: style.grip, margin: style.margin } : {}), room: d.roadCourse?.style?.room ?? DEFAULT_STYLE.room, pass: Infinity,
       });
       world.addCar(car, new Team(racer, new TowerSpotter(), new StrategistCrewChief(randomTraits(() => rng.next())), false, true));
