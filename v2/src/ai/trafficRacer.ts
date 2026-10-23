@@ -260,7 +260,10 @@ export class TrafficRacer {
           want = (side > 0 ? other.d + width : other.d - width) - here.d;
           this.passSide = side;
           passing = true;
-          continue;
+          // Beside it, it's not in the way; still behind it, it is, however the pass was meant to go. On banking at
+          // speed a passer barely moves across (its grip is the turn's), and one that stopped minding the car it
+          // meant to pass ran into it (cars braking hard for pit road: most of a generated superspeedway's wrecks).
+          if (Math.abs(other.d - car.d) >= width) continue;
         }
       }
       // Follow: no closer than the gap, closing it no faster than it can stop.
