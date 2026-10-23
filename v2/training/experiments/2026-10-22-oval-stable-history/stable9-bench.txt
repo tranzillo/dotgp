@@ -1,0 +1,128 @@
+
+8 races per track, 40 cars, 4x pace; A: stable9.json
+
+short
+  retirements                    28.9 ± 3.2
+    at fault                     13.9 ± 2.2
+    formation pileups             0.0 ± 0.0
+  multi-car wrecks                6.6 ± 1.9
+  damage done (by fault)         23.8 ± 3.5
+  cautions                        7.8 ± 2.3
+  lap time (s, tires 60%+)     26.92 ± 0.09
+  share driven by scripts     0.369 ± 0.026
+    out while scripted            1.8 ± 1.2
+  passes /100 green car-laps     19.5 ± 7.9
+  share of time alongside     0.048 ± 0.009
+  share of time drafting      0.155 ± 0.026
+  lane spread (m)               5.39 ± 0.06
+  lockstep, same brain            NaN ± NaN
+  lockstep, different brains  0.030 ± 0.003
+  twins: lane gap, same brain      NaN ± NaN
+  twins: lane gap, diff brains    3.30 ± 0.20
+  twins: speed gap, same          NaN ± NaN
+  twins: speed gap, diff        2.71 ± 0.22
+
+speedway
+  retirements                    29.9 ± 1.7
+    at fault                     20.8 ± 2.5
+    formation pileups             0.0 ± 0.0
+  multi-car wrecks                5.9 ± 0.7
+  damage done (by fault)         15.7 ± 2.0
+  cautions                       11.8 ± 1.9
+  lap time (s, tires 60%+)     38.07 ± 0.20
+  share driven by scripts     0.132 ± 0.011
+    out while scripted            5.8 ± 2.2
+  passes /100 green car-laps   155.0 ± 31.2
+  share of time alongside     0.202 ± 0.026
+  share of time drafting      0.339 ± 0.041
+  lane spread (m)               4.03 ± 0.08
+  lockstep, same brain            NaN ± NaN
+  lockstep, different brains  0.061 ± 0.006
+  twins: lane gap, same brain      NaN ± NaN
+  twins: lane gap, diff brains    3.24 ± 0.08
+  twins: speed gap, same          NaN ± NaN
+  twins: speed gap, diff        1.87 ± 0.11
+
+flat
+  retirements                     8.9 ± 2.7
+    at fault                      4.4 ± 2.3
+    formation pileups             0.0 ± 0.0
+  multi-car wrecks                1.6 ± 1.1
+  damage done (by fault)         11.7 ± 1.6
+  cautions                        4.3 ± 1.1
+  lap time (s, tires 60%+)     44.02 ± 0.04
+  share driven by scripts     0.212 ± 0.014
+    out while scripted            1.4 ± 0.9
+  passes /100 green car-laps     33.3 ± 4.0
+  share of time alongside     0.119 ± 0.011
+  share of time drafting      0.252 ± 0.022
+  lane spread (m)               5.04 ± 0.03
+  lockstep, same brain            NaN ± NaN
+  lockstep, different brains  0.064 ± 0.008
+  twins: lane gap, same brain      NaN ± NaN
+  twins: lane gap, diff brains    3.16 ± 0.09
+  twins: speed gap, same          NaN ± NaN
+  twins: speed gap, diff        1.55 ± 0.06
+
+oval:1885224635
+  retirements                    32.6 ± 1.3
+    at fault                     14.9 ± 2.7
+    formation pileups             0.0 ± 0.0
+  multi-car wrecks                6.9 ± 1.6
+  damage done (by fault)         24.9 ± 3.4
+  cautions                       12.1 ± 1.9
+  lap time (s, tires 60%+)     27.04 ± 0.14
+  share driven by scripts     0.361 ± 0.014
+    out while scripted            5.9 ± 2.2
+  passes /100 green car-laps     37.8 ± 9.2
+  share of time alongside     0.057 ± 0.011
+  share of time drafting      0.151 ± 0.021
+  lane spread (m)               5.32 ± 0.09
+  lockstep, same brain            NaN ± NaN
+  lockstep, different brains  0.026 ± 0.005
+  twins: lane gap, same brain      NaN ± NaN
+  twins: lane gap, diff brains    3.89 ± 0.09
+  twins: speed gap, same          NaN ± NaN
+  twins: speed gap, diff        2.74 ± 0.07
+
+oval:1868447016
+  retirements                    37.1 ± 2.6
+    at fault                     17.4 ± 1.8
+    formation pileups             0.0 ± 0.0
+  multi-car wrecks                8.1 ± 0.9
+  damage done (by fault)         17.5 ± 3.5
+  cautions                       10.6 ± 2.7
+  lap time (s, tires 60%+)     32.75 ± 0.34
+  share driven by scripts     0.307 ± 0.043
+    out while scripted            2.0 ± 1.2
+  passes /100 green car-laps   198.9 ± 89.2
+  share of time alongside     0.071 ± 0.021
+  share of time drafting      0.166 ± 0.047
+  lane spread (m)               5.56 ± 0.18
+  lockstep, same brain            NaN ± NaN
+  lockstep, different brains  0.025 ± 0.010
+  twins: lane gap, same brain      NaN ± NaN
+  twins: lane gap, diff brains    3.58 ± 0.17
+  twins: speed gap, same          NaN ± NaN
+  twins: speed gap, diff        3.51 ± 0.37
+
+oval:1918779873
+  retirements                    31.5 ± 1.8
+    at fault                     13.6 ± 2.8
+    formation pileups             0.0 ± 0.0
+  multi-car wrecks                6.8 ± 1.4
+  damage done (by fault)         20.5 ± 3.4
+  cautions                       10.1 ± 2.1
+  lap time (s, tires 60%+)     28.77 ± 0.23
+  share driven by scripts     0.417 ± 0.042
+    out while scripted            1.4 ± 0.8
+  passes /100 green car-laps    29.5 ± 13.7
+  share of time alongside     0.039 ± 0.009
+  share of time drafting      0.131 ± 0.017
+  lane spread (m)               6.39 ± 0.17
+  lockstep, same brain            NaN ± NaN
+  lockstep, different brains  0.028 ± 0.006
+  twins: lane gap, same brain      NaN ± NaN
+  twins: lane gap, diff brains    4.15 ± 0.21
+  twins: speed gap, same          NaN ± NaN
+  twins: speed gap, diff        3.01 ± 0.27
