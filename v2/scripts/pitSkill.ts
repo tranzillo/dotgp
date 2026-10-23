@@ -5,7 +5,7 @@
  * comes back with each driver's pit skill (and licensed to drive its own
  * stops).
  *
- *   npx tsx scripts/pitSkill.ts --in bundle.json --out out.json [--group 8] [--rounds 6] [--seed 1] [--jobs N]
+ *   npx tsx scripts/pitSkill.ts --in bundle.json --out out.json [--group 8] [--rounds 6] [--ovals 2] [--circuits 2] [--seed 1] [--jobs N]
  *   npx tsx scripts/pitSkill.ts --in bundle.json --group-only <first> --count <n> --out part.json ...   (one group)
  */
 import { spawn } from 'node:child_process';
@@ -20,7 +20,7 @@ for (let i = 2; i < process.argv.length; i++) if (process.argv[i].startsWith('--
 const inFile = args.get('in'), out = args.get('out');
 if (!inFile || !out) throw new Error('--in bundle.json --out out.json');
 const seed = Number(args.get('seed') ?? 1);
-const pass = ['rounds', 'seed'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
+const pass = ['rounds', 'seed', 'ovals', 'circuits'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
 
 interface Entry {
   lineage?: number; limits?: { latency: number; noise: number }; weights: number[];
@@ -39,6 +39,8 @@ if (args.has('group-only')) {
   }));
   apprenticePitSkill(students, seed + first, {
     ...(args.has('rounds') ? { rounds: Number(args.get('rounds')) } : {}),
+    ...(args.has('ovals') ? { ovals: Number(args.get('ovals')) } : {}),
+    ...(args.has('circuits') ? { circuits: Number(args.get('circuits')) } : {}),
     onRound: (round, r) => console.log(`group ${first} round ${round}: ${r.completed}/${r.stops} stops done, loss ${r.loss.toFixed(4)} (${r.seconds.toFixed(0)} s)`),
   });
   writeFileSync(out, JSON.stringify({

@@ -78,8 +78,12 @@ export interface PitSkillOptions {
 /** The pit maneuver's throttle as a teacher (1/s): see PitAutopilot.driveGain. */
 const TEACHING_DRIVE_GAIN = 4;
 
-/** Seconds a drill runs: the in-lap, the stop, and out on track. */
-const DRILL_SECONDS = 90;
+/**
+ * Seconds a drill runs at most: the in-lap, the stop, and out until merged (on a superspeedway the blend lane can
+ * end most of a lap after the box); then a few seconds racing on.
+ */
+const DRILL_SECONDS = 200;
+const AFTER_MERGE = 5;
 
 /** One drill: the car on its in-lap with a stop called, the student or the maneuver driving. Returns whether the stop got done. */
 function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number, examples: Example[], seed: number): boolean {
@@ -102,9 +106,11 @@ function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number
   team.autopilot.begin(car);
   let serviced = false;
   const phase = (): PitState['phase'] => car.pit.phase;
-  for (let k = 0; k < DRILL_SECONDS / P.DT && !car.retired; k++) {
+  let done = -1;
+  for (let k = 0; k < DRILL_SECONDS / P.DT && !car.retired && (done < 0 || k - done < AFTER_MERGE / P.DT); k++) {
     world.step();
     if (phase() === 'service') serviced = true;
+    if (done < 0 && serviced && phase() === 'none') done = k;
   }
   return serviced && phase() === 'none' && !car.retired;
 }
