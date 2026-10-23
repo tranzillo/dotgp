@@ -29,6 +29,7 @@ Before the identity, skills and ratings work: one bundle of drivers that races c
 - **No scripted driving:** the formation and pit-maneuver shares at zero.
 - **The standard:** 20- and 40-car fields over full race distance (tyre wear, pit stops, cautions or safety cars, stewards on), on every oval size and shape, club and GP circuits, rovals and venue rings, plus qualifying (solo and group). The circuits' 25 km races are a separate sprint format, kept as their own check.
 - **Clean means:** no worse than the same drivers' own teachers (paired, race by race), which shows what's achievable, at teacher pace within a few percent.
+- **How:** one training process for both machines, [PROCESS.md](PROCESS.md) (agreed 2026-10-23): the same stages and gates for every skill, shared code, owners by skill, clean teachers first.
 - **Who does what:** the oval machine builds the readiness benchmark (`scripts/readiness.ts`: the whole matrix, bundle against its own teachers) and closes oval pack safety (racecraft after practice, caution and restart drills at 40 cars). The circuit machine continues road racing, road cautions and pits. Both train onto the same 40 individuals.
 - **Separate task:** a venue's field size should be limited by its pit boxes.
 
