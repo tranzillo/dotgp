@@ -11,6 +11,12 @@
       "name": "Road apprentice",
       "file": "road-apprentice.json",
       "note": "The house drivers plus a road-course skill learned by copying the scripted line follower round circuits (12 rounds, no practice, no license yet). Ovals: exactly the house drivers. Circuits: solo they get round (13% of club runs and 8% of GP runs end off the track); in races they run wide often (about 10 track-limits calls each per race) and contact is common: nobody has taught them circuit racecraft or the white line yet. Read-only."
+    },
+    {
+      "id": "oval-stable",
+      "name": "Oval stable",
+      "file": "oval-stable.json",
+      "note": "The oval stable (v10, 2026-10-23): 40 individuals, each with its own nerve, talent, human limits and line, apprenticed to its own teacher (a traffic racer its personality makes). Oval racing and oval caution skills; no road skill, no pit skill yet (the pit maneuver drives its stops). Ovals: laps 10-20% faster than the house drivers, drives its own cautions; not clean in full fields (40 cars, 150 km: ~30 out a race on most tracks, its teachers ~1). Circuits: can't race them. Read-only. Shared for the first milestone (training/ROADMAP.md): the circuit machine adds road and pit skills to these same individuals."
     }
   ]
 }

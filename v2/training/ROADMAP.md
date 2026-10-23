@@ -21,6 +21,21 @@ Agreed in outline with the user on 2026-10-23. The aim: each driver agent is one
   - `pit`
   - `cautionLicensed`, `pitLicensed`, …
 
+## First milestone: clean, unscripted house drivers for any condition (agreed 2026-10-23)
+
+Before the identity, skills and ratings work: one bundle of drivers that races clean, with no scripted driving, wherever a race can happen. The user's call: the stats system means little while a full field around most layouts ends in mass retirements.
+
+- **One bundle, one set of individuals.** The 40 stable personalities, each carrying every skill: oval racing and cautions (trained on the oval machine), road racing, road cautions and pits (trained on the circuit machine). Candidate bundles are exchanged through the repo (`public/drivers/`, about 5 MB each, with an `index.json` note), so each machine builds on the other's latest.
+- **No scripted driving:** the formation and pit-maneuver shares at zero.
+- **The standard:** 20- and 40-car fields over full race distance (tyre wear, pit stops, cautions or safety cars, stewards on), on every oval size and shape, club and GP circuits, rovals and venue rings, plus qualifying (solo and group). The circuits' 25 km races are a separate sprint format, kept as their own check.
+- **Clean means:** no worse than the same drivers' own teachers (paired, race by race), which shows what's achievable, at teacher pace within a few percent.
+- **Who does what:** the oval machine builds the readiness benchmark (`scripts/readiness.ts`: the whole matrix, bundle against its own teachers) and closes oval pack safety (racecraft after practice, caution and restart drills at 40 cars). The circuit machine continues road racing, road cautions and pits. Both train onto the same 40 individuals.
+- **Separate task:** a venue's field size should be limited by its pit boxes.
+
+Where things stood when this was agreed:
+- Under the circuit standard (20 cars, 25 km), the oval stable loses 1.9-3.8 cars a race and its teachers 0; circuit students lose 0.5.
+- At 40 cars and 150 km the oval stable loses about 30 (8-12 cautions a race, each breeding more).
+
 ## The model
 
 1. **Personality.** Innate, fixed for a career, inherited with variation. Only traits with a mechanical meaning:

@@ -25,6 +25,8 @@
  *       { "kind": "stableCautions", "in": "stable.json", "out": "c.json", "ppo": true },  (caution drills; ES unless ppo)
  *       { "kind": "stableRaces", "in": "stable.json", "out": "r.json", "rounds": 120 },   (PPO in 40-car races, anchored)
  *       { "kind": "bench", "a": "$house", "b": "r.json", "field": 40, "tracks": "short,speedway,flat,ovals:3", "h2h": true },
+ * The first milestone's measure (scripts/readiness.ts: ovals and circuits, 20 and 40 cars, against the drivers' own teachers):
+ *       { "kind": "readiness", "drivers": "r.json", "seeds": 4 },
  * File names are in the experiment's results folder; $house is the house drivers (lab/house.json), $bundled
  * the drivers shipped with the commit. Promotion replaces the house drivers only if the last benchmark says
  * the candidate is no worse on any track (retirements, lap time; and, where the bench measured them, places
@@ -52,6 +54,7 @@ type Step =
   | { kind: 'class'; lesson: string; in: string; out: string; rounds?: number; seed?: number }
   | { kind: 'season'; in: string; out: string; races?: number; nerve?: number; tracks?: string }
   | { kind: 'bench'; a: string; b?: string; seeds?: number; tracks?: string; laps?: number; field?: number; pace?: number; h2h?: boolean }
+  | { kind: 'readiness'; drivers: string; seeds?: number; fields?: string; circuits?: number; only?: string }
   | { kind: 'stable'; out: string; drivers?: number; group?: number; rounds?: number; laps?: number; field?: number; seed?: number; shake?: number }
   | { kind: 'stableCautions'; in: string; out: string; rounds?: number; ppo?: boolean; seed?: number }
   | { kind: 'stableRaces'; in: string; out: string; rounds?: number; laps?: number; field?: number; debris?: number; anchorLr?: number; seed?: number }
@@ -186,6 +189,11 @@ async function runExperiment(file: string): Promise<void> {
         const m = JSON.parse(readFileSync(json, 'utf8')).metrics as Record<string, { values: Array<{ mean: number }>; verdict?: string }>;
         notes.push(`circuits ${(['retirements', 'trackLimits', 'bestLapPerKm'] as const).map((k) =>
           `${k} ${m[k].values.map((v) => v.mean.toFixed(1)).join('→')}${m[k].verdict ? ` (${m[k].verdict})` : ''}`).join(', ')}`);
+      } else if (step.kind === 'readiness') {
+        const md = join(dir, 'readiness.md');
+        await runScript('readiness', [path(step.drivers), '--md', md, '--json', join(dir, 'readiness.json'), '--jobs', String(BENCH_JOBS),
+          ...opt({ seeds: step.seeds, circuits: step.circuits }), ...(step.fields ? ['--fields', step.fields] : []), ...(step.only ? ['--only', step.only] : [])], log);
+        notes.push(readFileSync(md, 'utf8').split(/\r?\n/)[0]);
       } else if (step.kind === 'stable') {
         await runScript('stable', ['--out', path(step.out), '--jobs', String(Math.min(5, BENCH_JOBS)),
           ...opt({ drivers: step.drivers, group: step.group, rounds: step.rounds, laps: step.laps, field: step.field, seed: step.seed, shake: step.shake })], log);
