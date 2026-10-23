@@ -35,3 +35,19 @@ Cars: as asked; a race takes at most a car a pit box (short oval 9, flat 24, spe
 | club + GP (sprint) | 20 | 25 | 0.0 / 5.8 | B worse | 0.003 / 0.365 | B worse | 0.0% / 76.4% | 1.3% | 0.0% | yes | **no** |
 
 Not covered yet: rovals and venue rings, qualifying.
+
+## Circuit cells again, with each individual's own road teacher (b58036d)
+
+circuits.ts teacher: now races roadTeacherOf (personality caution manners, smooth cautions), the teacher the apprenticeship copied.
+
+Readiness of stable-candidate.json (4 seeds a cell, 7 min): 0 of 3 cells ready; teachers clean in 3
+
+Cars: as asked; a race takes at most a car a pit box (short oval 9, flat 24, speedway 30, circuits 16-47). Out: cars out a race. Damage: done by fault, per car per 100 km. Repairs: share of stops called for damage. Each pair is teachers / drivers.
+
+| Where | Cars | km | Out | vs teachers | Damage | vs teachers | Repairs | Pace gap | Scripted | Teachers clean | Ready |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| club + GP | 20 | 150 | 0.0 / 17.3 | B worse | 0.010 / 0.104 | B worse | 0.7% / 18.8% | 5.1% | 0.0% | yes | **no** |
+| club + GP | 40 | 150 | 0.1 / 23.8 | B worse | 0.011 / 0.083 | B worse | 1.9% / 40.0% | 6.4% | 0.0% | yes | **no** |
+| club + GP (sprint) | 20 | 25 | 0.0 / 5.8 | B worse | 0.003 / 0.365 | B worse | 0.0% / 76.4% | 1.2% | 0.0% | yes | **no** |
+
+Not covered yet: rovals and venue rings, qualifying.
