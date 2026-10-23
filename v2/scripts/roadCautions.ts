@@ -20,7 +20,7 @@ for (let i = 2; i < process.argv.length; i++) if (process.argv[i].startsWith('--
 const inFile = args.get('in'), out = args.get('out');
 if (!inFile || !out) throw new Error('--in bundle.json --out out.json');
 const seed = Number(args.get('seed') ?? 1);
-const pass = ['rounds', 'field', 'laps', 'seed', 'debris'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
+const pass = ['rounds', 'field', 'laps', 'seed', 'debris', 'starts'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
 
 interface Entry {
   lineage: number; nerve: number; talent: number; limits: { latency: number; noise: number }; weights: number[];
@@ -41,6 +41,7 @@ if (args.has('group-only')) {
     ...(args.has('field') ? { field: Number(args.get('field')) } : {}),
     ...(args.has('laps') ? { laps: Number(args.get('laps')) } : {}),
     ...(args.has('debris') ? { debris: Number(args.get('debris')) } : {}),
+    ...(args.has('starts') ? { starts: Number(args.get('starts')) } : {}),
     onRound: (round, r) => console.log(`group ${first} round ${round} ${r.track}: ${r.out} out, ${r.safetyCars} safety cars, `
       + `${r.pacing} pacing moments, loss ${r.loss.toFixed(4)} (${r.seconds.toFixed(0)} s)`),
   });

@@ -172,6 +172,9 @@ export class OvalApprentice implements Controller {
     }
     car.inputX = ax;
     car.inputY = ay;
+    // The teacher steers in the world's frame; a student seeing a right-hander sees it mirrored (never on ovals, always
+    // half the corners on road circuits).
+    if (this.student.mirrored) label[1] = -label[1];
     const clamp = (v: number) => Math.max(-0.95, Math.min(0.95, v));
     this.examples.push({ x, y: Float32Array.of(clamp(label[0]), clamp(label[1])), mask: Float32Array.of(1, 1) });
   }
