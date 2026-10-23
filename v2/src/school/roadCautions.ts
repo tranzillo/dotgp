@@ -59,16 +59,28 @@ export interface RoadCautionOptions {
   laps?: number;
   /** Debris safety cars per lap (so every race has a few). */
   debris?: number;
+  /**
+   * Start drills per round: the end of the formation lap, the grid and the lights, then a few seconds of racing.
+   * A race has one formation lap, and stopping in the grid box takes precision (overshoot it and the car can't
+   * back into it): students given one grid stop a round overshot and parked, or crawled round again.
+   */
+  starts?: number;
   epochs?: number;
   /** Moments trained on per student per round (a fresh sample of everything recorded so far). */
   maxExamples?: number;
   onRound?: (round: number, report: { track: string; loss: number; pacing: number; out: number; safetyCars: number; seconds: number }) => void;
 }
 
-/** One classroom race on a circuit. Returns how many cars went out and how many safety cars there were. */
+/** Seconds of racing after the lights in a start drill. */
+const AFTER_START = 8;
+
+/**
+ * One classroom race on a circuit (or, startOnly, its start: until a few seconds after the lights). Returns how many
+ * cars went out and how many safety cars there were.
+ */
 function classroomRace(
   track: Track, students: RoadCautionStudent[], driving: Driving, examples: Example[][], rng: Rng, opts: Required<Omit<RoadCautionOptions, 'onRound'>>,
-  round: number, seed: number,
+  round: number, seed: number, startOnly = false,
 ): { out: number; safetyCars: number } {
   const world = new World(track, { collisions: true, drafting: true, wearScale: 4 });
   const slots = new Map<number, number>();
@@ -97,9 +109,16 @@ function classroomRace(
   }
   const race = new Race(world, opts.laps, new PaceCarDriver(), { rulebook: CIRCUIT_RULES, seed: hashSeed(seed, `race${round}`) });
   const debrisPerSecond = opts.debris / 90; // a circuit lap's roughly a minute and a half
+  let lightsAt = -1;
   while (race.state !== 'finished' && world.time < opts.laps * 600) {
     race.step();
     const ctl = race.control!;
+    if (startOnly) {
+      if (lightsAt < 0 && race.started && ctl.flag === 'green') lightsAt = world.time;
+      if (lightsAt >= 0 && world.time - lightsAt > AFTER_START) break;
+      if (world.time > 300) break; // a start that never comes
+      continue;
+    }
     if (ctl.flag === 'green' && race.started && rng.next() < debrisPerSecond * P.DT) ctl.debrisCaution();
   }
   return { out: world.cars.filter((c) => c.retired && !race.isFinished(c)).length, safetyCars: race.control!.cautions };
@@ -111,7 +130,7 @@ function classroomRace(
  * pacing moments recorded so far and, as many again, racing moments.
  */
 export function apprenticeRoadCautions(students: RoadCautionStudent[], seed: number, options: RoadCautionOptions = {}): void {
-  const opts = { rounds: 8, field: 20, laps: 6, debris: 0.3, epochs: 4, maxExamples: 40_000, ...options };
+  const opts = { rounds: 8, field: 20, laps: 6, debris: 0.3, starts: 6, epochs: 4, maxExamples: 40_000, ...options };
   const rng = new Rng(hashSeed(seed, 'road-cautions'));
   const examples: Example[][] = students.map(() => []);
   for (const d of students) d.roadCaution ??= d.road.slice();
@@ -120,6 +139,10 @@ export function apprenticeRoadCautions(students: RoadCautionStudent[], seed: num
     const track = circuitTrack(hashSeed(seed, `circuit${round}`), round % 2 ? 'gp' : 'club');
     const driving: Driving = round === 0 ? { kind: 'teacher' } : { kind: 'student' };
     const { out, safetyCars } = classroomRace(track, students, driving, examples, rng, opts, round, seed);
+    for (let k = 0; k < opts.starts; k++) {
+      const where = circuitTrack(hashSeed(seed, `start${round}:${k}`), k % 2 ? 'gp' : 'club');
+      classroomRace(where, students, driving, examples, rng, opts, round * 100 + k + 1, seed, true);
+    }
     const half = Math.floor(opts.maxExamples / 2);
     const pick = (all: Example[], n: number) => (all.length <= n ? all : sample(all, n, rng));
     let loss = 0, pacing = 0;
