@@ -19,19 +19,17 @@
 import { initialWeights } from '../ai/es';
 import { CAUTION_FROM, DRIVER_LAYERS, NeuralDriver, Team, type DriverLimits } from '../ai/drivers';
 import type { FormationTraits } from '../ai/formation';
-import { PaceCarDriver } from '../ai/formation';
 import { type Example, trainSupervised } from '../ai/network';
 import type { TrackKnowledge } from '../ai/observe';
-import { randomTraits, StrategistCrewChief } from '../ai/pitting';
 import { Rng } from '../ai/rng';
 import { TowerSpotter } from '../ai/spotter';
 import { racerStyle, type RacerStyle, TrafficRacer } from '../ai/trafficRacer';
 import { Car } from '../sim/car';
 import { PHYSICS as P } from '../sim/constants';
 import { FUEL_RANGE, TIRE_RANGE } from '../ai/evaluate';
-import { placeOnGrid, ROLLING_START_SPEED } from '../sim/grid';
-import { Race } from '../sim/race';
+import { ROLLING_START_SPEED } from '../sim/grid';
 import { Track } from '../sim/track';
+import { classroomRace } from './classroomRace';
 import { Recorder, type Driving } from './recorder';
 import type { World } from '../sim/world';
 import { World as SimWorld } from '../sim/world';
@@ -117,43 +115,6 @@ export interface OvalApprenticeOptions {
   onRound?: (round: number, report: { track: string; losses: number[]; cautionLoss: number; examples: number; out: number; soloCrashes: number; seconds: number }) => void;
 }
 
-/** One classroom race: the students seated round a field of individual traffic racers. Returns how many cars went out. */
-export function classroomRace(
-  track: Track, students: StableDriver[], driving: Driving, examples: Example[][], rng: Rng, opts: Required<Omit<OvalApprenticeOptions, 'onRound'>>,
-  round: number, seed: number,
-): number {
-  const world = new SimWorld(track, { collisions: true, drafting: true, wearScale: 4 });
-  // Students spread through the field (a different spread each round), the rest individual racers.
-  const slots = new Map<number, number>();
-  const order = students.map((_, i) => i).sort(() => rng.next() - 0.5);
-  order.forEach((s, i) => slots.set(Math.floor(((i + rng.next()) * opts.field) / students.length) % opts.field, s));
-  for (let k = 0; k < opts.field; k++) {
-    const car = new Car(k);
-    placeOnGrid(car, track, k, true);
-    const chief = new StrategistCrewChief(randomTraits(() => rng.next()));
-    const s = slots.get(k);
-    if (s === undefined) {
-      const who = new Rng(hashSeed(seed, `racer${round}:${k}`));
-      const { style, traits } = racerStyle(0.15 + 0.7 * who.next(), who.next(), () => who.next());
-      world.addCar(car, new Team(new TrafficRacer(style, undefined, traits), new TowerSpotter(), chief, false, true));
-      continue;
-    }
-    const d = students[s];
-    const limits: DriverLimits = { ...d.limits, seed: hashSeed(seed, `hands${round}:${d.lineage}`) };
-    const student = new NeuralDriver(d.weights, undefined, lineOf(d), { limits, caution: d.caution ?? undefined });
-    const team = new Team(student, new TowerSpotter(), chief, false, true);
-    world.addCar(car, new Recorder(team, student, labellingTeacher(d), driving, examples[s], rng, { latency: d.limits.latency, extra: recordExtra ?? undefined }));
-  }
-  const race = new Race(world, opts.laps, new PaceCarDriver());
-  const debrisPerSecond = opts.debris / 30; // a lap's roughly half a minute
-  while (race.state !== 'finished' && world.time < opts.laps * 300) {
-    race.step();
-    const ctl = race.control!;
-    if (ctl.flag === 'green' && race.started && rng.next() < debrisPerSecond * P.DT) ctl.debrisCaution();
-  }
-  return world.cars.filter((c) => c.retired && !race.isFinished(c)).length;
-}
-
 /**
  * The teacher that says what a student should do: its own traffic racer, reacting to flags at once. The student's
  * own latency is its delay; a teacher that also waited its personal reaction time would answer the same moment
@@ -213,7 +174,7 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
     const driving: Driving = round === 0 ? { kind: 'teacher' }
       : opts.shake > 0 ? { kind: 'shaken', sigma: opts.shake * Math.min(1, round / 3) } : { kind: 'student' };
     const soloCrashes = soloDrives(track, students, driving, alone, rng, round, seed);
-    const out = classroomRace(track, students, driving, examples, rng, opts, round, seed);
+    const { out } = classroomRace(track, students, driving, examples, rng, { field: opts.field, laps: opts.laps, debris: opts.debris, extra: recordExtra ?? undefined }, round, seed);
     const cautionLosses: number[] = [];
     // Two skills, trained apart: racing (alone and in traffic under green) and cautions (the field pacing), the
     // caution network starting as a copy of the racing one. Neither's examples crowd out the other's.

@@ -69,7 +69,7 @@ describe('the apprenticeship recorder', () => {
     let stopping = 0, after = 0;
     for (let k = 0; k < 200 / P.DT; k++) {
       const before = examples.length;
-      const was = car.pit.phase;
+      const was: string = car.pit.phase;
       world.step();
       if (was !== 'none') stopping += examples.length - before;
       else after += examples.length - before;

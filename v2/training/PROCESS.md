@@ -66,7 +66,7 @@ Skills: `oval.racing`, `oval.cautions`, `road.racing`, `road.cautions`, `pits`. 
 Where both machines need the same thing, there is one implementation, and a change to it is a line in RESULTS.md (it changes both funnels' results).
 
 - **The recorder:** one DAgger recorder for every skill, `src/school/recorder.ts` (`Recorder`; done 2026-10-23: the oval apprenticeship, road racing, road cautions and pit drills all use it). It handles takeOver, mirroring, shaken hands, knocks, sampling and extra inputs; `skill: 'stops'` records the pit maneuver during stops.
-- **The classroom race:** one function, parameterised by discipline (track source, rules, teacher style, debris rate). Today `ovalApprentice.classroomRace` and `roadCautions.classroomRace` are near copies.
+- **The classroom race:** one function, `src/school/classroomRace.ts` (done 2026-10-23 by the circuit machine, as road racing's full-field apprenticeship needed it): the track's kind picks the rules, the teacher (`teacherOf` / `roadTeacherOf`), the student's networks and the debris rate; `startOnly` runs a circuit start drill.
 - **The traffic lesson:** ES racecraft in full fields, one module for both disciplines (today `roadcraftLesson` for 12-car packs on circuits, `racecraftLesson` for ovals).
 - **Teachers:** `TrafficRacer`, the formation and smooth formation, the pit maneuver. A fix by either machine is a fix for both (the passing fix 73288c2 changed both readiness baselines).
 - **Measures:** readiness, the oval bench, circuits.ts. A change to what they count is announced (e.g. 5f2e2e7: a driver's own stops are no longer counted as scripted).
