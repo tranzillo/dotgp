@@ -74,6 +74,8 @@ type Entrant = {
   limits?: { latency: number; noise: number };
   /** The caution skill (a network that drives while the field is pacing). */
   caution?: { weights: number[] };
+  /** A pit skill: the network that drives its own stops. */
+  pit?: { weights: number[] };
   /** The line it knows (track knowledge): its own, as it was taught. Default the usual line. */
   knowledge?: { grip: number; margin: number };
 };
@@ -295,6 +297,7 @@ function runRace(trackName: string, seed: number): RaceStats {
       d.knowledge, {
         limits: limits && { ...limits, seed: (seed * 7919 + k * 104729) >>> 0 },
         caution: d.caution && adaptWeights(Float32Array.from(d.caution.weights)),
+        pit: d.pit && adaptWeights(Float32Array.from(d.pit.weights)),
       }));
   }
   const race = new Race(world, laps, new PaceCarDriver(), withRules ? { rulebook: OVAL_RULES, seed } : undefined);

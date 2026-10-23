@@ -405,6 +405,7 @@ function entrantSpec(t: TeamEntry): EntrantSpec {
       id: driver.id, weights: driver.weights, roadWeights: driver.roadCourse?.weights, nerve: driver.nerve,
       roadKnowledge: driver.roadCourse?.style && { grip: driver.roadCourse.style.grip, margin: driver.roadCourse.style.margin },
       cautionWeights: driver.caution?.weights, limits: driver.limits,
+      roadCautionWeights: driver.roadCourse?.caution?.weights, pitWeights: driver.pit?.weights,
       pits: (driver.pitLicensed && driver.pitTrafficLicensed) ?? false, setBackPits: driver.setBackPits ?? false, cautions: driver.cautionLicensed ?? false,
     },
     spotter: { id: spotter.id, skill: spotter.skill },
