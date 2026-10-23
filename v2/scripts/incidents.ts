@@ -141,7 +141,7 @@ interface RaceStats {
   retirements: Retirement[];
   wearPerLap: number[];
   burnPerLap: number[];
-  stops: Array<{ tire: number; fuel: number; tires: boolean; service: number; underCaution: boolean }>;
+  stops: Array<{ tire: number; fuel: number; tires: boolean; repair: boolean; reason: string; service: number; underCaution: boolean }>;
   lapsByTire: Array<[number, number]>;
   slideSteps: number[]; // car-steps with sliding above 0.05 / 0.35 / 0.6
   steps: number;
@@ -468,7 +468,7 @@ function runRace(trackName: string, seed: number): RaceStats {
 
       const phase = car.pit.phase;
       if (phase === 'service' && prevPhase.get(car) === 'in' && car.pit.call) {
-        stats.stops.push({ tire: car.tireLife, fuel: car.fuel, tires: car.pit.call.tires, service: car.pit.timer, underCaution: ctl.flag !== 'green' });
+        stats.stops.push({ tire: car.tireLife, fuel: car.fuel, tires: car.pit.call.tires, repair: !!car.pit.call.repair, reason: car.pit.call.reason ?? (car.pit.call.penalty ? 'penalty' : '?'), service: car.pit.timer, underCaution: ctl.flag !== 'green' });
       }
       prevPhase.set(car, phase);
 
@@ -559,6 +559,8 @@ export interface RaceSummary {
    * steering, for the same brain and for different brains. Copies of one brain follow each other's tracks exactly.
    */
   spotSameD: number; spotDiffD: number; spotSameV: number; spotDiffV: number; spotSameSteer: number; spotDiffSteer: number;
+  /** Pit stops called, and those called because the car was damaged (whatever else was done at them). */
+  stops: number; damageStops: number;
   /** Scripted driving (to be trained away): share of car-time on track a script drove, and cars that went out while one was. */
   scripted: number; scriptedFormation: number; scriptedPit: number; scriptedRetirements: number;
   /** Mixed fields: each side's mean finishing place, cars out, and damage done by fault. */
@@ -585,6 +587,7 @@ function raceSummary(s: RaceStats): RaceSummary {
     spotSameD: s.pack.spotSame.d / s.pack.spotSame.n, spotDiffD: s.pack.spotDiff.d / s.pack.spotDiff.n,
     spotSameV: s.pack.spotSame.v / s.pack.spotSame.n, spotDiffV: s.pack.spotDiff.v / s.pack.spotDiff.n,
     spotSameSteer: s.pack.spotSame.steer / s.pack.spotSame.n, spotDiffSteer: s.pack.spotDiff.steer / s.pack.spotDiff.n,
+    stops: s.stops.filter((x) => x.reason !== 'penalty').length, damageStops: s.stops.filter((x) => x.reason === 'damage').length,
     scripted: (s.driving.formation + s.driving.pit) / Math.max(1, s.driving.samples),
     scriptedFormation: s.driving.formation / Math.max(1, s.driving.samples),
     scriptedPit: s.driving.pit / Math.max(1, s.driving.samples),
@@ -657,7 +660,8 @@ for (const name of trackNames) {
     + `sliding >0.05 ${pct(slide[0])}, >0.35 ${pct(slide[1])}, >0.6 ${pct(slide[2])} of car-steps`);
   console.log(`  FUEL    burn ${f(burn, 2)} kg/green lap -> ${f(P.FUEL_CAPACITY / burn, 0)} laps per tank`);
   console.log(`  STOPS   ${f(stops.length / runs.length)}/race (${pct(stops.filter((s) => s.underCaution).length / stops.length)} under caution), `
-    + `tires taken ${pct(stops.filter((s) => s.tires).length / stops.length)}, tire life at stop ${f(mean(stops.map((s) => s.tire)), 2)} `
+    + `tires taken ${pct(stops.filter((s) => s.tires).length / stops.length)}, repairs ${pct(stops.filter((s) => s.repair).length / stops.length)}, `
+    + `called for ${['fuel', 'tires', 'damage', 'caution', 'penalty'].map((r) => `${r} ${pct(stops.filter((s) => s.reason === r).length / stops.length)}`).join(' ')}, tire life at stop ${f(mean(stops.map((s) => s.tire)), 2)} `
     + `(min ${f(Math.min(...stops.map((s) => s.tire)), 2)}), service ${f(mean(stops.map((s) => s.service)))} s`);
   const lapsByTire = runs.flatMap((s) => s.lapsByTire);
   const bands: string[] = [];

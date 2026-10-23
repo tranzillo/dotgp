@@ -70,6 +70,9 @@ export interface CircuitRace {
   stopped: number;
   /** Damage cars did to others, by fault. */
   harm: number;
+  /** Pit stops called, and those the crew called because the car was damaged (whatever else is done at them). */
+  stops: number;
+  damageStops: number;
   trackLimits: number;
   /** Excursions under green by where they went: across the inside of a corner (a cut), or wide. */
   cuts: number;
@@ -134,6 +137,9 @@ function runRace(job: RaceJob): CircuitRace {
   const off = new Set<Car>();
   // Who drove each racing car, decision by decision: the driver, or a script (the pit maneuver, the formation).
   let byDriver = 0, byPit = 0, byFormation = 0;
+  // Stops as they're called, and why.
+  let stops = 0, damageStops = 0;
+  const wasPitting = new Set<Car>();
   while (race.state !== 'finished' && world.time < laps * 400) {
     race.step();
     if (world.tick % P.CONTROL_EVERY === 0) {
@@ -146,6 +152,10 @@ function runRace(job: RaceJob): CircuitRace {
       });
     }
     for (const car of world.cars) {
+      if (car.pit.phase !== 'none' && !wasPitting.has(car)) {
+        wasPitting.add(car);
+        if (car.pit.call && !car.pit.call.penalty) { stops++; if (car.pit.call.reason === 'damage') damageStops++; }
+      } else if (car.pit.phase === 'none') wasPitting.delete(car);
       const past = pastTrackLimits(car, track);
       if (past && !off.has(car) && ctl.flag === 'green') {
         // The corner here: the inside is the side it turns toward.
@@ -170,7 +180,7 @@ function runRace(job: RaceJob): CircuitRace {
   const lapCount = world.cars.reduce((a, c) => a + c.lapTimes.length, 0);
   return {
     track: track.name, laps, finished: world.cars.filter((c) => race.isFinished(c)).length, retirements: out.size, firstLap,
-    byWall, byCar, stopped, harm: world.cars.reduce((a, c) => a + c.harmDone, 0), trackLimits, cuts, wide,
+    byWall, byCar, stopped, harm: world.cars.reduce((a, c) => a + c.harmDone, 0), stops, damageStops, trackLimits, cuts, wide,
     validLaps: lapCount ? world.cars.reduce((a, c) => a + c.lapValid.filter(Boolean).length, 0) / lapCount : NaN,
     timePenalties: race.stewards?.record.filter((p) => p.penalty === 'time').length ?? 0, safetyCars: ctl.cautions,
     bestLapPerKm: best.length ? best[Math.floor(best.length / 2)] / (track.length / 1000) : NaN,
@@ -217,7 +227,8 @@ async function main(): Promise<void> {
   const per = files.map((file) => queue.filter((j) => j.file === file).map((j) => results.get(j)!));
   const metrics: Array<[keyof CircuitRace, string, number]> = [
     ['retirements', 'retirements', 1], ['firstLap', '  on the first lap', 1], ['byWall', '  barriers', 1], ['byCar', '  contact', 1],
-    ['stopped', '  stopped (beached)', 1], ['harm', 'damage done (by fault)', 2], ['trackLimits', 'track limits', 1],
+    ['stopped', '  stopped (beached)', 1], ['harm', 'damage done (by fault)', 2], ['stops', 'pit stops', 1],
+    ['damageStops', '  called for damage', 1], ['trackLimits', 'track limits', 1],
     ['wide', '  running wide', 1], ['cuts', '  cutting a corner', 1], ['validLaps', 'valid laps (share)', 2],
     ['timePenalties', 'time penalties', 1], ['safetyCars', 'safety cars', 1], ['finished', 'finished', 1],
     ['bestLapPerKm', 'best valid lap (s/km, median)', 2],

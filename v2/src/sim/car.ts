@@ -13,6 +13,8 @@ export interface PitCall {
   /** Serving a penalty instead: through pit road (a drive-through) or a stop in the box for some seconds. */
   penalty?: 'drive-through' | 'stop-go';
   penaltySeconds?: number;
+  /** Why the crew called it (whatever else is due is done at the same stop): fuel, tires, damage, or a caution's cheap stop. */
+  reason?: 'fuel' | 'tires' | 'damage' | 'caution';
 }
 
 /**

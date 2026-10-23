@@ -134,6 +134,7 @@ export class StrategistCrewChief implements CrewChief {
       tires: wornTires || (!lastTheRun && lapsLeft > t.minLapsForTires),
       fuel,
       repair: damaged,
+      reason: needFuel ? 'fuel' : wornTires ? 'tires' : damaged ? 'damage' : 'caution',
     };
     const parts = [call.tires ? 'four tires' : 'no tires', call.fuel > 0.5 ? (call.fuel >= tank - 0.5 ? 'fill it up' : 'fuel to the end') : '',
       call.repair ? 'fix the damage' : ''].filter(Boolean);
