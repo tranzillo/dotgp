@@ -212,6 +212,38 @@ export interface NeuralDriverExtras {
   caution?: Float32Array;
 }
 
+/**
+ * Who a driver is, wherever one is built outside the game's races (lessons,
+ * practice, benchmarks): what it knows of road circuits (its line) and its
+ * human limits (seeded: a driver's variations in a round share their noise).
+ */
+export interface DriverMakeup {
+  knowledge?: TrackKnowledge;
+  limits?: DriverLimits;
+}
+
+/** A driver of these weights as its makeup has it (its road skill, if these are one: they drive everywhere). */
+export function madeDriver(weights: Float32Array, makeup?: DriverMakeup): NeuralDriver {
+  return new NeuralDriver(weights, undefined, makeup?.knowledge, { limits: makeup?.limits });
+}
+
+/** A drivers file's entry, as far as its makeup goes: its road style (its line) and its human limits. */
+export interface MakeupEntry {
+  roadCourse?: { style?: { grip: number; margin: number } };
+  limits?: { latency: number; noise: number };
+}
+
+/** Who a drivers file's entry is (its human limits seeded with `seed`). */
+export function makeupOf(d: MakeupEntry, seed: number): DriverMakeup {
+  const style = d.roadCourse?.style;
+  return { knowledge: style && { grip: style.grip, margin: style.margin }, limits: d.limits && { ...d.limits, seed } };
+}
+
+/** Human limits as the stable draws them: 0.1-0.2 s from seeing to the car answering, 2-8% motor noise. */
+export function drawLimits(random: () => number): { latency: number; noise: number } {
+  return { latency: 0.1 + 0.1 * random(), noise: 0.02 + 0.06 * random() };
+}
+
 /** How long motor noise takes to drift (s): an Ornstein-Uhlenbeck process with this correlation time. */
 const MOTOR_NOISE_TAU = 0.25;
 

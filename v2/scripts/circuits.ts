@@ -18,7 +18,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { cpus } from 'node:os';
 import { isMainThread, parentPort, workerData } from 'node:worker_threads';
-import { adaptWeights, NeuralDriver, Team } from '../src/ai/drivers';
+import { adaptWeights, makeupOf, NeuralDriver, Team } from '../src/ai/drivers';
 import { PaceCarDriver } from '../src/ai/formation';
 import { randomTraits, StrategistCrewChief } from '../src/ai/pitting';
 import { Rng } from '../src/ai/rng';
@@ -40,6 +40,7 @@ interface DriverEntry {
   pitTrafficLicensed?: boolean;
   cautionLicensed?: boolean;
   roadCourse?: { weights: number[]; style?: { grip: number; margin: number; room?: number } };
+  limits?: { latency: number; noise: number };
 }
 
 interface RaceJob { file: string; track: number; seed: number; field: number; km: number; pace: number }
@@ -97,8 +98,10 @@ function runRace(job: RaceJob): CircuitRace {
       world.addCar(car, new Team(racer, new TowerSpotter(), new StrategistCrewChief(randomTraits(() => rng.next())), false, true));
       continue;
     }
+    // As it is: its style's line, its human limits (if it has them; seeded by race and slot, so both files' cars match).
+    const m = makeupOf(d, hashSeed(job.seed, `hands${job.track}:${slot}`));
     const brain = new NeuralDriver(adaptWeights(Float32Array.from(d.weights)), d.roadCourse ? adaptWeights(Float32Array.from(d.roadCourse.weights)) : undefined,
-      style ? { grip: style.grip, margin: style.margin } : undefined);
+      m.knowledge, { limits: m.limits });
     world.addCar(car, new Team(brain, new TowerSpotter(), new StrategistCrewChief(randomTraits(() => rng.next())),
       !!(d.pitLicensed && d.pitTrafficLicensed), d.cautionLicensed ?? false));
   }

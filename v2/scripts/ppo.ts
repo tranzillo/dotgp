@@ -25,7 +25,7 @@
  * half its evaluation drives cleanly with the stage's training wheels.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { adaptWeights, DRIVER_LAYERS } from '../src/ai/drivers';
+import { adaptWeights, DRIVER_LAYERS, makeupOf, type MakeupEntry } from '../src/ai/drivers';
 import { randomWeights } from '../src/ai/mlp';
 import { PpoLearner, type PpoOptions } from '../src/ai/ppo';
 import { Rng } from '../src/ai/rng';
@@ -54,13 +54,12 @@ const warmup = num('value-warmup', 0);
 const driversOut = args.get('drivers-out');
 const packs = num('packs', 0);
 const classmatesFile = args.get('classmates') ?? args.get('from');
-type FileDriver = { weights: number[]; roadCourse?: { weights: number[]; style?: { grip: number; margin: number } } };
-/** What a driver knows of circuits: its style's line (if it has a style), else the usual. */
-const knowledgeOf = (d: FileDriver) => (d.roadCourse?.style ? { grip: d.roadCourse.style.grip, margin: d.roadCourse.style.margin } : undefined);
+type FileDriver = MakeupEntry & { weights: number[]; roadCourse?: { weights: number[] } };
+// Who each driver is (its style's line, its human limits): drives reseed the limits' noise.
 const mates: FileDriver[] = packs && classmatesFile ? JSON.parse(readFileSync(classmatesFile, 'utf8')).drivers : [];
 const classmates = mates.map((d) => adaptWeights(Float32Array.from(d.roadCourse?.weights ?? d.weights)));
-const classmateKnowledge = mates.map(knowledgeOf);
-const knowledge = args.get('from') ? knowledgeOf(JSON.parse(readFileSync(args.get('from')!, 'utf8')).drivers[num('driver', 0)]) : undefined;
+const classmateMakeup = mates.map((d) => makeupOf(d, 0));
+const makeup = args.get('from') ? makeupOf(JSON.parse(readFileSync(args.get('from')!, 'utf8')).drivers[num('driver', 0)], 0) : undefined;
 if (packs && !classmates.length) throw new Error('--packs needs --from or --classmates');
 const ppo: Partial<PpoOptions> = {};
 for (const k of ['gamma', 'lambda', 'clip', 'epochs', 'minibatch', 'policyLr', 'valueLr', 'entropy', 'targetKl'] as const) {
@@ -93,8 +92,8 @@ const started = Date.now();
 const recent: DriveStat[] = [];
 for (let it = 1; it <= iterations; it++) {
   const t0 = Date.now();
-  const solo = roadRollout(learner, { radius, stallEnds, chicanes: num('chicanes', 0), recoveries: num('recoveries', 0), wear: args.has('wear'), knowledge, validLaps: args.has('valid-laps') || radius <= ROAD_FULL_RADIUS }, hashSeed(seed, `it${it}`), worlds, cars, seconds);
-  const pack = packs ? packRollout(learner, hashSeed(seed, `pack${it}`), packs, classmates, args.has('nerve') ? num('nerve', 0.5) : undefined, undefined, knowledge, classmateKnowledge) : null;
+  const solo = roadRollout(learner, { radius, stallEnds, chicanes: num('chicanes', 0), recoveries: num('recoveries', 0), wear: args.has('wear'), makeup, validLaps: args.has('valid-laps') || radius <= ROAD_FULL_RADIUS }, hashSeed(seed, `it${it}`), worlds, cars, seconds);
+  const pack = packs ? packRollout(learner, hashSeed(seed, `pack${it}`), packs, classmates, args.has('nerve') ? num('nerve', 0.5) : undefined, undefined, makeup, classmateMakeup) : null;
   const segments = pack ? [...solo.segments, ...pack.segments] : solo.segments;
   const drives = solo.drives;
   const t1 = Date.now();
@@ -113,8 +112,8 @@ for (let it = 1; it <= iterations; it++) {
     + ` lap ${pct(share((d) => d.laps >= 1))}; kl ${stats.kl.toFixed(4)} clip ${pct(stats.clipFraction)} ev ${stats.explainedVariance.toFixed(2)}`
     + ` std ${stats.std.map((s) => s.toFixed(2)).join('/')} ep ${stats.epochs} (${((t1 - t0) / 1000).toFixed(1)}+${((t2 - t1) / 1000).toFixed(1)} s)`);
   if (it % evalEvery === 0 || it === iterations) {
-    const w = stageReport(learner.policy.weights, radius, hashSeed(seed, `eval${it}`), 16, true, knowledge);
-    const real = stageReport(learner.policy.weights, radius, hashSeed(seed, `eval${it}`), 16, false, knowledge);
+    const w = stageReport(learner.policy.weights, radius, hashSeed(seed, `eval${it}`), 16, true, makeup);
+    const real = stageReport(learner.policy.weights, radius, hashSeed(seed, `eval${it}`), 16, false, makeup);
     log(`  eval at ${radius.toFixed(0)} m — wheels: ${w.laps.toFixed(2)} laps, ${pct(w.clean)} clean, ${pct(w.stopped)} stopped`
       + ` | real: ${real.laps.toFixed(2)} laps, ${pct(real.clean)} clean, ${pct(real.stopped)} stopped (${((Date.now() - started) / 1000).toFixed(0)} s)`);
     if (!fixed && w.clean >= 0.5 && radius > ROAD_FULL_RADIUS) {

@@ -9,7 +9,7 @@
  *   npx tsx scripts/styles.ts drivers.json [--tracks 8]
  */
 import { readFileSync } from 'node:fs';
-import { adaptWeights, NeuralDriver, ScriptedDriver, Team } from '../src/ai/drivers';
+import { adaptWeights, makeupOf, NeuralDriver, ScriptedDriver, Team } from '../src/ai/drivers';
 import { TowerSpotter } from '../src/ai/spotter';
 import { Car } from '../src/sim/car';
 import { PHYSICS as P } from '../src/sim/constants';
@@ -67,7 +67,7 @@ function drive(track: Track, who: Controller): { lap: number; laps: number; excu
 
 const teacher = tracks.map((t) => drive(t, new ScriptedDriver(0, 0.9)).lap);
 const drivers = JSON.parse(readFileSync(file, 'utf8')).drivers as Array<{
-  weights: number[]; roadCourse?: { weights: number[]; style?: { grip: number; margin: number; room: number } };
+  weights: number[]; roadCourse?: { weights: number[]; style?: { grip: number; margin: number; room: number } }; limits?: { latency: number; noise: number };
 }>;
 const sign = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}`;
 log(`${file.split(/[\\/]/).pop()}, solo on ${count} benchmark circuits (3 laps each):`);
@@ -77,9 +77,9 @@ drivers.forEach((d, k) => {
   const line = [0, 0, 0];
   let ln = 0;
   tracks.forEach((track, t) => {
-    const st = d.roadCourse?.style;
+    const m = makeupOf(d, hashSeed(5, `hands${t}:${k}`));
     const r = drive(track, new Team(new NeuralDriver(adaptWeights(Float32Array.from(d.weights)),
-      d.roadCourse ? adaptWeights(Float32Array.from(d.roadCourse.weights)) : undefined, st ? { grip: st.grip, margin: st.margin } : undefined), new TowerSpotter(), null));
+      d.roadCourse ? adaptWeights(Float32Array.from(d.roadCourse.weights)) : undefined, m.knowledge, { limits: m.limits }), new TowerSpotter(), null));
     if (Number.isFinite(r.lap)) { ratio += r.lap / teacher[t]; rn++; valid++; }
     exc += r.excursions; laps += Math.max(1, r.laps);
     if (r.line) { r.line.forEach((v, j) => (line[j] += v)); ln++; }

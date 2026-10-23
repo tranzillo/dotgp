@@ -21,6 +21,7 @@
  *   leaving room); or the line follower (default).
  * --wear: road apprenticeship drives start on tyres anywhere from worn to new, and any fuel load.
  * --styles: each road student apprentices under its own style of the racing-line teacher (grip, margin, room), drawn for it.
+ * --limits: drivers without human limits get them (drawn for each), and every driver learns through its own.
  * --packs N: pack drills per circuit per apprenticeship round (the student among cars the teacher drives).
  * --knocks N: knocks a minute in road apprenticeships while the student drives (its speed cut to a random share).
  * --apprentice-epochs: passes over the recorded moments per apprenticeship round (road courses; default ROAD_APPRENTICE_EPOCHS).
@@ -31,7 +32,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { cpus } from 'node:os';
-import { adaptWeights } from '../src/ai/drivers';
+import { adaptWeights, drawLimits } from '../src/ai/drivers';
 import { KNOWLEDGE_MARGINS } from '../src/ai/observe';
 import { Classroom, LESSONS, type LessonId } from '../src/school/classroom';
 import { hashSeed, PRESETS, presetLayout } from '../src/trackgen';
@@ -105,11 +106,22 @@ interface DriverEntry {
   nerve?: number;
   /** The road-course skill (Road courses trains this, not `weights`). */
   roadCourse?: { weights: number[]; rounds?: number; licensed?: boolean; radius?: number; style?: RoadStyle };
+  /** Human limits: seconds from seeing to the car answering, and motor noise (as the roster keeps them). */
+  limits?: { latency: number; noise: number };
 }
 // Road-course lessons train the road-course skill, not the oval network.
 const road = lesson === 'circuits' || lesson === 'roadcraft';
 const file = JSON.parse(readFileSync(inFile, 'utf8')) as { drivers: DriverEntry[] };
 const t0 = Date.now();
+/**
+ * --limits: drivers without human limits get them, drawn for each (0.1-0.2 s latency, 2-8% motor noise, as the stable
+ * draws them), and learn through them; drivers with limits always learn through their own.
+ */
+const limitsOf = file.drivers.map((d, k) => {
+  if (d.limits || !args.has('limits')) return d.limits;
+  const rng = new Rng(hashSeed(seed, `limits-D${k}`));
+  return drawLimits(() => rng.next());
+});
 const pool = jobs > 1 ? new SchoolPool(jobs) : null;
 const students = file.drivers.map((d, k) => ({
   key: k, id: `D${k}`, name: `Driver ${k}`,
@@ -120,6 +132,7 @@ const students = file.drivers.map((d, k) => ({
   licensed: d.licensed ?? true, pitLicensed: d.pitLicensed, pitTrafficLicensed: d.pitTrafficLicensed,
   cautionLicensed: d.cautionLicensed, roadLicensed: d.roadCourse?.licensed, roadRadius: d.roadCourse?.radius, nerve: d.nerve,
   // What it knows of road circuits: its style's line (its saved style, or the one drawn for it now), else the usual.
+  limits: limitsOf[k],
   knowledge: road ? knowledgeFor(d.roadCourse?.style ?? (lesson === 'circuits' && !d.roadCourse ? styleFor(k) : undefined)) : undefined,
 }));
 // New road-course skills study the line follower one per thread (the classroom would do them one after another).
@@ -127,7 +140,7 @@ const students = file.drivers.map((d, k) => ({
 const apprenticed = (pool || args.has('styles')) && lesson === 'circuits' && apprenticeship?.rounds !== 0
   ? await Promise.all(students.map((s) => {
     if (s.rounds > 0) return undefined;
-    const opts = apprenticeshipFor(s.key);
+    const opts = { ...apprenticeshipFor(s.key), ...(limitsOf[s.key] ? { limits: limitsOf[s.key] } : {}) };
     if (pool) return pool.apprenticeRoad(s.weights.slice(), hashSeed(seed, s.id), opts);
     const weights = s.weights.slice();
     return { weights, examples: apprenticeRoadCourses(weights, hashSeed(seed, s.id), opts).examples };
@@ -154,6 +167,7 @@ function save(path: string): void {
     ...file,
     drivers: file.drivers.map((d, k) => {
       const s = c.students[k];
+      if (limitsOf[k]) d = { ...d, limits: limitsOf[k] };
       if (road) {
         const style = (lesson === 'circuits' && d.roadCourse?.rounds === undefined ? styleFor(k) : undefined) ?? d.roadCourse?.style;
         return {

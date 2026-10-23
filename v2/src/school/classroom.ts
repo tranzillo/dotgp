@@ -7,9 +7,10 @@ import { Trial, type TrialOptions, type TrialResult } from '../ai/evaluate';
 import { apprenticePitStops, cleanStop, PitTrial, REFRESHER_ROUNDS, type PitTrialResult } from './pitLesson';
 import { anchored, DrillTrial, racingKept, SOLO_OPTIONS } from './drill';
 import {
-  ROADCRAFT_WEIGHTS, roadcraftLayout, RoadcraftTrial, situationLayout, situationsOn, soloKnowledge, type Situation,
+  ROADCRAFT_WEIGHTS, roadcraftLayout, RoadcraftTrial, situationLayout, situationsOn, soloMakeup, type Situation,
 } from './roadcraftLesson';
 import type { TrackKnowledge } from '../ai/observe';
+import type { DriverMakeup } from '../ai/drivers';
 import { apprenticeRoadCourses, ROAD_WEIGHTS, roadLicenseTest, type ApprenticeOptions } from './roadLesson';
 import { bestValidLap } from '../sim/limits';
 import { PACK_SIZE, RacecraftTrial, randomLayout, type PackLayout, type RacecraftResult } from './racecraftLesson';
@@ -150,6 +151,8 @@ export interface StudentSpec {
   nerve?: number;
   /** What it knows of road circuits (its line); default the usual. */
   knowledge?: TrackKnowledge;
+  /** Its human limits (latency, motor noise): it learns through them, if it has them. */
+  limits?: { latency: number; noise: number };
 }
 
 export interface ClassSpec {
@@ -194,7 +197,8 @@ export interface RoadcraftRound {
   /** The track's own pace (m/s): progress converts to seconds at it. */
   pace: number;
   /** What each student knows of road circuits (its line); default the usual. */
-  knowledge: Array<TrackKnowledge | undefined>;
+  /** Who each student is (its line, its human limits); default the usual, none. */
+  makeup: Array<DriverMakeup | undefined>;
 }
 
 /**
@@ -559,7 +563,7 @@ export class Classroom {
       const r = this.roadcraftRound;
       const drills = await runner.roadcraft(r);
       const solo = await runner.ghost(r.layout, [...r.candidates, ...r.references], {
-        ...SOLO_OPTIONS, pace: r.pace, knowledge: soloKnowledge(r.knowledge, r.candidates.length, r.perStudent, r.references.length),
+        ...SOLO_OPTIONS, pace: r.pace, makeup: soloMakeup(r.makeup, r.candidates.length, r.perStudent, r.references.length),
       });
       this.finishRound(anchored(drills.results, solo.results, r.perStudent, r.candidates.length, this.track.length, r.pace), drills.time);
     } else {
@@ -578,6 +582,14 @@ export class Classroom {
     const out = this.radio;
     this.radio = [];
     return out;
+  }
+
+  /**
+   * Who a student is this round: its line, and its human limits seeded for the round and the student (so its
+   * variations, compared with each other, share their noise).
+   */
+  private makeupOf(s: StudentSpec): DriverMakeup {
+    return { knowledge: s.knowledge, limits: s.limits && { ...s.limits, seed: hashSeed(this.seed, `hands${this.round}:${s.id}`) } };
   }
 
   /** This round's circuit racecraft pack: the focus's situation if the class has one (and the circuit too), else the usual mix. */
@@ -652,14 +664,14 @@ export class Classroom {
         layout: this.track.layout, pack: this.roadcraftPack(), slot: 0,
         candidates, perStudent: 1 + 2 * lesson.pairs, classmates: this.students.map((s) => s.weights.slice()),
         nerves: this.students.map((s) => s.nerve), references: this.students.map((s) => s.reference), pace: trackPace(this.track),
-        knowledge: this.students.map((s) => s.knowledge),
+        makeup: this.students.map((s) => this.makeupOf(s)),
       };
       this.roadcraftRound.slot = this.round % this.roadcraftRound.pack.spots.length;
     }
     const r = this.roadcraftRound;
     const drill: LessonTrial | null = r
       ? new RoadcraftTrial(this.track, r.candidates, r.perStudent, r.slot, r.classmates, this.round % this.students.length, r.pack, r.nerves, r.references,
-        r.knowledge)
+        r.makeup)
       : lesson.id === 'cautions'
       ? new CautionTrial(this.track, candidates, 1 + 2 * lesson.pairs, this.drillSlot, this.round % this.students.length,
         this.students.map((s) => s.reference), this.drillSpread, this.students.map((s) => s.weights))
@@ -686,7 +698,7 @@ export class Classroom {
         // the curriculum never moved). Apprenticed skills start at full tightness, so for them it's always on.
         validLaps: lesson.validLaps && (lesson.id !== 'circuits' || this.roadRadius <= ROAD_FULL_RADIUS),
         // Each candidate knows what its student knows of road circuits.
-        knowledge: candidates.map((_, i) => this.students[Math.floor(i / (1 + 2 * lesson.pairs))]?.knowledge),
+        makeup: candidates.map((_, i) => { const s = this.students[Math.floor(i / (1 + 2 * lesson.pairs))]; return s && this.makeupOf(s); }),
       };
       this.trial = new Trial(this.track, candidates, opts);
       this.ghostRound = { genomes: candidates, opts };
@@ -786,7 +798,7 @@ export class Classroom {
       // The road-course license: once the curriculum is at full tightness, a test on three new club circuits
       // from the line (a full lap, no crash, on every one). A lucky clean round isn't enough.
       if (!s.roadLicensed && this.lesson.id === 'circuits' && this.roadRadius <= ROAD_FULL_RADIUS && this.walls >= 1) {
-        if (roadLicenseTest(s.weights, hashSeed(this.seed, `${s.id}-test${this.round}`), LICENSE_HEALTH, s.knowledge)) {
+        if (roadLicenseTest(s.weights, hashSeed(this.seed, `${s.id}-test${this.round}`), LICENSE_HEALTH, this.makeupOf(s))) {
           s.roadLicensed = true;
           graduated = true;
           this.say(`${s.name} passed the road-course test: three new circuits, a clean lap on each`);

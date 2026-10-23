@@ -1,6 +1,5 @@
 import { bestValidLap, ValidProgress } from '../sim/limits';
-import type { TrackKnowledge } from '../ai/observe';
-import { NeuralDriver, Team } from '../ai/drivers';
+import { madeDriver, Team, type DriverMakeup } from '../ai/drivers';
 import { COSTS, trackPace } from '../ai/costs';
 import { danger, fearScale } from '../ai/fear';
 import type { Rng } from '../ai/rng';
@@ -113,7 +112,7 @@ export class RacecraftDrill implements Drill<RacecraftResult> {
      * Drill length (default the oval drill's 40 s), whether only valid laps count (road circuits), and what each
      * car's driver knows of road circuits (by slot, the student's own included; default the usual).
      */
-    opts: { seconds?: number; validLaps?: boolean; pace?: number; knowledge?: (k: number) => TrackKnowledge | undefined } = {},
+    opts: { seconds?: number; validLaps?: boolean; pace?: number; makeup?: (k: number) => DriverMakeup | undefined } = {},
   ) {
     this.seconds = layout.seconds ?? opts.seconds ?? DRILL_SECONDS;
     this.pace = opts.pace ?? trackPace(track);
@@ -125,7 +124,7 @@ export class RacecraftDrill implements Drill<RacecraftResult> {
       car.vx = track.tx[car.trackIdx] * spot.speed;
       car.vy = track.ty[car.trackIdx] * spot.speed;
       car.tireLife = spot.tire;
-      this.world.addCar(car, new Team(new NeuralDriver(k === slot ? student : pack(k), undefined, opts.knowledge?.(k)), new TowerSpotter(), null));
+      this.world.addCar(car, new Team(madeDriver(k === slot ? student : pack(k), opts.makeup?.(k)), new TowerSpotter(), null));
     }
     this.student = this.world.cars[slot];
     this.progress = opts.validLaps ? new ValidProgress(this.student) : null;

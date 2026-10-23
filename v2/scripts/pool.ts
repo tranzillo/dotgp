@@ -142,7 +142,7 @@ if (!isMainThread && workerData?.schoolPool) {
         const drills = [];
         for (let i = task.from; i < task.to; i++) {
           const own = Math.floor(i / r.perStudent);
-          drills.push(roadcraftDrill(track, r.slot, r.candidates[i], own, r.classmates, r.pack, r.nerves[own], r.pace, r.knowledge));
+          drills.push(roadcraftDrill(track, r.slot, r.candidates[i], own, r.classmates, r.pack, r.nerves[own], r.pace, r.makeup));
         }
         for (const d of drills) while (!d.done) d.step();
         value = { results: drills.map((d) => d.result()), time: drills[0].world.time };

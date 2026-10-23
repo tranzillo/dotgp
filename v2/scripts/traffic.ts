@@ -13,7 +13,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { trackPace } from '../src/ai/costs';
-import { adaptWeights, NeuralDriver, ScriptedDriver, Team } from '../src/ai/drivers';
+import { adaptWeights, makeupOf, NeuralDriver, ScriptedDriver, Team, type MakeupEntry } from '../src/ai/drivers';
 import { RacingLineDriver } from '../src/ai/racingLine';
 import { Rng } from '../src/ai/rng';
 import { TowerSpotter } from '../src/ai/spotter';
@@ -35,7 +35,7 @@ const log = console.log;
 console.log = () => {};
 
 /** A field: who drives car k. */
-type Field = { name: string; make: (k: number) => Controller };
+type Field = { name: string; make: (k: number, drill: number) => Controller };
 const style = (spec: string): RacerStyle => {
   // traffic:grip:margin:room:pass
   const [, ...v] = spec.split(':').map(Number);
@@ -45,14 +45,14 @@ const fields: Field[] = who.map((w) => {
   if (w === 'line') return { name: w, make: () => new RacingLineDriver(0.85) };
   if (w === 'follower') return { name: w, make: () => new ScriptedDriver(0, 0.9) };
   if (w.startsWith('traffic')) return { name: w, make: () => new TrafficRacer(style(w)) };
-  const list = JSON.parse(readFileSync(w, 'utf8')).drivers as Array<{ weights: number[]; roadCourse?: { weights: number[]; style?: { grip: number; margin: number } } }>;
+  const list = JSON.parse(readFileSync(w, 'utf8')).drivers as Array<MakeupEntry & { weights: number[]; roadCourse?: { weights: number[] } }>;
   return {
     name: w.split(/[\\/]/).pop()!,
-    make: (k) => {
+    make: (k, drill) => {
       const d = list[k % list.length];
-      const st = d.roadCourse?.style;
+      const m = makeupOf(d, hashSeed(drill, `hands${k}`));
       return new Team(new NeuralDriver(adaptWeights(Float32Array.from(d.weights)), d.roadCourse ? adaptWeights(Float32Array.from(d.roadCourse.weights)) : undefined,
-        st ? { grip: st.grip, margin: st.margin } : undefined), new TowerSpotter(), null);
+        m.knowledge, { limits: m.limits }), new TowerSpotter(), null);
     },
   };
 });
@@ -72,7 +72,7 @@ for (const field of fields) {
       car.vx = track.tx[car.trackIdx] * spot.speed;
       car.vy = track.ty[car.trackIdx] * spot.speed;
       car.tireLife = spot.tire;
-      world.addCar(car, field.make(k));
+      world.addCar(car, field.make(k, n));
     });
     const cars = world.cars;
     const start = cars.map((c) => c.dist);

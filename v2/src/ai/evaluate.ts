@@ -6,7 +6,7 @@ import { bestValidLap, ValidProgress } from '../sim/limits';
 import { COSTS, trackPace } from './costs';
 import { World } from '../sim/world';
 import { neuralTeam } from './drivers';
-import type { TrackKnowledge } from './observe';
+import type { DriverMakeup } from './drivers';
 import { Rng } from './rng';
 
 export interface TrialOptions {
@@ -35,7 +35,7 @@ export interface TrialOptions {
    */
   validLaps?: boolean;
   /** What each car's driver knows of road circuits (its line), by genome; default the usual. */
-  knowledge?: Array<TrackKnowledge | undefined>;
+  makeup?: Array<DriverMakeup | undefined>;
 }
 
 /** Worn-tire and fuel-load range drivers practise with, so stints don't surprise them. */
@@ -95,7 +95,8 @@ export class Trial {
       // Rolling start, as in races: pulling away from a standstill is the pit crew's job, not a racing skill.
       car.vx = track.tx[car.trackIdx] * ROLLING_START_SPEED;
       car.vy = track.ty[car.trackIdx] * ROLLING_START_SPEED;
-      this.world.addCar(car, neuralTeam(genomes[k], null, false, false, opts.knowledge?.[k]));
+      const m = opts.makeup?.[k];
+      this.world.addCar(car, neuralTeam(genomes[k], null, false, false, m?.knowledge, { limits: m?.limits }));
     }
     this.steps = Math.round(opts.seconds / P.DT);
     this.checkEvery = Math.round(STALL_WINDOW / P.DT);

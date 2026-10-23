@@ -9,7 +9,7 @@
  * Every driver drives every track from the start line, once, as a ghost.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { adaptWeights } from '../src/ai/drivers';
+import { adaptWeights, makeupOf, type MakeupEntry } from '../src/ai/drivers';
 import { Trial } from '../src/ai/evaluate';
 import { Track } from '../src/sim/track';
 import { generateLayout, hashSeed, mirrorLayout } from '../src/trackgen';
@@ -43,7 +43,7 @@ export interface SoloReport {
 const report: SoloReport = { files, seconds, results: [] };
 const tracks = Object.fromEntries(Object.entries(KINDS).map(([kind, make]) => [kind, Array.from({ length: perKind }, (_, k) => make(k))]));
 for (const file of files) {
-  const drivers = JSON.parse(readFileSync(file, 'utf8')).drivers as Array<{ weights: number[]; roadCourse?: { weights: number[]; style?: { grip: number; margin: number } } }>;
+  const drivers = JSON.parse(readFileSync(file, 'utf8')).drivers as Array<MakeupEntry & { weights: number[]; roadCourse?: { weights: number[] } }>;
   const out: SoloReport['results'][number] = {};
   for (const [kind, list] of Object.entries(tracks)) {
     // Road circuits are driven by the road-course skill where a driver has one, as in races.
@@ -51,9 +51,9 @@ for (const file of files) {
     const genomes = drivers.map((d) => adaptWeights(Float32Array.from(road ? d.roadCourse?.weights ?? d.weights : d.weights)));
     let distance = 0, crashed = 0, stopped = 0, laps = 0, validLaps = 0, trackLimits = 0, n = 0;
     for (const track of list) {
-      // Each driver knows its style's line (if it was taught one).
-      const knowledge = road ? drivers.map((d) => (d.roadCourse?.style ? { grip: d.roadCourse.style.grip, margin: d.roadCourse.style.margin } : undefined)) : undefined;
-      const trial = new Trial(track, genomes, { seconds, knowledge });
+      // Each driver as it is: its style's line (if it was taught one), its human limits (if it has them).
+      const makeup = drivers.map((d, k) => makeupOf(d, hashSeed(9001, `hands${kind}${list.indexOf(track)}:${k}`)));
+      const trial = new Trial(track, genomes, { seconds, makeup });
       while (!trial.done) trial.step();
       const results = trial.results();
       trial.world.cars.forEach((car, k) => {
