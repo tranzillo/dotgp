@@ -115,6 +115,8 @@ interface DriverEntry {
   /** An oval stable individual: its talent and lineage (with nerve, its personality). */
   talent?: number;
   lineage?: number;
+  /** Its line on ovals (track knowledge), as the oval stable keeps it. */
+  knowledge?: { grip: number; margin: number };
   /** The road-course skill (Road courses trains this, not `weights`). */
   roadCourse?: { weights: number[]; rounds?: number; licensed?: boolean; radius?: number; style?: RoadStyle };
   /** Human limits: seconds from seeing to the car answering, and motor noise (as the roster keeps them). */
@@ -144,7 +146,8 @@ const students = file.drivers.map((d, k) => ({
   cautionLicensed: d.cautionLicensed, roadLicensed: d.roadCourse?.licensed, roadRadius: d.roadCourse?.radius, nerve: d.nerve,
   // What it knows of road circuits: its style's line (its saved style, or the one drawn for it now), else the usual.
   limits: limitsOf[k],
-  knowledge: road ? knowledgeFor(d.roadCourse?.style ?? (lesson === 'circuits' && !d.roadCourse ? styleFor(k) : undefined)) : undefined,
+  // On ovals: its own line as the bundle has it (an oval stable individual's), else the usual.
+  knowledge: road ? knowledgeFor(d.roadCourse?.style ?? (lesson === 'circuits' && !d.roadCourse ? styleFor(k) : undefined)) : d.knowledge,
 }));
 // New road-course skills study the line follower one per thread (the classroom would do them one after another).
 // (Each with its own style, if drawn: the classroom would give them all the class's.)
