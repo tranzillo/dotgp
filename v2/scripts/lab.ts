@@ -17,7 +17,8 @@
  *       { "kind": "season", "in": "trained.json", "out": "seasoned.json", "races": 9, "nerve": 0.5 },
  *       { "kind": "bench", "a": "$house", "b": "trained.json", "seeds": 8 },
  *       { "kind": "solo", "a": "$house", "b": "trained.json" },        (solo driving on circuits and mirrored ovals)
- *       { "kind": "circuits", "a": "$house", "b": "trained.json" },    (races on road circuits: 6 circuits x 3 seeds by default)
+ *       { "kind": "circuits", "a": "$house", "b": "trained.json" },    (races on road circuits: 6 circuits x 3 seeds by default;
+ *                                                                        field, km: cars and race length; "teacher:x.json": x's teachers)
  *       { "kind": "promote", "candidate": "trained.json" } ] }
  * The oval stable (forty individuals, see scripts/stable.ts):
  *       { "kind": "stable", "out": "stable.json", "rounds": 12 },                     (apprenticeship to their own teachers)
@@ -55,7 +56,7 @@ type Step =
   | { kind: 'stableCautions'; in: string; out: string; rounds?: number; ppo?: boolean; seed?: number }
   | { kind: 'stableRaces'; in: string; out: string; rounds?: number; laps?: number; field?: number; debris?: number; anchorLr?: number; seed?: number }
   | { kind: 'solo'; a: string; b?: string; tracks?: number; seconds?: number }
-  | { kind: 'circuits'; a: string; b?: string; tracks?: number; seeds?: number }
+  | { kind: 'circuits'; a: string; b?: string; tracks?: number; seeds?: number; field?: number; km?: number }
   | { kind: 'promote'; candidate: string };
 interface Spec { note?: string; steps: Step[] }
 
@@ -143,7 +144,8 @@ async function runExperiment(file: string): Promise<void> {
   mkdirSync(dir, { recursive: true });
   renameSync(join(dirs.queue, file), join(dir, 'spec.json'));
   const commit = git(labRoot, 'rev-parse', '--short', 'HEAD');
-  const path = (p: string) => (p === '$house' ? house : p === '$bundled' ? join(labV2, 'public/drivers/default.json') : resolve(dir, p));
+  const path = (p: string): string => (p.startsWith('teacher:') ? `teacher:${path(p.slice('teacher:'.length))}`
+    : p === '$house' ? house : p === '$bundled' ? join(labV2, 'public/drivers/default.json') : resolve(dir, p));
   const notes: string[] = [];
   let bench: BenchReport | null = null;
   let failed = '';
@@ -177,9 +179,10 @@ async function runExperiment(file: string): Promise<void> {
         const r = JSON.parse(readFileSync(json, 'utf8')) as SoloReport;
         notes.push(`solo ${Object.keys(r.results[0]).map((k) => `${k} ${r.results.map((x) => `${(100 * x[k].crashed).toFixed(0)}%`).join('→')} crashed, ${r.results.map((x) => `${(100 * (x[k].stopped ?? 0)).toFixed(0)}%`).join('→')} stopped`).join(', ')}`);
       } else if (step.kind === 'circuits') {
-        const json = join(dir, 'circuits.json');
+        const json = join(dir, `${String(i + 1).padStart(2, '0')}-circuits.json`);
         await runScript('circuits', [path(step.a), ...(step.b ? [path(step.b)] : []), '--tracks', String(step.tracks ?? 6),
-          '--seeds', String(step.seeds ?? 3), '--jobs', String(BENCH_JOBS), '--json', json], log);
+          '--seeds', String(step.seeds ?? 3), '--jobs', String(BENCH_JOBS), '--json', json,
+          ...(step.field ? ['--field', String(step.field)] : []), ...(step.km ? ['--km', String(step.km)] : [])], log);
         const m = JSON.parse(readFileSync(json, 'utf8')).metrics as Record<string, { values: Array<{ mean: number }>; verdict?: string }>;
         notes.push(`circuits ${(['retirements', 'trackLimits', 'bestLapPerKm'] as const).map((k) =>
           `${k} ${m[k].values.map((v) => v.mean.toFixed(1)).join('→')}${m[k].verdict ? ` (${m[k].verdict})` : ''}`).join(', ')}`);
