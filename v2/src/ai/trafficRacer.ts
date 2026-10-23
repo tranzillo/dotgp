@@ -118,6 +118,8 @@ export const OVAL_DRIVE_GAIN = 4;
  */
 const LOOKAHEAD = 60;
 const lookahead = (v: number) => Math.max(LOOKAHEAD, v * REACTION + (v * v) / (2 * 0.5 * P.TIRE_MU * G));
+/** Steps along its path (m) where it checks whether it will come to a slower car ahead before catching it. */
+const CATCH_STEP = 10;
 /** Reaction time in the following gap (s). */
 const REACTION = 0.4;
 /** How fast it moves across the road to a new offset (m/s). */
@@ -254,15 +256,30 @@ export class TrafficRacer {
       // Ahead: in the path it would take (the line, where that car is, plus its own offset)?
       const there = lineAt(line, other.s);
       const myD = there.d + this.offset;
-      if (Math.abs(other.d - myD) >= width) continue;
+      // A car heading for pit road, still on the racing surface, is crossing to the pit side (inside): anywhere on
+      // that side of it is in its way, and it isn't passed there. (Circuit pit entries cut across the line into the
+      // corner before them, and cars turning in for the apex ran into pitters sliding over in front of them.)
+      const pitting = other.pit.phase === 'in' && other.d < track.innerEdge(other.trackIdx) + P.CAR_RADIUS;
       const vOther = other.retired ? 0 : other.speed;
+      // A slower car is in the way wherever this car's path comes to it before it catches it, not just where the
+      // path is beside it now: the line swings across to an apex, and a slow car already there (a pitter on the
+      // inside) was only seen once the line reached it, too close to stop.
+      let inWay = Math.abs(other.d - myD) < width || (pitting && myD > other.d);
+      const closing = vMe - vOther;
+      if (!inWay && closing > 0) {
+        const caught = Math.min(reach, (Math.max(0, ds) / closing) * vOther);
+        for (let a = CATCH_STEP; a <= caught + CATCH_STEP / 2 && !inWay; a += CATCH_STEP) {
+          inWay = Math.abs(other.d - (lineAt(line, other.s + Math.min(a, caught)).d + this.offset)) < width;
+        }
+      }
+      if (!inWay) continue;
       // Faster: by what it's doing, or would on the line there (a car it's catching on the brakes still counts).
       const faster = Math.min(vMe, there.speed) - vOther;
       const straight = Math.abs(track.curvatureAt(car.s)) < STRAIGHT && Math.abs(track.curvatureAt(other.s)) < STRAIGHT;
       // A pass under way (already pulled out) carries on into the braking zone; a new one starts only on a straight.
       if (!other.retired && faster > pass && (straight || Math.abs(this.offset) > 1)) {
         // A way past: the side it's already going (a pass under way keeps its side), else the side with more road.
-        const left = there.hi - OFF_LINE_BUFFER - (other.d + width), right = (other.d - width) - (there.lo + OFF_LINE_BUFFER);
+        const left = pitting ? -1 : there.hi - OFF_LINE_BUFFER - (other.d + width), right = (other.d - width) - (there.lo + OFF_LINE_BUFFER);
         const side = this.passSide > 0 && left > 0 ? 1 : this.passSide < 0 && right > 0 ? -1 : left > 0 || right > 0 ? (left >= right ? 1 : -1) : 0;
         if (side !== 0 && !passing) {
           // Beside it: where it is across the road, measured from the line where this car is now.
