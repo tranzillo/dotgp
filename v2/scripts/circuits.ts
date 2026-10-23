@@ -102,7 +102,8 @@ function runRace(job: RaceJob): CircuitRace {
   const world = new World(track, { collisions: true, drafting: true, wearScale: job.pace });
   // The grid and the crew chiefs depend on the seed only, so two files race the same grid.
   const rng = new Rng(hashSeed(job.seed, `grid${job.track}`));
-  const slots = Array.from({ length: job.field }, (_, k) => ({ k, r: rng.next() })).sort((a, b) => a.r - b.r).map((x) => x.k);
+  // At most a car a pit box (the track's maxField).
+  const slots = Array.from({ length: Math.min(job.field, track.maxField) }, (_, k) => ({ k, r: rng.next() })).sort((a, b) => a.r - b.r).map((x) => x.k);
   for (const [slot, k] of slots.entries()) {
     const d = drivers[(k + job.seed) % drivers.length];
     const car = new Car(slot);

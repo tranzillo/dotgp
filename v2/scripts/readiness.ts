@@ -147,7 +147,7 @@ const lines = [
   `Readiness of ${bundle.split(/[\\/]/).pop()} (${quick ? 'quick tier, ' : ''}${seeds} seeds a cell, ${((Date.now() - t0) / 60000).toFixed(0)} min): `
     + `${cells.filter((c) => c.ready).length} of ${cells.length} cells ready; teachers clean in ${cells.filter((c) => c.teachersClean).length}`,
   '',
-  'Out: cars out a race. Damage: done by fault, per car per 100 km. Repairs: share of stops called for damage. Each pair is teachers / drivers.',
+  'Cars: as asked; a race takes at most a car a pit box (short oval 9, flat 24, speedway 30, circuits 16-47). Out: cars out a race. Damage: done by fault, per car per 100 km. Repairs: share of stops called for damage. Each pair is teachers / drivers.',
   '',
   '| Where | Cars | km | Out | vs teachers | Damage | vs teachers | Repairs | Pace gap | Scripted | Teachers clean | Ready |',
   '|---|---|---|---|---|---|---|---|---|---|---|---|',

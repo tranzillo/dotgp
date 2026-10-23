@@ -193,6 +193,14 @@ export class Track extends Centerline {
     return this.pitOff[i] + (this.pitOff[(i + 1) % this.n] - this.pitOff[i]) * t;
   }
 
+  /**
+   * The most cars a race here takes: one a pit box (user's rule, 2026-10-23). Shared boxes queued under a safety
+   * car's mass stops, and the field behind stalled on track before pit entry.
+   */
+  get maxField(): number {
+    return this.pit.stalls.length;
+  }
+
   /** True where the pit wall stands. */
   inPitWallZone(s: number): boolean {
     return this.inRange(s, [this.pit.wallStart, this.pit.wallEnd]);

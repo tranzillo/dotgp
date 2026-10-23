@@ -272,7 +272,8 @@ function runRace(trackName: string, seed: number): RaceStats {
   const rng = new Rng(seed * 7919 + 1);
   const world = new World(track, { collisions: true, drafting: true, wearScale: pace });
   const brains: Array<{ side: number; driver: number }> = [];
-  for (let k = 0; k < fieldSize; k++) {
+  // At most a car a pit box (the track's maxField).
+  for (let k = 0; k < Math.min(fieldSize, track.maxField); k++) {
     const car = new Car(k);
     placeOnGrid(car, track, k, true);
     const side = mixRoster ? (k + swap) % 2 : 0;
@@ -531,8 +532,9 @@ for (const name of trackNames) {
     const s = runRace(name, seed);
     all.push(s);
     const ch = chains(s.retirements);
-    console.log(`\n=== ${name} seed ${seed}: ${s.laps} laps, ${fieldSize} cars, ${pace}x pace (${((Date.now() - t0) / 1000).toFixed(0)} s)`);
-    console.log(`finished ${s.finished}/${fieldSize}  cautions ${s.cautions} (${s.cautionLaps} laps)  retirements ${s.retirements.length}  biggest wreck ${Math.max(0, ...ch.map((c) => c.length))} cars`);
+    const cars = Math.min(fieldSize, trackFor(name).maxField);
+    console.log(`\n=== ${name} seed ${seed}: ${s.laps} laps, ${cars} cars (a car a pit box), ${pace}x pace (${((Date.now() - t0) / 1000).toFixed(0)} s)`);
+    console.log(`finished ${s.finished}/${cars}  cautions ${s.cautions} (${s.cautionLaps} laps)  retirements ${s.retirements.length}  biggest wreck ${Math.max(0, ...ch.map((c) => c.length))} cars`);
     for (const c of ch.filter((c) => c.length > 1 || c[0].context !== 'green')) {
       console.log(`  t=${f(c[0].time, 0)}s  ${c.length} car(s): ${c.map((e) => `${e.context} @${f(e.speed, 0)}`).join(', ')}`);
     }
