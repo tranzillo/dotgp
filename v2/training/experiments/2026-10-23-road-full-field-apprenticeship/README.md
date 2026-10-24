@@ -43,3 +43,22 @@ Labels are the teacher's answers from where the student's car is; error is the s
 Next: a teacher whose speed control is continuous in what a driver sees (proportional on the car ahead, smooth under
 caution), measured by the share of its pedal changes a network predicts before any training run; and outcome-scored
 practice in full fields (ES racecraft), which doesn't need the teacher's throttle copied.
+
+## Proportional teachers (followGain 1.5/s, cautionGain 2/s; @1c54a28, off by default)
+
+Copyability (64-64 networks, held-out race): throttle error following 0.21 → 0.16, under caution 0.29 → 0.16. Teachers
+still lose no cars but do about 3x the damage by fault (repairs 5-6%). Apprenticed with them (rf8g): no cleaner.
+
+## Re-measured with drivers' pit skills driving their stops (circuits.ts fix @54e63d8)
+
+circuits.ts never passed a driver's pit network, so every stop in circuit readiness was driven by the road racing net.
+With the fix (cars out a race, 20 / 40 cars at 150 km, sprint): candidate 17.5 / 23.0 / 8.0; rf8 17.5 / 23.1 / 5.9;
+rf8g 17.3 / 22.5 / 5.5. Pits weren't the main cause.
+
+## What takes the students out (16 races, candidate, 20 cars, 150 km; 276 retirements)
+
+- Out after contact 132; stopped on track 99; out of the race (wall damage) 39.
+- The stopped cars: nearly all under the safety car (30-320 s into it), healthy and fuelled, several from one caution:
+  beached off the outside of the track (5-14 m past the edge), or stuck between the track and pit road at the pit wall's
+  nose with no stop called. The road caution skill driving: its copy is the worst (throttle error 0.29), and once
+  crashes start the field spends most of the race under it.
