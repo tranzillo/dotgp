@@ -125,7 +125,8 @@ function runRace(job: Job): Tally {
         add(`${disc} ${where}|contacts`);
         const o = cars.find((c) => c.id === other);
         if (before.some((h) => h.ids.has(other))) add(`${disc} ${where}|contacts named a second before`);
-        else if (o) {
+        else if (!o) add(`${disc} ${where}|unnamed: ${other === ctl.paceCar.id ? road ? 'the safety car' : 'the pace car' : 'not a race car'}`);
+        else {
           // Where the car it didn't hear about was, as they touched.
           const ds = signedDs(car, o), dd = o.d - car.d;
           add(`${disc} ${where}|unnamed: ${ds > 2 * P.CAR_RADIUS ? 'ahead' : ds < -2 * P.CAR_RADIUS ? 'behind' : 'alongside'}, ${Math.abs(dd) < 2 ? 'same lane' : 'other lane'}${o.retired ? ', a wreck' : ''}`);
