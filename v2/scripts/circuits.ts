@@ -182,7 +182,8 @@ function runRace(job: RaceJob): CircuitRace {
       if (past) off.add(car); else off.delete(car);
     }
     for (const car of world.cars) {
-      if (!car.retired || out.has(car)) continue;
+      // A car out after taking the flag finished the race.
+      if (!car.retired || out.has(car) || race.isFinished(car)) continue;
       out.add(car);
       if ((race.leader()?.lapsCompleted ?? 0) < 1) firstLap++;
       const imp = car.lastImpact;

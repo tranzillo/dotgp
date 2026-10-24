@@ -492,8 +492,9 @@ export class RaceControl {
     for (const car of this.world.cars) {
       if (this.handled.has(car) || car.cleared) continue;
       // A car stopped on the racing surface (out of fuel, spun) is a wreck too; waiting on the grid it's just
-      // waiting (a car that doesn't get away counts from the start).
-      if (!car.retired && this.flag !== 'grid' && car.pit.phase === 'none' && car.speed < 3 && car.d < t.innerEdge(car.trackIdx) + 1) {
+      // waiting (a car that doesn't get away counts from the start). A car that has taken the flag is done: one that
+      // runs dry on its slowing-down lap (crews fuel to the flag) isn't a wreck to bring the safety car out for.
+      if (!car.retired && !car.finished && this.flag !== 'grid' && car.pit.phase === 'none' && car.speed < 3 && car.d < t.innerEdge(car.trackIdx) + 1) {
         const since = (this.stoppedSince.get(car) ?? 0) + dt;
         this.stoppedSince.set(car, since);
         if (since > STALL_TIME) {
@@ -664,15 +665,17 @@ export class RaceControl {
     });
   }
 
-  /** A stopped wreck still on the racing surface within range ahead of this car, if any. */
+  /** The nearest stopped wreck still on the racing surface within range ahead of this car, if any. */
   wreckAhead(car: Car, range = 250): Car | null {
     const t = this.track;
+    let best: Car | null = null;
+    let bestGap = range;
     for (const other of this.world.cars) {
       if (!other.retired || other.cleared || other.d > t.innerEdge(other.trackIdx) + 1) continue;
       const gap = t.distanceFrom(car.s, other.s);
-      if (gap > 0 && gap < range) return other;
+      if (gap > 0 && gap < bestGap) { bestGap = gap; best = other; }
     }
-    return null;
+    return best;
   }
 
   private paceCarHeadingInAndOff(): boolean {

@@ -139,6 +139,8 @@ const REACTION = 0.4;
 const CROSS_RATE = 3;
 /** A stretch of road counts as straight (for starting a pass) when no tighter than this (1/m). */
 const STRAIGHT = 1 / 300;
+/** A car slower than this (m/s) is stopped (a wreck, a spun or stranded car): gone round, not raced. */
+const STOPPED = 5;
 /** Off the line it tracks less precisely: this much more room kept from the corridor's edges (m). */
 const OFF_LINE_BUFFER = 1;
 
@@ -300,7 +302,11 @@ export class TrafficRacer {
       const faster = Math.min(vMe, there.speed) - vOther;
       const straight = Math.abs(track.curvatureAt(car.s)) < STRAIGHT && Math.abs(track.curvatureAt(other.s)) < STRAIGHT;
       // A pass under way (already pulled out) carries on into the braking zone; a new one starts only on a straight.
-      if (!other.retired && faster > pass && (straight || Math.abs(this.offset) > 1)) {
+      // A stopped car is gone round by every driver, wherever it is: one that waited behind it was stopped on track
+      // too, and race control retired it (a whole field queued behind a car that ran dry after the flag). Not a car
+      // just getting away (a standing start: everyone is slow), unless it's already going round it.
+      const stopped = other.retired || (vOther < STOPPED && (faster > 2 || this.passSide !== 0));
+      if (stopped || (faster > pass && (straight || Math.abs(this.offset) > 1))) {
         // A way past: the side it's already going (a pass under way keeps its side), else the side with more road.
         const left = pitting ? -1 : there.hi - OFF_LINE_BUFFER - (other.d + width), right = (other.d - width) - (there.lo + OFF_LINE_BUFFER);
         const side = this.passSide > 0 && left > 0 ? 1 : this.passSide < 0 && right > 0 ? -1 : left > 0 || right > 0 ? (left >= right ? 1 : -1) : 0;
