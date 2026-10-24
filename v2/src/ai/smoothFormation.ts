@@ -91,6 +91,10 @@ export class SmoothFormation {
       lane = (1 - give) * lane + give * yieldLane;
       if (ctl.wavedAround(car)) { lane = -(2 * P.CAR_RADIUS + 0.5); v = slot.speed + tr.eagerness; }
     }
+    // On the racing surface, whatever lane that is: "where you are" on a narrow circuit can be its edge or past it, and
+    // a car off it is brought back on.
+    const inside = P.CAR_RADIUS + 0.5;
+    lane = Math.max(t.outerEdge(car.trackIdx) + inside, Math.min(t.innerEdge(car.trackIdx) - inside, lane));
     // Round a wreck ahead, on the side you're already on, pushed out more the nearer it is.
     const wreck = ctl.wreckAhead(car);
     if (wreck) {
