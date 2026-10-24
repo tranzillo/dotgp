@@ -261,6 +261,12 @@ export function drawLimits(random: () => number): { latency: number; noise: numb
 /** How long motor noise takes to drift (s): an Ornstein-Uhlenbeck process with this correlation time. */
 const MOTOR_NOISE_TAU = 0.25;
 
+/**
+ * While pacing on circuits, the road skill steers and the road caution skill only lowers the throttle (the caution
+ * network, trained apart, corners worse than the road network it began as). (Experiments set it; off by default.)
+ */
+const ROAD_CAUTION_THROTTLE = typeof process !== 'undefined' && process.env.ROAD_CAUTION_THROTTLE === '1';
+
 /** The latency and noise between a driver's decision and the car's inputs. */
 class Hands {
   private readonly delay: number;
@@ -362,7 +368,15 @@ export class NeuralDriver implements DriverBrain {
 
   decide(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array): void {
     const input = this.inputs(car, world, radio, pit, caution);
-    const out = this.netAt(world.track, input).forward(input);
+    const net = this.netAt(world.track, input);
+    const out = net.forward(input);
+    if (ROAD_CAUTION_THROTTLE && net === this.roadCautionNet && this.roadNet) {
+      // The road skill drives; the road caution skill can only ask for less speed.
+      const slower = out[0];
+      const race = this.roadNet.forward(input);
+      this.apply(car, Math.min(slower, race[0]), race[1]);
+      return;
+    }
     this.apply(car, out[0], out[1]);
   }
 
