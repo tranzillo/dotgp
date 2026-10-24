@@ -37,8 +37,11 @@ const LOOK = 220;
 const REACTION = 0.4;
 
 export class SmoothFormation {
-  /** gain: how hard speed is driven toward and braked to its target (1/s); default DRIVE_GAIN. */
-  constructor(private readonly traits: (car: Car) => FormationTraits, private readonly gain = DRIVE_GAIN) {}
+  /**
+   * gain: how hard speed is driven toward and braked to its target (1/s); default DRIVE_GAIN. grip: the share of its
+   * lane's cornering limit it drives at, at most (catching up, pace plus eagerness reaches it in slow corners).
+   */
+  constructor(private readonly traits: (car: Car) => FormationTraits, private readonly gain = DRIVE_GAIN, private readonly grip = 0.85) {}
 
   decide(car: Car, world: World): void {
     const ctl = world.control!;
@@ -105,7 +108,7 @@ export class SmoothFormation {
       lane = (1 - w) * lane + w * clear;
     }
     v = Math.min(v, this.followCap(car, world, lane, tr));
-    followLine(car, world, () => lane, () => v, 0.85, false, this.gain);
+    followLine(car, world, () => lane, () => v, this.grip, false, this.gain);
   }
 
   /** How keen to close up to the car ahead (0-1): more the further it is, up to a lap's worth of eagerness. */

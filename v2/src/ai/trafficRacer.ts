@@ -68,6 +68,13 @@ export interface RacerStyle {
   followGain?: number;
   /** Under caution (smooth cautions): how hard it drives toward and brakes to its speed (1/s). Unset: the smooth formation's own. */
   cautionGain?: number;
+  /**
+   * Under caution (smooth cautions): the share of its lane's cornering limit it drives at, at most. Unset: the smooth
+   * formation's own (0.85). Catching the queue on a circuit, the teacher rides it in slow corners, in a lane off the
+   * racing line; students copying it (latency, noise, and only the racing line's speeds to see) were at 90% of the
+   * racing line's speed 7 m off it in the 1.5 s before leaving the track.
+   */
+  cautionGrip?: number;
 }
 
 /**
@@ -169,7 +176,7 @@ export class TrafficRacer {
     // Under caution it drives toward its speed smoothly (as it brakes above it), not flat out below it: a teacher's
     // throttle has to be one a student can copy.
     this.formation = new FormationDriver(traits, (car, world, lane) => this.cautionCap(car, world, lane), CAUTION_DRIVE_GAIN);
-    this.smooth = style.smoothCautions ? new SmoothFormation((car) => this.formation.traitsFor(car), style.cautionGain) : null;
+    this.smooth = style.smoothCautions ? new SmoothFormation((car) => this.formation.traitsFor(car), style.cautionGain, style.cautionGrip) : null;
   }
 
   /** Under a caution (once it has reacted to the flag, and until it has reacted to the green): the formation's. */
