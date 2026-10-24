@@ -103,7 +103,7 @@ function runRace(job: Job): Tally {
   const named = (car: Car, gap: number, pick: (o: Car, ds: number) => boolean, ds: (o: Car) => number) => {
     // (The radio is from the driver's last decision, up to a control interval ago: cars have moved since.)
     let best: Car | null = null, err = 3;
-    for (const o of cars) {
+    for (const o of [...cars, ...world.officials.map((x) => x.car)]) {
       if (o === car || o.cleared || !pick(o, ds(o))) continue;
       const e = Math.abs(ds(o) - gap);
       if (e < err) { err = e; best = o; }
@@ -174,7 +174,7 @@ function runRace(job: Job): Tally {
       call(radio[RADIO.AHEAD2_PROX], AHEAD_RANGE, (_, ds) => ds > 0, fwd);
       call(radio[RADIO.BEHIND_PROX], BEHIND_RANGE, (_, ds) => ds < 0, (o) => -fwd(o));
       const hazard = call(radio[RADIO.HAZARD_PROX], HAZARD_RANGE, () => true, (o) => track.wrapS(o.s - car.s));
-      for (const o of cars) {
+      for (const o of [...cars, ...world.officials.map((x) => x.car)]) {
         if (o === car || o.cleared) continue;
         const dd = o.d - car.d;
         if (Math.abs(fwd(o)) < 4 * P.CAR_RADIUS + 1.5 && Math.abs(dd) < 6

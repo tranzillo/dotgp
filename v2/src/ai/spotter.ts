@@ -96,9 +96,12 @@ export class TowerSpotter implements Spotter {
     let ahead2: Car | null = null, ahead2Gap = Infinity;
     let behind: Car | null = null, behindGap = Infinity;
     let hazardGap = Infinity, hazardD = 0;
+    // The pace car (safety car) and wreckers out on track are traffic too: unnamed, the pace car was the car a quarter
+    // of the damaging contacts under caution came from.
+    const traffic = world.officials.length ? [...world.cars, ...world.officials.map((o) => o.car)] : world.cars;
     const hazardSpeed = world.control?.pacing ? PACING_HAZARD_SPEED : HAZARD_SPEED;
 
-    for (const other of world.cars) {
+    for (const other of traffic) {
       if (other === car || other.cleared) continue;
       // Cars behind the pit wall aren't traffic.
       if (other.surface === 'pit' && car.surface !== 'pit') continue;
@@ -147,7 +150,7 @@ export class TowerSpotter implements Spotter {
     if (ahead2 === ahead) {
       ahead2 = null;
       ahead2Gap = Infinity;
-      for (const other of world.cars) {
+      for (const other of traffic) {
         if (other === car || other === ahead || other.cleared) continue;
         if (other.surface === 'pit' && car.surface !== 'pit') continue;
         let ds = other.s - car.s;
