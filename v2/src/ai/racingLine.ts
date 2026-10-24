@@ -52,7 +52,7 @@ export interface LineOptions {
 }
 
 const DEFAULTS: LineOptions = { margin: 0.6, step: 2.5, mass: P.DRY_MASS + P.FUEL_CAPACITY / 2, refine: 30, seed: 1 };
-const TOP_SPEED = 95;
+const TOP_SPEED = 105;
 
 /** Geometry of the corridor: centreline points, normals (+d), and the bounds of d. */
 interface Corridor {
@@ -130,23 +130,37 @@ function groundAt(
   track: Track, c: Corridor, d: Float64Array, kappa: Float64Array, k: number, mu: Float64Array, roll: Float64Array, bank: Float64Array,
 ): void {
   const surf = SURFACES[track.surfaceAt(c.s[k], d[k])];
-  mu[k] = P.TIRE_MU * carSpec().grip * surf.grip;
+  mu[k] = P.TIRE_MU * carSpec(track).grip * surf.grip;
   roll[k] = surf.rolling * G;
   bank[k] = Math.sign(kappa[k]) * track.bankAt(track.indexAt(c.s[k]), d[k]);
 }
 
 interface Profile { speed: Float64Array; lapTime: number }
 
-/** The speed profile round a closed line, and its lap time (at a share of the tyres' grip: a driver's margin). */
-/** The car the line is for, at this track: engine power (W), drag area (m^2), downforce per unit mass and speed^2 (1/m). */
-interface LineCar { power: number; cda: number; q: number }
+/**
+ * The car the line is for, at this track: engine power (W), drag area (m^2), downforce per unit mass and speed^2
+ * (1/m), its tyres' load sensitivity (grip falls as (load / g)^-k), and the share of their grip that drives it.
+ */
+interface LineCar { power: number; cda: number; q: number; k: number; drive: number }
 
+/** The speed profile round a closed line, and its lap time (at a share of the tyres' grip: a driver's margin). */
 function profile(
   n: number, kappa: Float64Array, ds: Float64Array, muFull: Float64Array, roll: Float64Array, bank: Float64Array, mass: number, car: LineCar, gripShare = 1,
   /** Buffers to work in (refinement evaluates thousands of profiles); fresh ones otherwise. */
   work?: { vmax: Float64Array; latCap: Float64Array; v: Float64Array },
 ): Profile {
   const mu = gripShare === 1 ? muFull : muFull.map((m) => m * gripShare);
+  /**
+   * Load-sensitive tyres: the horizontal cornering at point k at speed v, at the limit. The load the tyres carry
+   * there (downforce and banking: the constant-grip formula's), the grip that load leaves them, and the cornering it
+   * gives: (g + q v^2 cos)(sin + mu cos) / (cos - mu sin) - q v^2 sin.
+   */
+  const latAt = (k: number, v: number) => {
+    const c = Math.cos(bank[k]), sn = Math.sin(bank[k]), down = car.q * v * v;
+    const load = (G + down * c) / Math.max(0.05, c - mu[k] * sn);
+    const m = mu[k] * Math.pow(Math.max(0.3, load / G), -car.k);
+    return ((G + down * c) * (sn + m * c)) / Math.max(0.05, c - m * sn) - down * sn;
+  };
   const vmax = work?.vmax ?? new Float64Array(n);
   const latCap = work?.latCap ?? new Float64Array(n);
   let slowest = 0;
@@ -156,9 +170,17 @@ function profile(
     const cap = (G * (sn + mu[k] * c)) / Math.max(0.05, c - mu[k] * sn);
     latCap[k] = cap;
     const ak = Math.abs(kappa[k]);
-    // (With downforce q v^2 pressing the tyres down the limit grows with speed: v^2 = cap / (kappa - q mu / (cos - mu sin)).)
-    const aero = (car.q * mu[k]) / Math.max(0.05, c - mu[k] * sn);
-    vmax[k] = ak > 1e-6 && ak > aero ? Math.min(TOP_SPEED, Math.sqrt(cap / (ak - aero))) : TOP_SPEED;
+    if (car.k > 0) {
+      // (Tyres that grip less as the load grows: no closed form; the fastest speed the cornering allows, by bisection.)
+      let lo = 0, hi = TOP_SPEED;
+      if (ak * hi * hi <= latAt(k, hi)) lo = hi;
+      else for (let it = 0; it < 18; it++) { const m = (lo + hi) / 2; if (ak * m * m <= latAt(k, m)) lo = m; else hi = m; }
+      vmax[k] = lo;
+    } else {
+      // (With downforce q v^2 pressing the tyres down the limit grows with speed: v^2 = cap / (kappa - q mu / (cos - mu sin)).)
+      const aero = (car.q * mu[k]) / Math.max(0.05, c - mu[k] * sn);
+      vmax[k] = ak > 1e-6 && ak > aero ? Math.min(TOP_SPEED, Math.sqrt(cap / (ak - aero))) : TOP_SPEED;
+    }
     if (vmax[k] < vmax[slowest]) slowest = k;
   }
   const drag = (v: number) => (0.5 * P.AIR_DENSITY * car.cda * v * v) / mass;
@@ -166,6 +188,10 @@ function profile(
   // load: the ellipse grows with q v^2).
   const lonRoom = (k: number, v: number) => {
     const load = 1 + (car.q * v * v) / G;
+    if (car.k > 0) {
+      const use = (v * v * Math.abs(kappa[k])) / Math.max(1e-6, latAt(k, v));
+      return mu[k] * Math.pow(load, -car.k) * G * load * Math.sqrt(Math.max(0, 1 - use * use));
+    }
     const use = (v * v * Math.abs(kappa[k])) / (latCap[k] * load);
     return mu[k] * G * load * Math.sqrt(Math.max(0, 1 - use * use));
   };
@@ -175,7 +201,7 @@ function profile(
   for (let j = 1; j <= n; j++) {
     const k = (slowest + j - 1) % n, nxt = (slowest + j) % n;
     const engine = Math.min(P.MAX_DRIVE_ACCEL, car.power / (mass * Math.max(v[k], 1)));
-    const a = Math.min(engine, lonRoom(k, v[k])) - drag(v[k]) - roll[k];
+    const a = Math.min(engine, car.drive * lonRoom(k, v[k])) - drag(v[k]) - roll[k];
     const reach = Math.sqrt(Math.max(0, v[k] * v[k] + 2 * a * ds[k]));
     if (j < n) v[nxt] = Math.min(vmax[nxt], reach);
   }
@@ -226,9 +252,9 @@ function resample(d: Float64Array, m: number): Float64Array {
 }
 
 export function racingLine(track: Track, options: Partial<LineOptions> = {}): RacingLine {
-  const o = { ...DEFAULTS, mass: carSpec().dryMass + P.FUEL_CAPACITY / 2, ...options };
-  const spec = carSpec();
-  const car: LineCar = { power: spec.power(track), cda: spec.cda(track), q: (0.5 * P.AIR_DENSITY * spec.cla(track)) / o.mass };
+  const spec = carSpec(track);
+  const o = { ...DEFAULTS, mass: spec.dryMass + P.FUEL_CAPACITY / 2, ...options };
+  const car: LineCar = { power: spec.power(track), cda: spec.cda(track), q: (0.5 * P.AIR_DENSITY * spec.cla(track)) / o.mass, k: spec.loadSensitivity, drive: spec.driveShare };
   const fine = corridor(track, o.step, o.margin);
   // Smoothest path, coarse to fine: 20 m, 10 m, 5 m, then the line's own spacing.
   let d: Float64Array | null = null;

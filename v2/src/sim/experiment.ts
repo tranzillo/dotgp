@@ -4,20 +4,22 @@ import { PHYSICS } from './constants';
  * Experiment switches, to try a change by eye before making it for real:
  * ?car=2 (the cars' width, m), ?widths=0.75 (racing surfaces scaled,
  * generated and preset tracks alike, everything laid round them following)
- * ?pitwidth=1.3 (pit road's travel lane and boxes scaled) and ?spec=cup (a
- * NASCAR Cup car: carSpec.ts; 2 m wide unless ?car says otherwise).
+ * ?pitwidth=1.3 (pit road's travel lane and boxes scaled) and ?spec=cup, f1
+ * or series (a NASCAR Cup car, an F1 car, or each in its series: carSpec.ts;
+ * 2 m wide unless ?car says otherwise).
  * Read from the page's address when this loads (the page imports it first);
  * a worker gets the page's in its first message (experimentName) and applies
- * them before it builds or simulates anything. Off outside a browser
- * (scripts, tests).
+ * them before it builds or simulates anything. Outside a browser (scripts,
+ * tests) off, unless DOTGP_EXPERIMENT says otherwise.
  */
 export const EXPERIMENT = { widthScale: 1, car: 0, pitWidth: 1, spec: '' };
 
 /** Puts the switches in a query (?car=2&widths=0.75) in force. */
 export function applyExperiment(query: string): void {
   const params = new URLSearchParams(query);
-  if (params.get('spec') === 'cup') {
-    EXPERIMENT.spec = 'cup';
+  const spec = params.get('spec');
+  if (spec === 'cup' || spec === 'f1' || spec === 'series') {
+    EXPERIMENT.spec = spec;
     (PHYSICS as { CAR_RADIUS: number }).CAR_RADIUS = 1;
   }
   const car = Number(params.get('car'));
@@ -31,6 +33,9 @@ export function applyExperiment(query: string): void {
   if (pit >= 0.5 && pit <= 2.5) EXPERIMENT.pitWidth = pit;
 }
 if (typeof window !== 'undefined') applyExperiment(window.location.search);
+// Scripts and the lab (node): the same switches from the environment, DOTGP_EXPERIMENT='?spec=cup' (worker threads
+// inherit it).
+else if (typeof process !== 'undefined' && process.env?.DOTGP_EXPERIMENT) applyExperiment(process.env.DOTGP_EXPERIMENT);
 
 /** The switches in force, as a query for a worker to apply too, or '' if none. */
 export function experimentName(): string {

@@ -1,5 +1,6 @@
-import { G, PHYSICS as P, SURFACES } from '../sim/constants';
+import { PHYSICS as P, SURFACES } from '../sim/constants';
 import type { Car } from '../sim/car';
+import { brakingAt, carSpec, cornerSpeed } from '../sim/carSpec';
 import type { World } from '../sim/world';
 
 /**
@@ -32,10 +33,12 @@ export function followLine(
   const vLat = car.vx * nx + car.vy * ny;
   const capacity = Math.max(1, car.capacity);
   const capacityLon = Math.max(1, car.capacityLon);
-  const brake = 0.7 * P.TIRE_MU * car.gripLon * SURFACES[car.surface].grip * G;
+  // (The car's own grip, downforce and load sensitivity: carSpec.ts. The classic car's: mu g.)
+  const spec = car.spec ?? carSpec(track);
+  const brake = 0.7 * brakingAt(spec, track, P.TIRE_MU * car.gripLon * SURFACES[car.surface].grip, car.speed, car.mass);
 
   // Target speed: the slowest corner speed or cap ahead, reachable by braking.
-  let target = Math.min(95, capAt(car.s));
+  let target = Math.min(105, capAt(car.s));
   // Every 5 m: a road circuit's tight corners can be shorter than 20 m of arc.
   for (let ahead = 0; ahead <= 400; ahead += 5) {
     const s = car.s + ahead;
@@ -48,8 +51,7 @@ export function followLine(
       const mu = P.TIRE_MU * car.grip * SURFACES[track.surfaceAt(s, lane)].grip;
       // Banking that leans into the turn (whichever way it goes) helps; leaning away costs.
       const bank = Math.sign(kappa) * track.bankAt(track.indexAt(s), lane);
-      const c = Math.cos(bank), sn = Math.sin(bank);
-      limit = Math.min(limit, Math.sqrt((G * (sn + mu * c)) / Math.max(0.05, c - mu * sn) / Math.abs(kappa)) * margin);
+      limit = Math.min(limit, cornerSpeed(spec, track, mu, kappa, bank, car.mass, Infinity) * margin);
     }
     // (Swinging across the track takes grip too: plan to brake more gently on a lane that does.)
     target = Math.min(target, Math.sqrt(limit * limit + 2 * (sweep ? 0.6 * brake : brake) * ahead));

@@ -1,4 +1,4 @@
-import { carSpec } from './carSpec';
+import { carSpec, type CarSpec } from './carSpec';
 import { BUMP_SCALE, G, PHYSICS as P, PIT_SERVICE, PLOUGH_SPEED, SURFACES } from './constants';
 import { valueNoise } from './noise';
 import type { Surface, Track } from './track';
@@ -166,8 +166,11 @@ export class Car {
     this.color = color;
   }
 
+  /** What kind of car it is (carSpec.ts), set where it's put on a track (the series races there). */
+  spec: CarSpec | null = null;
+
   get mass(): number {
-    return carSpec().dryMass + this.fuel;
+    return (this.spec ?? carSpec()).dryMass + this.fuel;
   }
 
   /** Cornering grip of the current tires (1 = new). */
@@ -206,6 +209,7 @@ export class Car {
     // Starting behind the line means dist is negative until the first crossing.
     this.dist = dist ?? (p.s > track.length / 2 ? p.s - track.length : p.s);
     this.nextLineDist = this.dist < 0 ? 0 : track.length;
+    this.spec = carSpec(track);
   }
 }
 
@@ -280,7 +284,7 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1, wheel
   const bankAcc = normalAcc * sinB;
   // Downforce presses the tires into the surface; across the slope it pushes the car out as hard as the extra load
   // the surface pushes back with pushes it in, so it only adds to the load (none on the classic car).
-  const spec = carSpec();
+  const spec = car.spec ?? carSpec(track);
   const loadAcc = normalAcc + (0.5 * P.AIR_DENSITY * spec.cla(track) * speed * speed) / car.mass;
   car.bank = bank;
   car.normalAcc = normalAcc;
@@ -295,7 +299,9 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1, wheel
   // lies across the slope, and only cos(bank) of it is horizontal. An ellipse,
   // then, narrower across the track the steeper the banking (and narrower still
   // as the tires wear: cornering grip goes first).
-  const base = P.TIRE_MU * spec.grip * surface.grip * (1 - P.HANDLING_DAMAGE_GRIP * car.damageHandling) * loadAcc;
+  // (Tires that grip less as the load grows: grip x (load / g)^-k; none on the classic car.)
+  const loadGrip = spec.loadSensitivity > 0 ? Math.pow(Math.max(0.3, loadAcc / G), -spec.loadSensitivity) : 1;
+  const base = P.TIRE_MU * spec.grip * loadGrip * surface.grip * (1 - P.HANDLING_DAMAGE_GRIP * car.damageHandling) * loadAcc;
   const capacity = base * car.grip * cosB;
   const capacityLon = base * car.gripLon;
   car.capacity = capacity;
@@ -319,7 +325,9 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1, wheel
     const power = car.fuel > 0
       ? spec.power(track) * (1 - P.ENGINE_DAMAGE_POWER * car.damageEngine)
       : 0;
-    let engineMax = Math.min(P.MAX_DRIVE_ACCEL, power / (car.mass * Math.max(speed, 1)));
+    // (Only the driven wheels push: their share of the tires' grip. A car driven by all four, the classic, can ask
+    // for more than they hold and spin them.)
+    let engineMax = Math.min(P.MAX_DRIVE_ACCEL, power / (car.mass * Math.max(speed, 1)), spec.driveShare < 1 ? spec.driveShare * capacityLon : Infinity);
     // Pit limiter: no drive above the pit road speed limit.
     if (surfaceKind === 'pit' && speed > PIT_SERVICE.SPEED_LIMIT) engineMax = 0;
     // A learner's speed limit (training wheels).
@@ -377,7 +385,7 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1, wheel
   // make the same force with less slip, so the right line saves tires.
   const lonWeight = aLon > 0 ? P.WEAR_DRIVE : P.WEAR_BRAKE;
   const latPlane = aLat / cosB;
-  const muN = P.TIRE_MU * spec.grip * loadAcc;
+  const muN = P.TIRE_MU * spec.grip * loadGrip * loadAcc;
   const use2 = (P.WEAR_LATERAL * latPlane * latPlane + lonWeight * aLon * aLon) / (muN * muN);
   car.tireUse = Math.sqrt(use2);
   const load2 = use2 * (loadAcc / G);

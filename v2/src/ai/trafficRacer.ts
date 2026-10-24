@@ -1,5 +1,6 @@
 import { G, PHYSICS as P } from '../sim/constants';
 import type { Car } from '../sim/car';
+import { brakingAt, carSpec, cornerSpeed } from '../sim/carSpec';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
 import { FormationDriver, formationTraits, type FormationTraits } from './formation';
@@ -357,7 +358,9 @@ export class TrafficRacer {
 
     // Speed: off the line, no faster than its tighter arc allows (and braking for that ahead);
     // behind a car, the follow cap; squeezed, a little slower than the car beside.
-    const cornerMu = P.TIRE_MU * G * grip;
+    // (The car's own grip, downforce and load sensitivity: carSpec.ts. The classic car's: mu g, the banked-curve limit.)
+    const spec = car.spec ?? carSpec(track);
+    const cornerMu = brakingAt(spec, track, P.TIRE_MU * grip, car.speed, car.mass);
     const capAt = (ahead: number) => {
       let cap = Infinity;
       if (Math.abs(offset) > 0.3) {
@@ -368,8 +371,7 @@ export class TrafficRacer {
           const at = lineAt(line, car.s + a), k = at.kappa;
           const arc = Math.abs(k / Math.max(0.2, 1 - k * offset));
           const bank = Math.sign(k) * track.bankAt(track.indexAt(car.s + a), at.d + offset);
-          const c = Math.cos(bank), sn = Math.sin(bank), mu = P.TIRE_MU * grip;
-          const limit = arc > 1e-6 ? Math.sqrt((G * (sn + mu * c)) / Math.max(0.05, c - mu * sn) / arc) : Infinity;
+          const limit = cornerSpeed(spec, track, P.TIRE_MU * grip, arc, bank, car.mass, Infinity);
           cap = Math.min(cap, Math.sqrt(limit * limit + 2 * 0.8 * cornerMu * (a - ahead)));
         }
       }

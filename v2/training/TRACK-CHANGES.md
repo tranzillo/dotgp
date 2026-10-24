@@ -126,22 +126,26 @@ grip. That's a physics change, to be planned with both machines.
 - 2026-10-24: pit road 1.33x wider made no difference to crowded pit lanes, but 2 m cars cut pit-cycle contacts by a
   third to two thirds (RESULTS.md, "pit road width vs car size").
 
-## 4. A Cup car (proposal: built behind a switch, not landed)
+## 4. Series cars: a Cup car ready for oval training; an F1 car in calibration (behind a switch)
 
-`?spec=cup` (app; `--experiment '?spec=cup'` in incidents.ts and bench.ts) races a NASCAR Next Gen Cup car
-(`src/sim/carSpec.ts`), 2 m wide. The default car is untouched (its spec returns PHYSICS's numbers exactly).
-
-- **New physics:** downforce (0.5 rho ClA v^2 on the tires' load, so more grip and more braking at speed), per-track
-  engine packages (670 hp; 510 hp on ovals over 3.2 km banked 20 degrees or more: Daytona, Talladega), a tire grip
-  factor, mass 1625 kg. The racing line (`racingLine.ts`) knows all of it.
-- **Calibration** (`npx tsx scripts/calibrate.ts [--fit]`, against 2024 poles): best laps within 0.5% at Daytona and
-  Talladega, 2-3% slow at Indianapolis and Michigan, 4-6% fast at Charlotte and Bristol, 7% slow at Martinsville.
-  Fast on steep banks, slow on flat tracks: tires that grip less per unit of load as the load grows (load
-  sensitivity) are the likely next step.
-- **First race** (speedway preset, 25 laps, house drivers): laps 3-7 s quicker than today's car, retirements 8
-  against 5 (drivers trained on today's car), pit-cycle contacts 5 against 23.
-- **Not done yet:** the scripted drivers and teachers (`lineFollower`, `trafficRacer`, race control's pace speeds)
-  still judge corners on grip alone, without downforce, so they drive the Cup car conservatively. Before any retrain
-  they need the spec's downforce and grip.
-- **Proposed landing, one retrain:** 2 m cars, real track widths, and the Cup car together; teachers updated first,
-  then the stable retrained on them. Both machines should agree the date.
+`src/sim/carSpec.ts`. The default car is untouched (its spec returns PHYSICS's numbers exactly; every test passes).
+- **Switch:** `DOTGP_EXPERIMENT='?spec=cup'` in the environment for any script or the lab (worker threads inherit it),
+  `?spec=cup` in the app, `--experiment '?spec=cup'` in incidents.ts and bench.ts. `?spec=f1`, and `?spec=series`
+  (the Cup car on ovals, the F1 car on road circuits), likewise. Each sets 2 m-wide cars.
+- **The Cup car** (NASCAR Next Gen): 1625 kg, 670 hp, or 510 hp on ovals over 3.2 km banked 20 degrees or more
+  (Daytona, Talladega). It has downforce (more grip and braking at speed), tires that grip less per unit of load as the
+  load grows, and rear-wheel drive (0.7 of the grip can drive it, with weight moving back under acceleration).
+- **Calibration** (`npx tsx scripts/calibrate.ts [--fit]`, against 2024 poles): best laps within 1.9% at all seven
+  real ovals (Daytona, Talladega, Indianapolis, Michigan, Charlotte, Bristol, Martinsville). Straight line
+  (`npx tsx scripts/carperf.ts`): 0-100 km/h 3.1 s (about 3 s real), top speed 303 km/h.
+- **Teachers know the car:** the traffic racer drives the car's own racing line, and its off-line corner speeds and
+  the line follower's (pit autopilot, scripted baseline) use the car's grip, downforce and load sensitivity.
+  - In teacher races (styles, 30 laps, 2 seeds), laps are 88% of the best lap with either car.
+  - Pit-road contacts on the speedway: 9 with today's car, 2.5 with this one.
+  - Short oval retirements: 2 a race with today's car, 4 with this one. That's 2 seeds, worth watching.
+  - Still grip-only, and conservative for this car: the follow braking margins (0.5 mu g) and race control's pace speeds.
+- **To start oval training on it:** the same scripts with `DOTGP_EXPERIMENT='?spec=cup'`. That means a new stable:
+  drivers trained on today's car don't carry over (the house drivers retire more in it). Track widths aren't scaled.
+- **The F1 car:** 805 kg, about 1000 hp, heavy downforce, rear-wheel drive. Calibration on six circuits is in progress,
+  plus its 0-300 km/h, since lap times alone trade drag for downforce. Speed traces against real pole laps will
+  follow: the F1 timing archive now needs an F1 account; OpenF1 is open outside live sessions.
