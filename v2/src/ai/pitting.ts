@@ -424,7 +424,7 @@ export class PitAutopilot {
    */
   private waveOff(car: Car, world: World, laneAt: (s: number) => number): boolean {
     const track = world.track;
-    const r0 = track.signedS(car.s);
+    const r0 = track.pitInR(car);
     // (A penalty is served when the stewards say, not when it suits.)
     if (r0 > track.pit.entryStart || car.d > track.innerEdgeAt(car.s) + 0.5 || car.pit.call?.penalty || !this.canStayOut(car)) return false;
     const along = (c: Car) => c.vx * track.tx[c.trackIdx] + c.vy * track.ty[c.trackIdx];
@@ -437,7 +437,7 @@ export class PitAutopilot {
       if (gap <= 0 || gap > WAVE_OFF_LOOK) continue;
       // On the way in, short of the deceleration lane's end: a car going in itself, or one stopped in our path
       // (racing traffic is the racing's business).
-      if (track.signedS(other.s) > track.pit.entryStart + 40) continue;
+      if (track.pitInAt(car, other.s) > track.pit.entryStart + 40) continue;
       const vOther = other.retired ? 0 : Math.max(0, along(other));
       if (other.pit.phase !== 'in' && !(vOther < WAVE_OFF_STOPPED && Math.abs(other.d - laneAt(other.s)) < 2.6)) continue;
       const closing = v - vOther;

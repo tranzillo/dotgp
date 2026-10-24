@@ -52,6 +52,21 @@ Landed:
   - Every mapped one has a laid lane (`pit.entryRoute`), so it counts as a set-back pit road (`setBackPits`). That's
     new at Hungaroring, Monza, Interlagos, Sepang, Silverstone and Zandvoort.
 
+- The commit after (2026-10-24): **short ovals' pit road down both straights** (Bristol, Martinsville): from the
+  straight before the last turn, round its inside, along the front stretch, boxes on both straights 10.5 m apart,
+  on a short oval (a lap under 1600 m) whose front stretch holds fewer than 20 boxes.
+  - Boxes: generated short ovals 15/29/38 (were 1/10/24), the short preset 26 (9), Bristol 11 (2), Martinsville 23 (7).
+    Short-oval fields are about three times bigger under the one-car-a-box rule.
+  - **The short preset changed** (fingerprint in `test/trackgen.test.ts`). Readiness and bench numbers on the short
+    oval aren't comparable across this commit.
+  - Pit-lane s runs past the half-lap point there (`entryStart` < -L/2), and the way in can be more than a lap (a car
+    with a front-stretch box drives round to the entry first). Code comparing signed s with pit-lane s uses
+    `Track.pitInR`/`pitInAt` (a called car's way in, counted from the call), `pitOutAt` (from its box), `pitInS`/`pitOutS`
+    (the pace car). They return signed s exactly on every other track. The pit observation's box distance uses them.
+  - The call on such a track is 300 m before the entry (on the front stretch), and the scripted way in is eased and
+    followed matching its slope and bend. Pit-trained drivers haven't seen this layout: the user's caveat is that boxes
+    on two straights may be hard to learn; if so, it's reconsidered.
+
 Known: `test/pitdriving.test.ts` "a team with a pit-trained driver hands it the whole stop" fails with or without these changes.
 
 The plan:
