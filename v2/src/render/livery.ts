@@ -7,6 +7,9 @@ export interface Livery {
   label?: string;
 }
 
+/** Track asphalt, the colour every dot races over (the renderer paints with this). */
+export const RACING_SURFACE = '#4a4a50';
+
 export const PACE_CAR_LIVERY: Livery = { number: 0, fill: '#f4f4f4', border: '#f5c518', label: 'PC' };
 
 const PALETTE = [
@@ -37,19 +40,49 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+/** Borders must be lighter than the asphalt by at least this contrast ratio. */
+const MIN_BORDER_CONTRAST = 2;
+
+/**
+ * Whether a border colour stands out on the racing surface. The border is
+ * the car's outline and the colour of its trail and exhaust, so it has to be
+ * brighter than the asphalt: black, dark greys and deep blues sink into it.
+ */
+export function borderReads(border: string): boolean {
+  return luminance(border) > luminance(RACING_SURFACE) && contrast(border, RACING_SURFACE) >= MIN_BORDER_CONTRAST;
+}
+
+const BORDERS = PALETTE.filter(borderReads);
+
 /** Black or white, whichever reads better on the fill. */
 export function numberColor(fill: string): string {
   return contrast(fill, '#111111') >= contrast(fill, '#ffffff') ? '#111111' : '#ffffff';
 }
 
-/** A random fill/border pair with enough contrast to read as two colours, and an unused number. */
+/**
+ * A random fill/border pair with enough contrast to read as two colours, and
+ * an unused number. Any palette colour can be the fill; the border comes from
+ * the ones that read on the asphalt.
+ */
 export function randomLivery(taken: Iterable<number>, random: () => number = Math.random): Livery {
   const used = new Set(taken);
   const free = Array.from({ length: 99 }, (_, i) => i + 1).filter((n) => !used.has(n));
   const number = free.length ? free[Math.floor(random() * free.length)] : Math.floor(random() * 99) + 1;
   for (;;) {
     const fill = PALETTE[Math.floor(random() * PALETTE.length)];
-    const border = PALETTE[Math.floor(random() * PALETTE.length)];
+    const border = BORDERS[Math.floor(random() * BORDERS.length)];
     if (fill !== border && contrast(fill, border) >= 1.8) return { number, fill, border };
   }
+}
+
+/**
+ * The livery, with its border swapped for one that reads on the asphalt if it
+ * doesn't. Deterministic (picked by car number), so a saved livery always
+ * migrates to the same colour.
+ */
+export function withLegibleBorder(livery: Livery): Livery {
+  if (borderReads(livery.border)) return livery;
+  const ok = BORDERS.filter((b) => b !== livery.fill && contrast(livery.fill, b) >= 1.8);
+  const pool = ok.length ? ok : BORDERS;
+  return { ...livery, border: pool[livery.number % pool.length] };
 }

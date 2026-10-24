@@ -1,0 +1,28 @@
+{
+  "bundles": [
+    {
+      "id": "house",
+      "name": "House",
+      "file": "default.json",
+      "note": "The house drivers: what the benchmarks and Claude's tests race (cars cycle through them). Read-only: they don't learn, take classes or score championship points. They have no road-course skill: on circuits they crash in the first tight corner."
+    },
+    {
+      "id": "road",
+      "name": "Road apprentice",
+      "file": "road-apprentice.json",
+      "note": "The house drivers plus a road-course skill learned by copying the scripted line follower round circuits (12 rounds, no practice, no license yet). Ovals: exactly the house drivers. Circuits: solo they get round (13% of club runs and 8% of GP runs end off the track); in races they run wide often (about 10 track-limits calls each per race) and contact is common: nobody has taught them circuit racecraft or the white line yet. Read-only."
+    },
+    {
+      "id": "oval-stable",
+      "name": "Oval stable",
+      "file": "oval-stable.json",
+      "note": "The oval stable (v10, 2026-10-23): 40 individuals, each with its own nerve, talent, human limits and line, apprenticed to its own teacher (a traffic racer its personality makes). Oval racing and oval caution skills; no road skill, no pit skill yet (the pit maneuver drives its stops). Ovals: laps 10-20% faster than the house drivers, drives its own cautions; not clean in full fields (40 cars, 150 km: ~30 out a race on most tracks, its teachers ~1). Circuits: can't race them. Read-only. Shared for the first milestone (training/ROADMAP.md): the circuit machine adds road and pit skills to these same individuals."
+    },
+    {
+      "id": "stable-candidate",
+      "name": "Stable candidate",
+      "file": "stable-candidate.json",
+      "note": "The milestone's candidate (v2, 2026-10-23): the 40 stable individuals with every skill, no scripted driving. Oval racing and oval cautions: the oval stable v10 (oval machine). Road racing (24-round apprenticeship to each personality's road teacher with knocks, packs and wear, through its human limits; PPO 300; ES racecraft 150), road cautions (classroom races on circuits with start drills) and the pit skill (12 rounds of drills on ovals and circuits, half in traffic): circuit machine. Readiness 0 of 17 cells (training/experiments/2026-10-23-readiness-bundle-v2). Build on this one: replace a skill by lineage."
+    }
+  ]
+}

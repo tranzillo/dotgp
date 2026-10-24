@@ -1,7 +1,8 @@
 import { PHYSICS as P, PIT_SERVICE } from './constants';
-import { applyService, serviceTime, stepCar, type Car } from './car';
+import { applyService, serviceTime, stepCar, type Car, type TrainingWheels } from './car';
 import { computeDraft, resolveCarCollisions, resolveWalls } from './collisions';
 import type { RaceControl } from './raceControl';
+import { pastTrackLimits } from './limits';
 import type { Track } from './track';
 
 /** Whatever controls a car (usually a team: spotter + driver). Sets car.inputX / car.inputY. */
@@ -19,7 +20,12 @@ export interface WorldOptions {
   wearScale: number;
   /** Clear stopped wrecks automatically (open sessions); races use the wrecker crew instead. */
   autoClearWrecks: boolean;
+  /** Training wheels for learners (curricula only; none by default). */
+  wheels: TrainingWheels | null;
 }
+
+/** A car stopped within this far of its box's centre is in the box (boxes are 12 m long). */
+const BOX_HALF_LENGTH = 5;
 
 /** Seconds a stopped wreck stays on track before the safety crew clears it. */
 export const WRECK_CLEAR_TIME = 4;
@@ -28,8 +34,13 @@ export const WRECK_CLEAR_TIME = 4;
 export interface WorldEvent {
   time: number;
   car: Car;
-  kind: 'pit-in' | 'pit-out' | 'missed-pit' | 'retired' | 'crew' | 'flag';
+  /** review: an incident the stewards are looking into; steward: a decision (no further action, warning, penalty, black flag); served: a penalty served. */
+  kind: 'pit-in' | 'pit-out' | 'missed-pit' | 'retired' | 'crew' | 'flag' | 'steward' | 'review' | 'served';
   text: string;
+  /** Other cars in it: the one it made contact with, the other side of a stewards' case. */
+  others?: Car[];
+  /** A decision about an incident: when the incident was (sim s). */
+  incidentTime?: number;
 }
 
 export class World {
@@ -37,7 +48,10 @@ export class World {
   readonly opts: WorldOptions;
   readonly cars: Car[] = [];
   readonly controllers: Array<Controller | null> = [];
+  /** The latest announcements (the oldest are dropped past 500; see eventsDropped). */
   readonly events: WorldEvent[] = [];
+  /** Announcements dropped from the front of `events`: event n is at events[n - eventsDropped]. */
+  eventsDropped = 0;
   /** Race distance in laps, or null for open sessions. Crew chiefs plan around it. */
   raceLaps: number | null = null;
   /** Flags, pace car and wreckers, when a race is under race control. */
@@ -49,14 +63,13 @@ export class World {
 
   constructor(track: Track, opts: Partial<WorldOptions> = {}) {
     this.track = track;
-    this.opts = { collisions: true, drafting: true, damageScale: 1, wearScale: 1, autoClearWrecks: true, ...opts };
+    this.opts = { collisions: true, drafting: true, damageScale: 1, wearScale: 1, autoClearWrecks: true, wheels: null, ...opts };
   }
 
   addCar(car: Car, controller: Controller | null): void {
     // Pit boxes are handed out in entry order along pit road (shared on tracks with short pit roads).
-    const t = this.track;
-    const boxes = Math.max(1, Math.floor((t.pitWallEnd - t.pitWallStart - 40) / PIT_SERVICE.STALL_SPACING));
-    car.pit.boxS = t.pitWallStart + 25 + (this.cars.length % boxes) * PIT_SERVICE.STALL_SPACING;
+    const stalls = this.track.pit.stalls;
+    car.pit.boxS = stalls[this.cars.length % stalls.length];
     this.cars.push(car);
     this.controllers.push(controller);
   }
@@ -74,15 +87,16 @@ export class World {
     if (this.tick % P.CONTROL_EVERY === 0) {
       for (let k = 0; k < cars.length; k++) {
         const controller = controllers[k];
-        if (controller && !cars[k].retired) controller.decide(cars[k], this);
+        if (controller && !cars[k].retired && !cars[k].waiting) controller.decide(cars[k], this);
       }
       for (const o of this.officials) o.controller.decide(o.car, this);
     }
     if (this.opts.drafting) computeDraft(cars, track);
 
     for (const car of cars) {
+      if (car.waiting) continue;
       const wasRetired = car.retired;
-      stepCar(car, track, dt, this.opts.wearScale);
+      stepCar(car, track, dt, this.opts.wearScale, this.opts.wheels ?? undefined);
       reproject(car, track);
       resolveWalls(car, track, this.opts.damageScale);
       if (car.retired && !wasRetired) this.announce(car, 'retired', 'Out of the race');
@@ -100,37 +114,46 @@ export class World {
     if (this.opts.collisions) {
       const all = this.officials.length ? [...cars, ...this.officials.map((o) => o.car)] : cars;
       const before = cars.map((c) => c.retired);
-      resolveCarCollisions(all);
-      cars.forEach((c, i) => { if (c.retired && !before[i]) this.announce(c, 'retired', 'Out of the race after contact'); });
+      resolveCarCollisions(all, track);
+      cars.forEach((c, i) => {
+        if (!c.retired || before[i]) return;
+        const other = all.find((o) => o.id === c.lastImpact?.other);
+        this.announce(c, 'retired', 'Out of the race after contact', { others: [other ?? null] });
+      });
       for (const car of all) reproject(car, track);
       for (const { car } of this.officials) { car.health = 1; car.retired = false; } // officials don't wreck
     }
 
     this.time += dt;
     for (const car of cars) {
+      if (car.waiting) continue;
+      if (car.lapClean && pastTrackLimits(car, track)) car.lapClean = false;
       updateTiming(car, track, this.time, dt);
       this.updatePit(car, dt);
     }
     this.tick++;
   }
 
-  announce(car: Car, kind: WorldEvent['kind'], text: string): void {
-    this.events.push({ time: this.time, car, kind, text });
-    if (this.events.length > 500) this.events.splice(0, this.events.length - 500);
+  announce(car: Car, kind: WorldEvent['kind'], text: string, about: { others?: Array<Car | null>; incidentTime?: number } = {}): void {
+    const others = about.others?.filter((c): c is Car => !!c) ?? [];
+    this.events.push({
+      time: this.time, car, kind, text, ...(others.length ? { others } : {}), ...(about.incidentTime !== undefined ? { incidentTime: about.incidentTime } : {}),
+    });
+    if (this.events.length > 500) this.eventsDropped += this.events.splice(0, this.events.length - 500).length;
   }
 
   /** The pit cycle's rules live in the world, whoever is driving. */
   private updatePit(car: Car, dt: number): void {
     const pit = car.pit;
     if (pit.phase === 'none' || car.retired) return;
-    const r = this.track.signedS(car.s);
+    const r = this.track.pitInR(car);
     if (pit.phase === 'in') {
-      const inPitLane = car.d > this.track.pitWallD;
-      if (r > this.track.pitWallStart + 5 && r < pit.boxS && !inPitLane) {
+      const inPitLane = car.d > this.track.pit.wallD + this.track.pitOffset(car.s);
+      if (r > this.track.pit.wallStart + 5 && r < pit.boxS && !inPitLane) {
         pit.phase = 'none';
         pit.call = null;
         this.announce(car, 'missed-pit', 'Missed the pit entry');
-      } else if (inPitLane && Math.abs(r - pit.boxS) < 3 && car.speed < 1.5) {
+      } else if (inPitLane && Math.abs(r - pit.boxS) < BOX_HALF_LENGTH && car.speed < 1.5) {
         pit.phase = 'service';
         pit.timer = serviceTime(car, pit.call!);
         pit.stops++;
@@ -152,9 +175,9 @@ export class World {
       // Done once the car has merged onto the racing surface past the blend
       // zone (or has given up waiting for a gap and been sent out anyway).
       const t = this.track;
-      const u = t.distanceFrom(pit.boxS, car.s);
-      const blend = t.distanceFrom(pit.boxS, t.blendEnd);
-      const merged = u > blend - PIT_SERVICE.MERGE_ZONE && car.d < t.halfWidth;
+      const u = t.progressFrom(pit.boxS, car.s);
+      const blend = t.distanceFrom(pit.boxS, t.pit.blendEnd);
+      const merged = u > blend - PIT_SERVICE.MERGE_ZONE && car.d < t.innerEdge(car.trackIdx);
       const giveUp = u > Math.min(blend + PIT_SERVICE.MERGE_GIVE_UP, t.length - 100);
       if (merged || giveUp) {
         pit.phase = 'none';
@@ -191,7 +214,11 @@ function updateTiming(car: Car, track: Track, time: number, dt: number): void {
   // Interpolate the crossing time within the step.
   const along = Math.max(1e-6, car.vx * track.tx[car.trackIdx] + car.vy * track.ty[car.trackIdx]);
   const crossTime = Math.max(time - dt, time - (car.dist - car.nextLineDist) / along);
-  if (car.lapStartTime >= 0) car.lapTimes.push(crossTime - car.lapStartTime);
+  if (car.lapStartTime >= 0) {
+    car.lapTimes.push(crossTime - car.lapStartTime);
+    car.lapValid.push(car.lapClean);
+  }
   car.lapStartTime = crossTime;
+  car.lapClean = true;
   car.nextLineDist += track.length;
 }

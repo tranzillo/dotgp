@@ -1,13 +1,30 @@
 import { PHYSICS as P } from '../sim/constants';
 import type { Car, PitCall } from '../sim/car';
 import type { World } from '../sim/world';
-import { genomeSize, Network, type Example } from './network';
+import { genomeSize, Network, widenNetwork, type Example } from './network';
 import type { CrewChief } from './pitting';
-import type { Rng } from './rng';
+import { Rng } from './rng';
 
-export const CHIEF_INPUTS = 11;
+/** The car's own stint: laps left, fuel, tires, health, pace (the first chiefs saw only this). */
+const STINT_INPUTS = 11;
+/** The race around it: flags, place, gaps, rivals' tires, who's pitting (zero-weighted when added, so old chiefs decide as before). */
+const RACE_INPUTS = 12;
+export const CHIEF_INPUTS = STINT_INPUTS + RACE_INPUTS;
 /** Crew chief network: race situation -> [pit?, tires?, fuel amount, repair?]. */
-export const CHIEF_LAYERS = [CHIEF_INPUTS, 10, 4] as const;
+export const CHIEF_LAYERS = [CHIEF_INPUTS, 16, 4] as const;
+/** The first chiefs: their own stint only. */
+const STINT_CHIEF_LAYERS = [STINT_INPUTS, 10, 4] as const;
+
+/** A crew chief brain from any version, as today's network (new inputs and units start silent: same calls). */
+export function adaptChiefWeights(w: Float32Array): Float32Array {
+  if (w.length === genomeSize(CHIEF_LAYERS)) return w;
+  if (w.length === genomeSize(STINT_CHIEF_LAYERS)) {
+    // New hidden units get small random input weights but nothing reads them yet.
+    const rng = new Rng(w.length);
+    return widenNetwork(STINT_CHIEF_LAYERS, w, CHIEF_LAYERS, () => rng.next());
+  }
+  throw new Error(`unrecognised crew chief genome (${w.length} weights)`);
+}
 
 /**
  * What a crew chief can measure from the pit box, lap to lap: fuel burn and
@@ -82,8 +99,48 @@ export class ChiefObserver {
     o[8] = world.track.length / 2500;
     o[9] = car.fuel / P.FUEL_CAPACITY;
     o[10] = log.burnPerLap > 0 ? 1 : 0;
+    observeRace(car, world, o, STINT_INPUTS);
     return lapsLeft;
   }
+}
+
+/** Laps a car has run on its tires. */
+const tireLaps = (c: Car) => c.lapsCompleted - c.pit.tiresFittedLap;
+
+/**
+ * The race around the car, as the pit box sees it from the timing screens and
+ * race control: the flag (a caution makes a stop cheap: the field is slow, and
+ * pitting only costs places), its place and how far down it is, the gaps to
+ * the cars either side and how old their tires are against its own (the
+ * undercut), how many of the cars ahead are pitting now, and how long the
+ * caution has run.
+ */
+export function observeRace(car: Car, world: World, o: Float32Array, at: number): void {
+  const ctl = world.control;
+  const L = world.track.length;
+  const caution = !!ctl && ctl.flag === 'caution';
+  // The running order: under caution the official line (cars pitting rejoin at its back), under green the road.
+  const running = world.cars.filter((c) => !c.retired && !c.finished).sort((a, b) => b.dist - a.dist);
+  const order = caution ? [...ctl!.lineOrder().filter((c) => running.includes(c)), ...running.filter((c) => !ctl!.lineOrder().includes(c))] : running;
+  const place = Math.max(0, order.indexOf(car));
+  const ahead = order[place - 1] ?? null;
+  const behind = order[place + 1] ?? null;
+  const leader = running[0] ?? car;
+  const pace = Math.max(20, car.speed);
+  const pitting = (c: Car) => c.pit.phase === 'in' || c.pit.phase === 'service';
+  o[at] = caution ? 1 : 0;
+  o[at + 1] = caution && ctl!.oneToGo ? 1 : 0;
+  o[at + 2] = ctl?.safetyCar ? 1 : 0;
+  o[at + 3] = order.length > 1 ? place / (order.length - 1) : 0;
+  o[at + 4] = Math.min(2, Math.floor(Math.max(0, leader.dist - car.dist) / L)) / 2;
+  // Gaps only mean something under green; behind a pace car everyone is nose to tail.
+  o[at + 5] = !caution && ahead ? Math.min(10, (ahead.dist - car.dist) / pace) / 10 : 0;
+  o[at + 6] = !caution && behind ? Math.min(10, (car.dist - behind.dist) / pace) / 10 : 0;
+  o[at + 7] = ahead ? clamp((tireLaps(ahead) - tireLaps(car)) / 20, -1, 1) : 0;
+  o[at + 8] = behind ? clamp((tireLaps(behind) - tireLaps(car)) / 20, -1, 1) : 0;
+  o[at + 9] = place > 0 ? order.slice(0, place).filter(pitting).length / place : 0;
+  o[at + 10] = caution ? Math.min(3, leader.lapsCompleted - ctl!.cautionStartLap) / 3 : 0;
+  o[at + 11] = Math.min(tireLaps(car), 60) / 30;
 }
 
 /** Learned strategist. Decides once a lap at the pit decision point. */
@@ -93,7 +150,7 @@ export class NeuralCrewChief implements CrewChief {
   private readonly observer = new ChiefObserver();
 
   constructor(weights: Float32Array) {
-    this.net = new Network(CHIEF_LAYERS, weights);
+    this.net = new Network(CHIEF_LAYERS, adaptChiefWeights(weights));
   }
 
   decide(car: Car, world: World): PitCall | null {

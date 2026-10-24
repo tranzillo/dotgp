@@ -29,13 +29,19 @@ export const RADIO = {
 } as const;
 export const RADIO_SIZE = 16;
 
-const ALONGSIDE_DS = 4 * P.CAR_RADIUS + 1.5; // longitudinal overlap window (m)
+/** Longitudinal overlap window (m). (Asked each time: the car's size can be an experiment's.) */
+const alongsideDs = () => 4 * P.CAR_RADIUS + 1.5;
 const ALONGSIDE_DD = 6; // lateral window (m)
 const SAME_LANE_DD = 3.5;
 const AHEAD_RANGE = 120;
 const BEHIND_RANGE = 80;
 const HAZARD_RANGE = 800;
 const HAZARD_SPEED = 25; // m/s: anything slower than this on track is a hazard
+/**
+ * While the field is pacing it all runs slower than HAZARD_SPEED (a safety car takes corners well under it), so the
+ * hazard was the next car in line and the wreck behind it never called: then only a car stopped (or out) is (m/s).
+ */
+const PACING_HAZARD_SPEED = 5;
 const CLOSING_SCALE = 20; // m/s
 
 /** A spotter watches the race and fills the radio for its driver. */
@@ -90,8 +96,12 @@ export class TowerSpotter implements Spotter {
     let ahead2: Car | null = null, ahead2Gap = Infinity;
     let behind: Car | null = null, behindGap = Infinity;
     let hazardGap = Infinity, hazardD = 0;
+    // The pace car (safety car) and wreckers out on track are traffic too: unnamed, the pace car was the car a quarter
+    // of the damaging contacts under caution came from.
+    const traffic = world.officials.length ? [...world.cars, ...world.officials.map((o) => o.car)] : world.cars;
+    const hazardSpeed = world.control?.pacing ? PACING_HAZARD_SPEED : HAZARD_SPEED;
 
-    for (const other of world.cars) {
+    for (const other of traffic) {
       if (other === car || other.cleared) continue;
       // Cars behind the pit wall aren't traffic.
       if (other.surface === 'pit' && car.surface !== 'pit') continue;
@@ -101,7 +111,7 @@ export class TowerSpotter implements Spotter {
       const dd = other.d - car.d;
 
       // Alongside: overlapping longitudinally, in an adjacent lane.
-      if (Math.abs(ds) < ALONGSIDE_DS && Math.abs(dd) < ALONGSIDE_DD) {
+      if (Math.abs(ds) < alongsideDs() && Math.abs(dd) < ALONGSIDE_DD) {
         const prox = 1 - clamp01((Math.abs(dd) - r2) / (ALONGSIDE_DD - r2));
         const rel = clamp(ds / (2 * r2), -1, 1);
         if (dd >= 0 && prox > radio[RADIO.LOW_PROX]) {
@@ -114,10 +124,10 @@ export class TowerSpotter implements Spotter {
       }
 
       // The tower sees the whole lap: wrecks and crawling cars anywhere ahead.
-      const gapAhead = ((other.s - car.s) % L + L) % L;
-      // Slow because they're pitting isn't a hazard; slow on the racing surface is.
+      const gapAhead = track.wrapS(other.s - car.s);
+      // Slow because they're pitting isn't a hazard; slow on the racing surface is. (Speed last: it's a square root.)
       const pitting = other.pit.phase !== 'none' && !other.retired;
-      if (!pitting && (other.retired || other.speed < HAZARD_SPEED) && gapAhead > ALONGSIDE_DS && gapAhead < hazardGap) {
+      if (gapAhead > alongsideDs() && gapAhead < hazardGap && !pitting && (other.retired || other.speed < hazardSpeed)) {
         hazardGap = gapAhead;
         hazardD = other.d;
       }
@@ -140,7 +150,7 @@ export class TowerSpotter implements Spotter {
     if (ahead2 === ahead) {
       ahead2 = null;
       ahead2Gap = Infinity;
-      for (const other of world.cars) {
+      for (const other of traffic) {
         if (other === car || other === ahead || other.cleared) continue;
         if (other.surface === 'pit' && car.surface !== 'pit') continue;
         let ds = other.s - car.s;
@@ -178,11 +188,11 @@ export class TowerSpotter implements Spotter {
     const myAlong = alongSpeed(car, world);
     for (const other of world.cars) {
       if (other === car || other.retired || other.cleared || other.pit.phase !== 'none') continue;
-      if (other.d < track.halfWidth - 8) continue; // up high, well clear of the merge
+      if (other.d < track.innerEdge(other.trackIdx) - 8) continue; // up high, well clear of the merge
       let ds = other.s - car.s;
       if (ds > L / 2) ds -= L;
       else if (ds < -L / 2) ds += L;
-      if (Math.abs(ds) < ALONGSIDE_DS + 2) return false;
+      if (Math.abs(ds) < alongsideDs() + 2) return false;
       if (ds < 0 && -ds < this.skill.behindRange) {
         const closing = alongSpeed(other, world) - myAlong;
         if (closing > 0 && -ds / closing < MERGE_TIME_GAP) return false;
