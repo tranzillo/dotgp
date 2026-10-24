@@ -16,7 +16,11 @@
  *
  *   npx tsx scripts/incidents.ts [drivers.json] --tracks speedway,short --seeds 2 --field 24 --pace 4 [--laps N] [--marks 0]
  *     [--seed-start 1] [--json out.json]   (scripts/bench.ts runs many of these in parallel and adds error bars)
- *     tracks: the presets (speedway, short, flat) or generated ovals, oval:<seed>[:<variant>[:<shape>]]
+ *     tracks: the presets (speedway, short, flat), generated ovals, oval:<seed>[:<variant>[:<shape>]], or circuits, circuit:<seed>[:club|gp]
+ *     [--experiment '?car=2&widths=0.75&pitwidth=1.3']   the app's experiment switches (src/sim/experiment.ts), for A/B runs
+ *
+ *   pit road: each stop's time through the pit lane (from its entry to back on track), and contacts and damage while in a
+ *            pit cycle (crowded pit lanes)
  *     [--mix B.json --swap 0|1]   a mixed field: alternate grid slots from the two files (--swap 1 trades the slots),
  *                                 for head to head (each side's mean finishing place, retirements, damage done)
  *     [--limits lo:hi,lo:hi]   human limits for every car (drawn per car): latency (s) and motor noise ranges, e.g. 0.1:0.2,0.02:0.08;
@@ -43,12 +47,15 @@ import { Track } from '../src/sim/track';
 import { FLAT_TRACK, generateLayout, type OvalShape, ovalTrack, SHORT_TRACK, SPEEDWAY } from '../src/trackgen';
 import { World } from '../src/sim/world';
 import { OVAL_RULES } from '../src/rules/rulebook';
+import { applyExperiment } from '../src/sim/experiment';
 
 const positional = process.argv.slice(2).filter((a, i, all) => !a.startsWith('--') && !(all[i - 1] ?? '').startsWith('--'));
 const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i++) {
   if (process.argv[i].startsWith('--')) args.set(process.argv[i].slice(2), process.argv[++i]);
 }
+// (Before any track is built or car simulated.)
+if (args.has('experiment')) applyExperiment(args.get('experiment')!);
 const driversFile = positional[0] ?? 'public/drivers/default.json';
 const specs = { speedway: SPEEDWAY, short: SHORT_TRACK, flat: FLAT_TRACK } as const;
 const trackNames = (args.get('tracks') ?? 'speedway,short').split(',');
@@ -115,6 +122,7 @@ const SPOT_FOLLOW = 2;
 function trackFor(name: string): Track {
   if (name in specs) return ovalTrack(specs[name as keyof typeof specs]);
   const [kind, seedText, variant, shape] = name.split(':');
+  if (kind === 'circuit' && seedText) return new Track(generateLayout({ type: 'circuit', seed: Number(seedText), variant: variant || undefined }));
   if (kind !== 'oval' || !seedText) throw new Error(`unknown track ${name}`);
   return new Track(generateLayout({ type: 'oval', seed: Number(seedText), variant: variant || undefined,
     ...(shape ? { params: { shape: shape as OvalShape } } : {}) }));
@@ -142,6 +150,8 @@ interface RaceStats {
   wearPerLap: number[];
   burnPerLap: number[];
   stops: Array<{ tire: number; fuel: number; tires: boolean; repair: boolean; reason: string; service: number; underCaution: boolean }>;
+  /** Pit road: each stop's time from the pit entry to back on track (and whether under caution); contacts and damage in a pit cycle. */
+  pitRoad: { transits: Array<{ time: number; caution: boolean }>; hits: number; damage: number };
   lapsByTire: Array<[number, number]>;
   slideSteps: number[]; // car-steps with sliding above 0.05 / 0.35 / 0.6
   steps: number;
@@ -319,7 +329,7 @@ function runRace(trackName: string, seed: number): RaceStats {
 
   const stats: RaceStats = {
     track: trackName, seed, laps, finished: 0, cautions: 0, cautionLaps: 0, retirements: [], wearPerLap: [], burnPerLap: [],
-    stops: [], lapsByTire: [], slideSteps: [0, 0, 0], steps: 0, harm: 0, penalties: [], coverage: [],
+    stops: [], pitRoad: { transits: [], hits: 0, damage: 0 }, lapsByTire: [], slideSteps: [0, 0, 0], steps: 0, harm: 0, penalties: [], coverage: [],
     pack: { samples: 0, alongside: 0, drafting: 0, passes: 0, carLaps: 0, laneSum: 0, laneSq: 0,
       lockSame: { ab: 0, aa: 0, bb: 0, n: 0 }, lockDiff: { ab: 0, aa: 0, bb: 0, n: 0 },
       spotSame: { d: 0, v: 0, steer: 0, n: 0 }, spotDiff: { d: 0, v: 0, steer: 0, n: 0 } },
@@ -428,6 +438,9 @@ function runRace(trackName: string, seed: number): RaceStats {
   };
   const out = new Set<Car>();
   const prevPhase = new Map<Car, string>();
+  // Per car in a pit cycle: when it passed the pit entry, and its last contact (one contact is a second of hits).
+  const enteredPit = new Map<Car, { time: number; caution: boolean }>();
+  const lastPitHit = new Map<Car, number>();
   // Per car, the lap in progress: tire and fuel at its start, and whether it ran entirely green with no stop.
   const lap = new Map<Car, { n: number; tire: number; fuel: number; clean: boolean }>();
   let lastGreen = -Infinity, cautionStart = -Infinity, leaderLaps = 0;
@@ -436,6 +449,7 @@ function runRace(trackName: string, seed: number): RaceStats {
   while (race.state !== 'finished' && world.time < laps * 300) {
     const flagBefore = ctl.flag;
     const speedBefore = cars.map((c) => c.speed);
+    const healthBefore = cars.map((c) => c.health);
     race.step();
     if (ctl.flag === 'green' && flagBefore !== 'green') lastGreen = world.time;
     if (ctl.flag === 'caution' && flagBefore !== 'caution') cautionStart = world.time;
@@ -468,6 +482,20 @@ function runRace(trackName: string, seed: number): RaceStats {
       if (car.sliding > 0.6) stats.slideSteps[2]++;
 
       const phase = car.pit.phase;
+      const r = track.signedS(car.s);
+      if (phase === 'in' && !enteredPit.has(car) && r >= track.pit.entryStart && r < track.pit.wallEnd) {
+        enteredPit.set(car, { time: world.time, caution: ctl.flag !== 'green' });
+      }
+      if (phase === 'none' && prevPhase.get(car) === 'out' && enteredPit.has(car)) {
+        const e = enteredPit.get(car)!;
+        stats.pitRoad.transits.push({ time: world.time - e.time, caution: e.caution });
+      }
+      if (phase === 'none') enteredPit.delete(car);
+      if ((phase !== 'none' || prevPhase.get(car) === 'out') && car.health < healthBefore[k] - 1e-4) {
+        stats.pitRoad.damage += healthBefore[k] - car.health;
+        if (world.time - (lastPitHit.get(car) ?? -Infinity) > 1) stats.pitRoad.hits++;
+        lastPitHit.set(car, world.time);
+      }
       if (phase === 'service' && prevPhase.get(car) === 'in' && car.pit.call) {
         stats.stops.push({ tire: car.tireLife, fuel: car.fuel, tires: car.pit.call.tires, repair: !!car.pit.call.repair, reason: car.pit.call.reason ?? (car.pit.call.penalty ? 'penalty' : '?'), service: car.pit.timer, underCaution: ctl.flag !== 'green' });
       }
@@ -563,6 +591,8 @@ export interface RaceSummary {
   spotSameD: number; spotDiffD: number; spotSameV: number; spotDiffV: number; spotSameSteer: number; spotDiffSteer: number;
   /** Pit stops called, and those called because the car was damaged (whatever else was done at them). */
   stops: number; damageStops: number;
+  /** Pit road: mean time from the entry to back on track (s), contacts and damage in a pit cycle (per race). */
+  pitLaneTime: number; pitHits: number; pitDamage: number;
   /** Scripted driving (to be trained away): share of car-time on track a script drove, and cars that went out while one was. */
   scripted: number; scriptedFormation: number; scriptedPit: number; scriptedRetirements: number;
   /** Mixed fields: each side's mean finishing place, cars out, and damage done by fault. */
@@ -590,6 +620,7 @@ function raceSummary(s: RaceStats): RaceSummary {
     spotSameV: s.pack.spotSame.v / s.pack.spotSame.n, spotDiffV: s.pack.spotDiff.v / s.pack.spotDiff.n,
     spotSameSteer: s.pack.spotSame.steer / s.pack.spotSame.n, spotDiffSteer: s.pack.spotDiff.steer / s.pack.spotDiff.n,
     stops: s.stops.filter((x) => x.reason !== 'penalty').length, damageStops: s.stops.filter((x) => x.reason === 'damage').length,
+    pitLaneTime: mean(s.pitRoad.transits.map((x) => x.time)), pitHits: s.pitRoad.hits, pitDamage: s.pitRoad.damage,
     scripted: (s.driving.formation + s.driving.pit) / Math.max(1, s.driving.samples),
     scriptedFormation: s.driving.formation / Math.max(1, s.driving.samples),
     scriptedPit: s.driving.pit / Math.max(1, s.driving.samples),
@@ -665,6 +696,10 @@ for (const name of trackNames) {
     + `tires taken ${pct(stops.filter((s) => s.tires).length / stops.length)}, repairs ${pct(stops.filter((s) => s.repair).length / stops.length)}, `
     + `called for ${['fuel', 'tires', 'damage', 'caution', 'penalty'].map((r) => `${r} ${pct(stops.filter((s) => s.reason === r).length / stops.length)}`).join(' ')}, tire life at stop ${f(mean(stops.map((s) => s.tire)), 2)} `
     + `(min ${f(Math.min(...stops.map((s) => s.tire)), 2)}), service ${f(mean(stops.map((s) => s.service)))} s`);
+  const transits = runs.flatMap((s) => s.pitRoad.transits);
+  const laneTime = (c: boolean) => f(mean(transits.filter((x) => x.caution === c).map((x) => x.time)));
+  console.log(`  PIT ROAD ${laneTime(false)} s entry to track under green, ${laneTime(true)} s under caution; `
+    + `${f(mean(runs.map((s) => s.pitRoad.hits)))} contacts, ${f(mean(runs.map((s) => s.pitRoad.damage)), 2)} health lost /race in pit cycles`);
   const lapsByTire = runs.flatMap((s) => s.lapsByTire);
   const bands: string[] = [];
   for (let b = 0; b + 1 < TIRE_BANDS.length; b++) {

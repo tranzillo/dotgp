@@ -1,6 +1,7 @@
 import type { Rng } from '../ai/rng';
 import { Centerline } from '../sim/centerline';
 import { PHYSICS } from '../sim/constants';
+import { EXPERIMENT } from '../sim/experiment';
 import {
   evalProfile, flat, LAYOUT_VERSION, smoothstep,
   type CenterlineSpec, type Marking, type PitLane, type Profile, type SurfaceRegion, type TrackLayout, type TrackRect, type Wall,
@@ -1324,7 +1325,7 @@ const LAID_FROM = PHYSICS.CAR_RADIUS;
 
 /** Where pit road's fast lane runs on a circuit (d): pitLane's. */
 function circuitFastD(half: number): number {
-  return half + Math.max(CIRCUIT_PIT.WALL_GAP, noseClearance()) + CIRCUIT_PIT.WALL_THICKNESS + 3;
+  return half + Math.max(CIRCUIT_PIT.WALL_GAP, noseClearance()) + CIRCUIT_PIT.WALL_THICKNESS + 3 * EXPERIMENT.pitWidth;
 }
 
 /**
@@ -1444,7 +1445,7 @@ function pitRoom(cl: Centerline, half: number): { room: number[]; reach: number[
 function pitPlace(cl: Centerline, half: number): PitPlace | null {
   const L = cl.length;
   const { room, step, at } = pitRoom(cl, half);
-  const roadBack = half + noseClearance() + CIRCUIT_PIT.WALL_THICKNESS + CIRCUIT_PIT.ROAD_WIDTH;
+  const roadBack = half + noseClearance() + CIRCUIT_PIT.WALL_THICKNESS + CIRCUIT_PIT.ROAD_WIDTH * EXPERIMENT.pitWidth;
   const MARGIN = 3;
   const road = (x: number) => Math.abs(cl.curvatureAt(x)) < PIT_ROAD_K && room[at(x)] >= roadBack + PADDOCK_MIN + MARGIN;
   const lane = (x: number) => room[at(x)] >= half + noseClearance() + CIRCUIT_PIT.WALL_THICKNESS + 8 + MARGIN;
@@ -1494,7 +1495,7 @@ function pitPlace(cl: Centerline, half: number): PitPlace | null {
  */
 function mappedPlace(map: PitMap, cl: Centerline, half: number): PitPlace | null {
   const { room, reach, step, at } = pitRoom(cl, half);
-  const roadBack = half + noseClearance() + CIRCUIT_PIT.WALL_THICKNESS + CIRCUIT_PIT.ROAD_WIDTH;
+  const roadBack = half + noseClearance() + CIRCUIT_PIT.WALL_THICKNESS + CIRCUIT_PIT.ROAD_WIDTH * EXPERIMENT.pitWidth;
   const behind = (x: number) => room[at(x)] - roadBack - 3;
   /** The longest stretch of [a, b] where `ok` holds throughout. */
   const longest = (a: number, b: number, ok: (x: number) => boolean): [number, number] | null => {

@@ -9,6 +9,8 @@
  *   npx tsx scripts/bench.ts [A.json] [B.json] --tracks short,speedway,flat --seeds 8 [--jobs N] [--field 24] [--pace 4] [--laps N]
  *     [--json out.json]   (the numbers and verdicts, for the lab's promotion gate)
  *     tracks: presets, generated ovals (oval:<seed>[:<variant>[:<shape>]]), or ovals:N for N generated ovals (the same N every run)
+ *     [--experiments '|?pitwidth=1.33']   one driver file raced as A and B with each set of the app's experiment switches
+ *                 (src/sim/experiment.ts; '' for none), paired on the same seeds: an A/B of the switches
  *     [--h2h 1]   head to head as well: A and B in the same mixed field, every other grid slot, each seed raced twice with the
  *                 slots traded; judged on B's mean finishing place against A's (lower is better) and cars out per side
  */
@@ -24,7 +26,9 @@ const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i++) {
   if (process.argv[i].startsWith('--')) args.set(process.argv[i].slice(2), process.argv[++i]);
 }
-const files = positional.length ? positional : ['public/drivers/default.json'];
+const experiments = args.get('experiments')?.split('|');
+const files = experiments ? experiments.map(() => positional[0] ?? 'public/drivers/default.json')
+  : positional.length ? positional : ['public/drivers/default.json'];
 /** Generated ovals for ovals:N: fixed seeds, so every run sees the same tracks; sizes and shapes drawn by the generator. */
 const tracks = (args.get('tracks') ?? 'short,speedway,flat').split(',').flatMap((t) => {
   const many = /^ovals:(\d+)$/.exec(t);
@@ -55,7 +59,8 @@ function run(job: Job): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn('npx', ['tsx', 'scripts/incidents.ts', files[job.file], '--tracks', job.track, '--seeds', '1',
       '--seed-start', String(job.seed), '--field', field, '--pace', pace, '--marks', '0', '--json', job.out, ...(laps ? ['--laps', laps] : []),
-      ...(job.swap !== undefined ? ['--mix', files[1], '--swap', String(job.swap)] : [])],
+      ...(job.swap !== undefined ? ['--mix', files[1], '--swap', String(job.swap)] : []),
+      ...(experiments?.[job.file] ? ['--experiment', `"${experiments[job.file]}"`] : [])],
     { shell: true, stdio: ['ignore', 'ignore', 'inherit'] });
     child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${job.track} seed ${job.seed} exited ${code}`))));
   });
@@ -104,6 +109,9 @@ const metrics: Array<[keyof RaceSummary, string, number, boolean | null]> = [
   ['cautions', 'cautions', 1, true],
   ['stops', 'pit stops', 1, null],
   ['damageStops', '  called for damage', 1, true],
+  ['pitLaneTime', '  pit entry to track (s)', 1, true],
+  ['pitHits', '  pit-cycle contacts', 1, true],
+  ['pitDamage', '  pit-cycle damage (health)', 2, true],
   ['lapTime', 'lap time (s, tires 60%+)', 2, true],
   // The goal is no scripted driving: the share of car-time a script drives, and cars out while one did.
   ['scripted', 'share driven by scripts', 3, true],
@@ -136,7 +144,7 @@ export interface BenchReport {
 }
 const report: BenchReport = { files, seeds, tracks: {} };
 
-console.log(`${seeds} races per track, ${field} cars, ${pace}x pace; ${files.map((f, i) => `${'AB'[i] ?? i}: ${f.split(/[\\/]/).pop()}`).join(', ')}`);
+console.log(`${seeds} races per track, ${field} cars, ${pace}x pace; ${files.map((f, i) => `${'AB'[i] ?? i}: ${f.split(/[\\/]/).pop()}${experiments ? ` ${experiments[i] || '(no switches)'}` : ''}`).join(', ')}`);
 for (const track of tracks) {
   console.log(`\n${track}`);
   report.tracks[track] = {};

@@ -1,5 +1,6 @@
 import type { Centerline } from '../sim/centerline';
 import { PHYSICS } from '../sim/constants';
+import { EXPERIMENT } from '../sim/experiment';
 import {
   evalProfile, shiftEdge, type CenterlineSpec, type Decoration, type Edge, type EscapeLane, type Garage, type Marking, type PitLane, type Profile,
   type Road, type RoadNetwork, type RoadNode, type SurfaceRegion, type TrackRect, type Wall,
@@ -173,7 +174,7 @@ export function pitLane(o: PitLaneOptions): { pit: PitLane; pavedInner: Profile 
   const wallD = o.innerEdge + Math.max(o.wallGap, noseClearance()) + o.wallThickness / 2;
   const face = wallD + o.wallThickness / 2;
   // Across pit road from the wall: the travel lane, then the boxes (cars stop 3.5 m into them, or in their middle).
-  const travel = o.travelWidth ?? 6, depth = o.boxDepth ?? o.roadWidth - 6;
+  const travel = (o.travelWidth ?? 6) * EXPERIMENT.pitWidth, depth = (o.boxDepth ?? o.roadWidth - 6) * EXPERIMENT.pitWidth;
   const laneD = face + travel, roadD = laneD + depth;
   // (Behind an inside pit wall, the crews' strip; the pavement runs out to its back.)
   const crewD = o.crewWidth ? roadD + INNER_PIT_WALL + o.crewWidth : undefined;
