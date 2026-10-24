@@ -59,7 +59,10 @@ export function followLine(
   const laneTarget = laneAt(car.s + Math.max(5, vLon * 0.3));
   const kappaHere = track.kappa[i] / Math.max(0.2, 1 - track.kappa[i] * car.d);
   const vLatWanted = sweep ? vLon * (laneAt(car.s + 3) - laneAt(car.s - 3)) / 6 : 0;
-  const latWanted = vLon * vLon * kappaHere + 0.8 * (laneTarget - car.d) - 1.6 * (vLat - vLatWanted) - car.bankAcc;
+  // (...and its bend: d'' times the rate along the lap squared, faster than vLon inside a corner.)
+  const along = vLon / Math.max(0.2, 1 - track.kappa[i] * car.d);
+  const bendWanted = sweep ? along * along * (laneAt(car.s + 5) - 2 * laneAt(car.s) + laneAt(car.s - 5)) / 25 : 0;
+  const latWanted = vLon * vLon * kappaHere + bendWanted + 0.8 * (laneTarget - car.d) - 1.6 * (vLat - vLatWanted) - car.bankAcc;
   // Over target: brake hard enough to be back on the braking curve within a fraction of a second.
   const lonWanted = vLon < target ? (driveGain === undefined ? 99 : (target - vLon) * driveGain) : -Math.min(brake * 1.3, (vLon - target) * 6);
 

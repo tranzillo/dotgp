@@ -157,3 +157,31 @@ describe('generated pit complexes', () => {
     expect(driverPits(setBack.layout, true)).toBe(true);
   });
 });
+
+describe("circuits' laid pit entries", () => {
+  it('lays an entry across the inside of the last corner, grass between, and the scripted pit cycle runs it cleanly', () => {
+    const track = new Track(generateLayout({ type: 'circuit', seed: 12, variant: 'club' }));
+    const p = track.pit;
+    expect(p.entryRoute).toBeDefined();
+    expect(p.wallStart - p.entryStart).toBeGreaterThanOrEqual(200);
+    const path = pitPath(track);
+    expect(path.laid).toBe(true);
+    // From inside the track's edge, round onto pit road's line before the wall's nose.
+    expect(path.inAt(p.entryStart)).toBeLessThan(track.innerEdgeAt(p.entryStart));
+    expect(path.inAt(path.inEnd)).toBeGreaterThan(p.wallD);
+    // Somewhere across the corner, grass between the track and the lane, and the lane paved.
+    const surface = (s: number, d: number) => { const [x, y] = track.toWorld(s, d); return track.surfaceAt(s, d, x, y); };
+    let island = false;
+    for (let s = p.entryStart; s < path.inEnd; s += 5) {
+      expect(surface(s, path.inAt(s))).not.toBe('grass');
+      const gap = (track.innerEdgeAt(s) + path.inAt(s)) / 2;
+      if (path.inAt(s) - track.innerEdgeAt(s) > 12 && surface(s, gap) === 'grass') island = true;
+    }
+    expect(island).toBe(true);
+    const r = pitCycle(track);
+    expect(r.stops).toBe(1);
+    expect(r.health).toBeGreaterThan(0.99);
+    expect(r.rejoined).toBe(true);
+    expect(r.maxPitSpeed).toBeLessThan(PIT_SERVICE.SPEED_LIMIT + 1);
+  });
+});

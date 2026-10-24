@@ -777,7 +777,14 @@ export function mappedPit(
   if (first < 0) return null;
   const along = at.map((p) => p.d >= offset - 2);
   const a = along.indexOf(true), b = along.lastIndexOf(true);
-  return { entry: at[first].s, wallStart: at[a].s, wallEnd: at[b].s, exit: at[last].s, offset };
+  // Its line from the entry to the exit, every 5 m (averaged over 20 m); a gap where the lane is behind a corner's
+  // centre (the lap's s runs on past it) leaves out the stretch round it.
+  const route: Array<[number, number]> = [];
+  for (let s = at[first].s; s <= at[last].s; s += 5) {
+    const near = at.slice(first, last + 1).filter((p) => Math.abs(p.s - s) <= 10);
+    if (near.length) route.push([s, near.reduce((sum, p) => sum + p.d, 0) / near.length]);
+  }
+  return { entry: at[first].s, wallStart: at[a].s, wallEnd: at[b].s, exit: at[last].s, offset, route };
 }
 
 /**

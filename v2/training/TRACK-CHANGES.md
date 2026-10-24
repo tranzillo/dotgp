@@ -29,6 +29,16 @@ Landed:
   - Real tracks' pit lanes from OpenStreetMap (`public/tracks/pits.json`, `scripts/osmpits.ts`). They're
     opt-in for now (`?pits=mapped`, `--mapped`) and don't change anything by default.
 - The presets changed with each; their fingerprints in `test/trackgen.test.ts` are updated.
+- The commit after (2026-10-24): laid pit lanes on circuits, `pit.entryRoute`/`exitRoute` like the ovals' set-back pits.
+  - Generated circuits whose last corner is a left-hander get an entry across its inside, with a grass island between it
+    and the track, where it fits (about 1 in 4: 12 of the first 50 seeds). Pit road may start a little further on for it.
+  - Real tracks with `?pits=mapped` follow the real lane's line in and out where it fits; mapped stops are 23/29 clean
+    (15/29 before), level with our own placement.
+  - These count as set-back pit roads for learned drivers (`setBackPits`): without it, the script drives the stop.
+  - The script on a road circuit's laid lane: the call 500 m before the entry (ovals keep 700), moving over from the call
+    on instead of holding its lane through the corners. `followLine` in sweep mode now adds the lane's bend
+    (feed-forward), which also changes the ovals' set-back lanes a little. Retrain set-back pit skills on it.
+  - The presets (ovals) didn't change.
 
 Known: `test/pitdriving.test.ts` "a team with a pit-trained driver hands it the whole stop" fails with or without these changes.
 

@@ -10,11 +10,23 @@ import type { Spotter } from './spotter';
  * Where crew chiefs make the call each lap: before turn 3, early enough for
  * the car to get down to the apron for the pit entry at turn 4 exit. Earlier
  * where the pit lane swings away across grass (set back, or on a chord):
- * the car has to be slow before the swing, not on pit road.
+ * the car has to be slow before the swing, not on pit road (on a road
+ * circuit, not so early: the way there has corners, and the car moves over
+ * through them from the call on: pitRampFrom).
  */
 export function pitDecisionS(track: Track): number {
   const laid = !!(track.pit.entryRoute && track.pit.exitRoute);
-  return Math.max(-track.length / 2 + 10, track.pit.entryStart - (laid ? 700 : 300));
+  return Math.max(-track.length / 2 + 10, track.pit.entryStart - (laid ? (track.kind === 'road' ? 500 : 700) : 300));
+}
+
+/**
+ * Where a car called in starts over to the pit entry (signed s): 280 m
+ * before it, holding its lane until then; on a road circuit's laid lane,
+ * from the call (a lane held through corners runs off the track).
+ */
+function pitRampFrom(track: Track): number {
+  const laid = !!(track.pit.entryRoute && track.pit.exitRoute);
+  return laid && track.kind === 'road' ? pitDecisionS(track) : track.pit.entryStart - 280;
 }
 
 /** The crew chief: the team's strategist. */
@@ -301,7 +313,7 @@ export function pitRoute(track: Track, pit: PitState, fromLane: number): (s: num
   }
   return (s: number) => {
     const r = track.signedS(s);
-    if (r < entryStart) return ramp(r, entryStart - 280, entryStart, fromLane, path.inAt(entryStart));
+    if (r < entryStart) return ramp(r, pitRampFrom(track), entryStart, fromLane, path.inAt(entryStart));
     if (r < wallStart) return r > path.inEnd ? lanes.fastLane + track.pitOffset(s) : path.inAt(r);
     return ramp(r, pit.boxS - 40, pit.boxS - 8, lanes.fastLane, lanes.boxLane) + track.pitOffset(s);
   };
@@ -415,7 +427,7 @@ export class PitAutopilot {
       }
       const lane = (s: number) => {
         const r = track.signedS(s);
-        if (r < entryStart) return ramp(r, entryStart - 280, entryStart, this.fromLane, path.laid ? entryLaneAt : entryLane);
+        if (r < entryStart) return ramp(r, pitRampFrom(track), entryStart, this.fromLane, path.laid ? entryLaneAt : entryLane);
         // Lined up for pit road well before the wall's nose.
         if (r < track.pit.wallStart) return r > path.inEnd ? fastLane + track.pitOffset(s) : path.inAt(r);
         return ramp(r, pit.boxS - 40, pit.boxS - 8, fastLane, boxLane) + track.pitOffset(s);

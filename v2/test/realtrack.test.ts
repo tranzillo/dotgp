@@ -51,6 +51,11 @@ describe('real tracks from survey data', () => {
     expect(monza.pit.wallEnd).toBeLessThanOrEqual(map.wallEnd + 1);
     expect(monza.pit.wallEnd - monza.pit.wallStart).toBeGreaterThan(350);
     expect(validateLayout(monza, new Track(monza)).filter((p) => p.severity === 'error')).toEqual([]);
+    // Its entry and exit lanes on the mapped line (Barcelona's entry inside the last corner, pit road after it).
+    expect(monza.pit.entryRoute).toBeDefined();
+    const cat = realLayout(REAL_TRACKS.find((t) => t.id === 'catalunya')!, csvOf('catalunya'), pits.catalunya.points);
+    expect(cat.pit.entryRoute).toBeDefined();
+    expect(cat.pit.wallStart - cat.pit.entryStart).toBeGreaterThan(150);
     // Yas Marina's pit exit crosses under the track to the right: our pit lanes stay on the left.
     const yas = realLayout(REAL_TRACKS.find((t) => t.id === 'yasmarina')!, csvOf('yasmarina'), pits.yasmarina.points);
     expect(yas.params.pitMap).toBeUndefined();
