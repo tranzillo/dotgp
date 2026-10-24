@@ -17,7 +17,14 @@ Landed:
   - The ovals' blend ends at most 250 m past the exit taper.
   - Circuit pit road sits where there's room round the start line, with 250 m entry lanes (into the last corner where its inside has room) and paddocks sized to the space.
   - The 420 m main-straight rule is gone.
-- The presets changed with both; their fingerprints in `test/trackgen.test.ts` are updated.
+- The next commit: pit stops that work on the new pit roads (`npx tsx scripts/pitsurvey.ts 10 --real`).
+  - Circuit stops were hitting things since b5e0676: the scripted entry route ran off the paving, and the merge
+    could start across from the pit wall. Now every generated kind gets 10/10 clean stops (club 9/10 and GP 7/10 before).
+  - The entry paving flares out to the fast lane over its first 60 m (`pitEntryFlare`), a deceleration lane.
+  - The scripted route (`PitAutopilot`, `pitRoute`) starts as far in as the paving allows. It calls an entry off
+    only in the last 60 m before the nose (it was 140 m). The merge never starts before the exit taper.
+  - Pit-trained drivers learned the old route; `pitRoute` is their target, so retrain them on the new one.
+- The presets changed with each; their fingerprints in `test/trackgen.test.ts` are updated.
 
 Known: `test/pitdriving.test.ts` "a team with a pit-trained driver hands it the whole stop" fails with or without these changes.
 

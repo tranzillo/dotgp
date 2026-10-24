@@ -148,6 +148,11 @@ export interface PitLaneOptions {
 /** Pit boxes at most (a race takes at most one car a box: Track.maxField; a real pit road holds 40 or so). */
 export const MAX_BOXES = 40;
 
+/** How far into the entry (m) its deceleration lane reaches the fast lane's width: 60 m, or half a short entry. */
+export function pitEntryFlare(entryLength: number): number {
+  return Math.min(60, entryLength / 2);
+}
+
 /** An oval's inside pit wall, behind the boxes (the crews go over it). */
 export const INNER_PIT_WALL = 0.6;
 
@@ -172,6 +177,7 @@ export function pitLane(o: PitLaneOptions): { pit: PitLane; pavedInner: Profile 
   const backD = crewD ?? roadD;
   const entryStart = o.wallStart - o.entryLength;
   const exitEnd = o.wallEnd + o.exitTaper;
+  const flare = pitEntryFlare(o.entryLength);
   // Boxes from 25 m in, spaced along the wall, leaving room to accelerate out of the last; at most maxBoxes of them, in
   // the middle of a longer pit road.
   const fit = Math.max(1, Math.floor((o.wallEnd - o.wallStart - 40) / o.stallSpacing));
@@ -185,7 +191,11 @@ export function pitLane(o: PitLaneOptions): { pit: PitLane; pavedInner: Profile 
       laneD, fastD: face + travel / 2, boxD: laneD + Math.min(3.5, depth / 2), ...(crewD ? { crewD } : {}),
     },
     pavedInner: {
-      keys: [[entryStart, apronD], [o.wallStart, backD], [o.wallEnd, backD], [exitEnd, apronD]],
+      // (In: a deceleration lane, flaring out past the fast lane over its first 60 m (pitEntryFlare), so cars slow off
+      // the racing line; then out to pit road's width by the wall.)
+      keys: [
+        [entryStart, apronD], [entryStart + flare, Math.max(apronD, face + travel)], [o.wallStart, backD], [o.wallEnd, backD], [exitEnd, apronD],
+      ],
       ease: 'smooth',
     },
   };

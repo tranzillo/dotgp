@@ -175,13 +175,21 @@ export interface PitLanes {
   boxLane: number;
 }
 
+/**
+ * Where the entry route starts: as far in as the paving there allows, up to the wall's clear line (an oval's wide
+ * apron: past the wall's line already), and at least the apron's middle (a circuit's entry, off the track's edge).
+ */
+function pitEntryLane(track: Track, apronLane: number, wallClear: number): number {
+  return Math.max(apronLane, Math.min(wallClear, track.pavedInnerD(track.pit.entryStart) - P.CAR_RADIUS - 0.5));
+}
+
 export function pitLanes(track: Track): PitLanes {
   const apronLaneAt = (s: number) => track.innerEdgeAt(s) + track.apronWidth / 2;
   const wallClear = track.pit.wallD + track.pit.wallThickness / 2 + P.CAR_RADIUS + 1.2;
   return {
     apronLaneAt,
     wallClear,
-    entryLane: Math.max(apronLaneAt(track.pit.entryStart), wallClear),
+    entryLane: pitEntryLane(track, apronLaneAt(track.pit.entryStart), wallClear),
     fastLane: Math.max(pitFastD(track.pit), wallClear),
     boxLane: pitBoxD(track.pit),
   };
@@ -253,10 +261,12 @@ export function pitPath(track: Track): PitPath {
       outCap: laneCap((r) => (r > outStart ? outAt(r) : lanes.fastLane + track.pitOffset(r)), pit.wallEnd - 10, pit.exitEnd),
     };
   } else {
+    const inEnd = pit.wallStart - 50;
     path = {
       laid: false,
-      inAt: (r) => ramp(r, pit.entryStart, pit.wallStart - 50, lanes.entryLane, lanes.fastLane),
-      inEnd: pit.wallStart - 50,
+      // (Across to the fast lane down the deceleration lane, inside its paving as it flares out.)
+      inAt: (r) => ramp(r, pit.entryStart, inEnd, lanes.entryLane, lanes.fastLane),
+      inEnd,
       outAt: (r, s) => ramp(r, pit.wallEnd + 15, pit.exitEnd, lanes.fastLane, lanes.apronLaneAt(s)),
       outStart: pit.wallEnd + 15,
       inCap: () => Infinity,
@@ -280,7 +290,7 @@ export function pitRoute(track: Track, pit: PitState, fromLane: number): (s: num
   const path = pitPath(track);
   const { entryStart, exitEnd, wallStart, wallEnd } = track.pit;
   if (pit.phase === 'out') {
-    const mergeFrom = track.distanceFrom(pit.boxS, track.pit.blendEnd) - PIT_SERVICE.MERGE_ZONE;
+    const mergeFrom = Math.max(track.distanceFrom(pit.boxS, track.pit.blendEnd) - PIT_SERVICE.MERGE_ZONE, track.distanceFrom(pit.boxS, exitEnd));
     return (s: number) => {
       const r = track.signedS(s);
       const du = track.progressFrom(pit.boxS, s);
@@ -303,7 +313,7 @@ const PIT_GAP = 3;
 /** How long a car waits in its box for the fast lane to clear before going anyway (s). */
 const BOX_WAIT_LIMIT = 10;
 /** Abort the pit entry if not lined up this far before the wall's nose (m). */
-const ABORT_DISTANCE = 140;
+const ABORT_DISTANCE = 60;
 /** ... but not before the car has had this far past the pit entry (m) to move over. */
 const ABORT_GRACE = 40;
 /** Speed an aborted pit entry backs out at (m/s). */
@@ -365,7 +375,7 @@ export class PitAutopilot {
     const apronLane = apronLaneAt(track.pit.entryStart);
     // Lines that pass the pit wall's ends must clear them with room to spare.
     const wallClear = track.pit.wallD + track.pit.wallThickness / 2 + P.CAR_RADIUS + 1.2;
-    const entryLane = Math.max(apronLane, wallClear);
+    const entryLane = pitEntryLane(track, apronLane, wallClear);
     const fastLane = Math.max(pitFastD(track.pit), wallClear);
     const boxLane = pitBoxD(track.pit);
     const entryStart = track.pit.entryStart;
@@ -393,9 +403,8 @@ export class PitAutopilot {
       // past the line commits to pit road (turning back across the nose from there is what hits it).
       // (A pit road set back across grass: its lane is still swinging over until just before the nose, so the call
       // waits for the last stretch, where the lane runs straight at the fast lane.)
-      const decideFrom = path.laid
-        ? Math.max(track.pit.wallStart - 60, path.inEnd - 20)
-        : Math.max(track.pit.wallStart - ABORT_DISTANCE, entryStart + ABORT_GRACE);
+      // (The route crosses the wall's line on its way to the fast lane, so the call waits for its last stretch.)
+      const decideFrom = Math.max(track.pit.wallStart - ABORT_DISTANCE, path.inEnd - 20, entryStart + ABORT_GRACE);
       if (r0 > decideFrom && r0 < track.pit.wallStart && car.d < track.pit.wallD + track.pitOffset(car.s)) {
         pit.phase = 'none';
         pit.call = null;
@@ -424,15 +433,17 @@ export class PitAutopilot {
     } else if (pit.phase === 'out') {
       // Merge: from the merge zone on, wait on the apron for the spotter's "clear".
       const blend = track.distanceFrom(pit.boxS, track.pit.blendEnd);
+      // (The merge zone ends at the blend, but never starts before the exit taper: across from there is the wall.)
+      const mergeZone = Math.max(blend - PIT_SERVICE.MERGE_ZONE, track.distanceFrom(pit.boxS, exitEnd));
       const u = track.progressFrom(pit.boxS, car.s);
-      if (Number.isNaN(this.mergeFrom) && u > blend - PIT_SERVICE.MERGE_ZONE
+      if (Number.isNaN(this.mergeFrom) && u > mergeZone
         && (spotter.clearToMerge(car, world) || u > blend + PIT_SERVICE.MERGE_GIVE_UP - 120)) {
         this.mergeFrom = u;
       }
       const mergeFrom = this.mergeFrom;
       const lane = (s: number) => {
         const du = track.progressFrom(pit.boxS, s);
-        if (du < blend - PIT_SERVICE.MERGE_ZONE || Number.isNaN(mergeFrom)) {
+        if (du < mergeZone || Number.isNaN(mergeFrom)) {
           const r = track.signedS(s);
           if (du < track.distanceFrom(pit.boxS, track.pit.wallEnd)) return ramp(r, pit.boxS, pit.boxS + 25, boxLane, fastLane) + track.pitOffset(s);
           // Clear of the wall's end before cutting across to the apron.
