@@ -39,6 +39,18 @@ Landed:
     on instead of holding its lane through the corners. `followLine` in sweep mode now adds the lane's bend
     (feed-forward), which also changes the ovals' set-back lanes a little. Retrain set-back pit skills on it.
   - The presets (ovals) didn't change.
+- The commit after (2026-10-24): real circuits use their mapped pit lanes by default (`?pits=placed`, `--placed`
+  for our own placement).
+  - Mapped: Catalunya, Monza, Bahrain, Mexico City, Hungaroring, Interlagos, Sepang, Silverstone, Red Bull Ring,
+    Zandvoort. The rest have no mapped lane, or ours won't fit theirs, or the ovals (their mapped lanes aren't used).
+  - Where the mapped entry comes out shorter than pit road's 40 m flare (`PIT_ROAD_FLARE`), our own placement is used
+    if its entry is longer and it holds as many boxes. Austin falls back this way (18 m mapped, 98 m ours). Zandvoort
+    keeps its mapped lane (24 m entry): ours there holds 3 boxes and doesn't lay out.
+  - `pitsurvey.ts 10 --real`: real stops 23/29 clean (23/28 with `--placed`; Zandvoort lays out only mapped).
+    Failing: Austin and Norisring (the car never pits), Moscow, Sochi, Zandvoort and Martinsville (it hits something).
+    Every generated kind still gets 10/10.
+  - Every mapped one has a laid lane (`pit.entryRoute`), so it counts as a set-back pit road (`setBackPits`). That's
+    new at Hungaroring, Monza, Interlagos, Sepang, Silverstone and Zandvoort.
 
 Known: `test/pitdriving.test.ts` "a team with a pit-trained driver hands it the whole stop" fails with or without these changes.
 

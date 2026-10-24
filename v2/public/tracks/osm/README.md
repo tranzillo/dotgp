@@ -25,7 +25,11 @@ survey's own frame. Each entry lists the ways it was assembled from.
 - It lays the survey over OpenStreetMap's raceway. An OpenStreetMap
   survey shares its frame; a TUMFTM one is fitted with a turn and a shift.
 
-25 of the 30 tracks have one. They're used only on request (`?pits=mapped`
-in the app, `--mapped` in `scripts/realtracks.ts` and `scripts/pitsurvey.ts`).
-DotGP's pit lanes run alongside the track, so they can't yet follow the
-many real entries that cut inside the last corner.
+25 of the 30 tracks have one. The circuits use theirs by default, where
+DotGP's pit lane fits it: the entry and exit lanes follow the real line
+where they can, otherwise they run alongside the track. Where the mapped
+entry comes out shorter than pit road's 40 m flare, DotGP places its own
+lane instead, if that one's entry is longer and it holds as many boxes. The
+ovals' lanes aren't used. `?pits=placed` in the app, or `--placed` in
+`scripts/realtracks.ts` and `scripts/pitsurvey.ts`, places DotGP's own lanes
+everywhere, for comparison.

@@ -1,8 +1,9 @@
 // Pit survey: every kind of track (generated ovals of every size, generated club and GP circuits, the real tracks),
 // its pit lane against feedback/pit-layout.md's checks (the nose clear of the track, a long enough entry on circuits,
 // boxes for a field, the blend soon after the exit), and a scripted car called in once on each (the full pit cycle, as
-// the pit tests run it): clean stops.   npx tsx scripts/pitsurvey.ts [seeds per kind] [--real [--mapped]] [--quiet]
-// (--mapped: the real tracks' pit lanes where OpenStreetMap has them, public/tracks/pits.json.)
+// the pit tests run it): clean stops.   npx tsx scripts/pitsurvey.ts [seeds per kind] [--real [--placed]] [--quiet]
+// (The real tracks' pit lanes where OpenStreetMap has them, public/tracks/pits.json, and ours fits them; --placed: our
+// own choice everywhere, as before they were.)
 import { readFileSync } from 'node:fs';
 import { ScriptedDriver, Team } from '../src/ai/drivers';
 import type { CrewChief } from '../src/ai/pitting';
@@ -65,7 +66,7 @@ const kinds: Array<{ name: string; layouts: () => Array<{ id: string; layout: ()
   })),
   ...(args.includes('--real') ? [{
     name: 'real', layouts: () => {
-      const pits = (args.includes('--mapped') ? JSON.parse(readFileSync('public/tracks/pits.json', 'utf8')) : {}) as MappedPits;
+      const pits = (args.includes('--placed') ? {} : JSON.parse(readFileSync('public/tracks/pits.json', 'utf8'))) as MappedPits;
       return REAL_TRACKS.map((r) => ({ id: r.id, layout: () => realLayout(r, readFileSync(`public/tracks/${r.file}`, 'utf8'), pits[r.id]?.points) }));
     },
   }] : []),

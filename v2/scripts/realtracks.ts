@@ -4,9 +4,10 @@
  * nearest points), its pit boxes, and the racing line's lap (the car's best,
  * for comparing against real lap times).
  *
- *   npx tsx scripts/realtracks.ts [id ...] [--mapped]
+ *   npx tsx scripts/realtracks.ts [id ...] [--placed]
  *
- * (--mapped: pit lanes where OpenStreetMap has them, public/tracks/pits.json.)
+ * (Pit lanes where OpenStreetMap has them, public/tracks/pits.json, and ours fits
+ * them; --placed: our own choice everywhere.)
  */
 import { readFileSync } from 'node:fs';
 import { racingLine } from '../src/ai/racingLine';
@@ -27,7 +28,7 @@ function offBy(line: Pt[], points: Pt[]): { mean: number; max: number } {
 }
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
-const pits = (process.argv.includes('--mapped') ? JSON.parse(readFileSync('public/tracks/pits.json', 'utf8')) : {}) as MappedPits;
+const pits = (process.argv.includes('--placed') ? {} : JSON.parse(readFileSync('public/tracks/pits.json', 'utf8'))) as MappedPits;
 for (const real of REAL_TRACKS.filter((t) => !only.length || only.includes(t.id))) {
   const csv = readFileSync(`public/tracks/${real.file}`, 'utf8');
   let report: string;

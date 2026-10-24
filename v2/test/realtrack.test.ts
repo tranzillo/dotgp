@@ -61,6 +61,18 @@ describe('real tracks from survey data', () => {
     expect(yas.params.pitMap).toBeUndefined();
   });
 
+  it("uses its own pit lane where the mapped one's entry comes out too short, unless its own holds fewer boxes", () => {
+    const pits = JSON.parse(readFileSync('public/tracks/pits.json', 'utf8')) as MappedPits;
+    // Austin's real lane runs behind T20's centre: laid alongside, its entry would be under 20 m. Ours is longer.
+    const austin = realLayout(REAL_TRACKS.find((t) => t.id === 'austin')!, csvOf('austin'), pits.austin.points);
+    expect(austin.params.pitMap).toBeUndefined();
+    expect(austin.pit.wallStart - austin.pit.entryStart).toBeGreaterThan(60);
+    // Zandvoort's is short too, but ours there holds only a few boxes (too few to lay out): the mapped one stays.
+    const zandvoort = realLayout(REAL_TRACKS.find((t) => t.id === 'zandvoort')!, csvOf('zandvoort'), pits.zandvoort.points);
+    expect(zandvoort.params.pitMap).toBeDefined();
+    expect(zandvoort.pit.stalls.length).toBeGreaterThanOrEqual(20);
+  });
+
   it('draws a clockwise circuit the right way round (raced as its mirror image)', () => {
     expect(realLayout(REAL_TRACKS.find((t) => t.id === 'monza')!, csvOf('monza')).params.drawnMirrored).toBe(true);
     expect(realLayout(REAL_TRACKS.find((t) => t.id === 'austin')!, csvOf('austin')).params.drawnMirrored).toBeUndefined();

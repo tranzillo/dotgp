@@ -1919,9 +1919,8 @@ async function realVenue(id: string): Promise<Venue | null> {
   try {
     const res = await fetch(`/tracks/${real.file}`);
     if (!res.ok) throw new Error(`${real.name}: its survey didn't load (${res.status})`);
-    // (?pits=mapped: its pit lane where the real one is, if it's mapped. Not yet by default: our pit lanes can't follow
-    // an entry cutting inside a corner, and the pit drivers can't make a short one.)
-    if (new URLSearchParams(location.search).get('pits') === 'mapped') {
+    // (Its pit lane where the real one is, if it's mapped and ours fits it; ?pits=placed: our own choice, to compare.)
+    if (new URLSearchParams(location.search).get('pits') !== 'placed') {
       mappedPits ??= fetch('/tracks/pits.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
     }
     const track = new Track(realLayout(real, await res.text(), mappedPits && (await mappedPits)[id]?.points));

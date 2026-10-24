@@ -1558,6 +1558,11 @@ function mappedPlace(map: PitMap, cl: Centerline, half: number): PitPlace | null
   };
 }
 
+/** How many boxes a place's pit road holds (pitLane's count). */
+function placeBoxes(place: PitPlace): number {
+  return Math.min(MAX_BOXES, Math.max(1, Math.floor((place.wallEnd - place.wallStart - 40) / CIRCUIT_PIT.STALL_SPACING)));
+}
+
 /**
  * A pit lane with laid lanes in or out (PitPlace's routes; the other one, if
  * only one is, the usual sweep across alongside the track): its routes, the
@@ -1611,9 +1616,12 @@ function buildCircuit(p: CircuitParams, ctx: GenContext): TrackLayout {
   const half = p.width / 2;
 
   // Pit road round the start line on the left (the infield), where there's room for it and the paddock behind it.
-  // (A mapped pit lane where ours fits it; if it doesn't, our own choice, and the params say it isn't mapped.)
-  const mapped = p.pitMap ? mappedPlace(p.pitMap, cl, half) : null;
-  const place = mapped ?? pitPlace(cl, half);
+  // (A mapped pit lane where ours fits it; if it doesn't, our own choice, and the params say it isn't mapped. Our own
+  // too where the mapped one's entry comes out shorter than pit road's flare and ours is longer, with as many boxes.)
+  const fitted = p.pitMap ? mappedPlace(p.pitMap, cl, half) : null;
+  const own = !fitted || fitted.entryLength < PIT_ROAD_FLARE ? pitPlace(cl, half) : null;
+  const mapped = fitted && !(own && own.entryLength > fitted.entryLength && placeBoxes(own) >= placeBoxes(fitted)) ? fitted : null;
+  const place = mapped ?? own;
   if (!place) throw new Error('no room for a pit lane and paddock round the start line');
   const lane = pitLane({
     innerEdge: half, apronWidth: 0, wallStart: place.wallStart, wallEnd: place.wallEnd, blendEnd: place.wallEnd + place.exitTaper + 10,
