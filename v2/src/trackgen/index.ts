@@ -16,7 +16,7 @@ export * from './complex';
 export * from './course';
 export * from './roval';
 export { mirrorLayout } from './mirror';
-export { parseSurvey, REAL_TRACKS, realLayout, type RealTrack } from './realtrack';
+export { parseSurvey, REAL_TRACKS, realLayout, type MappedPits, type RealTrack } from './realtrack';
 export type { Problem } from './validate';
 
 /** Hand-tuned tracks the drivers train on: fixed parameters, always the same layout. */

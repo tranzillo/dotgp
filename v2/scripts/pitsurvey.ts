@@ -1,7 +1,8 @@
 // Pit survey: every kind of track (generated ovals of every size, generated club and GP circuits, the real tracks),
 // its pit lane against feedback/pit-layout.md's checks (the nose clear of the track, a long enough entry on circuits,
 // boxes for a field, the blend soon after the exit), and a scripted car called in once on each (the full pit cycle, as
-// the pit tests run it): clean stops.   npx tsx scripts/pitsurvey.ts [seeds per kind] [--real] [--quiet]
+// the pit tests run it): clean stops.   npx tsx scripts/pitsurvey.ts [seeds per kind] [--real [--mapped]] [--quiet]
+// (--mapped: the real tracks' pit lanes where OpenStreetMap has them, public/tracks/pits.json.)
 import { readFileSync } from 'node:fs';
 import { ScriptedDriver, Team } from '../src/ai/drivers';
 import type { CrewChief } from '../src/ai/pitting';
@@ -13,7 +14,7 @@ import type { TrackLayout } from '../src/sim/layout';
 import { Track } from '../src/sim/track';
 import { World } from '../src/sim/world';
 import { generateLayout } from '../src/trackgen';
-import { REAL_TRACKS, realLayout } from '../src/trackgen/realtrack';
+import { type MappedPits, REAL_TRACKS, realLayout } from '../src/trackgen/realtrack';
 import { noseClearance } from '../src/trackgen/stages';
 
 class CallOnce implements CrewChief {
@@ -63,7 +64,10 @@ const kinds: Array<{ name: string; layouts: () => Array<{ id: string; layout: ()
     name: `circuit ${variant}`, layouts: () => Array.from({ length: seeds }, (_, i) => ({ id: String(i + 1), layout: () => generateLayout({ type: 'circuit', seed: i + 1, variant }) })),
   })),
   ...(args.includes('--real') ? [{
-    name: 'real', layouts: () => REAL_TRACKS.map((r) => ({ id: r.id, layout: () => realLayout(r, readFileSync(`public/tracks/${r.file}`, 'utf8')) })),
+    name: 'real', layouts: () => {
+      const pits = (args.includes('--mapped') ? JSON.parse(readFileSync('public/tracks/pits.json', 'utf8')) : {}) as MappedPits;
+      return REAL_TRACKS.map((r) => ({ id: r.id, layout: () => realLayout(r, readFileSync(`public/tracks/${r.file}`, 'utf8'), pits[r.id]?.points) }));
+    },
   }] : []),
 ];
 for (const kind of kinds) {

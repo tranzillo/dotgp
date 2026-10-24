@@ -24,6 +24,10 @@ Landed:
   - The scripted route (`PitAutopilot`, `pitRoute`) starts as far in as the paving allows. It calls an entry off
     only in the last 60 m before the nose (it was 140 m). The merge never starts before the exit taper.
   - Pit-trained drivers learned the old route; `pitRoute` is their target, so retrain them on the new one.
+- The commit after: the entry lane stays one lane wide (out past the fast lane) until 40 m before the wall
+  (`PIT_ROAD_FLARE`), then widens to pit road. Every generated kind still gets 10/10 clean stops.
+  - Real tracks' pit lanes from OpenStreetMap (`public/tracks/pits.json`, `scripts/osmpits.ts`). They're
+    opt-in for now (`?pits=mapped`, `--mapped`) and don't change anything by default.
 - The presets changed with each; their fingerprints in `test/trackgen.test.ts` are updated.
 
 Known: `test/pitdriving.test.ts` "a team with a pit-trained driver hands it the whole stop" fails with or without these changes.

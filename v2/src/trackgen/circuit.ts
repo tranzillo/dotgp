@@ -107,6 +107,17 @@ export interface CircuitParams {
   straightK?: number;
   /** A real track's half widths either side along the lap (m; signed s), in place of width and the corners' widening. */
   edges?: { left: Profile; right: Profile };
+  /** A real track's pit lane, where it is on the lap (realtrack.ts's mappedPit), in place of pitPlace's choice. */
+  pitMap?: PitMap;
+}
+
+/** A mapped pit lane along the lap (signed s): its entry, pit road, exit; and its centre's offset alongside pit road (m). */
+export interface PitMap {
+  entry: number;
+  wallStart: number;
+  wallEnd: number;
+  exit: number;
+  offset: number;
 }
 
 interface SizeClass {
@@ -1278,7 +1289,18 @@ const PADDOCK_MIN = 12;
  * way to the rest of the circuit: clearances), less a margin. Null if the
  * start line has no room for pit road.
  */
-function pitPlace(cl: Centerline, half: number): { wallStart: number; wallEnd: number; entryLength: number; exitTaper: number; paddock: number } | null {
+interface PitPlace {
+  wallStart: number;
+  wallEnd: number;
+  entryLength: number;
+  exitTaper: number;
+  paddock: number;
+  /** Where along pit road the paddock is (signed s), if not all of it but 20 m at either end. */
+  garage?: [number, number];
+}
+
+/** How far out on the left there's room for the pit lane (m, from the centreline), every `step` m round the lap. */
+function pitRoom(cl: Centerline, half: number): { room: number[]; step: number; at: (x: number) => number } {
   const L = cl.length, n = Math.round(L / GEO_STEP), step = L / n;
   // (Room for what lies behind the barrier: it stands at most WALL_REACH of the way out to the rest of the circuit.)
   const clear = clearances(cl, n).left;
@@ -1288,7 +1310,12 @@ function pitPlace(cl: Centerline, half: number): { wallStart: number; wallEnd: n
     for (let k = 1; k < 2 * n; k++) room[k % n] = Math.min(room[k % n], room[(k - 1) % n] + SLOPE * step);
     for (let k = 2 * n - 2; k >= 0; k--) room[k % n] = Math.min(room[k % n], room[(k + 1) % n] + SLOPE * step);
   }
-  const at = (x: number) => Math.round((((x % L) + L) % L) / step) % n;
+  return { room, step, at: (x: number) => Math.round((((x % L) + L) % L) / step) % n };
+}
+
+function pitPlace(cl: Centerline, half: number): PitPlace | null {
+  const L = cl.length;
+  const { room, step, at } = pitRoom(cl, half);
   const roadBack = half + noseClearance() + CIRCUIT_PIT.WALL_THICKNESS + CIRCUIT_PIT.ROAD_WIDTH;
   const MARGIN = 3;
   const road = (x: number) => Math.abs(cl.curvatureAt(x)) < PIT_ROAD_K && room[at(x)] >= roadBack + PADDOCK_MIN + MARGIN;
@@ -1313,6 +1340,51 @@ function pitPlace(cl: Centerline, half: number): { wallStart: number; wallEnd: n
   return { wallStart, wallEnd, entryLength: entry, exitTaper: Math.max(30, exit), paddock: Math.max(PADDOCK_MIN, Math.min(CIRCUIT_PIT.GARAGE_DEPTH, deep)) };
 }
 
+/**
+ * A mapped pit lane's place: pit road along the longest stretch of the
+ * mapped one with room for ours (a real one can be narrower where there are
+ * no boxes: ours is cut back, the entry or exit lane longer); the entry and
+ * exit lanes as mapped, but only as far as ours fit (ours run alongside the
+ * track: one that cuts across inside a corner starts after it); the paddock
+ * along the longest stretch of pit road with room behind it for PADDOCK_MIN,
+ * as deep as that stretch allows (as pitPlace). Null if no stretch has room
+ * for both.
+ */
+function mappedPlace(map: PitMap, cl: Centerline, half: number): PitPlace | null {
+  const { room, step, at } = pitRoom(cl, half);
+  const roadBack = half + noseClearance() + CIRCUIT_PIT.WALL_THICKNESS + CIRCUIT_PIT.ROAD_WIDTH;
+  const behind = (x: number) => room[at(x)] - roadBack - 3;
+  /** The longest stretch of [a, b] where `ok` holds throughout. */
+  const longest = (a: number, b: number, ok: (x: number) => boolean): [number, number] | null => {
+    let best: [number, number] | null = null;
+    for (let x = a; x <= b; x += step) {
+      if (!ok(x)) continue;
+      let y = x;
+      while (y + step <= b && ok(y + step)) y += step;
+      if (!best || y - x > best[1] - best[0]) best = [x, y];
+      x = y;
+    }
+    return best;
+  };
+  const road = longest(map.wallStart, map.wallEnd, (x) => behind(x) >= 0);
+  if (!road) return null;
+  const [wallStart, wallEnd] = road;
+  // (The lanes: the entry's deceleration lane out to the fast lane's far side, widening to pit road just before the wall.)
+  const lane = (x: number) => room[at(x)] >= half + noseClearance() + CIRCUIT_PIT.WALL_THICKNESS + 6 + 1.5;
+  let entry = 0;
+  while (wallStart - entry - step >= map.entry && lane(wallStart - entry - step)) entry += step;
+  let exit = 0;
+  while (wallEnd + exit + step <= map.exit && lane(wallEnd + exit + step)) exit += step;
+  const lot = longest(wallStart + 20, wallEnd - 20, (x) => behind(x) >= PADDOCK_MIN);
+  if (!lot || lot[1] - lot[0] < 60) return null;
+  let deep = Infinity;
+  for (let x = lot[0]; x <= lot[1]; x += step) deep = Math.min(deep, behind(x));
+  return {
+    wallStart, wallEnd, entryLength: entry, exitTaper: Math.max(30, exit),
+    paddock: Math.min(CIRCUIT_PIT.GARAGE_DEPTH, deep), garage: lot,
+  };
+}
+
 function buildCircuit(p: CircuitParams, ctx: GenContext): TrackLayout {
   const centerline = circuitCenterline(p);
   const cl = new Centerline(centerline);
@@ -1320,7 +1392,9 @@ function buildCircuit(p: CircuitParams, ctx: GenContext): TrackLayout {
   const half = p.width / 2;
 
   // Pit road round the start line on the left (the infield), where there's room for it and the paddock behind it.
-  const place = pitPlace(cl, half);
+  // (A mapped pit lane where ours fits it; if it doesn't, our own choice, and the params say it isn't mapped.)
+  const mapped = p.pitMap ? mappedPlace(p.pitMap, cl, half) : null;
+  const place = mapped ?? pitPlace(cl, half);
   if (!place) throw new Error('no room for a pit lane and paddock round the start line');
   const { pit, pavedInner: pitPaved } = pitLane({
     innerEdge: half, apronWidth: 0, wallStart: place.wallStart, wallEnd: place.wallEnd, blendEnd: place.wallEnd + place.exitTaper + 10,
@@ -1328,7 +1402,8 @@ function buildCircuit(p: CircuitParams, ctx: GenContext): TrackLayout {
     wallGap: CIRCUIT_PIT.WALL_GAP, wallThickness: CIRCUIT_PIT.WALL_THICKNESS, roadWidth: CIRCUIT_PIT.ROAD_WIDTH,
     stallSpacing: CIRCUIT_PIT.STALL_SPACING,
   });
-  const { garage, buildings } = garageLot(cl, { s0: pit.wallStart + 20, s1: pit.wallEnd - 20, d0: pit.roadD, depth: place.paddock });
+  const [g0, g1] = place.garage ?? [pit.wallStart + 20, pit.wallEnd - 20];
+  const { garage, buildings } = garageLot(cl, { s0: g0, s1: g1, d0: pit.roadD, depth: place.paddock });
 
   // The cross-section: edges widened round the corners that need it, barriers at the verge, run-off on
   // corner outsides and behind the paddock, all kept clear of the rest of the circuit.
@@ -1358,14 +1433,14 @@ function buildCircuit(p: CircuitParams, ctx: GenContext): TrackLayout {
     { kind: 'ticks', s: [0], d0: -half, d1: half, style: 'start' },
   ];
 
-  const { name, ...params } = p;
+  const { name, pitMap, ...params } = p;
   return {
     version: LAYOUT_VERSION,
     id: name ? name.toLowerCase().replace(/\s+/g, '-') : `circuit-${ctx.seed}`,
     name: name ?? trackName(ctx.rng('name'), L > 3500 ? 'Grand Prix Circuit' : 'Circuit'),
     type: 'circuit',
     seed: ctx.seed,
-    params: { ...params },
+    params: { ...params, ...(mapped ? { pitMap } : {}) },
     centerline,
     crossSection: { edgeIn, edgeOut, apronWidth: 0, pavedInner, bankInner: flat(0), bankOuter: flat(0), bankInfield: flat(0) },
     surfaces,
@@ -1519,10 +1594,20 @@ function validateCircuit(layout: TrackLayout, track: Track): Problem[] {
     // (A real track's run-off is what it is: noted, not refused.)
     if (room < 0.6 * want) problems.push({ severity: p.character === 'real' ? 'warning' : 'error', message: `turn ${i + 1}'s run-off is squeezed by another part of the circuit` });
   });
+  let squeezed = false;
   for (let x = pit.entryStart; x <= pit.exitEnd; x += GEO_STEP) {
     const k = sample(x);
     const behind = Math.max(track.pavedInnerD(x), x >= lot.s0 && x <= lot.s1 ? lot.d1 : -Infinity);
-    if (g.left.wall[k] - BARRIER / 2 < behind + 0.5) { problems.push({ severity: 'error', message: 'pit lane or paddock squeezed by another part of the circuit' }); break; }
+    // (A real track's pit lane where it is: into the half-metre margin, or the barrier over the paving's edge by under a
+    // metre, well clear of the lane's cars, noted, not refused; further refused.)
+    const face = g.left.wall[k] - BARRIER / 2;
+    if (face < behind + 0.5) {
+      const severity = p.character === 'real' && face >= behind - 1 ? 'warning' : 'error';
+      if (severity === 'warning' && squeezed) continue;
+      problems.push({ severity, message: 'pit lane or paddock squeezed by another part of the circuit' });
+      if (severity === 'error') break;
+      squeezed = true;
+    }
   }
   // Pit road holds a field, and its entry lane leaves room to slow off the racing line (a real track's is what it is).
   if (pit.stalls.length < MIN_CIRCUIT_BOXES) problems.push({ severity: 'error', message: `pit road holds only ${pit.stalls.length} boxes` });

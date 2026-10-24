@@ -13,3 +13,19 @@ Each file's second line lists the OpenStreetMap ways it was assembled from.
 The widths are published figures, not mapped ones. Banking is in
 `src/trackgen/realtrack.ts` (`REAL_TRACKS`), also from published figures.
 Pits, run-off and infield are DotGP's own.
+
+## Pit lanes (`../pits.json`)
+
+The real tracks' pit lanes, also from OpenStreetMap (ODbL), in each
+survey's own frame. Each entry lists the ways it was assembled from.
+`scripts/osmpits.ts` makes them:
+- It fetches the raceway ways around the track.
+- It takes the longest chain of ways named as a pit lane, in any of
+  several languages.
+- It lays the survey over OpenStreetMap's raceway. An OpenStreetMap
+  survey shares its frame; a TUMFTM one is fitted with a turn and a shift.
+
+25 of the 30 tracks have one. They're used only on request (`?pits=mapped`
+in the app, `--mapped` in `scripts/realtracks.ts` and `scripts/pitsurvey.ts`).
+DotGP's pit lanes run alongside the track, so they can't yet follow the
+many real entries that cut inside the last corner.

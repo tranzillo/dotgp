@@ -25,7 +25,7 @@ import { SIGNATURE_BINS } from '../sim/car';
 import { G, PHYSICS as P } from '../sim/constants';
 import { Track } from '../sim/track';
 import {
-  CIRCUIT_CLASSES, complexLayouts, generateTrack, MEGA_COMPLEX, venueLayouts, OVAL_SHAPES, OVAL_SIZE_CLASSES, PRESETS, presetLayout, presetTrack, REAL_TRACKS, realLayout, type OvalShape,
+  CIRCUIT_CLASSES, complexLayouts, generateTrack, MEGA_COMPLEX, venueLayouts, OVAL_SHAPES, OVAL_SIZE_CLASSES, PRESETS, presetLayout, presetTrack, REAL_TRACKS, realLayout, type MappedPits, type OvalShape,
 } from '../trackgen';
 import { layoutLabel, layoutsFor, multiLayoutVenue, singleLayoutVenue, venueSeries, type Venue, type VenueLayout } from '../venue/venue';
 import { AgentPage } from './agentPage';
@@ -1903,6 +1903,9 @@ $('generate').onclick = () => {
   showVenueCode(venue.source!);
   news(`New venue: ${venue.name}, ${t.length.toFixed(0)} m. Race there from Exhibition (pick a series and Start). Its code: ${venue.source}`);
 };
+/** The real tracks' mapped pit lanes (public/tracks/pits.json), fetched the first time one is asked for. */
+let mappedPits: Promise<MappedPits> | undefined;
+
 /**
  * A real track (trackgen/realtrack.ts) as a venue: its survey fetched (public/tracks), laid out, and added to the list
  * (once). Null, with the reason in the news, if it can't be laid out.
@@ -1916,7 +1919,12 @@ async function realVenue(id: string): Promise<Venue | null> {
   try {
     const res = await fetch(`/tracks/${real.file}`);
     if (!res.ok) throw new Error(`${real.name}: its survey didn't load (${res.status})`);
-    const track = new Track(realLayout(real, await res.text()));
+    // (?pits=mapped: its pit lane where the real one is, if it's mapped. Not yet by default: our pit lanes can't follow
+    // an entry cutting inside a corner, and the pit drivers can't make a short one.)
+    if (new URLSearchParams(location.search).get('pits') === 'mapped') {
+      mappedPits ??= fetch('/tracks/pits.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+    }
+    const track = new Track(realLayout(real, await res.text(), mappedPits && (await mappedPits)[id]?.points));
     const venue = singleLayoutVenue(track, { id: `real-${id}`, name: `${track.name} (real ${real.kind})`, source });
     venues.push(venue);
     return venue;

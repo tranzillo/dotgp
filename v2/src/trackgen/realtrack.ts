@@ -1,5 +1,6 @@
-import type { Profile, TrackLayout } from '../sim/layout';
-import { closeLoop, curveCorners, type CircuitElement, type CircuitParams } from './circuit';
+import { Centerline } from '../sim/centerline';
+import { evalEdge, type Profile, type TrackLayout } from '../sim/layout';
+import { circuitCenterline, closeLoop, curveCorners, type CircuitElement, type CircuitParams, type PitMap } from './circuit';
 import { integrate } from './course';
 import { buildLayout } from './generator';
 import { closeOval, type OvalShape, type ShapedOvalParams } from './oval';
@@ -706,12 +707,15 @@ export function parseSurvey(csv: string): Survey {
   };
 }
 
+/** public/tracks/pits.json: the real tracks' pit lanes from OpenStreetMap, by id (scripts/osmpits.ts). */
+export type MappedPits = Record<string, { ways: number[]; points: Array<[number, number]> }>;
+
 /**
  * A real track's layout from its survey (as DotGP lays it out: its own pits,
  * run-off and cross-section on the real line). Throws, saying why, if it
  * can't be laid out.
  */
-export function realLayout(track: RealTrack, csv: string): TrackLayout {
+export function realLayout(track: RealTrack, csv: string, pitLane?: Array<[number, number]>): TrackLayout {
   const survey = parseSurvey(csv);
   if (track.kind === 'oval') {
     const made = ovalFromSurvey(survey, {
@@ -723,10 +727,57 @@ export function realLayout(track: RealTrack, csv: string): TrackLayout {
   }
   const made = circuitFromSurvey(survey, { name: track.name });
   if (!made) throw new Error(`${track.name}: no straight long enough for a main straight, or the lap doesn't close`);
-  const layout = buildLayout('circuit', { ...made.params, name: track.name });
+  // (Its pit lane where the real one is, if it's mapped and on the left.)
+  const pitMap = pitLane && mappedPit(made.params, made.origin, made.mirrored, pitLane);
+  const layout = buildLayout('circuit', { ...made.params, name: track.name, ...(pitMap ? { pitMap } : {}) });
   // A clockwise track is raced as its mirror image (DotGP's laps turn left), and drawn the right way round. Where its
   // start line is on the survey (mirrored with it), for laying the two over each other.
   return { ...layout, params: { ...layout.params, surveyOrigin: made.origin, ...(made.mirrored ? { drawnMirrored: true } : {}) } };
+}
+
+/**
+ * A mapped pit lane (points in the survey's frame: public/tracks/pits.json)
+ * on a circuit laid out from that survey: where its centre crosses the
+ * track's left edge on the way in (the entry), where it has swung out to
+ * within 2 m of its offset alongside (pit road), and back (signed s along
+ * the lap). Null if it runs on the right, or doesn't reach the track (within
+ * 3 m of its edge) at both ends.
+ */
+export function mappedPit(
+  params: CircuitParams, origin: { x: number; y: number; h: number }, mirrored: boolean, points: Array<[number, number]>,
+): PitMap | null {
+  const cl = new Centerline(circuitCenterline(params));
+  const L = cl.length;
+  // Survey (mirrored with it) to the laid-out frame: the start line where the survey's is, heading the same way.
+  const [x0, y0] = cl.toWorld(0, 0), [x1, y1] = cl.toWorld(1, 0), rot = Math.atan2(y1 - y0, x1 - x0) - origin.h;
+  const c = Math.cos(rot), sn = Math.sin(rot);
+  const lane = points.map(([x, y]) => (mirrored ? [-x, y] : [x, y])).map(([x, y]) => {
+    const u = x - origin.x, v = y - origin.y;
+    return [x0 + c * u - sn * v, y0 + sn * u + c * v] as [number, number];
+  });
+  // Along the lane every 2 m or so, its s kept continuous across the start line.
+  const at: Array<{ s: number; d: number }> = [];
+  for (let i = 0; i + 1 < lane.length; i++) {
+    const [ax, ay] = lane[i], [bx, by] = lane[i + 1], k = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / 2));
+    for (let j = 0; j < k; j++) {
+      const p = cl.project(ax + ((bx - ax) * j) / k, ay + ((by - ay) * j) / k);
+      const s = at.length ? at[at.length - 1].s + (((p.s - at[at.length - 1].s + L / 2) % L) + L) % L - L / 2 : cl.signedS(p.s);
+      at.push({ s, d: p.d });
+    }
+  }
+  if (at.length < 20) return null;
+  const edge = (s: number) => (params.edges ? evalEdge(params.edges.left, cl.signedS(s), L) : params.width / 2);
+  const middle = at.slice(Math.floor(at.length / 4), Math.ceil((3 * at.length) / 4)).map((p) => p.d).sort((a, b) => a - b);
+  const offset = middle[Math.floor(middle.length / 2)];
+  if (offset < 0) return null;
+  // (Its ends on the track, give or take the two lines' few metres apart.)
+  if (at[0].d > edge(at[0].s) + 3 || at[at.length - 1].d > edge(at[at.length - 1].s) + 3) return null;
+  const off = at.map((p) => p.d > edge(p.s));
+  const first = off.indexOf(true), last = off.lastIndexOf(true);
+  if (first < 0) return null;
+  const along = at.map((p) => p.d >= offset - 2);
+  const a = along.indexOf(true), b = along.lastIndexOf(true);
+  return { entry: at[first].s, wallStart: at[a].s, wallEnd: at[b].s, exit: at[last].s, offset };
 }
 
 /**
