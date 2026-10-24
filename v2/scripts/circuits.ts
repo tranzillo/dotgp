@@ -54,6 +54,8 @@ interface DriverEntry {
   limits?: { latency: number; noise: number };
   /** A caution skill: the network that drives while the field is pacing; and one for road circuits, if it has its own. */
   caution?: { weights: number[] };
+  /** The pit skill: the network that drives its stops. */
+  pit?: { weights: number[] };
 }
 
 interface RaceJob {
@@ -130,7 +132,9 @@ function runRace(job: RaceJob): CircuitRace {
     const m = makeupOf(d, hashSeed(job.seed, `hands${job.track}:${slot}`));
     const brain = new NeuralDriver(adaptWeights(Float32Array.from(d.weights)), d.roadCourse ? adaptWeights(Float32Array.from(d.roadCourse.weights)) : undefined,
       m.knowledge, { limits: m.limits, caution: d.caution && !job.scriptCautions ? adaptWeights(Float32Array.from(d.caution.weights)) : undefined,
-        roadCaution: d.roadCourse?.caution && !job.scriptCautions ? adaptWeights(Float32Array.from(d.roadCourse.caution.weights)) : undefined });
+        roadCaution: d.roadCourse?.caution && !job.scriptCautions ? adaptWeights(Float32Array.from(d.roadCourse.caution.weights)) : undefined,
+        // Its stops with its pit skill (without it, a licensed driver's stops were driven by its racing network).
+        pit: d.pit ? adaptWeights(Float32Array.from(d.pit.weights)) : undefined });
     world.addCar(car, new Team(brain, new TowerSpotter(), new StrategistCrewChief(randomTraits(() => rng.next())),
       !!(d.pitLicensed && d.pitTrafficLicensed), !job.scriptCautions && (d.cautionLicensed ?? false)));
   }
