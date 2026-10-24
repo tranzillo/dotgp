@@ -139,6 +139,8 @@ export const CAUTION_SIZE = 7;
 export const CALLS_SIZE = 5;
 
 export const PIT_CALLS_SIZE = 3;
+
+export const CAUTION_RANGE_SIZE = 2;
 /** The radio's reach ahead (m) and what counts as in our lane (m): as the spotter calls the cars ahead. */
 const PIT_CALL_AHEAD = 120;
 const PIT_CALL_LANE = 3.5;
@@ -243,5 +245,29 @@ export function observeCaution(car: Car, world: World, out: Float32Array): Float
   } else {
     out[5] = 1;
   }
+  return out;
+}
+
+/**
+ * Under caution, how far the place in line is and the gap to the car ahead in its file, without the caution inputs'
+ * clamps (observeCaution's: its place at 120 m, the gap at 50 m). Catching the queue after the safety car comes out
+ * both were at their clamps most of the time (audit 2026-10-24: 36-62% and 43-66%): how far there is to go and when
+ * to start slowing for the car ahead weren't there to see. The place: asinh of the distance in 40 m (as before near
+ * it, 1.8 at 120 m, 3.9 at a kilometre); the gap: the square root of its share of 200 m (0.5 at 50 m, 1 at 200 m or
+ * none). Zero under green and without a place.
+ */
+export function observeCautionRange(car: Car, world: World, out: Float32Array): Float32Array {
+  out.fill(0);
+  const ctl = world.control;
+  if (!ctl || !ctl.pacing || car.pit.phase !== 'none' || car.finished) return out;
+  const track = world.track;
+  const slot = ctl.slotFor(car);
+  if (!slot) return out;
+  let err = track.distanceFrom(car.s, slot.s);
+  if (err > track.length / 2) err -= track.length;
+  if (err < -150) err += track.length;
+  out[0] = Math.asinh(err / 40);
+  const ahead = ctl.carAheadInFile(car, slot.d);
+  out[1] = ahead ? Math.sqrt(Math.max(0, Math.min(1, (track.distanceFrom(car.s, ahead.s) - 2 * P.CAR_RADIUS) / 200))) : 1;
   return out;
 }

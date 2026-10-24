@@ -1,5 +1,6 @@
-import { PHYSICS as P } from '../sim/constants';
+import { G, PHYSICS as P } from '../sim/constants';
 import type { Car } from '../sim/car';
+import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
 
 /**
@@ -36,13 +37,51 @@ const SAME_LANE_DD = 3.5;
 const AHEAD_RANGE = 120;
 const BEHIND_RANGE = 80;
 const HAZARD_RANGE = 800;
-const HAZARD_SPEED = 25; // m/s: anything slower than this on track is a hazard
+const HAZARD_SPEED = 25; // m/s: anything slower than this on track is a hazard...
+/**
+ * ...or slower than this share of what a car could carry at its spot (the slowest of the two). On a circuit a car in
+ * a slow corner is under 25 m/s: the green hazard was ordinary traffic 97% of the time, called half the time.
+ */
+const HAZARD_SHARE = 0.5;
 /**
  * While the field is pacing it all runs slower than HAZARD_SPEED (a safety car takes corners well under it), so the
  * hazard was the next car in line and the wreck behind it never called: then only a car stopped (or out) is (m/s).
  */
 const PACING_HAZARD_SPEED = 5;
 const CLOSING_SCALE = 20; // m/s
+
+const normals = new WeakMap<Track, Float32Array>();
+
+/**
+ * What a car could carry at each centreline sample (m/s): the corner there on mechanical grip alone (no banking, no
+ * downforce: low, as a hazard's yardstick should be), braked for from what comes and gently accelerated out of (a car
+ * powering out of a slow corner is below what full grip would allow). Once per track.
+ */
+function normalSpeeds(track: Track): Float32Array {
+  const known = normals.get(track);
+  if (known) return known;
+  const n = track.n, ds = track.ds;
+  const w = Math.max(1, Math.round(10 / ds));
+  const v = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    let k = 0;
+    for (let j = -w; j <= w; j++) k += Math.abs(track.kappa[(i + j + n) % n]);
+    k /= 2 * w + 1;
+    v[i] = Math.min(100, Math.sqrt((P.TIRE_MU * G) / Math.max(1e-6, k)));
+  }
+  // Round the lap twice each way: braking into corners (0.8 g), accelerating out (4 m/s^2).
+  const brake = 0.8 * P.TIRE_MU * G, accel = 4;
+  for (let pass = 0; pass < 2 * n; pass++) {
+    const i = (2 * n - 1 - pass) % n;
+    v[i] = Math.min(v[i], Math.sqrt(v[(i + 1) % n] ** 2 + 2 * brake * ds));
+  }
+  for (let pass = 0; pass < 2 * n; pass++) {
+    const i = pass % n;
+    v[i] = Math.min(v[i], Math.sqrt(v[(i - 1 + n) % n] ** 2 + 2 * accel * ds));
+  }
+  normals.set(track, v);
+  return v;
+}
 
 /** A spotter watches the race and fills the radio for its driver. */
 export interface Spotter {
@@ -99,7 +138,8 @@ export class TowerSpotter implements Spotter {
     // The pace car (safety car) and wreckers out on track are traffic too: unnamed, the pace car was the car a quarter
     // of the damaging contacts under caution came from.
     const traffic = world.officials.length ? [...world.cars, ...world.officials.map((o) => o.car)] : world.cars;
-    const hazardSpeed = world.control?.pacing ? PACING_HAZARD_SPEED : HAZARD_SPEED;
+    const pacing = !!world.control?.pacing;
+    const normal = pacing ? null : normalSpeeds(track);
 
     for (const other of traffic) {
       if (other === car || other.cleared) continue;
@@ -127,6 +167,7 @@ export class TowerSpotter implements Spotter {
       const gapAhead = track.wrapS(other.s - car.s);
       // Slow because they're pitting isn't a hazard; slow on the racing surface is. (Speed last: it's a square root.)
       const pitting = other.pit.phase !== 'none' && !other.retired;
+      const hazardSpeed = normal ? Math.min(HAZARD_SPEED, HAZARD_SHARE * normal[other.trackIdx]) : PACING_HAZARD_SPEED;
       if (gapAhead > alongsideDs() && gapAhead < hazardGap && !pitting && (other.retired || other.speed < hazardSpeed)) {
         hazardGap = gapAhead;
         hazardD = other.d;
