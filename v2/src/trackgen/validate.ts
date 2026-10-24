@@ -1,5 +1,6 @@
 import type { TrackLayout, TrackRect } from '../sim/layout';
 import type { Track } from '../sim/track';
+import { noseClearance } from './stages';
 
 export interface Problem {
   /** Errors reject the layout (the generator retries); warnings are kept as notes. */
@@ -26,6 +27,10 @@ export function validateLayout(layout: TrackLayout, track: Track): Problem[] {
     error('pit lane points out of order (entry < wall start < wall end < exit <= blend end)');
   }
   if (pit.blendEnd - pit.entryStart >= track.length) error('pit lane is longer than the lap');
+  // The pit wall's nose clear of the racing surface: a car on the inside line (its centre a radius past the edge, as
+  // the track limits allow) passes it with a metre to spare.
+  const nose = pit.wallD - pit.wallThickness / 2 + track.pitOffset(pit.wallStart) - track.innerEdgeAt(pit.wallStart);
+  if (nose < noseClearance() - 0.05) error(`pit wall's nose ${nose.toFixed(1)} m from the track (at least ${noseClearance().toFixed(1)})`);
   if (!pit.stalls.length) error('pit road has no boxes');
   else if (pit.stalls.length < MIN_STALLS) warn(`only ${pit.stalls.length} pit boxes: cars will share`);
   if (!layout.infield.garage.parking.length) error('garage has no parking for retired cars');

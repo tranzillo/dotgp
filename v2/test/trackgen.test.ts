@@ -47,9 +47,11 @@ describe('track generation', () => {
 
   it('keeps the presets exactly as they were: drivers are trained on them', () => {
     // A change here means every trained driver is racing a different track. Change only on purpose.
-    expect(hashSeed(0, JSON.stringify(presetLayout('speedway')))).toBe(3134438636);
-    expect(hashSeed(0, JSON.stringify(presetLayout('short')))).toBe(1157504970);
-    expect(hashSeed(0, JSON.stringify(presetLayout('flat')))).toBe(2805021105);
+    // (Changed 2026-10-23 on purpose: the pit wall a car's width and a metre clear of the track, the inside pit wall and
+    // crews' strip behind the boxes: training/TRACK-CHANGES.md.)
+    expect(hashSeed(0, JSON.stringify(presetLayout('speedway')))).toBe(2368809997);
+    expect(hashSeed(0, JSON.stringify(presetLayout('short')))).toBe(3914552127);
+    expect(hashSeed(0, JSON.stringify(presetLayout('flat')))).toBe(2714689838);
   });
 
   for (const [variant, cls] of Object.entries(OVAL_SIZE_CLASSES)) {
@@ -107,8 +109,11 @@ describe('track generation', () => {
       const t = presetTrack(id);
       expect(t.pit.stalls.length).toBeGreaterThan(0);
       expect(t.infield.escapeLanes.length).toBeGreaterThan(0);
-      expect(t.walls.map((w) => w.id)).toEqual(['outer', 'pit-wall']);
-      expect(t.wallCaps.length).toBe(2);
+      // The outer wall, the pit wall, and the inside pit wall behind the boxes (in pieces round the garage's way in).
+      const ids = t.walls.map((w) => w.id);
+      expect(ids.slice(0, 2)).toEqual(['outer', 'pit-wall']);
+      expect(ids.slice(2).every((id) => id.startsWith('pit-inner-wall'))).toBe(true);
+      expect(t.wallCaps.length).toBe(2 * (ids.length - 1));
     }
   });
 

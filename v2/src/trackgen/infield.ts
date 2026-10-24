@@ -662,7 +662,7 @@ function courseInner(site: InfieldSite, straight: number, radius: number, width:
       pits: { gap: 1, entryLength: 15, exitLength: 15, blend: 0, startInset: 45, endInset: 40, stallSpacing: 11, garageSetBack: 0, garageLanes: 1 },
     }, site.seed);
     // (Open, as the infield is: its pit wall only.)
-    return { ...built, id: `${site.id}/inner`, walls: built.walls.filter((w) => w.id === 'pit-wall') };
+    return { ...built, id: `${site.id}/inner`, walls: built.walls.filter((w) => w.id === 'pit-wall' || w.id.startsWith('pit-inner-wall')) };
   } catch {
     return null;
   }

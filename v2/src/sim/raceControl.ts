@@ -549,7 +549,11 @@ export class RaceControl {
     if (this.paceCarOut || !leader || this.oneToGo || leader.pit.phase !== 'none') return;
     const t = this.track;
     const toExit = t.distanceFrom(leader.s, t.pit.wallEnd);
-    if (toExit > FIRST_ROW_GAP && toExit < FIRST_ROW_GAP + ROW_GAP) {
+    // (Earlier the further it has to come across to the track: some 5 m of track for each metre past the 4.8 m from
+    // its lane to the track's edge that pit road stood at before the pit wall stood a car's width clear of it.)
+    const across = t.pit.wallD + t.pit.wallThickness / 2 + 3 + t.pitOffset(t.pit.wallEnd - 5) - t.innerEdgeAt(t.pit.wallEnd - 5);
+    const early = 5 * Math.max(0, across - 4.8);
+    if (toExit > FIRST_ROW_GAP + early && toExit < FIRST_ROW_GAP + ROW_GAP + early) {
       this.paceCar.placeOnTrack(t, t.pit.wallEnd - 5, t.pit.wallD + t.pit.wallThickness / 2 + 3 + t.pitOffset(t.pit.wallEnd - 5));
       setSpeed(this.paceCar, t, this.paceSpeedAt(this.paceCar.s));
       this.paceCar.retired = false;

@@ -4,7 +4,7 @@ import { pullOffS } from '../sim/raceControl';
 import type { Controller, World } from '../sim/world';
 import { followLine } from './lineFollower';
 import { pitPath } from './pitting';
-import { fastLaneGap } from '../sim/layout';
+import { pitFastD } from '../sim/layout';
 import { Rng } from './rng';
 
 /**
@@ -179,7 +179,7 @@ export class PaceCarDriver implements Controller {
     const t = world.track;
     const r = t.signedS(car.s);
     const wallClear = t.pit.wallD + t.pit.wallThickness / 2 + P.CAR_RADIUS + 1.2;
-    const fastLane = Math.max(t.pit.wallD + fastLaneGap(t.pit.wallThickness, !!t.pit.offset), wallClear);
+    const fastLane = Math.max(pitFastD(t.pit), wallClear);
     const ramp = (x: number, x0: number, x1: number, a: number, b: number) =>
       x <= x0 ? a : x >= x1 ? b : a + (b - a) * (x - x0) / (x1 - x0);
     const pull = pullOffS(t);

@@ -1,6 +1,7 @@
 import type { Centerline } from '../sim/centerline';
+import { PHYSICS } from '../sim/constants';
 import {
-  evalProfile, fastLaneGap, shiftEdge, type CenterlineSpec, type Decoration, type Edge, type EscapeLane, type Garage, type Marking, type PitLane, type Profile,
+  evalProfile, shiftEdge, type CenterlineSpec, type Decoration, type Edge, type EscapeLane, type Garage, type Marking, type PitLane, type Profile,
   type Road, type RoadNetwork, type RoadNode, type SurfaceRegion, type TrackRect, type Wall,
 } from '../sim/layout';
 
@@ -130,18 +131,40 @@ export interface PitLaneOptions {
   /** Paved taper from the apron to pit road before the wall, and back down after it. */
   entryLength: number;
   exitTaper: number;
-  /** Gap between the racing surface and the wall, wall thickness, pit road width. */
+  /** Gap between the racing surface and the wall (at least noseClearance), wall thickness, pit road width. */
   wallGap: number;
   wallThickness: number;
   roadWidth: number;
   stallSpacing: number;
+  /** Pit road's travel (fast) lane by the wall, and the boxes beyond it (default: 6 m, and the rest of roadWidth). */
+  travelWidth?: number;
+  boxDepth?: number;
+  /** An oval's crew strip behind an inside pit wall behind the boxes (NASCAR's), this wide; absent: neither. */
+  crewWidth?: number;
+}
+
+/** An oval's inside pit wall, behind the boxes (the crews go over it). */
+export const INNER_PIT_WALL = 0.6;
+
+/**
+ * The least gap between the racing surface's edge and the pit wall's face: a car's width and a metre. The track
+ * limits let a car's centre run a car's radius past the edge, so a car on the line can't touch the wall's nose.
+ */
+export function noseClearance(): number {
+  return 2 * PHYSICS.CAR_RADIUS + 1;
 }
 
 /** Pit lane on the infield side, plus the pavement edge it widens. */
 export function pitLane(o: PitLaneOptions): { pit: PitLane; pavedInner: Profile } {
   const apronD = o.innerEdge + o.apronWidth;
-  const wallD = o.innerEdge + o.wallGap + o.wallThickness / 2;
-  const roadD = wallD + o.wallThickness / 2 + o.roadWidth;
+  const wallD = o.innerEdge + Math.max(o.wallGap, noseClearance()) + o.wallThickness / 2;
+  const face = wallD + o.wallThickness / 2;
+  // Across pit road from the wall: the travel lane, then the boxes (cars stop 3.5 m into them, or in their middle).
+  const travel = o.travelWidth ?? 6, depth = o.boxDepth ?? o.roadWidth - 6;
+  const laneD = face + travel, roadD = laneD + depth;
+  // (Behind an inside pit wall, the crews' strip; the pavement runs out to its back.)
+  const crewD = o.crewWidth ? roadD + INNER_PIT_WALL + o.crewWidth : undefined;
+  const backD = crewD ?? roadD;
   const entryStart = o.wallStart - o.entryLength;
   const exitEnd = o.wallEnd + o.exitTaper;
   // Boxes from 25 m in, spaced along the wall, leaving room to accelerate out of the last.
@@ -151,10 +174,10 @@ export function pitLane(o: PitLaneOptions): { pit: PitLane; pavedInner: Profile 
     pit: {
       entryStart, wallStart: o.wallStart, wallEnd: o.wallEnd, exitEnd, blendEnd: o.blendEnd,
       wallD, wallThickness: o.wallThickness, roadD, stalls, stallSpacing: o.stallSpacing,
-      laneD: wallD + o.wallThickness / 2 + 6,
+      laneD, fastD: face + travel / 2, boxD: laneD + Math.min(3.5, depth / 2), ...(crewD ? { crewD } : {}),
     },
     pavedInner: {
-      keys: [[entryStart, apronD], [o.wallStart, roadD], [o.wallEnd, roadD], [exitEnd, apronD]],
+      keys: [[entryStart, apronD], [o.wallStart, backD], [o.wallEnd, backD], [exitEnd, apronD]],
       ease: 'smooth',
     },
   };
@@ -162,8 +185,8 @@ export function pitLane(o: PitLaneOptions): { pit: PitLane; pavedInner: Profile 
 
 /** Half the width of the paved lane into and out of a pit road set back from the track. */
 const PIT_LANE_HALF = 5.5;
-/** Pit road set back this far (or more) gets its own lanes across the grass. */
-const SET_BACK_PIT = 4;
+/** Pit road set back this far (or more) gets its own lanes across the grass (nearer, the gap is paved apron). */
+export const SET_BACK_PIT = 6;
 
 export interface PitComplexOptions extends PitLaneOptions {
   /** Grass between pit road and the garage lot (0: the lot is right behind it), and how many lanes cross it. */
@@ -189,14 +212,18 @@ export interface PitComplexOptions extends PitLaneOptions {
  */
 export function pitComplex(cl: Centerline, o: PitComplexOptions): {
   pit: PitLane; pavedInner: Profile; garage: Garage; buildings: Decoration[]; surfaces: SurfaceRegion[]; network: RoadNetwork;
+  /** Where along pit road the garage is reached from it (signed s): gaps in an inside pit wall. */
+  access: number[];
 } {
   const base = pitLane(o);
   const L = cl.length;
   const off = o.offset ?? (() => 0);
   const apronD = o.innerEdge + o.apronWidth;
   const apronLane = o.innerEdge + o.apronWidth / 2;
-  const fast = base.pit.wallD + fastLaneGap(base.pit.wallThickness, !!o.offset);
-  const setBack = o.wallGap >= SET_BACK_PIT || !!o.offset;
+  // (On a chord, 1.5 m further from the wall: pit road curves away from the track and back, and a car following it cuts
+  // in a little toward the wall's ends.)
+  const fast = base.pit.fastD! + (o.offset ? 1.5 : 0);
+  const setBack = Math.max(o.wallGap, noseClearance()) >= SET_BACK_PIT || !!o.offset;
   const inEnd = base.pit.wallStart - 30, outStart = base.pit.wallEnd + 15;
   // The lanes in and out ease from the apron onto pit road's line. On a chord, pit road angles away from the track, so
   // they blend into it (arriving along it, not just at it): sampled.
@@ -222,7 +249,7 @@ export function pitComplex(cl: Centerline, o: PitComplexOptions): {
     keys.push([base.pit.exitEnd + 1, off(base.pit.exitEnd + 1)]);
     offsetProfile = { keys, ease: 'linear' };
   }
-  const pit: PitLane = setBack ? { ...base.pit, entryRoute, exitRoute, ...(offsetProfile ? { offset: offsetProfile } : {}) } : base.pit;
+  const pit: PitLane = setBack ? { ...base.pit, fastD: fast, entryRoute, exitRoute, ...(offsetProfile ? { offset: offsetProfile } : {}) } : base.pit;
   const { entryStart, wallStart, wallEnd, exitEnd, roadD } = pit;
   /** Where a car on the way in or out is (d), from the entry to the exit. */
   const laneAt = (s: number) => (s < inEnd ? evalProfile(entryRoute, s, L) : s > outStart ? evalProfile(exitRoute, s, L) : fast + off(s));
@@ -235,7 +262,7 @@ export function pitComplex(cl: Centerline, o: PitComplexOptions): {
     const island: Array<[number, number]> = [[entryStart - 1, apronD]];
     for (let s = entryStart; s <= exitEnd; s += 10) {
       const onRoad = s >= wallStart && s <= wallEnd;
-      paved.push([s, onRoad ? roadD + off(s) : Math.max(apronD, laneAt(s) + PIT_LANE_HALF)]);
+      paved.push([s, onRoad ? (pit.crewD ?? roadD) + off(s) : Math.max(apronD, laneAt(s) + PIT_LANE_HALF)]);
       const wallFace = pit.wallD + off(s) - pit.wallThickness / 2;
       island.push([s, Math.max(apronD, onRoad ? wallFace : laneAt(s) - PIT_LANE_HALF)]);
     }
@@ -250,7 +277,7 @@ export function pitComplex(cl: Centerline, o: PitComplexOptions): {
   // (Behind pit road where it is furthest in, on a chord.)
   let deepest = 0;
   for (let s = s0; s <= s1; s += 5) deepest = Math.max(deepest, off(s));
-  const d0 = roadD + deepest + o.garageSetBack;
+  const d0 = (pit.crewD ?? roadD) + deepest + o.garageSetBack;
   const { garage, buildings } = garageLot(cl, { s0, s1, d0, depth: o.garageDepth(d0) });
   const laneS = o.garageSetBack > 0
     ? Array.from({ length: Math.max(1, o.garageLanes) }, (_, k) => s0 + ((k + 0.5) * (s1 - s0)) / Math.max(1, o.garageLanes))
@@ -292,7 +319,7 @@ export function pitComplex(cl: Centerline, o: PitComplexOptions): {
     const end = node(`garage${k}`, 'garage', cl.toWorld(s, d0 + 2));
     roads.push({ id: `garage-lane${k}`, from: `pit-lane${k}`, to: end, points: [cl.toWorld(s, service(s)), cl.toWorld(s, d0 + 2)], width: 8, grade: 'garage' });
   });
-  return { pit, pavedInner, garage, buildings, surfaces, network: { nodes, roads } };
+  return { pit, pavedInner, garage, buildings, surfaces, network: { nodes, roads }, access: garageS };
 }
 
 // ---------- infield ----------
@@ -409,7 +436,31 @@ export function standardSurfaces(
     { id: 'apron', surface: 'apron', shape: { kind: 'band', range: null, d0: edgeIn, d1: pavedInner } },
     { id: 'racing', surface: 'track', shape: { kind: 'band', range: null, d0: edgeOut, d1: edgeIn, openOut: true } },
     { id: 'pit-road', surface: 'pit', shape: { kind: 'band', range: [pit.wallStart, pit.wallEnd], d0: pitEdge(pit, pit.wallD), d1: pitEdge(pit, pit.roadD) } },
+    // (An oval's crews' strip behind its inside pit wall.)
+    ...(pit.crewD !== undefined
+      ? [{ id: 'pit-crew', surface: 'apron', shape: { kind: 'band', range: [pit.wallStart, pit.wallEnd], d0: pitEdge(pit, pit.roadD), d1: pitEdge(pit, pit.crewD) } } satisfies SurfaceRegion]
+      : []),
   ];
+}
+
+/**
+ * An oval's inside pit wall, behind the boxes (where it has a crew strip):
+ * pit road's length, with gaps (10 m) where the garage is reached from it.
+ */
+export function innerPitWalls(pit: PitLane, access: number[]): Wall[] {
+  if (pit.crewD === undefined) return [];
+  const GAP = 10;
+  const cuts = access.filter((s) => s > pit.wallStart + GAP && s < pit.wallEnd - GAP).sort((a, b) => a - b);
+  const walls: Wall[] = [];
+  let from = pit.wallStart;
+  for (const s of [...cuts, pit.wallEnd + GAP / 2]) {
+    const to = s - GAP / 2;
+    if (to - from > 5) {
+      walls.push({ id: `pit-inner-wall${walls.length}`, range: [from, to], d: pitEdge(pit, pit.roadD + INNER_PIT_WALL / 2), thickness: INNER_PIT_WALL, faces: 'both', caps: true });
+    }
+    from = s + GAP / 2;
+  }
+  return walls;
 }
 
 /** SAFER barrier round the outside, and the pit wall with attenuators on its ends. */

@@ -4,7 +4,7 @@ import { evalProfile, LAYOUT_VERSION, type CenterlineSpec, type Decoration, type
 import { Track } from '../sim/track';
 import { buildLayout, registerTrackType, type GenContext } from './generator';
 import { trackName } from './names';
-import { escapeLane, garageLot, pitComplex, pitLane, serviceRoad, standardMarkings, standardSurfaces, standardWalls } from './stages';
+import { escapeLane, garageLot, innerPitWalls, pitComplex, pitLane, serviceRoad, SET_BACK_PIT, standardMarkings, standardSurfaces, standardWalls } from './stages';
 import { buildInfield, sampleInfield, type InfieldPlan } from './infield';
 import { compileRoval } from './roval';
 import { validateLayout } from './validate';
@@ -149,7 +149,7 @@ export type AnyOvalParams = OvalParams | ShapedOvalParams;
 
 /** Pit lane geometry shared by every oval. Lengths in metres. */
 export const OVAL_PIT = {
-  /** Gap between the racing surface and the pit wall. */
+  /** Gap between the racing surface and the pit wall (at least the nose clearance: stages.noseClearance). */
   WALL_GAP: 1,
   WALL_THICKNESS: 0.8,
   ROAD_WIDTH: 14,
@@ -163,6 +163,8 @@ export const OVAL_PIT = {
   /** How far down the straight after turn 1 the blend lane runs before merging. */
   BLEND_INTO_BACK_STRAIGHT: 100,
   STALL_SPACING: 12,
+  /** The crews' strip behind the inside pit wall (NASCAR's: pit carts, the crews going over the wall). */
+  CREW_WIDTH: 6,
 } as const;
 
 const ESCAPE_WIDTH = 9;
@@ -438,10 +440,10 @@ const SET_BACK_MIN_BOXES = 12;
  */
 function fitPits(plan: PitPlan, front: [number, number]): PitPlan {
   // (A chord's pit road meets the track at its ends: its lanes swing over only the small gap there.)
-  if (plan.gap < 4 || plan.style === 'chord') return plan;
+  if (plan.gap < SET_BACK_PIT || plan.style === 'chord') return plan;
   const baseIn = plan.entryLength - ENTRY_PER_GAP * plan.gap, baseOut = plan.exitLength - EXIT_PER_GAP * plan.gap;
   const minRoad = SET_BACK_MIN_BOXES * plan.stallSpacing + 40;
-  for (let gap = Math.floor(plan.gap); gap >= 4; gap--) {
+  for (let gap = Math.floor(plan.gap); gap >= SET_BACK_PIT; gap--) {
     const entryLength = baseIn + ENTRY_PER_GAP * gap, exitLength = baseOut + EXIT_PER_GAP * gap;
     const startInset = Math.max(plan.startInset, entryLength - PIT_SWING_INTO_TURN);
     const endInset = Math.max(plan.endInset, exitLength - PIT_SWING_INTO_TURN);
@@ -769,7 +771,7 @@ function buildOval(params: AnyOvalParams, ctx: GenContext): TrackLayout {
     entryLength: Math.min(plan?.entryLength ?? OVAL_PIT.ENTRY_LENGTH, wallStart - marks.lastTurnMid - 10),
     exitTaper: plan?.exitLength ?? OVAL_PIT.EXIT_TAPER,
     wallGap: plan?.gap ?? OVAL_PIT.WALL_GAP, wallThickness: OVAL_PIT.WALL_THICKNESS, roadWidth: OVAL_PIT.ROAD_WIDTH,
-    stallSpacing: plan?.stallSpacing ?? OVAL_PIT.STALL_SPACING,
+    stallSpacing: plan?.stallSpacing ?? OVAL_PIT.STALL_SPACING, crewWidth: OVAL_PIT.CREW_WIDTH,
   };
   // Garage lot behind pit road (or set back from it), as deep as the infield allows (within reason).
   const garageDepth = (d0: number) => (p.garageRoom !== undefined
@@ -778,15 +780,19 @@ function buildOval(params: AnyOvalParams, ctx: GenContext): TrackLayout {
   let pit, pavedInner, garage, buildings;
   let pitSurfaces: SurfaceRegion[] = [];
   let network: RoadNetwork | undefined;
+  let access: number[] = [];
   if (plan) {
     // A generated pit complex, with its road network (on a chord: shifted in by how far the chord is from the track).
-    ({ pit, pavedInner, garage, buildings, surfaces: pitSurfaces, network } = pitComplex(cl, {
+    ({ pit, pavedInner, garage, buildings, surfaces: pitSurfaces, network, access } = pitComplex(cl, {
       ...pitOptions, garageSetBack: plan.garageSetBack, garageLanes: plan.garageLanes, garageDepth,
       ...(plan.style === 'chord' ? { offset: chordOffset(cl, marks.front) } : {}),
     }));
   } else {
     ({ pit, pavedInner } = pitLane(pitOptions));
-    ({ garage, buildings } = garageLot(cl, { s0: pit.wallStart + 30, s1: pit.wallEnd - 30, d0: pit.roadD, depth: garageDepth(pit.roadD) }));
+    // (Behind the crews' strip; reached through the inside pit wall at its near end.)
+    const d0 = pit.crewD ?? pit.roadD;
+    ({ garage, buildings } = garageLot(cl, { s0: pit.wallStart + 30, s1: pit.wallEnd - 30, d0, depth: garageDepth(d0) }));
+    access = [garage.lot.s0 + 4];
   }
 
   const id = p.name ? p.name.toLowerCase().replace(/\s+/g, '-') : `oval-${ctx.seed}`;
@@ -849,7 +855,7 @@ function buildOval(params: AnyOvalParams, ctx: GenContext): TrackLayout {
     crossSection: { edgeIn, edgeOut, apronWidth: p.apronWidth, pavedInner, ...banking },
     surfaces,
     ground: 'grass',
-    walls: standardWalls(edgeOut, pit),
+    walls: [...standardWalls(edgeOut, pit), ...innerPitWalls(pit, access)],
     pit,
     infield: { garage, escapeLanes, ...(network ? { network } : {}), ...(rovals.length ? { rovals } : {}) },
     markings: standardMarkings(L, edgeIn, [-innerEdge, innerEdge], pavedInner, pit),

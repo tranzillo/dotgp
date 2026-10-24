@@ -164,6 +164,17 @@ export interface PitLane {
   /** Line between the pit wall's fast lane and the boxes. */
   laneD: number;
   /**
+   * Where cars run along pit road (the fast or travel lane's middle) and where they stop in their boxes (d, before
+   * offset). Default (absent: layouts from before these): pitFastD and pitBoxD's fixed distances from the wall.
+   */
+  fastD?: number;
+  boxD?: number;
+  /**
+   * An oval's (NASCAR's) inside pit wall stands behind the boxes, at roadD, with the crews' strip behind it out to
+   * crewD (before offset). Absent: the garage is right behind pit road (a circuit's, and layouts from before).
+   */
+  crewD?: number;
+  /**
    * The way in and out as lateral positions along the lap (keys in signed
    * s): from the entry to pit road's fast lane, and from the fast lane past
    * the wall's end back to the apron. Where pit road is set back from the
@@ -431,6 +442,16 @@ export const flat = (value: number): Profile => ({ keys: [[0, value]], ease: 'li
  */
 export function fastLaneGap(wallThickness: number, chord: boolean): number {
   return wallThickness / 2 + 3 + (chord ? 1.5 : 0);
+}
+
+/** Where cars run along pit road (d, before offset): the layout's, or 3 m off the wall's face (1.5 m more on a chord). */
+export function pitFastD(pit: PitLane): number {
+  return pit.fastD ?? pit.wallD + fastLaneGap(pit.wallThickness, !!pit.offset);
+}
+
+/** Where cars stop in their boxes (d, before offset): the layout's, or 9.5 m off the wall's face. */
+export function pitBoxD(pit: PitLane): number {
+  return pit.boxD ?? pit.wallD + pit.wallThickness / 2 + 9.5;
 }
 
 export function shiftEdge(e: Edge, by: number): Edge {

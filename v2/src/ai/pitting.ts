@@ -1,6 +1,6 @@
 import { PHYSICS as P, PIT_SERVICE } from '../sim/constants';
 import type { Car, PitCall, PitState } from '../sim/car';
-import { evalProfile, fastLaneGap, type Profile } from '../sim/layout';
+import { evalProfile, pitBoxD, pitFastD, type Profile } from '../sim/layout';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
 import { followLine } from './lineFollower';
@@ -182,8 +182,8 @@ export function pitLanes(track: Track): PitLanes {
     apronLaneAt,
     wallClear,
     entryLane: Math.max(apronLaneAt(track.pit.entryStart), wallClear),
-    fastLane: Math.max(track.pit.wallD + fastLaneGap(track.pit.wallThickness, !!track.pit.offset), wallClear),
-    boxLane: track.pit.wallD + track.pit.wallThickness / 2 + 9.5,
+    fastLane: Math.max(pitFastD(track.pit), wallClear),
+    boxLane: pitBoxD(track.pit),
   };
 }
 
@@ -366,8 +366,8 @@ export class PitAutopilot {
     // Lines that pass the pit wall's ends must clear them with room to spare.
     const wallClear = track.pit.wallD + track.pit.wallThickness / 2 + P.CAR_RADIUS + 1.2;
     const entryLane = Math.max(apronLane, wallClear);
-    const fastLane = Math.max(track.pit.wallD + fastLaneGap(track.pit.wallThickness, !!track.pit.offset), wallClear);
-    const boxLane = track.pit.wallD + track.pit.wallThickness / 2 + 9.5;
+    const fastLane = Math.max(pitFastD(track.pit), wallClear);
+    const boxLane = pitBoxD(track.pit);
     const entryStart = track.pit.entryStart;
     const exitEnd = track.pit.exitEnd;
     const path = pitPath(track);

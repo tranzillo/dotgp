@@ -1420,12 +1420,13 @@ function compile(venue: TrackLayout, spec: RovalSpec): TrackLayout {
   const walls: Wall[] = [...ownWalls];
   let markings: Marking[];
   if (spec.pit === 'oval') {
-    const keep = new Set(['pit-road', 'pit-island', 'garage']);
+    const keep = new Set(['pit-road', 'pit-island', 'pit-crew', 'garage']);
     surfaces.push(
       { id: 'racing', surface: 'track', shape: { kind: 'band', range: null, d0: edgeOut, d1: edgeIn } },
       ...oval.surfaces.filter((s) => keep.has(s.id)),
     );
-    walls.push(...oval.walls.filter((w) => w.id === 'pit-wall'));
+    // (Its pit wall, and an oval's inside pit wall behind the boxes.)
+    walls.push(...oval.walls.filter((w) => w.id === 'pit-wall' || w.id.startsWith('pit-inner-wall')));
     markings = standardMarkings(L, edgeIn, [-evalEdge(edgeIn, 0, L), evalEdge(edgeIn, 0, L)], pavedInner, pit);
   } else {
     surfaces.push(
@@ -1525,7 +1526,7 @@ export function venueWithCourses(oval: TrackLayout): TrackLayout[] {
     const t = lines[i].t;
     const walls: Wall[] = [];
     for (const w of [...layout.walls, ...guards[i]]) {
-      const others = all.map((_, j) => j).filter((j) => j !== i && !(w.id === 'pit-wall' && host(layout) === all[j].id));
+      const others = all.map((_, j) => j).filter((j) => j !== i && !((w.id === 'pit-wall' || w.id.startsWith('pit-inner-wall')) && host(layout) === all[j].id));
       const [a, b] = w.range ?? [0, t.length];
       const step = 1, n = Math.max(1, Math.ceil((b - a) / step));
       const blocked = Array.from({ length: n + 1 }, (_, k) => {

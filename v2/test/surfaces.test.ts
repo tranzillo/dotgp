@@ -25,7 +25,9 @@ describe('surfaces', () => {
   it('classifies track, apron, pit road and grass', () => {
     expect(track.surfaceAt(0, 0)).toBe('track');
     expect(track.surfaceAt(0, track.pit.wallD + 3)).toBe('pit');
-    expect(track.surfaceAt(0, track.pit.roadD + 2)).toBe('garage');
+    // Behind the boxes, the inside pit wall and the crews' strip, then the garage.
+    expect(track.surfaceAt(0, track.pit.crewD! - 2)).toBe('apron');
+    expect(track.surfaceAt(0, track.pit.crewD! + 2)).toBe('garage');
     expect(track.surfaceAt(0, track.infield.garage.lot.d1 + 2)).toBe('grass');
     const midTurn = SPEEDWAY.straightLength / 2 + SPEEDWAY.easementLength + 100;
     expect(track.surfaceAt(midTurn, track.halfWidth + 2)).toBe('apron');
@@ -35,7 +37,7 @@ describe('surfaces', () => {
   it('widens the apron into pit road at the exit of turn 4 and back after the wall', () => {
     expect(track.pavedInnerD(track.pit.wallStart - 200)).toBeCloseTo(track.apronEdgeAt(0), 5);
     expect(track.pavedInnerD(track.pit.wallStart - 75)).toBeGreaterThan(track.apronEdgeAt(0));
-    expect(track.pavedInnerD(track.pit.wallStart)).toBeCloseTo(track.pit.roadD, 5);
+    expect(track.pavedInnerD(track.pit.wallStart)).toBeCloseTo(track.pit.crewD!, 5); // (out to the back of the crews' strip)
     expect(track.pavedInnerD(track.pit.wallEnd + 200)).toBeCloseTo(track.apronEdgeAt(0), 5);
   });
 
@@ -175,13 +177,17 @@ describe('infield shortcut', () => {
 });
 
 describe('infield', () => {
-  it('has a garage lot behind pit road, reachable straight from it', () => {
+  it('has a garage lot behind pit road, through the inside pit wall', () => {
     const g = track.infield.garage.lot;
     const sMid = (g.s0 + g.s1) / 2;
     expect(track.surfaceAt(sMid, track.pit.roadD - 1)).toBe('pit');
-    expect(track.surfaceAt(sMid, track.pit.roadD + 1)).toBe('garage');
+    expect(track.surfaceAt(sMid, track.pit.crewD! + 1)).toBe('garage');
     expect(track.surfaceAt(sMid, g.d1 + 3)).toBe('grass');
-    expect(g.d0).toBeCloseTo(track.pit.roadD, 5); // no gap between pit road and garage
+    expect(g.d0).toBeCloseTo(track.pit.crewD!, 5); // right behind the crews' strip
+    // The inside pit wall behind the boxes, with a gap where the garage is reached.
+    const inner = track.layout.walls.filter((w) => w.id.startsWith('pit-inner-wall'));
+    expect(inner.length).toBeGreaterThanOrEqual(2);
+    expect(inner.some((w) => w.range![0] <= g.s0 + 4 && w.range![1] >= g.s0 + 4)).toBe(false);
     expect(track.layout.decor.filter((d) => d.kind === 'building').length).toBeGreaterThan(4);
     expect(track.infield.garage.parking.length).toBeGreaterThanOrEqual(12);
   });

@@ -12,6 +12,7 @@ import { Track } from '../src/sim/track';
 import { World } from '../src/sim/world';
 import { setBackPitTrack } from '../src/school/classroom';
 import { generateLayout, PRESETS, presetLayout, type ShapedOvalParams } from '../src/trackgen';
+import { noseClearance } from '../src/trackgen/stages';
 
 class CallOnce implements CrewChief {
   lastMessage = 'Box this lap';
@@ -123,7 +124,8 @@ describe('generated pit complexes', () => {
       const t = new Track(layout);
       const plan = (layout.params as unknown as ShapedOvalParams).pits!;
       const gap = t.pit.wallD - t.innerEdgeAt(t.pit.wallStart) - t.pit.wallThickness / 2;
-      expect(gap).toBeLessThanOrEqual(plan.gap + 1e-9);
+      // (No nearer than the nose clearance: a car on the inside line can't touch the wall.)
+      expect(gap).toBeLessThanOrEqual(Math.max(plan.gap, noseClearance()) + 1e-9);
       if (t.pit.entryRoute) expect(t.pit.wallEnd - t.pit.wallStart).toBeGreaterThanOrEqual(12 * plan.stallSpacing + 40);
     }
   });
