@@ -55,8 +55,11 @@ export interface ClassroomOptions {
  * (on circuits a scripted pass cost more than it gained: practice finds passing).
  */
 export function roadStyle(style: RacerStyle): RacerStyle {
-  return { ...style, driveGain: undefined, insure: undefined, pass: Infinity };
+  return { ...style, driveGain: undefined, insure: undefined, pass: Infinity, ...(ROAD_PEDAL_RATE ? { pedalRate: ROAD_PEDAL_RATE } : {}) };
 }
+
+/** Road teachers' foot (RacerStyle.pedalRate; 0: instant). (Experiments set it.) */
+export const ROAD_PEDAL_RATE = Number((typeof process !== 'undefined' && process.env.ROAD_PEDAL_RATE) || 0);
 
 /**
  * A driver's own road teacher: the traffic racer its personality makes, as on ovals (its grip, line, room, caution

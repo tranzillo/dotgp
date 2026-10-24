@@ -56,6 +56,14 @@ export interface RacerStyle {
    * a student can copy it), as the oval stable's teachers do. Unset: the formation script, with its own following.
    */
   smoothCautions?: boolean;
+  /**
+   * How fast its foot moves (the longitudinal command, throttle to brake, per second): from where the car's pedal is
+   * now toward what it wants, no faster. Unset: at once. Behind another car or under caution an instant pedal flicks
+   * between flat out and braking on the smallest change, and a student can't copy that from anything it sees (road
+   * classroom races: a 64-64 network given the car in its path and its place in the safety-car line explained about
+   * a third of the teacher's throttle); its own last command, which a student does see, is where a real foot starts.
+   */
+  pedalRate?: number;
 }
 
 /**
@@ -209,6 +217,16 @@ export class TrafficRacer {
   }
 
   decide(car: Car, world: World): void {
+    const pedal = car.inputX;
+    this.drive(car, world);
+    const rate = this.style.pedalRate;
+    if (rate !== undefined) {
+      const step = rate * P.CONTROL_EVERY * P.DT;
+      car.inputX = pedal + Math.max(-step, Math.min(step, car.inputX - pedal));
+    }
+  }
+
+  private drive(car: Car, world: World): void {
     if (this.inFormation(car, world)) {
       if (this.smooth && world.control?.flag !== 'grid') this.smooth.decide(car, world);
       else this.formation.decide(car, world);
