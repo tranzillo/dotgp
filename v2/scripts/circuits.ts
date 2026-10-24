@@ -125,7 +125,9 @@ function runRace(job: RaceJob): CircuitRace {
       const racer = own ? new TrafficRacer(own.style, undefined, own.traits) : new TrafficRacer({
         ...DEFAULT_STYLE, ...(style ? { grip: style.grip, margin: style.margin } : {}), room: d.roadCourse?.style?.room ?? DEFAULT_STYLE.room, pass: Infinity,
       });
-      world.addCar(car, new Team(racer, new TowerSpotter(), new StrategistCrewChief(randomTraits(() => rng.next())), false, true));
+      const team = new Team(racer, new TowerSpotter(), new StrategistCrewChief(randomTraits(() => rng.next())), false, true);
+      if (d.nerve !== undefined) team.autopilot.nerve = d.nerve;
+      world.addCar(car, team);
       continue;
     }
     // As it is: its style's line, its human limits (if it has them; seeded by race and slot, so both files' cars match).
@@ -135,8 +137,10 @@ function runRace(job: RaceJob): CircuitRace {
         roadCaution: d.roadCourse?.caution && !job.scriptCautions ? adaptWeights(Float32Array.from(d.roadCourse.caution.weights)) : undefined,
         // Its stops with its pit skill (without it, a licensed driver's stops were driven by its racing network).
         pit: d.pit ? adaptWeights(Float32Array.from(d.pit.weights)) : undefined });
-    world.addCar(car, new Team(brain, new TowerSpotter(), new StrategistCrewChief(randomTraits(() => rng.next())),
-      !!(d.pitLicensed && d.pitTrafficLicensed), !job.scriptCautions && (d.cautionLicensed ?? false)));
+    const team = new Team(brain, new TowerSpotter(), new StrategistCrewChief(randomTraits(() => rng.next())),
+      !!(d.pitLicensed && d.pitTrafficLicensed), !job.scriptCautions && (d.cautionLicensed ?? false));
+    if (d.nerve !== undefined) team.autopilot.nerve = d.nerve;
+    world.addCar(car, team);
   }
   const race = new Race(world, laps, new PaceCarDriver(), { rulebook: CIRCUIT_RULES, seed: job.seed });
   const ctl = race.control!;

@@ -33,6 +33,8 @@ function pitRampFrom(track: Track): number {
 export interface CrewChief {
   /** Called once a lap at the decision point. Return a call to bring the car in. */
   decide(car: Car, world: World): PitCall | null;
+  /** Laps the car's fuel lasts, as far as the chief knows (Infinity if it doesn't). */
+  fuelLaps?(car: Car): number;
   /** Short radio line describing the last call. */
   readonly lastMessage: string;
 }
@@ -93,6 +95,10 @@ export class StrategistCrewChief implements CrewChief {
   private stopsSeen = 0;
 
   constructor(readonly traits: CrewChiefTraits) {}
+
+  fuelLaps(car: Car): number {
+    return this.burnPerLap > 0 ? car.fuel / this.burnPerLap : Infinity;
+  }
 
   decide(car: Car, world: World): PitCall | null {
     // Learn the fuel burn from lap to lap (skip laps that included a stop).
@@ -330,6 +336,20 @@ const ABORT_DISTANCE = 60;
 const ABORT_GRACE = 40;
 /** Speed an aborted pit entry backs out at (m/s). */
 const ABORT_SPEED = 18;
+/** How far up the road a car on its way in looks for traffic slowing into the pit entry (m). */
+const WAVE_OFF_LOOK = 200;
+/** How far back it looks for cars racing up behind it (m). */
+const WAVE_OFF_BEHIND = 80;
+/** A car slower than this (m/s) is stopped: a wreck, a spun or stranded car. */
+const WAVE_OFF_STOPPED = 5;
+/** Laps of fuel a car must have to stay out another lap. */
+export const WAVE_OFF_FUEL_LAPS = 1.25;
+/**
+ * Braking on the racing surface (m/s^2) a driver will do for traffic slowing into the pit entry ahead, with cars
+ * racing up behind it, before waving the stop off: a timid driver's, and a fearless one's.
+ */
+const WAVE_OFF_BRAKE_TIMID = 2.5;
+const WAVE_OFF_BRAKE_BOLD = 6.5;
 
 export class PitAutopilot {
   /** The lane the car was in when the crew chief called it in (the route starts from there). */
@@ -349,6 +369,10 @@ export class PitAutopilot {
    * it coast into the wall end.
    */
   aborting = false;
+  /** The driver's nerve (0 timid, 1 fearless): how much braking for slowing traffic it takes before waving off. */
+  nerve = 0.5;
+  /** Whether the car can stay out another lap (its fuel); the team sets it from the crew chief's fuel burn. */
+  canStayOut: (car: Car) => boolean = () => true;
 
   begin(car: Car): void {
     this.fromLane = car.d;
@@ -377,6 +401,43 @@ export class PitAutopilot {
       limit = Math.min(limit, Math.sqrt(Math.max(0, along) ** 2 + 2 * PIT_DECEL * room));
     }
     return limit;
+  }
+
+  /**
+   * Whether to wave the stop off and come in next time round: still on the racing surface short of the pit entry,
+   * the way in ahead blocked by cars slowing into it (or stopped), and following them in would take braking on the
+   * racing surface with cars racing up behind, more than this driver's nerve will stand. A stopped car on the way in
+   * counts whether or not anyone is behind.
+   */
+  private waveOff(car: Car, world: World, laneAt: (s: number) => number): boolean {
+    const track = world.track;
+    const r0 = track.signedS(car.s);
+    // (A penalty is served when the stewards say, not when it suits.)
+    if (r0 > track.pit.entryStart || car.d > track.innerEdgeAt(car.s) + 0.5 || car.pit.call?.penalty || !this.canStayOut(car)) return false;
+    const along = (c: Car) => c.vx * track.tx[c.trackIdx] + c.vy * track.ty[c.trackIdx];
+    const v = along(car);
+    let brake = 0;
+    let stopped = false;
+    for (const other of world.cars) {
+      if (other === car || other.cleared) continue;
+      const gap = track.distanceFrom(car.s, other.s);
+      if (gap <= 0 || gap > WAVE_OFF_LOOK) continue;
+      // On the way in, short of the deceleration lane's end: a car going in itself, or one stopped in our path
+      // (racing traffic is the racing's business).
+      if (track.signedS(other.s) > track.pit.entryStart + 40) continue;
+      const vOther = other.retired ? 0 : Math.max(0, along(other));
+      if (other.pit.phase !== 'in' && !(vOther < WAVE_OFF_STOPPED && Math.abs(other.d - laneAt(other.s)) < 2.6)) continue;
+      const closing = v - vOther;
+      if (closing <= 0) continue;
+      const room = Math.max(0.5, gap - 2 * P.CAR_RADIUS - PIT_GAP);
+      brake = Math.max(brake, (closing * closing) / (2 * room));
+      if (vOther < WAVE_OFF_STOPPED) stopped = true;
+    }
+    if (brake === 0) return false;
+    const behind = world.cars.some((o) => o !== car && !o.cleared && !o.retired && o.pit.phase === 'none'
+      && track.distanceFrom(o.s, car.s) > 0 && track.distanceFrom(o.s, car.s) < WAVE_OFF_BEHIND && along(o) > v - 5);
+    const nerve = Math.max(0, Math.min(1, this.nerve));
+    return (behind || stopped) && brake > WAVE_OFF_BRAKE_TIMID + (WAVE_OFF_BRAKE_BOLD - WAVE_OFF_BRAKE_TIMID) * nerve;
   }
 
   decide(car: Car, world: World, spotter: Spotter): void {
@@ -432,6 +493,16 @@ export class PitAutopilot {
         if (r < track.pit.wallStart) return r > path.inEnd ? fastLane + track.pitOffset(s) : path.inAt(r);
         return ramp(r, pit.boxS - 40, pit.boxS - 8, fastLane, boxLane) + track.pitOffset(s);
       };
+      if (this.waveOff(car, world, lane)) {
+        // Stay out and come in next time round (the chief calls a stop the car still needs again); the driver has
+        // the wheel again.
+        pit.phase = 'none';
+        pit.call = null;
+        world.announce(car, 'crew', 'Waved off the stop: traffic slowing into the pit entry. Box next lap');
+        car.inputX = 0;
+        car.inputY = 0;
+        return;
+      }
       // Never faster than lets us stop behind the car ahead (or a car still in our box).
       const follow = this.followLimit(car, world, lane);
       const cap = (s: number) => {

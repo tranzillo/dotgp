@@ -4,7 +4,7 @@ import { FormationDriver, type FormationTraits } from './formation';
 import { followLine } from './lineFollower';
 import { genomeSize, Network, widenNetwork } from './network';
 import { PHYSICS as P, PIT_SERVICE } from '../sim/constants';
-import { PitAutopilot, pitDecisionS, pitRoute, type CrewChief } from './pitting';
+import { PitAutopilot, pitDecisionS, pitRoute, WAVE_OFF_FUEL_LAPS, type CrewChief } from './pitting';
 import {
   CALLS_SIZE, PIT_CALLS_SIZE, observePitCalls, CAUTION_SIZE, KNOWLEDGE_AHEAD, KNOWLEDGE_SIZE, LOOKAHEAD, OBS_SIZE, observe, observeCalls, observeCaution, observeKnowledge, observePit, observePreview,
   PIT_LOOKAHEAD, PIT_SIZE, PREVIEW_SIZE, type TrackKnowledge,
@@ -84,6 +84,7 @@ export class Team implements Controller {
     formationTraits?: FormationTraits,
   ) {
     this.formation = new FormationDriver(formationTraits);
+    this.autopilot.canStayOut = (car) => (this.crewChief?.fuelLaps?.(car) ?? Infinity) > WAVE_OFF_FUEL_LAPS;
   }
 
   decide(car: Car, world: World): void {
@@ -262,10 +263,12 @@ export function drawLimits(random: () => number): { latency: number; noise: numb
 const MOTOR_NOISE_TAU = 0.25;
 
 /**
- * While pacing on circuits, the road skill steers and the road caution skill only lowers the throttle (the caution
- * network, trained apart, corners worse than the road network it began as). (Experiments set it; off by default.)
+ * While pacing on circuits, the road skill steers and the road caution skill has the throttle (the caution network,
+ * trained apart, corners worse than the road network it began as): 1, only to lower it (the road skill's throttle
+ * otherwise; in a formation it brakes for the cars close ahead and the field crawls); 2, all of it.
+ * (Experiments set it; off by default.)
  */
-const ROAD_CAUTION_THROTTLE = typeof process !== 'undefined' && process.env.ROAD_CAUTION_THROTTLE === '1';
+const ROAD_CAUTION_THROTTLE = Number((typeof process !== 'undefined' && process.env.ROAD_CAUTION_THROTTLE) || 0);
 
 /** The latency and noise between a driver's decision and the car's inputs. */
 class Hands {
@@ -371,10 +374,10 @@ export class NeuralDriver implements DriverBrain {
     const net = this.netAt(world.track, input);
     const out = net.forward(input);
     if (ROAD_CAUTION_THROTTLE && net === this.roadCautionNet && this.roadNet) {
-      // The road skill drives; the road caution skill can only ask for less speed.
-      const slower = out[0];
+      // The road skill steers; the road caution skill's throttle (1: only where it asks for less speed).
+      const pedal = out[0];
       const race = this.roadNet.forward(input);
-      this.apply(car, Math.min(slower, race[0]), race[1]);
+      this.apply(car, ROAD_CAUTION_THROTTLE === 1 ? Math.min(pedal, race[0]) : pedal, race[1]);
       return;
     }
     this.apply(car, out[0], out[1]);

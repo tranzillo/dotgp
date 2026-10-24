@@ -297,6 +297,7 @@ export class Session {
         // Its own stops where it has learned to make them: a pit road set back across grass needs that too.
         (entrant.driver.pits ?? false) && (!spec.layout.pit.entryRoute || (entrant.driver.setBackPits ?? false)), entrant.driver.cautions ?? false,
         formationTraits(entrant.driver.nerve, () => traitRng.next()));
+      if (entrant.driver.nerve !== undefined) team.autopilot.nerve = entrant.driver.nerve;
       this.world.addCar(car, team);
       this.entrants.set(car.id, entrant);
       this.teams.set(car.id, team);

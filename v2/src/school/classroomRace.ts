@@ -104,8 +104,11 @@ export function classroomRace(
     const s = slots.get(k);
     if (s === undefined) {
       const who = new Rng(hashSeed(seed, `racer${round}:${k}`));
-      const { style, traits } = racerStyle(0.15 + 0.7 * who.next(), who.next(), () => who.next());
-      world.addCar(car, new Team(new TrafficRacer(road ? roadStyle(style) : style, undefined, traits), new TowerSpotter(), chief, false, true));
+      const nerve = 0.15 + 0.7 * who.next();
+      const { style, traits } = racerStyle(nerve, who.next(), () => who.next());
+      const racer = new Team(new TrafficRacer(road ? roadStyle(style) : style, undefined, traits), new TowerSpotter(), chief, false, true);
+      racer.autopilot.nerve = nerve;
+      world.addCar(car, racer);
       continue;
     }
     const d = students[s];
@@ -114,6 +117,7 @@ export function classroomRace(
       ? new NeuralDriver(d.weights, d.road, lineOf(d), { limits, roadCaution: d.roadCaution ?? undefined })
       : new NeuralDriver(d.weights, undefined, lineOf(d), { limits, caution: d.caution ?? undefined });
     const team = new Team(student, new TowerSpotter(), chief, false, true);
+    team.autopilot.nerve = d.nerve;
     const { style, traits } = road ? roadTeacherOf(d) : teacherOf(d);
     world.addCar(car, new Recorder(team, student, new TrafficRacer(style, undefined, { ...traits, reaction: 0 }), driving, examples[s], rng,
       { latency: d.limits.latency, extra: opts.extra }));
