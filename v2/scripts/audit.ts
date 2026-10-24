@@ -123,8 +123,13 @@ function runRace(job: Job): Tally {
         const before = heard[k].filter((h) => h.time > world.time - 1.6 && h.time < world.time - 0.4);
         const other = car.lastImpact.other;
         add(`${disc} ${where}|contacts`);
-        if (before.some((h) => h.ids.has(other))) add(`${disc} ${where}|contacts named a second before`);
         const o = cars.find((c) => c.id === other);
+        if (before.some((h) => h.ids.has(other))) add(`${disc} ${where}|contacts named a second before`);
+        else if (o) {
+          // Where the car it didn't hear about was, as they touched.
+          const ds = signedDs(car, o), dd = o.d - car.d;
+          add(`${disc} ${where}|unnamed: ${ds > 2 * P.CAR_RADIUS ? 'ahead' : ds < -2 * P.CAR_RADIUS ? 'behind' : 'alongside'}, ${Math.abs(dd) < 2 ? 'same lane' : 'other lane'}${o.retired ? ', a wreck' : ''}`);
+        }
         if (o && o.pit.phase !== 'none' && car.pit.phase === 'none') add(`${disc} ${where}|contacts with a car pitting`);
         if (o && world.time - mergedAt[o.id] < 5) add(`${disc} ${where}|contacts with a car just merged`);
       }
@@ -154,7 +159,7 @@ function runRace(job: Job): Tally {
     });
     if (world.tick % SAMPLE_TICKS !== 0) continue;
     cars.forEach((car, k) => {
-      if (car.retired || car.finished || car.pit.phase !== 'none') return;
+      if (car.retired || car.finished) return;
       const radio = teams[k].radio;
       const ids = new Set<number>();
       const fwd = (o: Car) => signedDs(car, o);
@@ -176,6 +181,7 @@ function runRace(job: Job): Tally {
       }
       heard[k].push({ time: world.time, ids });
       if (heard[k].length > 12) heard[k].shift();
+      if (car.pit.phase !== 'none') return;
       const situation = `${disc} ${flagOf()}`;
       add(`${situation}|samples`);
       // What the hazard call names.
@@ -270,6 +276,8 @@ if (!isMainThread && workerData?.audit) {
       lines.push(`| crew | contacts on the way in or out (pit) | ${get(`${disc} pit|contacts`)} (named before: ${pct(get(`${disc} pit|contacts named a second before`), get(`${disc} pit|contacts`))}) |`);
       lines.push(`| crew | racing contacts with a car pitting / a car just merged | ${get(`${s}|contacts with a car pitting`)} / ${get(`${s}|contacts with a car just merged`)} |`);
       lines.push(`| spotter | merges ending in contact within 5 s | ${pct(get(`${s}|merges ending in contact`), get(`${s}|merges`))} of ${get(`${s}|merges`)} |`);
+      const unnamed = Object.keys(total).filter((k) => k.startsWith(`${s}|unnamed: `)).sort((x, y) => get(y) - get(x));
+      if (unnamed.length) lines.push(`| radio | contacts not named before, the other car: | ${unnamed.map((k) => `${k.split('|unnamed: ')[1]} ${get(k)}`).join('; ')} |`);
       lines.push(`| out | stopped / wall / car | ${get(`${s}|out: stopped`)} / ${get(`${s}|out: wall`)} / ${get(`${s}|out: car`)} |`, '');
     }
   }
