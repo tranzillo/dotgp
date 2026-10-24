@@ -330,6 +330,9 @@ const CONTROL_SPARE = 0.05;
  * slowing ahead, planned, plus feedback). Lateral has priority in the
  * friction circle.
  */
+/** Metres a second below the line's speed over which a limit ahead takes over the throttle (followRacingLine's capGain). */
+const CAP_BLEND = 3;
+
 export function followRacingLine(
   car: Car, world: World, line: RacingLine, grip: number,
   /** Drive this far across from the line (+d), e.g. alongside another car. */
@@ -341,6 +344,12 @@ export function followRacingLine(
    * flat out. A teacher's throttle has to be one a student can copy. Unset: flat out.
    */
   driveGain?: number,
+  /**
+   * Where the speed limit ahead (capAt: a car ahead) is below the line's own: close on it in proportion (1/s), both
+   * ways, rather than flat out below it and braking above. Following a car, flat out until the limit then braking
+   * flicks between the two on the smallest change in the car ahead, which no student can copy. Unset: as the line.
+   */
+  capGain?: number,
 ): void {
   const track = world.track;
   const i = car.trackIdx;
@@ -364,7 +373,13 @@ export function followRacingLine(
   const reach = Math.max(3, vLon * 0.25);
   const vNow = speedAt(0), vNext = speedAt(reach);
   const planned = (vNext * vNext - vNow * vNow) / (2 * reach);
-  const lonWanted = vLon < vNow && planned >= 0 && driveGain === undefined ? 99 : planned + (driveGain ?? 4) * (vNow - vLon);
+  let lonWanted = vLon < vNow && planned >= 0 && driveGain === undefined ? 99 : planned + (driveGain ?? 4) * (vNow - vLon);
+  if (capGain !== undefined && capAt) {
+    // How far the limit ahead is below the line's own speed here: proportional once it's a few m/s below, blending in.
+    const own = speeds[((Math.round(car.s / line.step) % n) + n) % n];
+    const w = Math.max(0, Math.min(1, (own - vNow) / CAP_BLEND));
+    if (w > 0) lonWanted = (1 - w) * lonWanted + w * (planned + capGain * (vNow - vLon));
+  }
 
   // Across: following d = D(s) along a curved road. With s' = vLon / (1 - k d), the acceleration across the
   // track it takes is vLon^2 (D'' / (1 - k d)^2 + k / (1 - k d)) (the road's curve, and the line's bend

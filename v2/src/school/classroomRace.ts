@@ -55,11 +55,18 @@ export interface ClassroomOptions {
  * (on circuits a scripted pass cost more than it gained: practice finds passing).
  */
 export function roadStyle(style: RacerStyle): RacerStyle {
-  return { ...style, driveGain: undefined, insure: undefined, pass: Infinity, ...(ROAD_PEDAL_RATE ? { pedalRate: ROAD_PEDAL_RATE } : {}) };
+  return {
+    ...style, driveGain: undefined, insure: undefined, pass: Infinity, ...(ROAD_PEDAL_RATE ? { pedalRate: ROAD_PEDAL_RATE } : {}),
+    ...(ROAD_FOLLOW_GAIN ? { followGain: ROAD_FOLLOW_GAIN } : {}), ...(ROAD_CAUTION_GAIN ? { cautionGain: ROAD_CAUTION_GAIN } : {}),
+  };
 }
 
 /** Road teachers' foot (RacerStyle.pedalRate; 0: instant). (Experiments set it.) */
-export const ROAD_PEDAL_RATE = Number((typeof process !== 'undefined' && process.env.ROAD_PEDAL_RATE) || 0);
+const env = (k: string) => Number((typeof process !== 'undefined' && process.env[k]) || 0);
+export const ROAD_PEDAL_RATE = env('ROAD_PEDAL_RATE');
+/** Road teachers' following gain and caution gain (RacerStyle.followGain, cautionGain; 0: unset). (Experiments set them.) */
+export const ROAD_FOLLOW_GAIN = env('ROAD_FOLLOW_GAIN');
+export const ROAD_CAUTION_GAIN = env('ROAD_CAUTION_GAIN');
 
 /**
  * A driver's own road teacher: the traffic racer its personality makes, as on ovals (its grip, line, room, caution

@@ -64,6 +64,10 @@ export interface RacerStyle {
    * a third of the teacher's throttle); its own last command, which a student does see, is where a real foot starts.
    */
   pedalRate?: number;
+  /** Behind a car: close on the speed it allows in proportion (1/s), not flat out then braking (followRacingLine's capGain). Unset: as the line. */
+  followGain?: number;
+  /** Under caution (smooth cautions): how hard it drives toward and brakes to its speed (1/s). Unset: the smooth formation's own. */
+  cautionGain?: number;
 }
 
 /**
@@ -163,7 +167,7 @@ export class TrafficRacer {
     // Under caution it drives toward its speed smoothly (as it brakes above it), not flat out below it: a teacher's
     // throttle has to be one a student can copy.
     this.formation = new FormationDriver(traits, (car, world, lane) => this.cautionCap(car, world, lane), CAUTION_DRIVE_GAIN);
-    this.smooth = style.smoothCautions ? new SmoothFormation((car) => this.formation.traitsFor(car)) : null;
+    this.smooth = style.smoothCautions ? new SmoothFormation((car) => this.formation.traitsFor(car), style.cautionGain) : null;
   }
 
   /** Under a caution (once it has reacted to the flag, and until it has reacted to the green): the formation's. */
@@ -361,6 +365,6 @@ export class TrafficRacer {
       return cap;
     };
     this.last = { want, offset, low, high, follow: followCap, squeezed: low > high, passing };
-    followRacingLine(car, world, line, grip, offset, capAt, this.style.driveGain);
+    followRacingLine(car, world, line, grip, offset, capAt, this.style.driveGain, this.style.followGain);
   }
 }
