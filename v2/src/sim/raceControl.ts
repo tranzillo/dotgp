@@ -391,8 +391,8 @@ export class RaceControl {
       this.flag = 'restart';
       this.world.announce(leader ?? this.paceCar, 'flag', this.safetyCar ? 'Safety car in this lap: leader to the line for the restart' : 'Pace car is off: leader to the line for the green');
     }
-    if (this.paceCarOut && this.oneToGo && this.paceCar.surface === 'pit' && t.signedS(this.paceCar.s) > t.pit.wallStart + 15
-      && t.signedS(this.paceCar.s) < t.pit.wallEnd - 20) {
+    if (this.paceCarOut && this.oneToGo && this.paceCar.surface === 'pit' && t.pitInS(this.paceCar.s) > t.pit.wallStart + 15
+      && t.pitInS(this.paceCar.s) < t.pit.wallEnd - 20) {
       this.paceCarOut = false; // pulled in and parked
       this.pickedUp = false;
       this.paceCar.cleared = true; // parked off to the side: not an obstacle on pit road
@@ -564,7 +564,7 @@ export class RaceControl {
   }
 
   private paceCarHeadingIn(): boolean {
-    const r = this.track.signedS(this.paceCar.s);
+    const r = this.track.pitInS(this.paceCar.s);
     return r > pullOffS(this.track) - 10 && r < this.track.pit.wallEnd;
   }
 

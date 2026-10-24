@@ -140,7 +140,7 @@ export class Team implements Controller {
       this.pitInputs.fill(0);
       return;
     }
-    const route = pitRoute(world.track, car.pit, this.autopilot.fromLane);
+    const route = pitRoute(world.track, car, this.autopilot.fromLane);
     // No traffic in ghost sessions: always clear to merge.
     const clear = car.pit.phase === 'out' && (!world.opts.collisions || this.spotter.clearToMerge(car, world));
     observePit(car, world.track, route, clear, PIT_SERVICE.SPEED_LIMIT, this.pitInputs);

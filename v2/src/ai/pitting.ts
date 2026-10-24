@@ -1,5 +1,5 @@
 import { PHYSICS as P, PIT_SERVICE } from '../sim/constants';
-import type { Car, PitCall, PitState } from '../sim/car';
+import type { Car, PitCall } from '../sim/car';
 import { evalProfile, pitBoxD, pitFastD, type Profile } from '../sim/layout';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
@@ -15,6 +15,8 @@ import type { Spotter } from './spotter';
  * through them from the call on: pitRampFrom).
  */
 export function pitDecisionS(track: Track): number {
+  // (A long pit lane's: its way in from the call is counted on from there, Track.pitInR.)
+  if (track.pitLong) return track.signedS(track.pit.entryStart - LONG_CALL);
   const laid = !!(track.pit.entryRoute && track.pit.exitRoute);
   return Math.max(-track.length / 2 + 10, track.pit.entryStart - (laid ? (track.kind === 'road' ? 500 : 700) : 300));
 }
@@ -22,12 +24,17 @@ export function pitDecisionS(track: Track): number {
 /**
  * Where a car called in starts over to the pit entry (signed s): 280 m
  * before it, holding its lane until then; on a road circuit's laid lane,
- * from the call (a lane held through corners runs off the track).
+ * from the call (a lane held through corners runs off the track); on a long
+ * pit lane, from the call too.
  */
 function pitRampFrom(track: Track): number {
   const laid = !!(track.pit.entryRoute && track.pit.exitRoute);
+  if (track.pitLong) return track.pit.entryStart - LONG_CALL;
   return laid && track.kind === 'road' ? pitDecisionS(track) : track.pit.entryStart - 280;
 }
+
+/** A long pit lane's call this far before its entry (m). */
+const LONG_CALL = 300;
 
 /** The crew chief: the team's strategist. */
 export interface CrewChief {
@@ -215,6 +222,11 @@ export function pitLanes(track: Track): PitLanes {
 
 const ramp = (r: number, r0: number, r1: number, a: number, b: number) =>
   r <= r0 ? a : r >= r1 ? b : a + (b - a) * (r - r0) / (r1 - r0);
+/** ...eased at both ends: a long pit lane's way in, followed matching its slope and bend (it's called late: a short oval's). */
+const smoothRamp = (r: number, r0: number, r1: number, a: number, b: number) => {
+  const t = Math.max(0, Math.min(1, (r - r0) / (r1 - r0)));
+  return a + (b - a) * t * t * (3 - 2 * t);
+};
 
 /**
  * The pit lane's way in and out, as a lateral position for each s: in, from
@@ -283,7 +295,7 @@ export function pitPath(track: Track): PitPath {
     path = {
       laid: false,
       // (Across to the fast lane down the deceleration lane, inside its paving as it flares out.)
-      inAt: (r) => ramp(r, pit.entryStart, inEnd, lanes.entryLane, lanes.fastLane),
+      inAt: (r) => (track.pitLong ? smoothRamp : ramp)(r, pit.entryStart, inEnd, lanes.entryLane, lanes.fastLane),
       inEnd,
       outAt: (r, s) => ramp(r, pit.wallEnd + 15, pit.exitEnd, lanes.fastLane, lanes.apronLaneAt(s)),
       outStart: pit.wallEnd + 15,
@@ -303,14 +315,15 @@ export function pitPath(track: Track): PitPath {
  * the racing surface from the merge zone on). The route is the path when the
  * spotter says it's clear to merge; whether it is, is the driver's call.
  */
-export function pitRoute(track: Track, pit: PitState, fromLane: number): (s: number) => number {
+export function pitRoute(track: Track, car: Car, fromLane: number): (s: number) => number {
+  const pit = car.pit;
   const lanes = pitLanes(track);
   const path = pitPath(track);
   const { entryStart, exitEnd, wallStart, wallEnd } = track.pit;
   if (pit.phase === 'out') {
     const mergeFrom = Math.max(track.distanceFrom(pit.boxS, track.pit.blendEnd) - PIT_SERVICE.MERGE_ZONE, track.distanceFrom(pit.boxS, exitEnd));
     return (s: number) => {
-      const r = track.signedS(s);
+      const r = track.pitOutAt(car, s);
       const du = track.progressFrom(pit.boxS, s);
       if (du < track.distanceFrom(pit.boxS, wallEnd)) return ramp(r, pit.boxS, pit.boxS + 25, lanes.boxLane, lanes.fastLane) + track.pitOffset(s);
       if (du < track.distanceFrom(pit.boxS, exitEnd)) return r < path.outStart ? lanes.fastLane + track.pitOffset(s) : path.outAt(r, s);
@@ -318,8 +331,8 @@ export function pitRoute(track: Track, pit: PitState, fromLane: number): (s: num
     };
   }
   return (s: number) => {
-    const r = track.signedS(s);
-    if (r < entryStart) return ramp(r, pitRampFrom(track), entryStart, fromLane, path.inAt(entryStart));
+    const r = track.pitInAt(car, s);
+    if (r < entryStart) return (track.pitLong ? smoothRamp : ramp)(r, pitRampFrom(track), entryStart, fromLane, path.inAt(entryStart));
     if (r < wallStart) return r > path.inEnd ? lanes.fastLane + track.pitOffset(s) : path.inAt(r);
     return ramp(r, pit.boxS - 40, pit.boxS - 8, lanes.fastLane, lanes.boxLane) + track.pitOffset(s);
   };
@@ -458,7 +471,7 @@ export class PitAutopilot {
 
     if (this.aborting) {
       // Back up onto the racing surface and past the wall's nose, then hand back.
-      const r0 = track.signedS(car.s);
+      const r0 = track.pitInR(car);
       if (r0 > track.pit.wallStart + 10 || r0 < track.pit.wallStart - ABORT_DISTANCE - 60) {
         this.aborting = false;
         car.inputX = 0;
@@ -471,7 +484,7 @@ export class PitAutopilot {
       return;
     }
     if (pit.phase === 'in') {
-      const r0 = track.signedS(car.s);
+      const r0 = track.pitInR(car);
       // Still on the track side of the wall's line close to its nose: abort and stay out. A car already
       // past the line commits to pit road (turning back across the nose from there is what hits it).
       // (A pit road set back across grass: its lane is still swinging over until just before the nose, so the call
@@ -487,8 +500,8 @@ export class PitAutopilot {
         return;
       }
       const lane = (s: number) => {
-        const r = track.signedS(s);
-        if (r < entryStart) return ramp(r, pitRampFrom(track), entryStart, this.fromLane, path.laid ? entryLaneAt : entryLane);
+        const r = track.pitInAt(car, s);
+        if (r < entryStart) return (track.pitLong ? smoothRamp : ramp)(r, pitRampFrom(track), entryStart, this.fromLane, path.laid ? entryLaneAt : entryLane);
         // Lined up for pit road well before the wall's nose.
         if (r < track.pit.wallStart) return r > path.inEnd ? fastLane + track.pitOffset(s) : path.inAt(r);
         return ramp(r, pit.boxS - 40, pit.boxS - 8, fastLane, boxLane) + track.pitOffset(s);
@@ -506,13 +519,13 @@ export class PitAutopilot {
       // Never faster than lets us stop behind the car ahead (or a car still in our box).
       const follow = this.followLimit(car, world, lane);
       const cap = (s: number) => {
-        const r = track.signedS(s);
+        const r = track.pitInAt(car, s);
         if (r < track.pit.wallStart - 5 || r > track.pit.wallEnd + 5) return Math.min(follow, path.inCap(r));
         // Pit limiter speed, then a stop on the box.
         return Math.min(follow, PIT_SERVICE.SPEED_LIMIT - 1, Math.sqrt(2 * 3 * Math.max(0, pit.boxS - r)));
       };
       // Well under the cornering limit, leaving grip to work down the track.
-      followLine(car, world, lane, cap, 0.75, path.laid, this.driveGain);
+      followLine(car, world, lane, cap, 0.75, path.laid || track.pitLong, this.driveGain);
     } else if (pit.phase === 'out') {
       // Merge: from the merge zone on, wait on the apron for the spotter's "clear".
       const blend = track.distanceFrom(pit.boxS, track.pit.blendEnd);
@@ -527,7 +540,7 @@ export class PitAutopilot {
       const lane = (s: number) => {
         const du = track.progressFrom(pit.boxS, s);
         if (du < mergeZone || Number.isNaN(mergeFrom)) {
-          const r = track.signedS(s);
+          const r = track.pitOutAt(car, s);
           if (du < track.distanceFrom(pit.boxS, track.pit.wallEnd)) return ramp(r, pit.boxS, pit.boxS + 25, boxLane, fastLane) + track.pitOffset(s);
           // Clear of the wall's end before cutting across to the apron.
           if (du < track.distanceFrom(pit.boxS, exitEnd)) return r < path.outStart ? fastLane + track.pitOffset(s) : path.outAt(r, s);
@@ -545,7 +558,7 @@ export class PitAutopilot {
           && track.distanceFrom(o.s, car.s) > 0 && track.distanceFrom(o.s, car.s) < 45);
       }
       const follow = hold ? 0 : this.followLimit(car, world, lane);
-      const cap = (s: number) => Math.min(follow, track.signedS(s) < track.pit.wallEnd ? PIT_SERVICE.SPEED_LIMIT - 1 : path.outCap(track.signedS(s)));
+      const cap = (s: number) => Math.min(follow, track.pitOutAt(car, s) < track.pit.wallEnd ? PIT_SERVICE.SPEED_LIMIT - 1 : path.outCap(track.pitOutAt(car, s)));
       followLine(car, world, lane, cap, 0.9, path.laid, this.driveGain);
     } else {
       car.inputX = 0;

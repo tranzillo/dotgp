@@ -146,7 +146,7 @@ export class World {
   private updatePit(car: Car, dt: number): void {
     const pit = car.pit;
     if (pit.phase === 'none' || car.retired) return;
-    const r = this.track.signedS(car.s);
+    const r = this.track.pitInR(car);
     if (pit.phase === 'in') {
       const inPitLane = car.d > this.track.pit.wallD + this.track.pitOffset(car.s);
       if (r > this.track.pit.wallStart + 5 && r < pit.boxS && !inPitLane) {

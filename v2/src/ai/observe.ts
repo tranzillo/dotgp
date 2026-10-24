@@ -115,7 +115,7 @@ export function observePit(
 ): Float32Array {
   out.fill(0);
   if (!route || car.pit.phase === 'none') return out;
-  const r = track.signedS(car.s);
+  const r = track.pitInR(car);
   const inLap = car.pit.phase === 'in';
   let k = 0;
   out[k++] = inLap ? 1 : 0;

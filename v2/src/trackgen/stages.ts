@@ -144,6 +144,8 @@ export interface PitLaneOptions {
   crewWidth?: number;
   /** At most this many boxes (default MAX_BOXES), in the middle of a longer pit road. */
   maxBoxes?: number;
+  /** Boxes only along these stretches of pit road (a short oval's two straights, none round the turns between). */
+  stallRanges?: Array<[number, number]>;
 }
 
 /** Pit boxes at most (a race takes at most one car a box: Track.maxField; a real pit road holds 40 or so). */
@@ -187,7 +189,11 @@ export function pitLane(o: PitLaneOptions): { pit: PitLane; pavedInner: Profile 
   const fit = Math.max(1, Math.floor((o.wallEnd - o.wallStart - 40) / o.stallSpacing));
   const boxes = Math.min(fit, o.maxBoxes ?? MAX_BOXES);
   const first = o.wallStart + 25 + ((fit - boxes) * o.stallSpacing) / 2;
-  const stalls = Array.from({ length: boxes }, (_, k) => first + k * o.stallSpacing);
+  // (Along given stretches: as many as each holds, from its start; at most maxBoxes, the last stretch's cut.)
+  const stalls = o.stallRanges
+    ? o.stallRanges.flatMap(([a, b]) => Array.from({ length: Math.max(0, Math.floor((b - a) / o.stallSpacing)) }, (_, k) => a + (k + 0.5) * o.stallSpacing))
+      .slice(0, o.maxBoxes ?? MAX_BOXES)
+    : Array.from({ length: boxes }, (_, k) => first + k * o.stallSpacing);
   return {
     pit: {
       entryStart, wallStart: o.wallStart, wallEnd: o.wallEnd, exitEnd, blendEnd: o.blendEnd,
@@ -207,6 +213,15 @@ export function pitLane(o: PitLaneOptions): { pit: PitLane; pavedInner: Profile 
   };
 }
 
+/**
+ * A profile keyed past the half-lap point (a pit lane running round it) with its keys wrapped back into signed s
+ * and in order: evalProfile wraps from the last key round to the first.
+ */
+export function wrapKeys(p: Profile, L: number): Profile {
+  const wrap = (s: number) => { const r = ((s % L) + L) % L; return r > L / 2 ? r - L : r; };
+  return { ...p, keys: p.keys.map(([s, d]) => [wrap(s), d] as [number, number]).sort((a, b) => a[0] - b[0]) };
+}
+
 /** Half the width of the paved lane into and out of a pit road set back from the track. */
 const PIT_LANE_HALF = 5.5;
 /** Pit road set back this far (or more) gets its own lanes across the grass (nearer, the gap is paved apron). */
@@ -220,6 +235,8 @@ export interface PitComplexOptions extends PitLaneOptions {
   garageDepth: (d0: number) => number;
   /** Pit road on a chord: how much further in the whole pit complex stands at each (signed) s. */
   offset?: (s: number) => number;
+  /** Where along pit road the garage is (default: all of it but 30 m at either end). */
+  garageRange?: [number, number];
 }
 
 /**
@@ -297,7 +314,7 @@ export function pitComplex(cl: Centerline, o: PitComplexOptions): {
   }
 
   // The garage, and lanes to it across the grass when it's set back.
-  const s0 = wallStart + 30, s1 = wallEnd - 30;
+  const [s0, s1] = o.garageRange ?? [wallStart + 30, wallEnd - 30];
   // (Behind pit road where it is furthest in, on a chord.)
   let deepest = 0;
   for (let s = s0; s <= s1; s += 5) deepest = Math.max(deepest, off(s));
@@ -322,8 +339,8 @@ export function pitComplex(cl: Centerline, o: PitComplexOptions): {
     return pts;
   };
   const entryAt = cl.toWorld(entryStart, apronD - 2), exitAt = cl.toWorld(exitEnd, apronD - 2);
-  node('pit-entry', 'apron', entryAt, entryStart);
-  node('pit-exit', 'apron', exitAt, exitEnd);
+  node('pit-entry', 'apron', entryAt, cl.signedS(entryStart));
+  node('pit-exit', 'apron', exitAt, cl.signedS(exitEnd));
   // Stations along pit road's inner side: its start and end, and where the garage is reached from it.
   const garageS = o.garageSetBack > 0 ? laneS : [garage.lot.s0 + 4];
   const stations: Array<{ s: number; id: string }> = [

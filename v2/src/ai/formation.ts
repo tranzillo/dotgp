@@ -177,7 +177,7 @@ export class PaceCarDriver implements Controller {
       return;
     }
     const t = world.track;
-    const r = t.signedS(car.s);
+    const r = t.pitInS(car.s);
     const wallClear = t.pit.wallD + t.pit.wallThickness / 2 + P.CAR_RADIUS + 1.2;
     const fastLane = Math.max(pitFastD(t.pit), wallClear);
     const ramp = (x: number, x0: number, x1: number, a: number, b: number) =>
@@ -192,7 +192,7 @@ export class PaceCarDriver implements Controller {
       // Heading in: (down to the apron at turn 4 exit,) onto pit road, stop at its start.
       const path = pitPath(t);
       const lane = (s: number) => {
-        const x = t.signedS(s);
+        const x = t.pitInS(s);
         // A pit lane laid out across the grass: down to its start, then along it.
         if (path.laid) {
           if (x < t.pit.entryStart) return ramp(x, t.pit.entryStart - 180, t.pit.entryStart, 0, path.inAt(t.pit.entryStart));
@@ -203,7 +203,7 @@ export class PaceCarDriver implements Controller {
         return ramp(x, pull, t.pit.wallStart - 50, wallClear, fastLane);
       };
       const cap = (s: number) => {
-        const x = t.signedS(s);
+        const x = t.pitInS(s);
         if (x < t.pit.wallStart - 5) return Math.min(ctl.paceSpeedAt(s), PIT_SERVICE.SPEED_LIMIT * 1.5, pitPath(t).inCap(x));
         return Math.min(PIT_SERVICE.SPEED_LIMIT - 1, Math.sqrt(2 * 3 * Math.max(0, t.pit.wallStart + 25 - x)));
       };
@@ -214,12 +214,12 @@ export class PaceCarDriver implements Controller {
       // Just released from pit road: out through the exit taper and onto the track.
       const path = pitPath(t);
       const lane = (s: number) => {
-        const x = t.signedS(s);
+        const x = t.pitOutS(s);
         if (!path.laid) return ramp(x, t.pit.wallEnd + 15, t.pit.exitEnd, fastLane, 0);
         if (x < path.outStart) return fastLane + t.pitOffset(s);
         return x < t.pit.exitEnd ? path.outAt(x, s) : ramp(x, t.pit.exitEnd, t.pit.exitEnd + 80, path.outAt(t.pit.exitEnd, s), 0);
       };
-      followLine(car, world, lane, (s) => Math.min(ctl.paceSpeedAt(s) * 1.2, path.outCap(t.signedS(s))), 0.8, path.laid);
+      followLine(car, world, lane, (s) => Math.min(ctl.paceSpeedAt(s) * 1.2, path.outCap(t.pitOutS(s))), 0.8, path.laid);
       return;
     }
     // Out on track: slowly until it has picked up the leader (the leader catches it), then at pace speed.

@@ -659,7 +659,7 @@ function courseInner(site: InfieldSite, straight: number, radius: number, width:
         bankInner: 0, bankOuter: 0, bankStraight: 0,
         name: 2 * (straight + Math.PI * radius) < 800 ? 'Bullring' : 'Short track',
       }),
-      pits: { gap: 1, entryLength: 15, exitLength: 15, blend: 0, startInset: 45, endInset: 40, stallSpacing: 11, garageSetBack: 0, garageLanes: 1 },
+      pits: { style: 'front', gap: 1, entryLength: 15, exitLength: 15, blend: 0, startInset: 45, endInset: 40, stallSpacing: 11, garageSetBack: 0, garageLanes: 1 },
     }, site.seed);
     // (Open, as the infield is: its pit wall only.)
     return { ...built, id: `${site.id}/inner`, walls: built.walls.filter((w) => w.id === 'pit-wall' || w.id.startsWith('pit-inner-wall')) };

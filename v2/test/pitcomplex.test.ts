@@ -25,17 +25,18 @@ class CallOnce implements CrewChief {
 }
 
 /** A scripted car called in once: the whole pit cycle, as the pit tests run it. */
-function pitCycle(track: Track): { stops: number; health: number; maxPitSpeed: number; rejoined: boolean } {
+function pitCycle(track: Track, box = 0): { stops: number; health: number; maxPitSpeed: number; rejoined: boolean } {
   const world = new World(track, { collisions: false });
   const car = new Car(0);
   placeOnGrid(car, track, 0, true);
   car.fuel = 20;
   car.tireLife = 0.5;
   world.addCar(car, new Team(new ScriptedDriver(0), new TowerSpotter(), new CallOnce()));
+  car.pit.boxS = track.pit.stalls[box];
   let maxPitSpeed = 0;
   while (world.time < 400) {
     world.step();
-    if (car.surface === 'pit' && car.pit.phase === 'in' && track.signedS(car.s) > track.pit.wallStart + 30) maxPitSpeed = Math.max(maxPitSpeed, car.speed);
+    if (car.surface === 'pit' && car.pit.phase === 'in' && track.pitInR(car) > track.pit.wallStart + 30) maxPitSpeed = Math.max(maxPitSpeed, car.speed);
     if (car.pit.stops === 1 && car.pit.phase === 'none') {
       for (let k = 0; k < 360; k++) world.step();
       return { stops: 1, health: car.health, maxPitSpeed, rejoined: car.d < track.halfWidth };
@@ -183,5 +184,27 @@ describe("circuits' laid pit entries", () => {
     expect(r.health).toBeGreaterThan(0.99);
     expect(r.rejoined).toBe(true);
     expect(r.maxPitSpeed).toBeLessThan(PIT_SERVICE.SPEED_LIMIT + 1);
+  });
+});
+
+describe("short ovals' pit road down both straights", () => {
+  it('runs pit road from the back straight round the last turn onto the front stretch, boxes on both, and stops at either end of it', () => {
+    const track = new Track(presetLayout('short'));
+    const p = track.pit;
+    // (Its pit lane runs past the half-lap point, so its s goes on past it.)
+    expect(track.pitLong).toBe(true);
+    expect(p.entryStart).toBeLessThan(-track.length / 2);
+    expect(track.maxField).toBeGreaterThanOrEqual(20);
+    // Boxes on the back straight and on the front stretch, none round the turn between.
+    const turn = p.stalls.findIndex((s, k) => k > 0 && s - p.stalls[k - 1] > 100);
+    expect(turn).toBeGreaterThan(5);
+    expect(p.stalls.length - turn).toBeGreaterThan(5);
+    for (const box of [0, turn - 1, turn, p.stalls.length - 1]) {
+      const r = pitCycle(track, box);
+      expect(r.stops).toBe(1);
+      expect(r.health).toBeGreaterThan(0.99);
+      expect(r.rejoined).toBe(true);
+      expect(r.maxPitSpeed).toBeLessThan(PIT_SERVICE.SPEED_LIMIT + 1);
+    }
   });
 });

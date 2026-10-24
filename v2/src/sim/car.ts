@@ -30,6 +30,8 @@ export interface PitState {
   stops: number;
   /** Laps completed when tires were last changed. */
   tiresFittedLap: number;
+  /** On a long pit lane, where the car was on its way in when called (Track.pitInR): its dist, and pit lane s. */
+  inFrom?: { call: PitCall | null; dist: number; r: number };
 }
 const RETIRED_DECEL = 8;
 

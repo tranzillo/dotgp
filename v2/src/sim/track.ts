@@ -1,12 +1,16 @@
 import { Centerline } from './centerline';
 import { PHYSICS } from './constants';
 import { PolygonIndex } from './polygon';
+import type { PitState } from './car';
 import { legacyNetwork, RoadGraph } from './roads';
 import {
   evalEdge, evalProfile, layoutKind, type Edge, type Infield, type LayoutKind, type PitLane, type Surface, type SurfaceRegion, type TrackLayout, type Wall,
 } from './layout';
 
 export type { Surface, TrackRect } from './layout';
+
+/** What the pit lane's way in and out needs to know of a car. */
+interface PitCar { s: number; d: number; dist: number; pit: PitState }
 export type { Projection } from './centerline';
 
 /**
@@ -202,6 +206,57 @@ export class Track extends Centerline {
    */
   get maxField(): number {
     return this.pit.stalls.length;
+  }
+
+  /**
+   * The pit lane runs past the half-lap point where signed s wraps (a short oval's pit road down both straights):
+   * there pit-lane s goes on past it (entryStart can be under -L/2), and its way in overlaps its way out.
+   */
+  get pitLong(): boolean {
+    return this.pit.entryStart <= -this.length / 2 || this.pit.blendEnd > this.length / 2;
+  }
+
+  /**
+   * s as something on its way in sees it, comparable with pit lane's s (entryStart..wallEnd): signed s, or on a long
+   * pit lane, from a lap less 40 m behind the wall's end to 40 m past it (the pace car's way in).
+   */
+  pitInS(s: number): number {
+    if (!this.pitLong) return this.signedS(s);
+    const u = this.distanceFrom(this.pit.wallEnd, s);
+    return this.pit.wallEnd + (u > 40 ? u - this.length : u);
+  }
+
+  /** s as something on its way out sees it, comparable with pit lane's s (wallStart..blendEnd): signed s, or on a long pit lane, from 20 m behind the wall's start. */
+  pitOutS(s: number): number {
+    return this.pitLong ? this.pit.wallStart + this.progressFrom(this.pit.wallStart, s) : this.signedS(s);
+  }
+
+  /**
+   * Where a car on its way in to its box is, comparable with pit lane's s: signed s, or on a long pit lane, counted on
+   * from where it was called (its way in there can be over a lap: a car called on the front stretch, its box there,
+   * drives round to the pit entry first).
+   */
+  pitInR(car: PitCar): number {
+    if (!this.pitLong) return this.signedS(car.s);
+    let from = car.pit.inFrom;
+    if (!from || from.call !== car.pit.call) {
+      // (Called on track, before the entry; or, placed on pit road behind its wall, where it is along it.)
+      const past = this.distanceFrom(this.pit.entryStart, car.s);
+      const onPitRoad = car.d > this.pit.wallD + this.pitOffset(car.s) && this.inPitWallZone(car.s);
+      const r = onPitRoad ? this.pit.entryStart + past : this.pit.entryStart - this.distanceFrom(car.s, this.pit.entryStart);
+      from = car.pit.inFrom = { call: car.pit.call, dist: car.dist, r };
+    }
+    return from.r + car.dist - from.dist;
+  }
+
+  /** ...and s near it (ahead, or a little behind), on the same count. */
+  pitInAt(car: PitCar, s: number): number {
+    return this.pitLong ? this.pitInR(car) + this.progressFrom(car.s, s, 50) : this.signedS(s);
+  }
+
+  /** Where s is for a car on its way out of its box, comparable with pit lane's s: signed s, or on a long pit lane, from its box on. */
+  pitOutAt(car: PitCar, s: number): number {
+    return this.pitLong ? car.pit.boxS + this.progressFrom(car.pit.boxS, s) : this.signedS(s);
   }
 
   /** True where the pit wall stands. */

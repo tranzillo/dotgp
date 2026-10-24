@@ -4,7 +4,7 @@ import { evalProfile, LAYOUT_VERSION, type CenterlineSpec, type Decoration, type
 import { Track } from '../sim/track';
 import { buildLayout, registerTrackType, type GenContext } from './generator';
 import { trackName } from './names';
-import { escapeLane, garageLot, innerPitWalls, pitComplex, pitLane, serviceRoad, SET_BACK_PIT, standardMarkings, standardSurfaces, standardWalls } from './stages';
+import { escapeLane, garageLot, innerPitWalls, pitComplex, pitLane, serviceRoad, SET_BACK_PIT, standardMarkings, standardSurfaces, standardWalls, wrapKeys } from './stages';
 import { buildInfield, sampleInfield, type InfieldPlan } from './infield';
 import { compileRoval } from './roval';
 import { validateLayout } from './validate';
@@ -84,7 +84,8 @@ export interface PitPlan {
   garageSetBack: number;
   garageLanes: number;
   /**
-   * front: pit road follows the front stretch (default). chord: on a front
+   * Default: pit road follows the front stretch (on a short track whose front stretch holds too few boxes, down both
+   * straights: buildOval). front: the front stretch only, whatever it holds. chord: on a front
    * stretch that bends (tri-oval, quad-oval), pit road runs straight across
    * it, from where the last turn ends to where turn 1 begins, as at Daytona,
    * Kansas and Iowa: the oval races the bulge, the infield between is grass.
@@ -430,6 +431,12 @@ const EXIT_PER_GAP = 2.5;
 /** How far into the last turn (before its end) a set-back pit road's entry may begin, and past turn 1's start its exit may end. */
 const PIT_SWING_INTO_TURN = 60;
 
+/**
+ * Pit road down both straights on a short track (a lap under BOTH_MAX_LAP m) whose front stretch alone holds fewer
+ * boxes than this, where the straight before the last turn is this long (m); boxes there this far apart (m).
+ */
+const BOTH_STRAIGHTS_BELOW = 20, BOTH_MAX_LAP = 1600, BOTH_MIN_STRAIGHT = 100, BOTH_SPACING = 10.5;
+
 /** A set-back pit road keeps room for at least this many boxes (else its gap shrinks). */
 const SET_BACK_MIN_BOXES = 12;
 
@@ -688,6 +695,11 @@ interface Landmarks {
   escape: { length: number; range: [number, number] };
   /** Middle of the last turn's arc. */
   lastTurnMid: number;
+  /**
+   * The straight before the last turn (signed s, before the front stretch: it may start past the half-lap point), and
+   * the middle of the turn before it; absent if the last turn doesn't follow a straight.
+   */
+  back?: { range: [number, number]; turnBeforeMid: number };
 }
 
 function landmarks(p: ShapedOvalParams, lap: Piece[]): Landmarks {
@@ -712,11 +724,23 @@ function landmarks(p: ShapedOvalParams, lap: Piece[]): Landmarks {
   if (range[0] >= L / 2) range = [range[0] - L, range[1] - L];
   let lastArc = lap.length - 1;
   while (!(isTurn(lap[lastArc]) && lap[lastArc].part === 'arc')) lastArc--;
+  // (The last turn's first piece, the straight before it, and the arc of the turn before that.)
+  let j0 = last;
+  while (j0 > 0 && lap[j0 - 1].corner === lap[last].corner) j0--;
+  // (A measured straight is several pieces.)
+  let b0 = j0 - 1;
+  while (b0 > 0 && lap[j0 - 1].straight !== undefined && lap[b0 - 1].straight === lap[j0 - 1].straight) b0--;
+  let prevArc = b0 - 1;
+  while (prevArc >= 0 && !(isTurn(lap[prevArc]) && lap[prevArc].part === 'arc')) prevArc--;
+  const back = j0 > 0 && lap[j0 - 1].straight !== undefined && prevArc >= 0
+    ? { range: [starts[b0] - L, starts[j0 - 1] + lap[j0 - 1].len - L] as [number, number], turnBeforeMid: starts[prevArc] + lap[prevArc].len / 2 - L }
+    : undefined;
   return {
     front: [starts[last] + lap[last].len - L, starts[first]],
     afterTurn1: after < 0 ? starts[first] : starts[after],
     escape: { length: p.straights[lap[best].straight!].length, range },
     lastTurnMid: starts[lastArc] + lap[lastArc].len / 2 - (starts[lastArc] >= L / 2 ? L : 0),
+    ...(back ? { back } : {}),
   };
 }
 
@@ -766,25 +790,36 @@ function buildOval(params: AnyOvalParams, ctx: GenContext): TrackLayout {
   // Pit road along the front stretch; the blend line runs through turn 1 a little way down the straight after it.
   // The entry taper shortens where the last turn is short (a rectangle's 90-degree corner): it leaves after the turn's middle.
   const plan = p.pits && fitPits(p.pits, marks.front);
-  const spacing = plan?.stallSpacing ?? OVAL_PIT.STALL_SPACING;
-  const wallStart = marks.front[0] + (plan?.startInset ?? OVAL_PIT.WALL_START_INSET);
+  const frontStart = marks.front[0] + (plan?.startInset ?? OVAL_PIT.WALL_START_INSET);
   const wallEnd = marks.front[1] - (plan?.endInset ?? OVAL_PIT.WALL_END_INSET);
-  const exitTaper = plan?.exitLength ?? OVAL_PIT.EXIT_TAPER;
+  // A short oval's front stretch that holds too few boxes (Bristol, Martinsville): pit road down both straights,
+  // from the straight before the last turn, round the turn's inside and on along the front stretch, its boxes on the
+  // two straights, a short track's 10.5 m apart. (Against the track: not set back across grass, nor on a chord.)
+  const back = marks.back;
+  const both = !!back && L < BOTH_MAX_LAP && back.range[1] - back.range[0] >= BOTH_MIN_STRAIGHT
+    && Math.floor((wallEnd - frontStart - 40) / (plan?.stallSpacing ?? OVAL_PIT.STALL_SPACING)) < BOTH_STRAIGHTS_BELOW
+    && (!plan || (plan.gap < SET_BACK_PIT && plan.style === undefined));
+  const spacing = Math.min(plan?.stallSpacing ?? OVAL_PIT.STALL_SPACING, both ? BOTH_SPACING : Infinity);
+  const wallStart = both ? back!.range[0] + (plan?.startInset ?? OVAL_PIT.WALL_START_INSET) : frontStart;
+  const entryLength = Math.min(plan?.entryLength ?? OVAL_PIT.ENTRY_LENGTH, wallStart - (both ? back!.turnBeforeMid : marks.lastTurnMid) - 10);
+  // The blend line through turn 1 to a little way down the straight after it, but never more than BLEND_MAX past the
+  // exit (on a superspeedway the straight after turn 1 is a kilometre on: cars would run beside the track for most of
+  // a lap before they count as merged); down both straights, ending before the pit entry comes round again.
+  const blendEnd = Math.min(marks.afterTurn1 + (plan?.blend ?? OVAL_PIT.BLEND_INTO_BACK_STRAIGHT), L / 2 - 5,
+    wallEnd + (plan?.exitLength ?? OVAL_PIT.EXIT_TAPER) + BLEND_MAX, both ? wallStart - entryLength + L - 40 : Infinity);
+  const exitTaper = Math.min(plan?.exitLength ?? OVAL_PIT.EXIT_TAPER, both ? blendEnd - wallEnd - 20 : Infinity);
   const pitOptions = {
-    innerEdge, apronWidth: p.apronWidth, wallStart, wallEnd,
-    // The blend line through turn 1 to a little way down the straight after it, but never more than BLEND_MAX past the
-    // exit (on a superspeedway the straight after turn 1 is a kilometre on: cars would run beside the track for most of
-    // a lap before they count as merged).
-    blendEnd: Math.min(marks.afterTurn1 + (plan?.blend ?? OVAL_PIT.BLEND_INTO_BACK_STRAIGHT), L / 2 - 5, wallEnd + exitTaper + BLEND_MAX),
-    entryLength: Math.min(plan?.entryLength ?? OVAL_PIT.ENTRY_LENGTH, wallStart - marks.lastTurnMid - 10),
-    exitTaper,
+    innerEdge, apronWidth: p.apronWidth, wallStart, wallEnd, blendEnd, entryLength, exitTaper,
     wallGap: plan?.gap ?? OVAL_PIT.WALL_GAP, wallThickness: OVAL_PIT.WALL_THICKNESS, roadWidth: OVAL_PIT.ROAD_WIDTH,
     stallSpacing: spacing, crewWidth: OVAL_PIT.CREW_WIDTH,
+    ...(both ? { stallRanges: [[wallStart + 25, back!.range[1] - 10], [marks.front[0] + 15, wallEnd - 15]] as Array<[number, number]> } : {}),
   };
-  // Garage lot behind pit road (or set back from it), as deep as the infield allows (within reason).
+  // Garage lot behind pit road (or set back from it), as deep as the infield allows (within reason); down both
+  // straights, behind the front stretch's part.
+  const garageFrom = both ? marks.front[0] + 30 : wallStart + 30;
   const garageDepth = (d0: number) => (p.garageRoom !== undefined
     ? Math.max(20, Math.min(45, p.garageRoom - d0 - 30))
-    : measuredDepth(cl, wallStart + 30, wallEnd - 30, d0));
+    : measuredDepth(cl, garageFrom, wallEnd - 30, d0));
   let pit, pavedInner, garage, buildings;
   let pitSurfaces: SurfaceRegion[] = [];
   let network: RoadNetwork | undefined;
@@ -792,16 +827,18 @@ function buildOval(params: AnyOvalParams, ctx: GenContext): TrackLayout {
   if (plan) {
     // A generated pit complex, with its road network (on a chord: shifted in by how far the chord is from the track).
     ({ pit, pavedInner, garage, buildings, surfaces: pitSurfaces, network, access } = pitComplex(cl, {
-      ...pitOptions, garageSetBack: plan.garageSetBack, garageLanes: plan.garageLanes, garageDepth,
+      ...pitOptions, garageSetBack: plan.garageSetBack, garageLanes: plan.garageLanes, garageDepth, garageRange: [garageFrom, wallEnd - 30],
       ...(plan.style === 'chord' ? { offset: chordOffset(cl, marks.front) } : {}),
     }));
   } else {
     ({ pit, pavedInner } = pitLane(pitOptions));
     // (Behind the crews' strip; reached through the inside pit wall at its near end.)
     const d0 = pit.crewD ?? pit.roadD;
-    ({ garage, buildings } = garageLot(cl, { s0: pit.wallStart + 30, s1: pit.wallEnd - 30, d0, depth: garageDepth(d0) }));
+    ({ garage, buildings } = garageLot(cl, { s0: garageFrom, s1: pit.wallEnd - 30, d0, depth: garageDepth(d0) }));
     access = [garage.lot.s0 + 4];
   }
+  // (Down both straights the pit lane runs past the half-lap point: its paving keyed in signed s.)
+  if (both) pavedInner = wrapKeys(pavedInner, L);
 
   const id = p.name ? p.name.toLowerCase().replace(/\s+/g, '-') : `oval-${ctx.seed}`;
   let escapeLanes: EscapeLane[];

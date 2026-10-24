@@ -63,7 +63,8 @@ export interface PitTrialResult {
 
 /** Where a car starts its in-lap with the stop called. */
 export function inLapStart(track: Track): number {
-  return Math.max(track.pit.entryStart - START_BEFORE_ENTRY, -track.length / 2 + 20);
+  // (A long pit lane's s runs on past the half-lap point.)
+  return track.pitLong ? track.pit.entryStart - START_BEFORE_ENTRY : Math.max(track.pit.entryStart - START_BEFORE_ENTRY, -track.length / 2 + 20);
 }
 
 /** Start a car on its in-lap with the stop called (offset along the track and lane, for a field). */
@@ -89,7 +90,7 @@ export class StopTracker {
     if (car.pit.stops > 0) this.serviced = true;
     if (car.pit.phase === 'in' && car.surface === 'pit') {
       this.reachedPitRoad = true;
-      if (Math.abs(track.signedS(car.s) - car.pit.boxS) < 20 && car.speed < 6) this.reachedBox = true;
+      if (Math.abs(track.pitInR(car) - car.pit.boxS) < 20 && car.speed < 6) this.reachedBox = true;
     }
     if (this.serviced && car.pit.phase === 'none') this.completed = true;
   }

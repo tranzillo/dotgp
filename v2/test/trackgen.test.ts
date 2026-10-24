@@ -49,9 +49,10 @@ describe('track generation', () => {
     // A change here means every trained driver is racing a different track. Change only on purpose.
     // (Changed 2026-10-23 on purpose: the pit wall a car's width and a metre clear of the track, the inside pit wall and
     // crews' strip behind the boxes, at most 40 boxes, a blend ending soon after the exit; then the entry's deceleration
-    // lane, one lane wide until 40 m before the wall: training/TRACK-CHANGES.md.)
+    // lane, one lane wide until 40 m before the wall; 2026-10-24 the short track's pit road down both straights:
+    // training/TRACK-CHANGES.md.)
     expect(hashSeed(0, JSON.stringify(presetLayout('speedway')))).toBe(2047824340);
-    expect(hashSeed(0, JSON.stringify(presetLayout('short')))).toBe(953419901);
+    expect(hashSeed(0, JSON.stringify(presetLayout('short')))).toBe(1890863560);
     expect(hashSeed(0, JSON.stringify(presetLayout('flat')))).toBe(632096233);
   });
 

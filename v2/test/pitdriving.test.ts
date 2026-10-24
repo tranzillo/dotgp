@@ -34,13 +34,13 @@ describe('drivers doing their own pit stops', () => {
     expect(out.every((v) => v === 0)).toBe(true);
     car.pit.phase = 'in';
     car.pit.boxS = track.pit.stalls[0];
-    observePit(car, track, pitRoute(track, car.pit, 0), false, 22, out);
+    observePit(car, track, pitRoute(track, car, 0), false, 22, out);
     expect(out[0]).toBe(1); // in-lap
     // The route starts near where the car is (200 m out it has begun easing toward the pit entry, which stands a car's
     // width and a metre clear of the racing surface).
     expect(out[2]).toBeLessThan(0.6);
     car.pit.phase = 'out';
-    const route = pitRoute(track, car.pit, 0);
+    const route = pitRoute(track, car, 0);
     expect(route(track.pit.blendEnd + 50)).toBeLessThan(track.innerEdgeAt(track.pit.blendEnd + 50)); // merged
   });
 
