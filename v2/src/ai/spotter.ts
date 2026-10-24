@@ -37,6 +37,11 @@ const AHEAD_RANGE = 120;
 const BEHIND_RANGE = 80;
 const HAZARD_RANGE = 800;
 const HAZARD_SPEED = 25; // m/s: anything slower than this on track is a hazard
+/**
+ * While the field is pacing it all runs slower than HAZARD_SPEED (a safety car takes corners well under it), so the
+ * hazard was the next car in line and the wreck behind it never called: then only a car stopped (or out) is (m/s).
+ */
+const PACING_HAZARD_SPEED = 5;
 const CLOSING_SCALE = 20; // m/s
 
 /** A spotter watches the race and fills the radio for its driver. */
@@ -91,6 +96,7 @@ export class TowerSpotter implements Spotter {
     let ahead2: Car | null = null, ahead2Gap = Infinity;
     let behind: Car | null = null, behindGap = Infinity;
     let hazardGap = Infinity, hazardD = 0;
+    const hazardSpeed = world.control?.pacing ? PACING_HAZARD_SPEED : HAZARD_SPEED;
 
     for (const other of world.cars) {
       if (other === car || other.cleared) continue;
@@ -118,7 +124,7 @@ export class TowerSpotter implements Spotter {
       const gapAhead = track.wrapS(other.s - car.s);
       // Slow because they're pitting isn't a hazard; slow on the racing surface is. (Speed last: it's a square root.)
       const pitting = other.pit.phase !== 'none' && !other.retired;
-      if (gapAhead > alongsideDs() && gapAhead < hazardGap && !pitting && (other.retired || other.speed < HAZARD_SPEED)) {
+      if (gapAhead > alongsideDs() && gapAhead < hazardGap && !pitting && (other.retired || other.speed < hazardSpeed)) {
         hazardGap = gapAhead;
         hazardD = other.d;
       }
