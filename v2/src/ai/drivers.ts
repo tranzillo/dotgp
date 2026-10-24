@@ -373,8 +373,10 @@ export class NeuralDriver implements DriverBrain {
     const input = this.inputs(car, world, radio, pit, caution);
     const net = this.netAt(world.track, input);
     const out = net.forward(input);
-    if (ROAD_CAUTION_THROTTLE && net === this.roadCautionNet && this.roadNet) {
-      // The road skill steers; the road caution skill's throttle (1: only where it asks for less speed).
+    if (ROAD_CAUTION_THROTTLE && net === this.roadCautionNet && this.roadNet && world.control?.flag === 'caution') {
+      // Behind the safety car the road skill steers (formation laps, the grid and restarts are the caution skill's:
+      // the road skill can't put a car in its grid box); the road caution skill's throttle (1: only where it asks
+      // for less speed).
       const pedal = out[0];
       const race = this.roadNet.forward(input);
       this.apply(car, ROAD_CAUTION_THROTTLE === 1 ? Math.min(pedal, race[0]) : pedal, race[1]);
