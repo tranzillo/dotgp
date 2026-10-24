@@ -141,7 +141,12 @@ export interface PitLaneOptions {
   boxDepth?: number;
   /** An oval's crew strip behind an inside pit wall behind the boxes (NASCAR's), this wide; absent: neither. */
   crewWidth?: number;
+  /** At most this many boxes (default MAX_BOXES), in the middle of a longer pit road. */
+  maxBoxes?: number;
 }
+
+/** Pit boxes at most (a race takes at most one car a box: Track.maxField; a real pit road holds 40 or so). */
+export const MAX_BOXES = 40;
 
 /** An oval's inside pit wall, behind the boxes (the crews go over it). */
 export const INNER_PIT_WALL = 0.6;
@@ -167,9 +172,12 @@ export function pitLane(o: PitLaneOptions): { pit: PitLane; pavedInner: Profile 
   const backD = crewD ?? roadD;
   const entryStart = o.wallStart - o.entryLength;
   const exitEnd = o.wallEnd + o.exitTaper;
-  // Boxes from 25 m in, spaced along the wall, leaving room to accelerate out of the last.
-  const boxes = Math.max(1, Math.floor((o.wallEnd - o.wallStart - 40) / o.stallSpacing));
-  const stalls = Array.from({ length: boxes }, (_, k) => o.wallStart + 25 + k * o.stallSpacing);
+  // Boxes from 25 m in, spaced along the wall, leaving room to accelerate out of the last; at most maxBoxes of them, in
+  // the middle of a longer pit road.
+  const fit = Math.max(1, Math.floor((o.wallEnd - o.wallStart - 40) / o.stallSpacing));
+  const boxes = Math.min(fit, o.maxBoxes ?? MAX_BOXES);
+  const first = o.wallStart + 25 + ((fit - boxes) * o.stallSpacing) / 2;
+  const stalls = Array.from({ length: boxes }, (_, k) => first + k * o.stallSpacing);
   return {
     pit: {
       entryStart, wallStart: o.wallStart, wallEnd: o.wallEnd, exitEnd, blendEnd: o.blendEnd,

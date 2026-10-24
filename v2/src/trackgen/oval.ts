@@ -419,6 +419,9 @@ function samplePits(rng: Rng, variant: string, shape: OvalShape): PitPlan {
   };
 }
 
+/** The blend line ends at most this far past the pit exit's taper (m). */
+const BLEND_MAX = 250;
+
 /** Entry taper of a pit road against the track (longer ones start too far round a short track's last turn). */
 const CLASSIC_ENTRY: Range = [120, 150];
 /** Extra entry and exit lane per metre a pit road is set back (m/m). */
@@ -763,15 +766,20 @@ function buildOval(params: AnyOvalParams, ctx: GenContext): TrackLayout {
   // Pit road along the front stretch; the blend line runs through turn 1 a little way down the straight after it.
   // The entry taper shortens where the last turn is short (a rectangle's 90-degree corner): it leaves after the turn's middle.
   const plan = p.pits && fitPits(p.pits, marks.front);
+  const spacing = plan?.stallSpacing ?? OVAL_PIT.STALL_SPACING;
   const wallStart = marks.front[0] + (plan?.startInset ?? OVAL_PIT.WALL_START_INSET);
   const wallEnd = marks.front[1] - (plan?.endInset ?? OVAL_PIT.WALL_END_INSET);
+  const exitTaper = plan?.exitLength ?? OVAL_PIT.EXIT_TAPER;
   const pitOptions = {
     innerEdge, apronWidth: p.apronWidth, wallStart, wallEnd,
-    blendEnd: Math.min(marks.afterTurn1 + (plan?.blend ?? OVAL_PIT.BLEND_INTO_BACK_STRAIGHT), L / 2 - 5),
+    // The blend line through turn 1 to a little way down the straight after it, but never more than BLEND_MAX past the
+    // exit (on a superspeedway the straight after turn 1 is a kilometre on: cars would run beside the track for most of
+    // a lap before they count as merged).
+    blendEnd: Math.min(marks.afterTurn1 + (plan?.blend ?? OVAL_PIT.BLEND_INTO_BACK_STRAIGHT), L / 2 - 5, wallEnd + exitTaper + BLEND_MAX),
     entryLength: Math.min(plan?.entryLength ?? OVAL_PIT.ENTRY_LENGTH, wallStart - marks.lastTurnMid - 10),
-    exitTaper: plan?.exitLength ?? OVAL_PIT.EXIT_TAPER,
+    exitTaper,
     wallGap: plan?.gap ?? OVAL_PIT.WALL_GAP, wallThickness: OVAL_PIT.WALL_THICKNESS, roadWidth: OVAL_PIT.ROAD_WIDTH,
-    stallSpacing: plan?.stallSpacing ?? OVAL_PIT.STALL_SPACING, crewWidth: OVAL_PIT.CREW_WIDTH,
+    stallSpacing: spacing, crewWidth: OVAL_PIT.CREW_WIDTH,
   };
   // Garage lot behind pit road (or set back from it), as deep as the infield allows (within reason).
   const garageDepth = (d0: number) => (p.garageRoom !== undefined

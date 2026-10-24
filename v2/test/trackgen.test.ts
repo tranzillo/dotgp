@@ -48,10 +48,10 @@ describe('track generation', () => {
   it('keeps the presets exactly as they were: drivers are trained on them', () => {
     // A change here means every trained driver is racing a different track. Change only on purpose.
     // (Changed 2026-10-23 on purpose: the pit wall a car's width and a metre clear of the track, the inside pit wall and
-    // crews' strip behind the boxes: training/TRACK-CHANGES.md.)
-    expect(hashSeed(0, JSON.stringify(presetLayout('speedway')))).toBe(2368809997);
-    expect(hashSeed(0, JSON.stringify(presetLayout('short')))).toBe(3914552127);
-    expect(hashSeed(0, JSON.stringify(presetLayout('flat')))).toBe(2714689838);
+    // crews' strip behind the boxes, at most 40 boxes, a blend ending soon after the exit: training/TRACK-CHANGES.md.)
+    expect(hashSeed(0, JSON.stringify(presetLayout('speedway')))).toBe(1551759429);
+    expect(hashSeed(0, JSON.stringify(presetLayout('short')))).toBe(979755758);
+    expect(hashSeed(0, JSON.stringify(presetLayout('flat')))).toBe(2102541862);
   });
 
   for (const [variant, cls] of Object.entries(OVAL_SIZE_CLASSES)) {

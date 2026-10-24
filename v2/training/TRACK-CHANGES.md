@@ -5,7 +5,23 @@ depend on, pit stops most of all. Each lands in its own commits with a
 `pitsurvey` / `realtracks` report, so the training machines can pick when to
 retrain on them. Several respond to `feedback/pit-layout.md`.
 
-## 1. Pit lanes (being built now)
+## 1. Pit lanes (landing in stages, 2026-10-23)
+
+Landed:
+- b5e0676: the nose clearance (4 m with today's cars).
+  - `PitLane.fastD`/`boxD` are read through `pitFastD`/`pitBoxD`.
+  - Ovals have an inside pit wall and crews' strip (`crewD`).
+  - The pace car is released earlier by the extra distance it has to cross.
+- The next commit: placement along the lap.
+  - At most 40 boxes, centred on a longer pit road.
+  - The ovals' blend ends at most 250 m past the exit taper.
+  - Circuit pit road sits where there's room round the start line, with 250 m entry lanes (into the last corner where its inside has room) and paddocks sized to the space.
+  - The 420 m main-straight rule is gone.
+- The presets changed with both; their fingerprints in `test/trackgen.test.ts` are updated.
+
+Known: `test/pitdriving.test.ts` "a team with a pit-trained driver hands it the whole stop" fails with or without these changes.
+
+The plan:
 
 One pit module for every track: generated ovals and circuits, rovals, and
 real tracks. Every generated track will pass these as hard checks:

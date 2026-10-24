@@ -7,7 +7,7 @@ import {
 import type { Track } from '../sim/track';
 import { buildLayout, registerTrackType, type GenContext } from './generator';
 import { trackName } from './names';
-import { garageLot, pitLane } from './stages';
+import { garageLot, MAX_BOXES, noseClearance, pitLane } from './stages';
 import type { Problem } from './validate';
 
 /**
@@ -135,6 +135,8 @@ const MIN_STRAIGHT = 25;
 const HAIRPIN = (110 * Math.PI) / 180;
 const MIN_RADIUS = 12;
 const MIN_MAIN = 420;
+/** A circuit's pit road holds at least this many boxes. */
+const MIN_CIRCUIT_BOXES = 10;
 export const BARRIER = 0.8;
 export const CIRCUIT_PIT = {
   WALL_GAP: 1, WALL_THICKNESS: 0.8, ROAD_WIDTH: 12, ENTRY_LENGTH: 90, EXIT_TAPER: 90, STALL_SPACING: 10,
@@ -1257,22 +1259,76 @@ function crossSection(
   return { n, s, left, right, corners, chicanes };
 }
 
+/** A circuit's pit lane: its entry at least this long (m) where the room allows, and this long at most. */
+const PIT_ENTRY_MIN = 200, PIT_ENTRY_MAX = 250;
+/** Pit road (the wall, the boxes) only along stretches gentler than this (1/m: a radius of 250 m). */
+const PIT_ROAD_K = 1 / 250;
+/** The paddock behind pit road: at least this deep (m). */
+const PADDOCK_MIN = 12;
+
+/**
+ * Where a circuit's pit lane goes (signed s), on the left: pit road (the
+ * wall, the boxes) round the start line, along the main straight and on
+ * into gentle stretches either side while there's room on the left for it
+ * and PADDOCK_MIN of paddock behind (no more of it than MAX_BOXES need); the
+ * entry lane back from it, as real circuits' do (into the last corner where
+ * there's room on its inside), up to PIT_ENTRY_MAX; the exit lane on from it
+ * up to EXIT_TAPER; the paddock as deep as the room allows, up to
+ * GARAGE_DEPTH. Room: as far out as a barrier may stand (WALL_REACH of the
+ * way to the rest of the circuit: clearances), less a margin. Null if the
+ * start line has no room for pit road.
+ */
+function pitPlace(cl: Centerline, half: number): { wallStart: number; wallEnd: number; entryLength: number; exitTaper: number; paddock: number } | null {
+  const L = cl.length, n = Math.round(L / GEO_STEP), step = L / n;
+  // (Room for what lies behind the barrier: it stands at most WALL_REACH of the way out to the rest of the circuit.)
+  const clear = clearances(cl, n).left;
+  // ...and it moves out or in by at most SLOPE a metre along: no more room anywhere than a tight spot nearby allows.
+  const room = Array.from(clear, (c) => half + WALL_REACH * (c - half) - BARRIER);
+  for (let pass = 0; pass < 2; pass++) {
+    for (let k = 1; k < 2 * n; k++) room[k % n] = Math.min(room[k % n], room[(k - 1) % n] + SLOPE * step);
+    for (let k = 2 * n - 2; k >= 0; k--) room[k % n] = Math.min(room[k % n], room[(k + 1) % n] + SLOPE * step);
+  }
+  const at = (x: number) => Math.round((((x % L) + L) % L) / step) % n;
+  const roadBack = half + noseClearance() + CIRCUIT_PIT.WALL_THICKNESS + CIRCUIT_PIT.ROAD_WIDTH;
+  const MARGIN = 3;
+  const road = (x: number) => Math.abs(cl.curvatureAt(x)) < PIT_ROAD_K && room[at(x)] >= roadBack + PADDOCK_MIN + MARGIN;
+  const lane = (x: number) => room[at(x)] >= half + noseClearance() + CIRCUIT_PIT.WALL_THICKNESS + 8 + MARGIN;
+  // (Round the start line, or the nearest place along the lap that has room.)
+  let seed = 0;
+  for (let x = 0; x < L / 6 && !road(seed); x += step) seed = road(x) ? x : road(-x) ? -x : seed;
+  if (!road(seed)) return null;
+  let a = seed, b = seed;
+  while (a > -L / 3 && road(a - step)) a -= step;
+  while (b < L / 3 && road(b + step)) b += step;
+  // No more pit road than the most boxes need, round the start line.
+  const need = MAX_BOXES * CIRCUIT_PIT.STALL_SPACING + 40 + CIRCUIT_PIT.START_MARGIN + CIRCUIT_PIT.END_MARGIN;
+  let wallStart = Math.max(a, seed - need / 2), wallEnd = Math.min(b, wallStart + need);
+  wallStart = Math.max(a, wallEnd - need);
+  let entry = 0;
+  while (entry < PIT_ENTRY_MAX && lane(wallStart - entry - step)) entry += step;
+  let exit = 0;
+  while (exit < CIRCUIT_PIT.EXIT_TAPER && lane(wallEnd + exit + step)) exit += step;
+  let deep = Infinity;
+  for (let x = wallStart + 20; x <= wallEnd - 20; x += step) deep = Math.min(deep, room[at(x)] - roadBack - MARGIN);
+  return { wallStart, wallEnd, entryLength: entry, exitTaper: Math.max(30, exit), paddock: Math.max(PADDOCK_MIN, Math.min(CIRCUIT_PIT.GARAGE_DEPTH, deep)) };
+}
+
 function buildCircuit(p: CircuitParams, ctx: GenContext): TrackLayout {
   const centerline = circuitCenterline(p);
   const cl = new Centerline(centerline);
   const L = cl.length;
   const half = p.width / 2;
 
-  // Pit road along the main straight, on the left (the infield), and the paddock behind it.
-  const wallStart = -p.main / 2 + CIRCUIT_PIT.ENTRY_LENGTH + CIRCUIT_PIT.START_MARGIN;
-  const wallEnd = p.main / 2 - CIRCUIT_PIT.EXIT_TAPER - CIRCUIT_PIT.END_MARGIN;
+  // Pit road round the start line on the left (the infield), where there's room for it and the paddock behind it.
+  const place = pitPlace(cl, half);
+  if (!place) throw new Error('no room for a pit lane and paddock round the start line');
   const { pit, pavedInner: pitPaved } = pitLane({
-    innerEdge: half, apronWidth: 0, wallStart, wallEnd, blendEnd: wallEnd + CIRCUIT_PIT.EXIT_TAPER + 10,
-    entryLength: CIRCUIT_PIT.ENTRY_LENGTH, exitTaper: CIRCUIT_PIT.EXIT_TAPER,
+    innerEdge: half, apronWidth: 0, wallStart: place.wallStart, wallEnd: place.wallEnd, blendEnd: place.wallEnd + place.exitTaper + 10,
+    entryLength: place.entryLength, exitTaper: place.exitTaper,
     wallGap: CIRCUIT_PIT.WALL_GAP, wallThickness: CIRCUIT_PIT.WALL_THICKNESS, roadWidth: CIRCUIT_PIT.ROAD_WIDTH,
     stallSpacing: CIRCUIT_PIT.STALL_SPACING,
   });
-  const { garage, buildings } = garageLot(cl, { s0: pit.wallStart + 20, s1: pit.wallEnd - 20, d0: pit.roadD, depth: CIRCUIT_PIT.GARAGE_DEPTH });
+  const { garage, buildings } = garageLot(cl, { s0: pit.wallStart + 20, s1: pit.wallEnd - 20, d0: pit.roadD, depth: place.paddock });
 
   // The cross-section: edges widened round the corners that need it, barriers at the verge, run-off on
   // corner outsides and behind the paddock, all kept clear of the rest of the circuit.
@@ -1450,7 +1506,8 @@ function validateCircuit(layout: TrackLayout, track: Track): Problem[] {
   const g = circuitGeometry(courseOf(p, track.length), track, pitZone(pit, typeof paved === 'number' ? flat(paved) : paved, lot, half, track.length), layout.centerline);
   let worst = Infinity;
   for (const { clear, edge } of [g.left, g.right]) for (let k = 0; k < g.n; k++) worst = Math.min(worst, clear[k] - edge[k]);
-  if (worst < MIN_SEPARATION) problems.push({ severity: 'error', message: `parts of the circuit too close (${(MIN_SEPARATION - worst).toFixed(0)} m)` });
+  // (A real track's parts are as close as they are: noted, not refused.)
+  if (worst < MIN_SEPARATION) problems.push({ severity: p.character === 'real' ? 'warning' : 'error', message: `parts of the circuit too close (${(MIN_SEPARATION - worst).toFixed(0)} m)` });
   const L = track.length;
   const sample = (x: number) => Math.round((((x % L) + L) % L) / (L / g.n)) % g.n;
   g.corners.forEach((c, i) => {
@@ -1467,7 +1524,11 @@ function validateCircuit(layout: TrackLayout, track: Track): Problem[] {
     const behind = Math.max(track.pavedInnerD(x), x >= lot.s0 && x <= lot.s1 ? lot.d1 : -Infinity);
     if (g.left.wall[k] - BARRIER / 2 < behind + 0.5) { problems.push({ severity: 'error', message: 'pit lane or paddock squeezed by another part of the circuit' }); break; }
   }
-  if (p.main < MIN_MAIN - 1) problems.push({ severity: 'error', message: 'main straight too short for the pit lane' });
+  // Pit road holds a field, and its entry lane leaves room to slow off the racing line (a real track's is what it is).
+  if (pit.stalls.length < MIN_CIRCUIT_BOXES) problems.push({ severity: 'error', message: `pit road holds only ${pit.stalls.length} boxes` });
+  if (pit.wallStart - pit.entryStart < PIT_ENTRY_MIN - 1) {
+    problems.push({ severity: p.character === 'real' ? 'warning' : 'error', message: `pit entry lane only ${(pit.wallStart - pit.entryStart).toFixed(0)} m` });
+  }
   return problems;
 }
 
