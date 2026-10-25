@@ -5,7 +5,7 @@ import { fastestLine, lineAt } from '../src/ai/racingLine';
 import { racerStyle, TrafficRacer } from '../src/ai/trafficRacer';
 import { applyImpact, Car, stepCar } from '../src/sim/car';
 import { PHYSICS as P } from '../src/sim/constants';
-import { compromise, damageModel, powerLeft } from '../src/sim/damage';
+import { compromise, damageModel, dragFactor, powerLeft } from '../src/sim/damage';
 import { EXPERIMENT } from '../src/sim/experiment';
 import { World } from '../src/sim/world';
 import { presetTrack } from '../src/trackgen';
@@ -52,15 +52,23 @@ describe('the second damage model', () => {
     expect(compromise({ health: 0, damageModel: 1 })).toBe(0);
     const power = (health: number) => powerLeft({ health, damageModel: 2 });
     expect(power(1)).toBe(1);
-    expect(power(0.75)).toBeCloseTo(0.98, 6); // the buffer: a little off ...
-    expect(power(0.5)).toBeCloseTo(0.92, 6); // ... more the further down
-    expect(power(0.499)).toBeLessThan(0.11); // over the limit: broken, at once
-    expect(power(0.1)).toBeLessThan(0.005); // barely moving
+    expect(power(0.75)).toBeCloseTo(0.95, 6); // the buffer: a little off ...
+    expect(power(0.5)).toBeCloseTo(0.8, 6); // ... more the further down
+    expect(power(0.499)).toBeLessThan(0.14); // over the limit: broken, at once
+    expect(power(0.1)).toBeLessThan(0.006); // barely moving
     expect(power(0)).toBe(0);
     expect(powerLeft({ health: 0.1, damageModel: 1 })).toBe(1);
+    // The aero goes too: more drag, more the worse it is ...
+    const drag = (health: number) => dragFactor({ health, damageModel: 2 });
+    expect(drag(1)).toBe(1);
+    expect(drag(0.5)).toBeCloseTo(1.2, 6);
+    expect(drag(0.499)).toBeGreaterThan(1.49);
+    expect(drag(0)).toBeCloseTo(2, 6);
+    expect(dragFactor({ health: 0.1, damageModel: 1 })).toBe(1);
+    // ... but the grip stays: a broken car still steers where it's put.
     const car = new Car(0);
     car.health = 0.1;
-    expect(car.condition).toBeLessThan(0.75);
+    expect(car.grip).toBe(new Car(1).grip);
     // Flat out down the straight from 40 m/s for 20 s: the crippled car is left far behind.
     const top = (health: number) => {
       const c = new Car(0);
@@ -134,6 +142,20 @@ describe('the second damage model', () => {
       expect(lane(0.6)).toBeCloseTo(lineAt(line, s).d, 6); // damaged, not broken: racing on
       expect(lane(0.45)).toBeGreaterThan(track.innerEdgeAt(s)); // the apron
       expect(lane(0.02)).toBeGreaterThan(track.innerEdgeAt(s));
+    });
+
+    it('a broken racer on the apron gets by the pit wall, which stands on it', () => {
+      // From the apron 250 m before the wall's nose, crawling: it was driving into the nose and sticking there.
+      const from = track.pit.wallStart - 250, s0 = (from + track.length) % track.length;
+      const w = new World(track, { collisions: true, drafting: true });
+      const car = new Car(0);
+      car.placeOnTrack(track, s0, (track.innerEdgeAt(s0) + track.apronEdgeAt(s0)) / 2);
+      car.vx = track.tx[car.trackIdx] * 20;
+      car.vy = track.ty[car.trackIdx] * 20;
+      w.addCar(car, new TrafficRacer(racerStyle(0.5, 0.5, () => 0.5).style));
+      for (let t = 0; t < 60; t += P.DT) { car.health = 0.15; w.step(); }
+      expect(track.signedS(car.s)).toBeGreaterThan(track.pit.wallStart + 100);
+      expect(car.lastImpact).toBeNull();
     });
 
     it('a smoking car ahead is gone round high, even by a racer that never passes', () => {

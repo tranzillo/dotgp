@@ -1,6 +1,6 @@
 import { carSpec, type CarSpec } from './carSpec';
 import { BUMP_SCALE, G, PHYSICS as P, PIT_SERVICE, PLOUGH_SPEED, SURFACES } from './constants';
-import { DAMAGE2, type DamageModel, damageModel, gripLeft, powerLeft } from './damage';
+import { DAMAGE2, type DamageModel, damageModel, dragFactor, powerLeft } from './damage';
 import { valueNoise } from './noise';
 import type { Surface, Track } from './track';
 
@@ -193,11 +193,7 @@ export class Car {
     return (this.spec ?? carSpec()).dryMass + this.fuel;
   }
 
-  /**
-   * Cornering grip of the current tires (1 = new). Under the second damage model, the car's condition too (its
-   * handling damage, and what a compromised car has left): whatever reads a car's grip to know its pace (the line's
-   * profile, a driver's inputs) sees it.
-   */
+  /** Cornering grip of the current tires (1 = new). */
   get grip(): number {
     return tireGrip(this.tireLife) * this.condition;
   }
@@ -207,9 +203,13 @@ export class Car {
     return (1 - P.LON_WEAR_SHARE * (1 - tireGrip(this.tireLife))) * this.condition;
   }
 
-  /** The share of the tyres' grip the car's damage leaves it (damage.ts); 1 under the first damage model. */
+  /**
+   * The share of the tyres' grip the car's damage leaves it: all of it. The second damage model's damage is the
+   * engine's power and the drag (damage.ts); the first's handling damage is applied where the tyres' forces are.
+   * (Kept for whatever scales a car's grip by it.)
+   */
   get condition(): number {
-    return gripLeft(this);
+    return 1;
   }
 
   get speed(): number {
@@ -396,7 +396,7 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1, wheel
   car.tireNormal = (aLon * fx + aLat * lx) * nx + (aLon * fy + aLat * ly) * ny;
 
   // --- Resistance ---
-  const cda = spec.cda(track) * (car.damageModel === 2 ? 1 : 1 + P.AERO_DAMAGE_DRAG * car.damageAero) * car.draftFactor;
+  const cda = spec.cda(track) * (car.damageModel === 2 ? dragFactor(car) : 1 + P.AERO_DAMAGE_DRAG * car.damageAero) * car.draftFactor;
   const dragAcc = (0.5 * P.AIR_DENSITY * cda * speed * speed) / car.mass;
   // Rolling resistance, plus ploughing on loose ground (it grows with speed: a car can still crawl out).
   const rolling = (surface.rolling + surface.plough * Math.min(1, speed / PLOUGH_SPEED)) * G;

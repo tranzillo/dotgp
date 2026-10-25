@@ -165,6 +165,8 @@ const OFF_LINE_BUFFER = 1;
 const GO_ROUND_EDGE = 1;
 /** Added to a broken car's passing threshold (m/s): it passes nothing. */
 const SAVE_PASS = 60;
+/** How far ahead (m) a broken car sees the pit wall's nose coming, heading for the apron. */
+const SAVE_WALL_LEAD = 150;
 /** Seconds ahead a lane held off the line is kept clear of the road's edges (it moves over at CROSS_RATE). */
 const EDGE_LOOK = 2;
 
@@ -287,12 +289,15 @@ export class TrafficRacer {
     // profile has it): flat-ground grip alone held an oval's banked turns to a crawl beside the line.
     // (The car's own grip, downforce and load sensitivity: carSpec.ts. The classic car's: mu g, the banked-curve limit.)
     const spec = car.spec ?? carSpec(track);
-    // (The grip its damage leaves it: 1 but under the second damage model, where a damaged car loses grip.)
     const mu = P.TIRE_MU * grip * car.condition;
     const oval = track.kind !== 'road';
     let saveD = here.d, hiEdge = here.hi;
     if (broken && oval) {
-      saveD = (track.innerEdge(car.trackIdx) + track.apronEdgeAt(car.s)) / 2; // the middle of the apron
+      // The middle of the apron, but clear of the pit wall, which stands on it: along it the track side of it, over
+      // in good time for its nose (SAVE_WALL_LEAD; the track's own approach is a caution's, short at a crawl). A
+      // broken car on the apron's middle drove into the nose and stuck there.
+      const apron = (track.innerEdge(car.trackIdx) + track.apronEdgeAt(car.s)) / 2;
+      saveD = Math.min(apron, track.pitWallClear(car.s, 1.5), track.pitWallClear(car.s + SAVE_WALL_LEAD, 1.5));
       hiEdge = Math.max(here.hi, saveD + OFF_LINE_BUFFER);
     }
     const arcLimit = (s: number, offset: number) => {

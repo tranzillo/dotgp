@@ -25,7 +25,8 @@ const spec = (laps: number, field: number, seed = 3): SessionSpec => ({
 
 describe('race timeline', () => {
   it('logs the start, flags in order, lead changes and the finish, placed along the race distance', () => {
-    const s = new Session(spec(12, 12));
+    // (A race with stewards' calls in it: seed 3's had none once a broken car kept its grip, 2026-10-25.)
+    const s = new Session(spec(12, 12, 1));
     for (let k = 0; k < 1500 / P.DT && !s.finished; k++) s.step();
     expect(s.finished).toBe(true);
     const tl = s.timeline;

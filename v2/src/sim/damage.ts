@@ -11,8 +11,10 @@ import { EXPERIMENT } from './experiment';
  *   teachers' wall scrapes made nearly half their pit stops repairs.
  * - One curve from health to pace, whatever was hit: down to SOUND_ABOVE a car loses a little, more the further
  *   down it is (a buffer: worth racing on and fixing at the next stop); past it the car breaks, going over the limit:
- *   at once it's down to a fraction of its power, then less and less, barely moving by a tenth of its health, where
- *   it's out at zero (a hard enough hit still wrecks it outright). The first model's damaged parts
+ *   at once it's down to a fraction of its power with much more drag, then less and less, barely moving by a tenth
+ *   of its health, where it's out at zero (a hard enough hit still wrecks it outright). The engine and the aero carry
+ *   it, its acceleration and its top speed: the grip stays (a car that lost its grip as it broke went into the wall
+ *   from mid-corner, 2026-10-25), so a broken car still steers where its driver puts it. The first model's damaged parts
  *   (aero, handling, engine) cost pace by how the car was hit, up to half again the drag, a third of the grip, 40% of
  *   the power, at any health, and the crews pitted to fix light damage; and a car raced on until it failed, on the
  *   racing line at speed: a caution and a wrecker.
@@ -25,15 +27,14 @@ export const DAMAGE2 = {
   /** Health above which a car is sound: a little lost pace, no smoke. */
   SOUND_ABOVE: 0.5,
   /** Down at SOUND_ABOVE, the share of the engine's power left (falling slowly from full health, then faster) ... */
-  SOUND_POWER: 0.92,
-  /** ... and of the tyres' grip. */
-  SOUND_GRIP: 0.96,
-  /** Broken (just past SOUND_ABOVE): the share of the engine's power left, at once (about half its top speed) ... */
-  BROKEN_POWER: 0.1,
-  /** ... and of the tyres' grip ... */
-  BROKEN_GRIP: 0.75,
-  /** ... falling to this at zero. */
-  GRIP_LEFT: 0.5,
+  SOUND_POWER: 0.8,
+  /** ... and its drag, × a sound car's. */
+  SOUND_DRAG: 1.2,
+  /** Broken (just past SOUND_ABOVE): the share of the engine's power left, at once ... */
+  BROKEN_POWER: 0.13,
+  /** ... and its drag, rising to DRAG_AT_ZERO. */
+  BROKEN_DRAG: 1.5,
+  DRAG_AT_ZERO: 2,
 };
 
 export type DamageModel = 1 | 2;
@@ -60,10 +61,10 @@ export function powerLeft(car: { health: number; damageModel: DamageModel }): nu
   return DAMAGE2.BROKEN_POWER * (1 - c) * (1 - c);
 }
 
-/** The share of its tyres' grip a car's damage leaves it. */
-export function gripLeft(car: { health: number; damageModel: DamageModel }): number {
+/** Its drag, × a sound car's: a little up when sound; broken, much more, and more again the worse it is. */
+export function dragFactor(car: { health: number; damageModel: DamageModel }): number {
   if (car.damageModel !== 2) return 1;
   const c = compromise(car);
-  if (c === 0) return 1 - (1 - DAMAGE2.SOUND_GRIP) * worn(car.health) ** 2;
-  return DAMAGE2.BROKEN_GRIP - (DAMAGE2.BROKEN_GRIP - DAMAGE2.GRIP_LEFT) * c;
+  if (c === 0) return 1 + (DAMAGE2.SOUND_DRAG - 1) * worn(car.health) ** 2;
+  return DAMAGE2.BROKEN_DRAG + (DAMAGE2.DRAG_AT_ZERO - DAMAGE2.BROKEN_DRAG) * c;
 }
