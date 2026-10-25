@@ -11,7 +11,7 @@ import {
   PIT_LOOKAHEAD, PIT_SIZE, PREVIEW_SIZE, type TrackKnowledge,
 } from './observe';
 import { Rng } from './rng';
-import { RADIO, RADIO_SIZE, TowerSpotter, type Spotter } from './spotter';
+import { MIRROR, MIRROR_SIZE, RADIO, RADIO_SIZE, TowerSpotter, type Spotter } from './spotter';
 import type { Track } from '../sim/track';
 
 /** Where the preview of the road starts in the driver's inputs (after everything else, so older drivers widen into it). */
@@ -30,8 +30,12 @@ export const PIT_CALLS_FROM = CALLS_FROM + CALLS_SIZE;
 export const CAUTION_RANGE_FROM = PIT_CALLS_FROM + PIT_CALLS_SIZE;
 /** Where the car's own damage comes in (after the caution's range). */
 export const DAMAGE_FROM = CAUTION_RANGE_FROM + CAUTION_RANGE_SIZE;
-/** Driver network: own-car observations + the spotter's radio + a pit stop in progress + a caution + the road ahead + the caution calls + others' pit stops + the caution's range + its own damage -> acceleration request. */
-export const DRIVER_LAYERS = [DAMAGE_FROM + DAMAGE_SIZE, 32, 24, 2] as const;
+/** Where the mirrors come in (the spotter's, after the radio on a team's radio: spotter.ts MIRROR), after its own damage. */
+export const MIRROR_FROM = DAMAGE_FROM + DAMAGE_SIZE;
+/** Driver network: own-car observations + the spotter's radio + a pit stop in progress + a caution + the road ahead + the caution calls + others' pit stops + the caution's range + its own damage + the mirrors -> acceleration request. */
+export const DRIVER_LAYERS = [MIRROR_FROM + MIRROR_SIZE, 32, 24, 2] as const;
+/** Before the mirrors. */
+export const DAMAGE_DRIVER_LAYERS = [DAMAGE_FROM + DAMAGE_SIZE, 32, 24, 2] as const;
 /** Before its own damage. */
 export const CAUTION_RANGE_DRIVER_LAYERS = [CAUTION_RANGE_FROM + CAUTION_RANGE_SIZE, 32, 24, 2] as const;
 /** Before the caution's range. */
@@ -49,7 +53,7 @@ export const LEGACY_DRIVER_LAYERS = [OBS_SIZE, 16, 12, 2] as const;
 /** Upgrade saved weights to the current driver network, preserving behaviour (new inputs start ignored). */
 export function adaptWeights(w: Float32Array): Float32Array {
   if (w.length === genomeSize(DRIVER_LAYERS)) return w;
-  for (const old of [CAUTION_RANGE_DRIVER_LAYERS, PIT_CALLS_DRIVER_LAYERS, CALLS_DRIVER_LAYERS, KNOWLEDGE_DRIVER_LAYERS, PREVIEW_DRIVER_LAYERS, CAUTION_DRIVER_LAYERS, PIT_DRIVER_LAYERS, RADIO_DRIVER_LAYERS, LEGACY_DRIVER_LAYERS]) {
+  for (const old of [DAMAGE_DRIVER_LAYERS, CAUTION_RANGE_DRIVER_LAYERS, PIT_CALLS_DRIVER_LAYERS, CALLS_DRIVER_LAYERS, KNOWLEDGE_DRIVER_LAYERS, PREVIEW_DRIVER_LAYERS, CAUTION_DRIVER_LAYERS, PIT_DRIVER_LAYERS, RADIO_DRIVER_LAYERS, LEGACY_DRIVER_LAYERS]) {
     if (w.length === genomeSize(old)) {
       const rng = new Rng(w.length);
       return widenNetwork(old, w, DRIVER_LAYERS, () => rng.next());
@@ -69,7 +73,8 @@ export interface DriverBrain {
  * takes the wheel until the car is back on the back straight.
  */
 export class Team implements Controller {
-  readonly radio = new Float32Array(RADIO_SIZE);
+  /** The spotter's radio, and its mirrors after it. */
+  readonly radio = new Float32Array(RADIO_SIZE + MIRROR_SIZE);
   readonly pitInputs = new Float32Array(PIT_SIZE);
   readonly cautionInputs = new Float32Array(CAUTION_SIZE);
   readonly autopilot = new PitAutopilot();
@@ -198,6 +203,9 @@ export function mirrorDriverInputs(x: Float32Array): void {
   x[p + PIT_SIZE + 3] = -x[p + PIT_SIZE + 3];
   for (let j = 0; j < PREVIEW_SIZE; j++) x[PREVIEW_FROM + j] = -x[PREVIEW_FROM + j];
   for (let j = 0; j < KNOWLEDGE_AHEAD.length; j++) x[KNOWLEDGE_FROM + j] = -x[KNOWLEDGE_FROM + j]; // where the line runs (its speeds have no side)
+  const low = x[MIRROR_FROM + MIRROR.LOW];
+  x[MIRROR_FROM + MIRROR.LOW] = x[MIRROR_FROM + MIRROR.HIGH];
+  x[MIRROR_FROM + MIRROR.HIGH] = low;
 }
 
 /**
@@ -375,7 +383,8 @@ export class NeuralDriver implements DriverBrain {
   /** The network's input for this moment (also what an apprentice is shown), mirrored when the next corner turns right. */
   inputs(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array): Float32Array {
     this.input.set(observe(car, world.track, this.obs), 0);
-    this.input.set(radio, OBS_SIZE);
+    // (The mirrors ride on a team's radio after the radio proper; a bare radio has none.)
+    this.input.set(radio.length > RADIO_SIZE ? radio.subarray(0, RADIO_SIZE) : radio, OBS_SIZE);
     this.input.set(pit, OBS_SIZE + RADIO_SIZE);
     this.input.set(caution, OBS_SIZE + RADIO_SIZE + PIT_SIZE);
     this.input.set(observePreview(car, world.track, this.preview), PREVIEW_FROM);
@@ -384,6 +393,8 @@ export class NeuralDriver implements DriverBrain {
     this.input.set(observePitCalls(car, world, this.pitCalls), PIT_CALLS_FROM);
     this.input.set(observeCautionRange(car, world, this.cautionRange), CAUTION_RANGE_FROM);
     this.input.set(observeDamage(car, this.damage), DAMAGE_FROM);
+    if (radio.length >= RADIO_SIZE + MIRROR_SIZE) this.input.set(radio.subarray(RADIO_SIZE, RADIO_SIZE + MIRROR_SIZE), MIRROR_FROM);
+    else this.input.fill(0, MIRROR_FROM, MIRROR_FROM + MIRROR_SIZE);
     const dir = nextCornerDirection(world.track, car.s);
     if (dir !== 0) this.mirrored = dir < 0; // nothing in sight: keep the last view
     if (this.mirrored) mirrorDriverInputs(this.input);

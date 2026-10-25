@@ -10,7 +10,7 @@ import { NeuralCrewChief } from '../ai/neuralChief';
 import { OnlineLearner, RACE_LEARNING } from '../ai/online';
 import { RunChief, StrategistCrewChief, type CrewChief, type CrewChiefTraits } from '../ai/pitting';
 import { Rng } from '../ai/rng';
-import { describeRadio, RADIO_SIZE, TowerSpotter, type SpotterSkill } from '../ai/spotter';
+import { describeRadio, TowerSpotter, type SpotterSkill } from '../ai/spotter';
 import { StrokeCollector } from '../render/marks';
 import { Car, SIGNATURE_BINS } from '../sim/car';
 import { PHYSICS as P } from '../sim/constants';
@@ -642,7 +642,7 @@ export class Session {
       if (!team || car.retired) continue;
       const key = this.entrants.get(car.id)!.key;
       let prev = this.prevRadio.get(car.id);
-      if (!prev) this.prevRadio.set(car.id, (prev = new Float32Array(RADIO_SIZE)));
+      if (!prev) this.prevRadio.set(car.id, (prev = new Float32Array(team.radio.length)));
       for (const text of describeRadio(team.radio, prev)) {
         if (!this.recentRadio.some((l) => l.key === key && l.text === text)) push({ time: world.time, key, text });
       }

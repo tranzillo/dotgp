@@ -31,6 +31,23 @@ export const RADIO = {
 } as const;
 export const RADIO_SIZE = 16;
 
+/**
+ * The mirrors, after the radio (a team's radio carries both: RADIO_SIZE + MIRROR_SIZE): what's coming up from behind
+ * fast, below us, in our lane and above us. Each is how soon the soonest car closing on us there arrives (bumper to
+ * bumper at the speed it's closing): 1 = on us now, falling to 0 at MIRROR_TIME, 0 = nothing coming. A car that has
+ * broken is the one most in need of them: 40 m/s slower than the field, moving down across it (2026-10-25: nearly
+ * all the house drivers' wrecks under the second damage model were a field arriving 30 m/s faster). Cars alongside
+ * are the radio's.
+ */
+export const MIRROR = { LOW: 0, LANE: 1, HIGH: 2 } as const;
+export const MIRROR_SIZE = 3;
+/** Seconds ahead the mirrors look: a car arriving later than this isn't coming fast. */
+export const MIRROR_TIME = 4;
+/** How far back the tower watches for them (m): a spotter's skill sees a share of it (as it does behind). */
+const MIRROR_RANGE = 300;
+/** Lateral offset (m) past which a car behind is below or above us, not in our lane. */
+const MIRROR_LANE = 2.5;
+
 /** Longitudinal overlap window (m). (Asked each time: the car's size can be an experiment's.) */
 const alongsideDs = () => 4 * P.CAR_RADIUS + 1.5;
 const ALONGSIDE_DD = 6; // lateral window (m)
@@ -217,6 +234,9 @@ export class TowerSpotter implements Spotter {
       radio[RADIO.HAZARD_LANE] = clamp(hazardD / track.halfWidth, -1.5, 1.5);
     }
     radio[RADIO.DRAFT] = clamp01((1 - car.draftFactor) / P.DRAFT_MAX);
+    if (radio.length >= RADIO_SIZE + MIRROR_SIZE) {
+      mirrorView(car, world, radio.subarray(RADIO_SIZE, RADIO_SIZE + MIRROR_SIZE), MIRROR_RANGE * behindRange / BEHIND_RANGE);
+    }
   }
 
   /**
@@ -245,6 +265,29 @@ export class TowerSpotter implements Spotter {
   }
 }
 
+/** The mirrors (see MIRROR) for a car, seeing `range` m back: what the spotter calls and a teacher reads. */
+export function mirrorView(car: Car, world: World, out: Float32Array, range = MIRROR_RANGE): Float32Array {
+  out.fill(0);
+  if (!world.opts.collisions) return out; // ghosts: nothing to hit
+  const L = world.track.length;
+  const myAlong = alongSpeed(car, world);
+  for (const other of world.cars) {
+    if (other === car || other.cleared) continue;
+    if (other.surface === 'pit' && car.surface !== 'pit') continue;
+    let ds = other.s - car.s;
+    if (ds > L / 2) ds -= L;
+    else if (ds < -L / 2) ds += L;
+    const gap = -ds - 2 * P.CAR_RADIUS;
+    if (ds >= 0 || gap <= 0 || -ds > range) continue;
+    const closing = alongSpeed(other, world) - myAlong;
+    if (closing <= 0 || gap >= closing * MIRROR_TIME) continue;
+    const dd = other.d - car.d;
+    const k = dd >= MIRROR_LANE ? MIRROR.LOW : dd <= -MIRROR_LANE ? MIRROR.HIGH : MIRROR.LANE;
+    out[k] = Math.max(out[k], 1 - gap / closing / MIRROR_TIME);
+  }
+  return out;
+}
+
 /** Translate the radio into words for the broadcast feed. */
 export function describeRadio(radio: Float32Array, prev: Float32Array): string[] {
   const calls: string[] = [];
@@ -264,6 +307,10 @@ export function describeRadio(radio: Float32Array, prev: Float32Array): string[]
     calls.push('Closing fast behind');
   }
   if (on(RADIO.DRAFT, 0.5)) calls.push('In the draft');
+  // The mirrors (when the radio carries them): something arriving within two seconds.
+  for (const [k, where] of [[MIRROR.LOW, 'low'], [MIRROR.LANE, 'behind'], [MIRROR.HIGH, 'high']] as const) {
+    if ((radio[RADIO_SIZE + k] ?? 0) > 0.5 && !((prev[RADIO_SIZE + k] ?? 0) > 0.5)) calls.push(`Coming fast, ${where}`);
+  }
   return calls;
 }
 

@@ -7,6 +7,7 @@ import type { World } from '../sim/world';
 import { FormationDriver, formationTraits, type FormationTraits } from './formation';
 import { SmoothFormation } from './smoothFormation';
 import { fastestLine, followRacingLine, lineAt, type RacingLine } from './racingLine';
+import { MIRROR, MIRROR_SIZE, MIRROR_TIME, mirrorView } from './spotter';
 
 /**
  * A scripted racer that races in traffic: the fastest line when it has the
@@ -167,6 +168,8 @@ const GO_ROUND_EDGE = 1;
 const SAVE_PASS = 60;
 /** How far ahead (m) a broken car sees the pit wall's nose coming, heading for the apron. */
 const SAVE_WALL_LEAD = 150;
+/** A broken car moves down only with nothing arriving below it within this (s, in its mirrors): else it holds its lane. */
+const SAVE_CLEAR = 2.5;
 /** Seconds ahead a lane held off the line is kept clear of the road's edges (it moves over at CROSS_RATE). */
 const EDGE_LOOK = 2;
 
@@ -175,6 +178,7 @@ export class TrafficRacer {
   private lastTime = -Infinity;
   /** The side of a pass under way (+1: +d, -1: -d, 0: none): kept until the pass is done or given up. */
   private passSide = 0;
+  private readonly mirror = new Float32Array(MIRROR_SIZE);
   /** What it was doing at its last decision (for looking into races). */
   last = { want: 0, offset: 0, low: 0, high: 0, follow: Infinity, squeezed: false, passing: false };
   private readonly lineFor: (track: Track) => RacingLine;
@@ -298,6 +302,9 @@ export class TrafficRacer {
       // broken car on the apron's middle drove into the nose and stuck there.
       const apron = (track.innerEdge(car.trackIdx) + track.apronEdgeAt(car.s)) / 2;
       saveD = Math.min(apron, track.pitWallClear(car.s, 1.5), track.pitWallClear(car.s + SAVE_WALL_LEAD, 1.5));
+      // Down only when its mirrors are clear below: a car coming fast there would meet it moving across (the field
+      // arrives 30-40 m/s faster). Until then it holds its lane, where the field can see it and go round it high.
+      if (mirrorView(car, world, this.mirror)[MIRROR.LOW] > 1 - SAVE_CLEAR / MIRROR_TIME) saveD = Math.min(saveD, car.d);
       hiEdge = Math.max(here.hi, saveD + OFF_LINE_BUFFER);
     }
     const arcLimit = (s: number, offset: number) => {

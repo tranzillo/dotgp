@@ -144,6 +144,19 @@ describe('the second damage model', () => {
       expect(lane(0.02)).toBeGreaterThan(track.innerEdgeAt(s));
     });
 
+    it('a broken racer moves down only with its mirrors clear below: a car coming fast there, it holds its lane', () => {
+      const s = 600;
+      const want = (...others: Array<[number, number, number, number]>) => {
+        const w = scene([s, 0, 40, 0.3], ...others);
+        const r = new TrafficRacer(racerStyle(0.5, 0.5, () => 0.5).style);
+        r.decide(w.cars[0], w);
+        return r.last.want;
+      };
+      expect(want()).toBeGreaterThan(3); // nothing coming: down for the apron
+      expect(want([s - 50, 5, 75, 1])).toBeLessThan(0.5); // a car 50 m back below it at 75 m/s: it stays put
+      expect(want([s - 50, -5, 75, 1])).toBeGreaterThan(3); // the same car above it doesn't stop it going down
+    });
+
     it('a broken racer on the apron gets by the pit wall, which stands on it', () => {
       // From the apron 250 m before the wall's nose, crawling: it was driving into the nose and sticking there.
       const from = track.pit.wallStart - 250, s0 = (from + track.length) % track.length;
