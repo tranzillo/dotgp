@@ -1,4 +1,5 @@
 import type { Car } from '../sim/car';
+import { compromise } from '../sim/damage';
 import type { Controller, World } from '../sim/world';
 import { FormationDriver, type FormationTraits } from './formation';
 import { followLine } from './lineFollower';
@@ -73,6 +74,8 @@ export class Team implements Controller {
   private flagPacing: boolean | null = null;
   private flagChangedAt = -Infinity;
   private lastS = NaN;
+  /** The car was smoking at the last look (compromised, under the second damage model). */
+  private smoking = false;
   /** Who drove the car on the last decision: the learned driver, or a script (pit maneuver, formation). */
   mode: 'driver' | 'pit' | 'formation' = 'driver';
 
@@ -114,6 +117,10 @@ export class Team implements Controller {
       }
     }
     this.lastS = r;
+    // Smoking: the team says so as it starts (the crew chief calls it in at the next chance).
+    const smoking = compromise(car.health) > 0 && !car.retired;
+    if (smoking && !this.smoking) world.announce(car, 'crew', 'Smoking: get it low, bring it in');
+    this.smoking = smoking;
     this.spotter.call(car, world, this.radio);
     this.observePit(car, world);
     observeCaution(car, world, this.cautionInputs);

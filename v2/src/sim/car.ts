@@ -1,5 +1,6 @@
 import { carSpec, type CarSpec } from './carSpec';
 import { BUMP_SCALE, G, PHYSICS as P, PIT_SERVICE, PLOUGH_SPEED, SURFACES } from './constants';
+import { compromise, DAMAGE2, damage2, gripLeft, powerLeft } from './damage';
 import { valueNoise } from './noise';
 import type { Surface, Track } from './track';
 
@@ -175,14 +176,23 @@ export class Car {
     return (this.spec ?? carSpec()).dryMass + this.fuel;
   }
 
-  /** Cornering grip of the current tires (1 = new). */
+  /**
+   * Cornering grip of the current tires (1 = new). Under the second damage model, the car's condition too (its
+   * handling damage, and what a compromised car has left): whatever reads a car's grip to know its pace (the line's
+   * profile, a driver's inputs) sees it.
+   */
   get grip(): number {
-    return tireGrip(this.tireLife);
+    return tireGrip(this.tireLife) * this.condition;
   }
 
   /** Braking and drive grip: worn tires lose less of it than cornering grip. */
   get gripLon(): number {
-    return 1 - P.LON_WEAR_SHARE * (1 - this.grip);
+    return (1 - P.LON_WEAR_SHARE * (1 - tireGrip(this.tireLife))) * this.condition;
+  }
+
+  /** The share of the tyres' grip the car's damage leaves it (damage.ts); 1 under the first damage model. */
+  get condition(): number {
+    return damage2() ? (1 - P.HANDLING_DAMAGE_GRIP * this.damageHandling) * gripLeft(compromise(this.health)) : 1;
   }
 
   get speed(): number {
@@ -303,7 +313,9 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1, wheel
   // as the tires wear: cornering grip goes first).
   // (Tires that grip less as the load grows: grip x (load / g)^-k; none on the classic car.)
   const loadGrip = spec.loadSensitivity > 0 ? Math.pow(Math.max(0.3, loadAcc / G), -spec.loadSensitivity) : 1;
-  const base = P.TIRE_MU * spec.grip * loadGrip * surface.grip * (1 - P.HANDLING_DAMAGE_GRIP * car.damageHandling) * loadAcc;
+  // (Handling damage: here, or under the second damage model in the car's grip, with its condition.)
+  const handling = damage2() ? 1 : 1 - P.HANDLING_DAMAGE_GRIP * car.damageHandling;
+  const base = P.TIRE_MU * spec.grip * loadGrip * surface.grip * handling * loadAcc;
   const capacity = base * car.grip * cosB;
   const capacityLon = base * car.gripLon;
   car.capacity = capacity;
@@ -325,7 +337,7 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1, wheel
 
   if (aLon > 0) {
     const power = car.fuel > 0
-      ? spec.power(track) * (1 - P.ENGINE_DAMAGE_POWER * car.damageEngine)
+      ? spec.power(track) * (1 - P.ENGINE_DAMAGE_POWER * car.damageEngine) * powerLeft(compromise(car.health))
       : 0;
     // (Only the driven wheels push: their share of the tires' grip. A car driven by all four, the classic, can ask
     // for more than they hold and spin them.)
@@ -425,9 +437,10 @@ export function applyImpact(
   car: Car, dvx: number, dvy: number, impactSpeed: number, scrapeWork: number, damageScale = 1,
   source: { kind: 'wall' | 'car'; other: number | null } = { kind: 'wall', other: null },
 ): void {
-  const thr = P.DAMAGE_SPEED_THRESHOLD;
+  // (The second damage model: light contact and scraping are free.)
+  const thr = damage2() ? DAMAGE2.FREE_IMPACT : P.DAMAGE_SPEED_THRESHOLD;
   let severity = Math.max(0, impactSpeed * impactSpeed - thr * thr) * P.DAMAGE_PER_ENERGY;
-  severity += scrapeWork * P.SCRAPE_DAMAGE;
+  if (!damage2()) severity += scrapeWork * P.SCRAPE_DAMAGE;
   severity *= damageScale;
   if (severity <= 0) return;
 

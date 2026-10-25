@@ -1,5 +1,6 @@
 import { PHYSICS as P, PIT_SERVICE } from '../sim/constants';
 import type { Car, PitCall } from '../sim/car';
+import { compromise } from '../sim/damage';
 import { evalProfile, pitBoxD, pitFastD, type Profile } from '../sim/layout';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
@@ -138,7 +139,8 @@ export class StrategistCrewChief implements CrewChief {
     const newDamage = this.repairedTo < 0 || car.health < this.repairedTo - REPAIR_AGAIN;
     // Worth the time only if the repair gives back a fair amount (it restores a share of what's missing).
     const worthIt = (1 - car.health) * PIT_SERVICE.REPAIR_FRACTION >= MIN_REPAIR_GAIN;
-    const damaged = car.health < t.repairBelow && newDamage && worthIt && lapsLeft > 5;
+    // (A compromised car, smoking and losing pace under the second damage model, comes in whatever the chief's taste.)
+    const damaged = (car.health < t.repairBelow || compromise(car.health) > 0) && newDamage && worthIt && lapsLeft > 5;
     // A caution: the stop the car needs before the finish anyway is cheap now.
     const fullRun = P.FUEL_CAPACITY / burn;
     // Stops still to make: staying out (run this tank dry first), or filling up now (this stop, then full runs).

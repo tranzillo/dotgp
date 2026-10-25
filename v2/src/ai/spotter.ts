@@ -1,5 +1,6 @@
 import { G, PHYSICS as P } from '../sim/constants';
 import type { Car } from '../sim/car';
+import { compromise } from '../sim/damage';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
 
@@ -168,7 +169,8 @@ export class TowerSpotter implements Spotter {
       // Slow because they're pitting isn't a hazard; slow on the racing surface is. (Speed last: it's a square root.)
       const pitting = other.pit.phase !== 'none' && !other.retired;
       const hazardSpeed = normal ? Math.min(HAZARD_SPEED, HAZARD_SHARE * normal[other.trackIdx]) : PACING_HAZARD_SPEED;
-      if (gapAhead > alongsideDs() && gapAhead < hazardGap && !pitting && (other.retired || other.speed < hazardSpeed)) {
+      // A car smoking (compromised, under the second damage model) is one too, whatever its speed: it's heading low and in.
+      if (gapAhead > alongsideDs() && gapAhead < hazardGap && !pitting && (other.retired || other.speed < hazardSpeed || compromise(other.health) > 0)) {
         hazardGap = gapAhead;
         hazardD = other.d;
       }

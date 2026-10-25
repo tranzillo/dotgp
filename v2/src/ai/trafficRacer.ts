@@ -1,6 +1,7 @@
 import { G, PHYSICS as P } from '../sim/constants';
 import type { Car } from '../sim/car';
 import { brakingAt, carSpec, cornerSpeed } from '../sim/carSpec';
+import { compromise } from '../sim/damage';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
 import { FormationDriver, formationTraits, type FormationTraits } from './formation';
@@ -160,6 +161,10 @@ const CROSS_RATE = 3;
 const STOPPED = 5;
 /** Off the line it tracks less precisely: this much more room kept from the corridor's edges (m). */
 const OFF_LINE_BUFFER = 1;
+/** How much faster than a stopped or smoking car the way round it must be (m/s), whatever the driver's passing edge. */
+const GO_ROUND_EDGE = 1;
+/** Added to a compromised car's passing threshold at full compromise (m/s): it passes nothing. */
+const SAVE_PASS = 60;
 /** Seconds ahead a lane held off the line is kept clear of the road's edges (it moves over at CROSS_RATE). */
 const EDGE_LOOK = 2;
 
@@ -259,7 +264,12 @@ export class TrafficRacer {
     }
     const track = world.track;
     const line = this.lineFor(track);
-    const { room, pass, grip } = this.style;
+    const { room, grip } = this.style;
+    // Compromised (smoking, under the second damage model): saving the car, not racing it. It passes nothing (it
+    // still goes round a stopped car), and on an oval it heads low, the worse it is the lower, onto the apron once
+    // it's crawling: out of the field's way, where everyone can see it's going.
+    const compromised = car.retired ? 0 : compromise(car.health);
+    const pass = this.style.pass + SAVE_PASS * compromised;
     const dt = Math.min(0.2, Math.max(0, world.time - this.lastTime));
     this.lastTime = world.time;
     const L = track.length;
@@ -277,16 +287,26 @@ export class TrafficRacer {
     // profile has it): flat-ground grip alone held an oval's banked turns to a crawl beside the line.
     // (The car's own grip, downforce and load sensitivity: carSpec.ts. The classic car's: mu g, the banked-curve limit.)
     const spec = car.spec ?? carSpec(track);
+    // (The grip its damage leaves it: 1 but under the second damage model, where a damaged car loses grip.)
+    const mu = P.TIRE_MU * grip * car.condition;
+    const oval = track.kind !== 'road';
+    let saveD = here.d, hiEdge = here.hi;
+    if (compromised > 0 && oval) {
+      const inner = track.innerEdge(car.trackIdx) - P.CAR_RADIUS - OFF_LINE_BUFFER;
+      const apron = (track.innerEdge(car.trackIdx) + track.apronEdgeAt(car.s)) / 2;
+      saveD = compromised < 0.5 ? here.d + (inner - here.d) * 2 * compromised : inner + (apron - inner) * (2 * compromised - 1);
+      hiEdge = Math.max(here.hi, saveD + OFF_LINE_BUFFER);
+    }
     const arcLimit = (s: number, offset: number) => {
       const at = lineAt(line, s), k = at.kappa;
       const arc = Math.abs(k / Math.max(0.2, 1 - k * offset));
       const bank = Math.sign(k) * track.bankAt(track.indexAt(s), at.d + offset);
-      return cornerSpeed(spec, track, P.TIRE_MU * grip, arc, bank, car.mass, Infinity);
+      return cornerSpeed(spec, track, mu, arc, bank, car.mass, Infinity);
     };
 
-    let want = 0; // the offset from the line it heads for
+    let want = saveD - here.d; // the offset from the line it heads for
     let passing = false;
-    let low = here.lo, high = here.hi; // absolute bounds on d now
+    let low = here.lo, high = hiEdge; // absolute bounds on d now
     let followCap = Infinity;
     let yieldTo = Infinity; // the speed of the slowest car alongside and ahead of it, to drop back behind if squeezed
     const reach = lookahead(vMe);
@@ -321,7 +341,9 @@ export class TrafficRacer {
       // A car heading for pit road, still on the racing surface, is crossing to the pit side (inside): anywhere on
       // that side of it is in its way, and it isn't passed there. (Circuit pit entries cut across the line into the
       // corner before them, and cars turning in for the apex ran into pitters sliding over in front of them.)
-      const pitting = other.pit.phase === 'in' && other.d < track.innerEdge(other.trackIdx) + P.CAR_RADIUS;
+      // A car smoking on an oval is heading low the same way, and is gone round high.
+      const smoking = !other.retired && compromise(other.health) > 0;
+      const pitting = (other.pit.phase === 'in' && other.d < track.innerEdge(other.trackIdx) + P.CAR_RADIUS) || (smoking && oval);
       // Merging out of pit road, it crosses from the apron to the inside lane (and slower than the field): from there
       // to where it is is its path. (Oval cars passing a merging car on its outside in turn 1, where it was going.)
       const mergeTo = other.pit.phase === 'out' && other.surface !== 'pit' ? Math.min(other.d, track.innerEdge(other.trackIdx) - 2.5) : other.d;
@@ -349,7 +371,7 @@ export class TrafficRacer {
       // A car heading for pit road is about to brake hard, and shows it (down to the apron): room for that, full
       // braking. (Before, it got the reaction gap, which plans on the car ahead braking no harder than this one's
       // own following brake: under a safety car on circuits, cars at 40 m/s ran into pitters slowing for pit road.)
-      const insure = other.pit.phase === 'in' ? P.TIRE_MU * G : this.style.insure;
+      const insure = other.pit.phase === 'in' || smoking ? P.TIRE_MU * G : this.style.insure;
       const gap = 2 * P.CAR_RADIUS + 2 + (insure === undefined ? REACTION * vMe : followLoss(vMe, REACTION, insure, brake));
       const capAt = (room: number) => Math.sqrt(vOther * vOther + 2 * brake * Math.max(0, ds - room));
       // Pushing up to a car it means to pass, it closes on what it can really stop with (its car's braking, not the
@@ -358,7 +380,7 @@ export class TrafficRacer {
       // m back with a run that died before it got by; the field's passes had been bump-and-run, by a bug.) What a
       // touch does is the physics': the car ahead loses speed, or both get damaged, and the stewards see it.
       const pushing = this.passSide === 0 && !other.retired && other.pit.phase === 'none' && faster > pass;
-      const hard = brakingAt(spec, track, P.TIRE_MU * grip, vMe, car.mass);
+      const hard = brakingAt(spec, track, mu, vMe, car.mass);
       const bump = this.style.bump ?? 0;
       const capPush = Math.max(Math.sqrt(vOther * vOther + 2 * hard * Math.max(0, ds - gap)),
         bump > 0 ? Math.sqrt((vOther + bump) ** 2 + 2 * hard * Math.max(0, ds - 2 * P.CAR_RADIUS)) : 0);
@@ -368,9 +390,17 @@ export class TrafficRacer {
       // by with the run instead of giving up the tow far back and arriving beside with nothing. A pass under way
       // carries on.
       const building = this.passSide === 0 && closing > 0 && ds > gap && (pushing ? capPush : capAt(gap)) > vMe;
+      // A stopped car is gone round by every driver, wherever it is: one that waited behind it was stopped on track
+      // too, and race control retired it (a whole field queued behind a car that ran dry after the flag). Not a car
+      // just getting away (a standing start: everyone is slow), unless it's already going round it.
+      // So is a smoking car (whatever this driver's passing): it's saving the car, not racing.
+      const stopped = other.retired || smoking || (vOther < STOPPED && (faster > 2 || this.passSide !== 0));
       // Anywhere (no rule against passing in a corner), but only where it pays: beside that car all the way to
       // being past it, the path stays on the road and its arc can be driven faster than that car goes. (Without
       // the judgement, racers pulled out mid-corner onto lines they couldn't hold: 240 wall hits in 40 laps.)
+      // Going round a stopped or smoking car, the arc need only beat it by GO_ROUND_EDGE: judged on the driver's
+      // own passing edge, a racer that never passes (pass: Infinity, the circuit teachers) found no way round ever.
+      const edge = stopped ? Math.min(pass, GO_ROUND_EDGE) : pass;
       const besideWorks = (beside: number) => {
         const rel = Math.max(0, ds) + 2 * alongside(), t = rel / Math.max(faster, 0.5);
         const len = Math.min(reach, Math.max(0, ds) + vOther * t);
@@ -378,14 +408,10 @@ export class TrafficRacer {
         for (let a = 0; a <= len; a += CATCH_STEP) {
           const at = lineAt(line, other.s + a), dAbs = at.d + off;
           if (dAbs < at.lo + OFF_LINE_BUFFER || dAbs > at.hi - OFF_LINE_BUFFER) return false;
-          if (arcLimit(other.s + a, off) < vOther + pass) return false;
+          if (arcLimit(other.s + a, off) < vOther + edge) return false;
         }
         return true;
       };
-      // A stopped car is gone round by every driver, wherever it is: one that waited behind it was stopped on track
-      // too, and race control retired it (a whole field queued behind a car that ran dry after the flag). Not a car
-      // just getting away (a standing start: everyone is slow), unless it's already going round it.
-      const stopped = other.retired || (vOther < STOPPED && (faster > 2 || this.passSide !== 0));
       if (stopped || (faster > pass && !building)) {
         // A way past: the side it's already going (a pass under way keeps its side), else the side with more road.
         const left = pitting || mergeTo < other.d || !besideWorks(other.d + width) ? -1 : there.hi - OFF_LINE_BUFFER - (other.d + width);
@@ -421,27 +447,27 @@ export class TrafficRacer {
     if (low > high) target = car.d;
     else target = Math.max(low, Math.min(high, target));
     const buffer = Math.abs(target - here.d) > 0.3 || hemmed ? OFF_LINE_BUFFER : 0;
-    target = Math.max(here.lo + Math.min(buffer, Math.max(0, here.d - here.lo)), Math.min(here.hi - Math.min(buffer, Math.max(0, here.hi - here.d)), target));
+    target = Math.max(here.lo + Math.min(buffer, Math.max(0, here.d - here.lo)), Math.min(hiEdge - Math.min(buffer, Math.max(0, hiEdge - here.d)), target));
     // The line sweeps across the road (out of a corner toward the wall), and a lane held beside it sweeps with it, as
     // fast across: clamped only where it met the edge, the car arrived there still moving across and hit the wall
     // (cars going round pitters at a speedway's corner exit, 1000 wall touches in 25 laps). Off the line, the offset
     // keeps clear of the edges over the next stretch, so the car is moving over in time.
     if (Math.abs(target - here.d) > 0.3) {
-      let loRoom = here.d - here.lo - OFF_LINE_BUFFER, hiRoom = here.hi - OFF_LINE_BUFFER - here.d;
+      let loRoom = here.d - here.lo - OFF_LINE_BUFFER, hiRoom = hiEdge - OFF_LINE_BUFFER - here.d;
       for (let a = CATCH_STEP; a <= EDGE_LOOK * vMe; a += CATCH_STEP) {
         const at = lineAt(line, car.s + a);
         loRoom = Math.min(loRoom, at.d - at.lo - OFF_LINE_BUFFER);
-        hiRoom = Math.min(hiRoom, at.hi - OFF_LINE_BUFFER - at.d);
+        hiRoom = Math.min(hiRoom, Math.max(at.hi, hiEdge - here.d + at.d) - OFF_LINE_BUFFER - at.d);
       }
       target = here.d + Math.max(-Math.max(0, loRoom), Math.min(Math.max(0, hiRoom), target - here.d));
     }
     const step = CROSS_RATE * dt;
     this.offset += Math.max(-step, Math.min(step, target - here.d - this.offset));
-    const offset = Math.max(here.lo, Math.min(here.hi, here.d + this.offset)) - here.d;
+    const offset = Math.max(here.lo, Math.min(hiEdge, here.d + this.offset)) - here.d;
 
     // Speed: off the line, no faster than its tighter arc allows (and braking for that ahead);
     // behind a car, the follow cap; squeezed, a little slower than the car beside.
-    const cornerMu = brakingAt(spec, track, P.TIRE_MU * grip, car.speed, car.mass);
+    const cornerMu = brakingAt(spec, track, mu, car.speed, car.mass);
     const capAt = (ahead: number) => {
       let cap = Infinity;
       if (Math.abs(offset) > 0.3) {
