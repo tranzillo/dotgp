@@ -41,6 +41,7 @@ import { Rng } from '../src/ai/rng';
 import { GROOVE_DISPLAY_ALPHA, GROOVE_STROKE_ALPHA, grooveWidth, grooveChance, skidStroke } from '../src/render/marks';
 import { Car } from '../src/sim/car';
 import { PHYSICS as P } from '../src/sim/constants';
+import { compromise } from '../src/sim/damage';
 import { placeOnGrid } from '../src/sim/grid';
 import { Race } from '../src/sim/race';
 import { Track } from '../src/sim/track';
@@ -448,7 +449,8 @@ function runRace(trackName: string, seed: number): RaceStats {
       const gap = a.dist - b.dist;
       if (Math.abs(gap) < 2 * P.CAR_RADIUS) continue;
       const now = Math.sign(gap), was = order.get(key);
-      if (was !== undefined && was !== now) {
+      // (A smoking car being gone round isn't raced for the place: under ?damage=2 everyone passes the crawlers.)
+      if (was !== undefined && was !== now && compromise((now > 0 ? b : a).health) === 0) {
         pack.passes++;
         const since = world.time - PASS_CONTACT;
         if ((touched.get(key) ?? -Infinity) >= since) pack.passTouch++;
