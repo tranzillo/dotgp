@@ -44,7 +44,7 @@ describe('the second damage model', () => {
     expect(before.health).toBeLessThan(1); // the first model: worn down by it
   });
 
-  it('a car loses a little down to half health, then the wheels come off: grip and power fall to a crawl at zero', () => {
+  it('a car loses a little down to half health, more the further down; past it, it breaks: a fraction, then barely moving', () => {
     const at = (health: number) => compromise({ health, damageModel: 2 });
     expect(at(0.6)).toBe(0);
     expect(at(0.25)).toBeCloseTo(0.5, 6);
@@ -52,11 +52,11 @@ describe('the second damage model', () => {
     expect(compromise({ health: 0, damageModel: 1 })).toBe(0);
     const power = (health: number) => powerLeft({ health, damageModel: 2 });
     expect(power(1)).toBe(1);
-    expect(power(0.75)).toBeCloseTo(0.98, 6); // the buffer: a little off, evenly
-    expect(power(0.5)).toBeCloseTo(0.96, 6);
-    expect(power(0.499)).toBeCloseTo(0.96, 2); // no step at the threshold ...
-    expect(power(0.4)).toBeLessThan(0.65); // ... but a cliff after it
-    expect(power(0)).toBeCloseTo(0.04, 6);
+    expect(power(0.75)).toBeCloseTo(0.98, 6); // the buffer: a little off ...
+    expect(power(0.5)).toBeCloseTo(0.92, 6); // ... more the further down
+    expect(power(0.499)).toBeLessThan(0.11); // over the limit: broken, at once
+    expect(power(0.1)).toBeLessThan(0.005); // barely moving
+    expect(power(0)).toBe(0);
     expect(powerLeft({ health: 0.1, damageModel: 1 })).toBe(1);
     const car = new Car(0);
     car.health = 0.1;
@@ -122,7 +122,7 @@ describe('the second damage model', () => {
       return w;
     }
 
-    it('a compromised racer heads low, the worse the lower, onto the apron once it is crawling', () => {
+    it('a broken racer heads straight for the apron', () => {
       const s = 600;
       const lane = (health: number) => {
         const w = scene([s, 0, 40, health]);
@@ -131,9 +131,9 @@ describe('the second damage model', () => {
         return lineAt(line, s).d + r.last.want;
       };
       expect(lane(1)).toBeCloseTo(lineAt(line, s).d, 6);
-      expect(lane(0.3)).toBeGreaterThan(lineAt(line, s).d + 1);
-      expect(lane(0.02)).toBeGreaterThan(track.innerEdgeAt(s)); // the apron
-      expect(lane(0.02)).toBeGreaterThan(lane(0.3));
+      expect(lane(0.6)).toBeCloseTo(lineAt(line, s).d, 6); // damaged, not broken: racing on
+      expect(lane(0.45)).toBeGreaterThan(track.innerEdgeAt(s)); // the apron
+      expect(lane(0.02)).toBeGreaterThan(track.innerEdgeAt(s));
     });
 
     it('a smoking car ahead is gone round high, even by a racer that never passes', () => {

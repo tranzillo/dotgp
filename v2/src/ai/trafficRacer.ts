@@ -163,7 +163,7 @@ const STOPPED = 5;
 const OFF_LINE_BUFFER = 1;
 /** How much faster than a stopped or smoking car the way round it must be (m/s), whatever the driver's passing edge. */
 const GO_ROUND_EDGE = 1;
-/** Added to a compromised car's passing threshold at full compromise (m/s): it passes nothing. */
+/** Added to a broken car's passing threshold (m/s): it passes nothing. */
 const SAVE_PASS = 60;
 /** Seconds ahead a lane held off the line is kept clear of the road's edges (it moves over at CROSS_RATE). */
 const EDGE_LOOK = 2;
@@ -265,11 +265,11 @@ export class TrafficRacer {
     const track = world.track;
     const line = this.lineFor(track);
     const { room, grip } = this.style;
-    // Compromised (smoking, under the second damage model): saving the car, not racing it. It passes nothing (it
-    // still goes round a stopped car), and on an oval it heads low, the worse it is the lower, onto the apron once
-    // it's crawling: out of the field's way, where everyone can see it's going.
-    const compromised = car.retired ? 0 : compromise(car);
-    const pass = this.style.pass + SAVE_PASS * compromised;
+    // Broken (smoking, under the second damage model: down to a fraction of its pace at once): saving the car, not
+    // racing it. It passes nothing (it still goes round a stopped car), and on an oval it heads for the apron: out of
+    // the field's way, where everyone can see it's going.
+    const broken = !car.retired && compromise(car) > 0;
+    const pass = this.style.pass + (broken ? SAVE_PASS : 0);
     const dt = Math.min(0.2, Math.max(0, world.time - this.lastTime));
     this.lastTime = world.time;
     const L = track.length;
@@ -291,10 +291,8 @@ export class TrafficRacer {
     const mu = P.TIRE_MU * grip * car.condition;
     const oval = track.kind !== 'road';
     let saveD = here.d, hiEdge = here.hi;
-    if (compromised > 0 && oval) {
-      const inner = track.innerEdge(car.trackIdx) - P.CAR_RADIUS - OFF_LINE_BUFFER;
-      const apron = (track.innerEdge(car.trackIdx) + track.apronEdgeAt(car.s)) / 2;
-      saveD = compromised < 0.5 ? here.d + (inner - here.d) * 2 * compromised : inner + (apron - inner) * (2 * compromised - 1);
+    if (broken && oval) {
+      saveD = (track.innerEdge(car.trackIdx) + track.apronEdgeAt(car.s)) / 2; // the middle of the apron
       hiEdge = Math.max(here.hi, saveD + OFF_LINE_BUFFER);
     }
     const arcLimit = (s: number, offset: number) => {
