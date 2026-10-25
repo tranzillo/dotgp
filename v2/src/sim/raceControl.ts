@@ -44,6 +44,8 @@ const STALL_TIME = 5; // s stopped on the racing surface before it's a hazard (a
 const STUCK_TIME = 30;
 /** A stopped car this close behind another stopped car (or the pace car), in its lane, is queued (m). */
 const QUEUE_GAP = 25;
+/** Stalling under green this many times, a car is out (the first time, it gets going again if it can). */
+const STALLS_OUT = 2;
 /** Marshals' time to lift a wrecked car off a circuit (s). */
 const MARSHAL_TIME = 25;
 
@@ -108,6 +110,10 @@ export class RaceControl {
   private readonly handled = new Set<Car>();
   private readonly cautioned = new Set<Car>();
   private readonly stoppedSince = new Map<Car, number>();
+  /** The lap a car stopped on track brought a caution out on (it can bring out another once it has made it round). */
+  private readonly cautionedLap = new Map<Car, number>();
+  /** Times each car has stalled on track under green (stopped long enough to bring out a caution). */
+  private readonly stalls = new Map<Car, number>();
   private garageSlots = 0;
   /** Cars in formation order this tick, and their slots. */
   private order: Car[] = [];
@@ -509,16 +515,25 @@ export class RaceControl {
         // it has sat there a long while with nothing stopped in front of it.
         if (since > STALL_TIME && this.flag === 'green' && !this.cautioned.has(car)) {
           this.cautioned.add(car);
+          this.cautionedLap.set(car, car.lapsCompleted);
+          this.stalls.set(car, (this.stalls.get(car) ?? 0) + 1);
           this.throwCaution(car);
         }
-        if (since > STALL_TIME && (car.fuel <= 0 || (since > STUCK_TIME && !this.queued(car)))) {
+        // (A car that stalls under green again can't be kept running: house drivers that stalled after every
+        // restart on a tiny short oval brought out a caution each time, 50 a race.)
+        if (since > STALL_TIME && (car.fuel <= 0 || (this.stalls.get(car) ?? 0) >= STALLS_OUT || (since > STUCK_TIME && !this.queued(car)))) {
           car.retired = true;
           this.world.announce(car, 'retired', 'Stopped on track');
         }
-      } else {
-        this.stoppedSince.delete(car);
-        if (!car.retired) this.cautioned.delete(car); // going again: a later stop or wreck is a new hazard
+      } else if (this.stoppedSince.has(car)) {
+        // Going again. Time stopped wears off slowly, so a car that stops and creeps, stops and creeps, adds up to
+        // stuck; and a later stop or wreck is a new hazard only once it has made it round. (Forgotten the moment it
+        // moved, a house car stalling and creeping on a tiny short oval brought out a caution each time: 52 a race.)
+        const since = this.stoppedSince.get(car)! - 0.25 * dt;
+        if (since > 0) this.stoppedSince.set(car, since);
+        else this.stoppedSince.delete(car);
       }
+      if (!car.retired && this.cautioned.has(car) && car.lapsCompleted > (this.cautionedLap.get(car) ?? Infinity)) this.cautioned.delete(car);
       if (!car.retired) continue;
       // Caution as soon as a car is out on or near the racing surface; the wrecker goes once it stops.
       if (this.flag === 'green' && car.d < t.apronEdgeAt(car.s) + 5 && car.d > t.outerEdgeAt(car.s) - 5 && !this.cautioned.has(car)) {
