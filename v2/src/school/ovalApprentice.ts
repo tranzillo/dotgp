@@ -112,7 +112,7 @@ export interface OvalApprenticeOptions {
    */
   shake?: number;
   /** Told after each round. */
-  onRound?: (round: number, report: { track: string; losses: number[]; cautionLoss: number; examples: number; damaged: number; out: number; soloCrashes: number; seconds: number }) => void;
+  onRound?: (round: number, report: { track: string; losses: number[]; cautionLoss: number; examples: number; damaged: number; out: number; soloCrashes: number; seconds: number; nonFinite: string[] }) => void;
 }
 
 /**
@@ -176,6 +176,19 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
     const soloCrashes = soloDrives(track, students, driving, alone, rng, round, seed);
     const { out } = classroomRace(track, students, driving, examples, rng, { field: opts.field, laps: opts.laps, debris: opts.debris, extra: recordExtra ?? undefined }, round, seed);
     const cautionLosses: number[] = [];
+    // A moment with a non-finite input or label would turn a driver's weights to NaN in one step (stable-save, 2026-10-25:
+    // one driver of forty, in the last round): such moments are dropped, and named in the report so they can be traced.
+    const nonFinite = new Map<string, number>();
+    for (const set of [...examples, ...alone]) {
+      let keep = 0;
+      for (const e of set) {
+        const bad = e.x.findIndex((v) => !Number.isFinite(v)), badY = e.y.findIndex((v) => !Number.isFinite(v));
+        if (bad < 0 && badY < 0) { set[keep++] = e; continue; }
+        const what = bad >= 0 ? `x${bad}` : `y${badY}`;
+        nonFinite.set(what, (nonFinite.get(what) ?? 0) + 1);
+      }
+      set.length = keep;
+    }
     // Two skills, trained apart: racing (alone and in traffic under green) and cautions (the field pacing), the
     // caution network starting as a copy of the racing one. Neither's examples crowd out the other's.
     const half = Math.floor(opts.maxExamples / 2);
@@ -187,7 +200,7 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
       // quarter of the racing ones, or a random draw all but leaves them out.
       const hurt = green.filter((e) => e.x[DAMAGE_FROM] > 0), kept = pick(hurt, Math.floor(half / 4));
       const racing = [...kept, ...pick(hurt.length ? green.filter((e) => e.x[DAMAGE_FROM] === 0) : green, half - kept.length)];
-      const loss = trainSupervised(DRIVER_LAYERS, d.weights, [...pick(alone[s], half), ...racing], epochs, 0.01, () => rng.next());
+      const loss = trainFinite(d.weights, [...pick(alone[s], half), ...racing], epochs, rng);
       if (pacing.length) {
         // The caution network takes the wheel the moment the flag flies, often mid-corner at racing speed, and
         // caution moments are nearly all at caution pace: trained on those alone it forgot how to corner fast
@@ -195,17 +208,26 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
         // over 25 m/s; the teacher none). So it keeps racing too: half its examples are racing moments.
         d.caution ??= d.weights.slice();
         const keep = [...pick(alone[s], Math.floor(half / 2)), ...pick(green, Math.floor(half / 2))];
-        cautionLosses.push(trainSupervised(DRIVER_LAYERS, d.caution, [...pick(pacing, half), ...keep], epochs, 0.01, () => rng.next()));
+        cautionLosses.push(trainFinite(d.caution, [...pick(pacing, half), ...keep], epochs, rng));
       }
       return loss;
     });
     opts.onRound?.(round, {
       track: `${track.length.toFixed(0)} m`, losses, examples: examples.reduce((a, e) => a + e.length, 0) + alone.reduce((a, e) => a + e.length, 0),
       damaged: examples.reduce((a, e) => a + e.filter((x) => x.x[DAMAGE_FROM] > 0).length, 0),
-      out, soloCrashes, seconds: (Date.now() - t0) / 1000,
+      out, soloCrashes, seconds: (Date.now() - t0) / 1000, nonFinite: [...nonFinite].map(([what, n]) => `${what} ×${n}`),
       cautionLoss: cautionLosses.length ? cautionLosses.reduce((a, b) => a + b, 0) / cautionLosses.length : NaN,
     });
   }
+}
+
+/** Train in place, unless the step leaves any weight non-finite: then the weights are as they were. */
+function trainFinite(weights: Float32Array, data: Example[], epochs: number, rng: Rng): number {
+  const before = weights.slice();
+  const loss = trainSupervised(DRIVER_LAYERS, weights, data, epochs, 0.01, () => rng.next());
+  if (Number.isFinite(loss) && weights.every(Number.isFinite)) return loss;
+  weights.set(before);
+  return NaN;
 }
 
 /** n of the items, drawn at random without replacement. */

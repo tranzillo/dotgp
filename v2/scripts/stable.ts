@@ -49,7 +49,7 @@ if (args.has('group-only')) {
     ...(args.has('epochs') ? { epochs: Number(args.get('epochs')) } : {}),
     ...(args.has('shake') ? { shake: Number(args.get('shake')) } : {}),
     onRound: (round, r) => console.log(`group ${first} round ${round} ${r.track}: ${r.out} out, ${r.examples} moments (${r.damaged} damaged), `
-      + `loss ${(r.losses.reduce((a, b) => a + b, 0) / r.losses.length).toFixed(4)}, cautions ${r.cautionLoss.toFixed(4)}, solo crashes ${r.soloCrashes}/${3 * count} (${r.seconds.toFixed(0)} s)`),
+      + `loss ${(r.losses.reduce((a, b) => a + b, 0) / r.losses.length).toFixed(4)}, cautions ${r.cautionLoss.toFixed(4)}, solo crashes ${r.soloCrashes}/${3 * count} (${r.seconds.toFixed(0)} s)${r.nonFinite.length ? `, dropped non-finite ${r.nonFinite.join(', ')}` : ''}`),
   });
   writeFileSync(out, JSON.stringify({ drivers: students.map(toJson) }));
 } else {
