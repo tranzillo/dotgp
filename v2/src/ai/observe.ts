@@ -1,5 +1,6 @@
 import { G, PHYSICS as P } from '../sim/constants';
 import type { Car } from '../sim/car';
+import { compromise } from '../sim/damage';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
 import { fastestLine } from './racingLine';
@@ -141,6 +142,8 @@ export const CALLS_SIZE = 5;
 export const PIT_CALLS_SIZE = 3;
 
 export const CAUTION_RANGE_SIZE = 2;
+
+export const DAMAGE_SIZE = 1;
 /** The radio's reach ahead (m) and what counts as in our lane (m): as the spotter calls the cars ahead. */
 const PIT_CALL_AHEAD = 120;
 const PIT_CALL_LANE = 3.5;
@@ -154,6 +157,8 @@ const PIT_CALL_LANE = 3.5;
  * channels don't say why a car is slow; the oval teacher gives a car heading
  * in room for full braking, and drivers couldn't see why (stable v9: drivers
  * hitting pitting cars were the speedway's leading cause of retirements).
+ * A smoking car (damage.ts: heading low and coming in, slowing) is called as
+ * one heading in: the teacher gives it the same room.
  */
 export function observePitCalls(car: Car, world: World, out: Float32Array): Float32Array {
   out.fill(0);
@@ -171,8 +176,19 @@ export function observePitCalls(car: Car, world: World, out: Float32Array): Floa
     else if (ds < any) { any = ds; anyCar = other; }
     if (other.pit.phase === 'out') out[2] = Math.max(out[2], 1 - ds / PIT_CALL_AHEAD);
   }
-  if (laneCar?.pit.phase === 'in') out[0] = 1 - lane / PIT_CALL_AHEAD;
-  if (anyCar?.pit.phase === 'in') out[1] = 1 - any / PIT_CALL_AHEAD;
+  const headingIn = (c: Car | null) => !!c && (c.pit.phase === 'in' || compromise(c) > 0);
+  if (headingIn(laneCar)) out[0] = 1 - lane / PIT_CALL_AHEAD;
+  if (headingIn(anyCar)) out[1] = 1 - any / PIT_CALL_AHEAD;
+  return out;
+}
+
+/**
+ * The car's own damage: how compromised it is (damage.ts: 0 sound, 1 about to fail), as its crew tells it ("you're
+ * smoking: get it low, bring it in"). The grip it feels falls with it, but worn tyres feel the same: this says it's
+ * the car, and the race is over until it's fixed. Zero under the first damage model.
+ */
+export function observeDamage(car: Car, out: Float32Array): Float32Array {
+  out[0] = car.retired ? 0 : compromise(car);
   return out;
 }
 

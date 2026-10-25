@@ -139,8 +139,11 @@ export class StrategistCrewChief implements CrewChief {
     const newDamage = this.repairedTo < 0 || car.health < this.repairedTo - REPAIR_AGAIN;
     // Worth the time only if the repair gives back a fair amount (it restores a share of what's missing).
     const worthIt = (1 - car.health) * PIT_SERVICE.REPAIR_FRACTION >= MIN_REPAIR_GAIN;
-    // (A compromised car, smoking and losing pace under the second damage model, comes in whatever the chief's taste.)
-    const damaged = (car.health < t.repairBelow || compromise(car.health) > 0) && newDamage && worthIt && lapsLeft > 5;
+    // Under the second damage model a car comes in for damage alone once it's compromised (smoking, the wheels coming
+    // off), whatever the chief's taste; lighter damage costs little pace, so it's fixed at a stop made anyway.
+    const fixable = newDamage && worthIt && lapsLeft > 5;
+    const damaged = (car.damageModel === 2 ? compromise(car) > 0 : car.health < t.repairBelow) && fixable;
+    const fixWhileIn = damaged || (car.damageModel === 2 && car.health < t.repairBelow && fixable);
     // A caution: the stop the car needs before the finish anyway is cheap now.
     const fullRun = P.FUEL_CAPACITY / burn;
     // Stops still to make: staying out (run this tank dry first), or filling up now (this stop, then full runs).
@@ -160,7 +163,7 @@ export class StrategistCrewChief implements CrewChief {
     const call: PitCall = {
       tires: wornTires || (!lastTheRun && lapsLeft > t.minLapsForTires),
       fuel,
-      repair: damaged,
+      repair: fixWhileIn,
       reason: needFuel ? 'fuel' : wornTires ? 'tires' : damaged ? 'damage' : 'caution',
     };
     const parts = [call.tires ? 'four tires' : 'no tires', call.fuel > 0.5 ? (call.fuel >= tank - 0.5 ? 'fill it up' : 'fuel to the end') : '',

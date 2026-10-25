@@ -450,7 +450,7 @@ function runRace(trackName: string, seed: number): RaceStats {
       if (Math.abs(gap) < 2 * P.CAR_RADIUS) continue;
       const now = Math.sign(gap), was = order.get(key);
       // (A smoking car being gone round isn't raced for the place: under ?damage=2 everyone passes the crawlers.)
-      if (was !== undefined && was !== now && compromise((now > 0 ? b : a).health) === 0) {
+      if (was !== undefined && was !== now && compromise(now > 0 ? b : a) === 0) {
         pack.passes++;
         const since = world.time - PASS_CONTACT;
         if ((touched.get(key) ?? -Infinity) >= since) pack.passTouch++;

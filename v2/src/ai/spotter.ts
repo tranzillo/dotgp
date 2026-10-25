@@ -170,7 +170,7 @@ export class TowerSpotter implements Spotter {
       const pitting = other.pit.phase !== 'none' && !other.retired;
       const hazardSpeed = normal ? Math.min(HAZARD_SPEED, HAZARD_SHARE * normal[other.trackIdx]) : PACING_HAZARD_SPEED;
       // A car smoking (compromised, under the second damage model) is one too, whatever its speed: it's heading low and in.
-      if (gapAhead > alongsideDs() && gapAhead < hazardGap && !pitting && (other.retired || other.speed < hazardSpeed || compromise(other.health) > 0)) {
+      if (gapAhead > alongsideDs() && gapAhead < hazardGap && !pitting && (other.retired || other.speed < hazardSpeed || compromise(other) > 0)) {
         hazardGap = gapAhead;
         hazardD = other.d;
       }

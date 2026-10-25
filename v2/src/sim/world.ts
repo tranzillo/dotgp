@@ -1,6 +1,7 @@
 import { PHYSICS as P, PIT_SERVICE } from './constants';
 import { applyService, serviceTime, stepCar, type Car, type TrainingWheels } from './car';
 import { computeDraft, resolveCarCollisions, resolveWalls } from './collisions';
+import { damageModel } from './damage';
 import type { RaceControl } from './raceControl';
 import { pastTrackLimits } from './limits';
 import type { Track } from './track';
@@ -70,6 +71,7 @@ export class World {
     // Pit boxes are handed out in entry order along pit road (shared on tracks with short pit roads).
     const stalls = this.track.pit.stalls;
     car.pit.boxS = stalls[this.cars.length % stalls.length];
+    car.damageModel = damageModel(this.track.kind);
     this.cars.push(car);
     this.controllers.push(controller);
   }

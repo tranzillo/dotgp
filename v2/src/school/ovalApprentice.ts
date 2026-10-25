@@ -17,7 +17,7 @@
  * drivers: forty drivers, forty teachers, no shared ancestry.
  */
 import { initialWeights } from '../ai/es';
-import { CAUTION_FROM, DRIVER_LAYERS, NeuralDriver, Team, type DriverLimits } from '../ai/drivers';
+import { CAUTION_FROM, DAMAGE_FROM, DRIVER_LAYERS, NeuralDriver, Team, type DriverLimits } from '../ai/drivers';
 import type { FormationTraits } from '../ai/formation';
 import { type Example, trainSupervised } from '../ai/network';
 import type { TrackKnowledge } from '../ai/observe';
@@ -112,7 +112,7 @@ export interface OvalApprenticeOptions {
    */
   shake?: number;
   /** Told after each round. */
-  onRound?: (round: number, report: { track: string; losses: number[]; cautionLoss: number; examples: number; out: number; soloCrashes: number; seconds: number }) => void;
+  onRound?: (round: number, report: { track: string; losses: number[]; cautionLoss: number; examples: number; damaged: number; out: number; soloCrashes: number; seconds: number }) => void;
 }
 
 /**
@@ -183,7 +183,11 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
     const losses = students.map((d, s) => {
       const pick = (all: Example[], n: number) => (all.length <= n ? all : sampleOf(all, n, rng));
       const green = examples[s].filter((e) => e.x[CAUTION_FROM] === 0), pacing = examples[s].filter((e) => e.x[CAUTION_FROM] !== 0);
-      const loss = trainSupervised(DRIVER_LAYERS, d.weights, [...pick(alone[s], half), ...pick(green, half)], epochs, 0.01, () => rng.next());
+      // Moments in a compromised car (get it low, bring it in) are about one in a hundred: every one goes in, up to a
+      // quarter of the racing ones, or a random draw all but leaves them out.
+      const hurt = green.filter((e) => e.x[DAMAGE_FROM] > 0), kept = pick(hurt, Math.floor(half / 4));
+      const racing = [...kept, ...pick(hurt.length ? green.filter((e) => e.x[DAMAGE_FROM] === 0) : green, half - kept.length)];
+      const loss = trainSupervised(DRIVER_LAYERS, d.weights, [...pick(alone[s], half), ...racing], epochs, 0.01, () => rng.next());
       if (pacing.length) {
         // The caution network takes the wheel the moment the flag flies, often mid-corner at racing speed, and
         // caution moments are nearly all at caution pace: trained on those alone it forgot how to corner fast
@@ -197,6 +201,7 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
     });
     opts.onRound?.(round, {
       track: `${track.length.toFixed(0)} m`, losses, examples: examples.reduce((a, e) => a + e.length, 0) + alone.reduce((a, e) => a + e.length, 0),
+      damaged: examples.reduce((a, e) => a + e.filter((x) => x.x[DAMAGE_FROM] > 0).length, 0),
       out, soloCrashes, seconds: (Date.now() - t0) / 1000,
       cautionLoss: cautionLosses.length ? cautionLosses.reduce((a, b) => a + b, 0) / cautionLosses.length : NaN,
     });

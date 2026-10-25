@@ -1,17 +1,33 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomTraits, StrategistCrewChief } from '../src/ai/pitting';
+import { observeDamage, observePitCalls, PIT_CALLS_SIZE } from '../src/ai/observe';
 import { fastestLine, lineAt } from '../src/ai/racingLine';
 import { racerStyle, TrafficRacer } from '../src/ai/trafficRacer';
 import { applyImpact, Car, stepCar } from '../src/sim/car';
 import { PHYSICS as P } from '../src/sim/constants';
-import { compromise, powerLeft } from '../src/sim/damage';
+import { compromise, damageModel, powerLeft } from '../src/sim/damage';
 import { EXPERIMENT } from '../src/sim/experiment';
 import { World } from '../src/sim/world';
 import { presetTrack } from '../src/trackgen';
+import { circuitTrack } from '../src/school/roadLesson';
 
-describe('the second damage model (?damage=2)', () => {
+describe('the damage model by track', () => {
+  it('ovals race the second, road circuits the first, unless ?damage says one for all', () => {
+    const oval = new Car(0), road = new Car(1);
+    oval.placeOnTrack(presetTrack('short'), 0, 0);
+    road.placeOnTrack(circuitTrack(7, 'club'), 0, 0);
+    expect([oval.damageModel, road.damageModel]).toEqual([2, 1]);
+    EXPERIMENT.damage = 1;
+    expect(damageModel('oval')).toBe(1);
+    EXPERIMENT.damage = 2;
+    expect(damageModel('road')).toBe(2);
+    EXPERIMENT.damage = 0;
+  });
+});
+
+describe('the second damage model', () => {
   beforeAll(() => { EXPERIMENT.damage = 2; });
-  afterAll(() => { EXPERIMENT.damage = 1; });
+  afterAll(() => { EXPERIMENT.damage = 0; });
   const track = presetTrack('speedway');
 
   it('light contact and scraping cost no health; a real hit still does, and still wrecks', () => {
@@ -28,11 +44,20 @@ describe('the second damage model (?damage=2)', () => {
     expect(before.health).toBeLessThan(1); // the first model: worn down by it
   });
 
-  it('a car is sound above half health, and loses grip and power toward a crawl as it nears zero', () => {
-    expect(compromise(0.6)).toBe(0);
-    expect(compromise(0.25)).toBeCloseTo(0.5, 6);
-    expect(compromise(0)).toBe(1);
-    expect(powerLeft(0)).toBe(1);
+  it('a car loses a little down to half health, then the wheels come off: grip and power fall to a crawl at zero', () => {
+    const at = (health: number) => compromise({ health, damageModel: 2 });
+    expect(at(0.6)).toBe(0);
+    expect(at(0.25)).toBeCloseTo(0.5, 6);
+    expect(at(0)).toBe(1);
+    expect(compromise({ health: 0, damageModel: 1 })).toBe(0);
+    const power = (health: number) => powerLeft({ health, damageModel: 2 });
+    expect(power(1)).toBe(1);
+    expect(power(0.75)).toBeCloseTo(0.98, 6); // the buffer: a little off, evenly
+    expect(power(0.5)).toBeCloseTo(0.96, 6);
+    expect(power(0.499)).toBeCloseTo(0.96, 2); // no step at the threshold ...
+    expect(power(0.4)).toBeLessThan(0.65); // ... but a cliff after it
+    expect(power(0)).toBeCloseTo(0.04, 6);
+    expect(powerLeft({ health: 0.1, damageModel: 1 })).toBe(1);
     const car = new Car(0);
     car.health = 0.1;
     expect(car.condition).toBeLessThan(0.75);
@@ -64,6 +89,22 @@ describe('the second damage model (?damage=2)', () => {
     const call = chief.decide(car, world);
     expect(call?.repair).toBe(true);
     expect(call?.reason).toBe('damage');
+  });
+
+  it("a driver feels its own damage, and hears a smoking car ahead called as one heading in", () => {
+    const world = new World(track, { collisions: true, drafting: true });
+    const me = new Car(0), ahead = new Car(1);
+    me.placeOnTrack(track, 600, 0);
+    ahead.placeOnTrack(track, 660, 0);
+    world.addCar(me, null as never);
+    world.addCar(ahead, null as never);
+    const calls = new Float32Array(PIT_CALLS_SIZE), damage = new Float32Array(1);
+    expect(observePitCalls(me, world, calls)[0]).toBe(0);
+    expect(observeDamage(me, damage)[0]).toBe(0);
+    ahead.health = 0.2;
+    me.health = 0.25;
+    expect(observePitCalls(me, world, calls)[0]).toBeCloseTo(0.5, 6);
+    expect(observeDamage(me, damage)[0]).toBeCloseTo(0.5, 6);
   });
 
   describe('teachers', () => {

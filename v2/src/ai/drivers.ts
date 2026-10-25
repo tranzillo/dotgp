@@ -7,7 +7,7 @@ import { genomeSize, Network, widenNetwork } from './network';
 import { PHYSICS as P, PIT_SERVICE } from '../sim/constants';
 import { PitAutopilot, pitDecisionS, pitRoute, WAVE_OFF_FUEL_LAPS, type CrewChief } from './pitting';
 import {
-  CALLS_SIZE, PIT_CALLS_SIZE, observePitCalls, CAUTION_RANGE_SIZE, observeCautionRange, CAUTION_SIZE, KNOWLEDGE_AHEAD, KNOWLEDGE_SIZE, LOOKAHEAD, OBS_SIZE, observe, observeCalls, observeCaution, observeKnowledge, observePit, observePreview,
+  CALLS_SIZE, PIT_CALLS_SIZE, observePitCalls, CAUTION_RANGE_SIZE, observeCautionRange, DAMAGE_SIZE, observeDamage, CAUTION_SIZE, KNOWLEDGE_AHEAD, KNOWLEDGE_SIZE, LOOKAHEAD, OBS_SIZE, observe, observeCalls, observeCaution, observeKnowledge, observePit, observePreview,
   PIT_LOOKAHEAD, PIT_SIZE, PREVIEW_SIZE, type TrackKnowledge,
 } from './observe';
 import { Rng } from './rng';
@@ -28,8 +28,12 @@ export const CALLS_FROM = KNOWLEDGE_FROM + KNOWLEDGE_SIZE;
 export const PIT_CALLS_FROM = CALLS_FROM + CALLS_SIZE;
 /** Where the caution inputs without their clamps start (after the calls about others' pit stops). */
 export const CAUTION_RANGE_FROM = PIT_CALLS_FROM + PIT_CALLS_SIZE;
-/** Driver network: own-car observations + the spotter's radio + a pit stop in progress + a caution + the road ahead + the caution calls + others' pit stops + the caution's range -> acceleration request. */
-export const DRIVER_LAYERS = [CAUTION_RANGE_FROM + CAUTION_RANGE_SIZE, 32, 24, 2] as const;
+/** Where the car's own damage comes in (after the caution's range). */
+export const DAMAGE_FROM = CAUTION_RANGE_FROM + CAUTION_RANGE_SIZE;
+/** Driver network: own-car observations + the spotter's radio + a pit stop in progress + a caution + the road ahead + the caution calls + others' pit stops + the caution's range + its own damage -> acceleration request. */
+export const DRIVER_LAYERS = [DAMAGE_FROM + DAMAGE_SIZE, 32, 24, 2] as const;
+/** Before its own damage. */
+export const CAUTION_RANGE_DRIVER_LAYERS = [CAUTION_RANGE_FROM + CAUTION_RANGE_SIZE, 32, 24, 2] as const;
 /** Before the caution's range. */
 export const PIT_CALLS_DRIVER_LAYERS = [PIT_CALLS_FROM + PIT_CALLS_SIZE, 32, 24, 2] as const;
 /** Before the calls about others' pit stops. */
@@ -45,7 +49,7 @@ export const LEGACY_DRIVER_LAYERS = [OBS_SIZE, 16, 12, 2] as const;
 /** Upgrade saved weights to the current driver network, preserving behaviour (new inputs start ignored). */
 export function adaptWeights(w: Float32Array): Float32Array {
   if (w.length === genomeSize(DRIVER_LAYERS)) return w;
-  for (const old of [PIT_CALLS_DRIVER_LAYERS, CALLS_DRIVER_LAYERS, KNOWLEDGE_DRIVER_LAYERS, PREVIEW_DRIVER_LAYERS, CAUTION_DRIVER_LAYERS, PIT_DRIVER_LAYERS, RADIO_DRIVER_LAYERS, LEGACY_DRIVER_LAYERS]) {
+  for (const old of [CAUTION_RANGE_DRIVER_LAYERS, PIT_CALLS_DRIVER_LAYERS, CALLS_DRIVER_LAYERS, KNOWLEDGE_DRIVER_LAYERS, PREVIEW_DRIVER_LAYERS, CAUTION_DRIVER_LAYERS, PIT_DRIVER_LAYERS, RADIO_DRIVER_LAYERS, LEGACY_DRIVER_LAYERS]) {
     if (w.length === genomeSize(old)) {
       const rng = new Rng(w.length);
       return widenNetwork(old, w, DRIVER_LAYERS, () => rng.next());
@@ -118,7 +122,7 @@ export class Team implements Controller {
     }
     this.lastS = r;
     // Smoking: the team says so as it starts (the crew chief calls it in at the next chance).
-    const smoking = compromise(car.health) > 0 && !car.retired;
+    const smoking = compromise(car) > 0 && !car.retired;
     if (smoking && !this.smoking) world.announce(car, 'crew', 'Smoking: get it low, bring it in');
     this.smoking = smoking;
     this.spotter.call(car, world, this.radio);
@@ -325,6 +329,7 @@ export class NeuralDriver implements DriverBrain {
   private readonly calls = new Float32Array(CALLS_SIZE);
   private readonly pitCalls = new Float32Array(PIT_CALLS_SIZE);
   private readonly cautionRange = new Float32Array(CAUTION_RANGE_SIZE);
+  private readonly damage = new Float32Array(DAMAGE_SIZE);
   /**
    * The caution skill: a network of its own that drives while the field is pacing (cautions, pace laps, the run to
    * the restart), so learning cautions can't cost the driver its racing. None: the main network drives those too.
@@ -378,6 +383,7 @@ export class NeuralDriver implements DriverBrain {
     this.input.set(observeCalls(car, world, this.calls), CALLS_FROM);
     this.input.set(observePitCalls(car, world, this.pitCalls), PIT_CALLS_FROM);
     this.input.set(observeCautionRange(car, world, this.cautionRange), CAUTION_RANGE_FROM);
+    this.input.set(observeDamage(car, this.damage), DAMAGE_FROM);
     const dir = nextCornerDirection(world.track, car.s);
     if (dir !== 0) this.mirrored = dir < 0; // nothing in sight: keep the last view
     if (this.mirrored) mirrorDriverInputs(this.input);

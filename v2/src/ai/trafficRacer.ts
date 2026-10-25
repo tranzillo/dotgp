@@ -193,7 +193,7 @@ export class TrafficRacer {
     // Under caution it drives toward its speed smoothly (as it brakes above it), not flat out below it: a teacher's
     // throttle has to be one a student can copy.
     this.formation = new FormationDriver(traits, (car, world, lane) => this.cautionCap(car, world, lane), CAUTION_DRIVE_GAIN);
-    this.smooth = style.smoothCautions ? new SmoothFormation((car) => this.formation.traitsFor(car), style.cautionGain, style.cautionGrip) : null;
+    this.smooth = style.smoothCautions ? new SmoothFormation((car) => this.formation.traitsFor(car), style.cautionGain, style.cautionGrip, this.lineFor) : null;
   }
 
   /** Under a caution (once it has reacted to the flag, and until it has reacted to the green): the formation's. */
@@ -268,7 +268,7 @@ export class TrafficRacer {
     // Compromised (smoking, under the second damage model): saving the car, not racing it. It passes nothing (it
     // still goes round a stopped car), and on an oval it heads low, the worse it is the lower, onto the apron once
     // it's crawling: out of the field's way, where everyone can see it's going.
-    const compromised = car.retired ? 0 : compromise(car.health);
+    const compromised = car.retired ? 0 : compromise(car);
     const pass = this.style.pass + SAVE_PASS * compromised;
     const dt = Math.min(0.2, Math.max(0, world.time - this.lastTime));
     this.lastTime = world.time;
@@ -342,7 +342,7 @@ export class TrafficRacer {
       // that side of it is in its way, and it isn't passed there. (Circuit pit entries cut across the line into the
       // corner before them, and cars turning in for the apex ran into pitters sliding over in front of them.)
       // A car smoking on an oval is heading low the same way, and is gone round high.
-      const smoking = !other.retired && compromise(other.health) > 0;
+      const smoking = !other.retired && compromise(other) > 0;
       const pitting = (other.pit.phase === 'in' && other.d < track.innerEdge(other.trackIdx) + P.CAR_RADIUS) || (smoking && oval);
       // Merging out of pit road, it crosses from the apron to the inside lane (and slower than the field): from there
       // to where it is is its path. (Oval cars passing a merging car on its outside in turn 1, where it was going.)
