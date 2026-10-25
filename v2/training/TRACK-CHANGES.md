@@ -126,7 +126,7 @@ grip. That's a physics change, to be planned with both machines.
 - 2026-10-24: pit road 1.33x wider made no difference to crowded pit lanes, but 2 m cars cut pit-cycle contacts by a
   third to two thirds (RESULTS.md, "pit road width vs car size").
 
-## 4. Series cars: a Cup car ready for oval training; an F1 car in calibration (behind a switch)
+## 4. Series cars: a Cup car ready for oval training; an F1 car calibrated (behind a switch)
 
 `src/sim/carSpec.ts`. The default car is untouched (its spec returns PHYSICS's numbers exactly; every test passes).
 - **Switch:** `DOTGP_EXPERIMENT='?spec=cup'` in the environment for any script or the lab (worker threads inherit it),
@@ -146,6 +146,12 @@ grip. That's a physics change, to be planned with both machines.
   - Still grip-only, and conservative for this car: the follow braking margins (0.5 mu g) and race control's pace speeds.
 - **To start oval training on it:** the same scripts with `DOTGP_EXPERIMENT='?spec=cup'`. That means a new stable:
   drivers trained on today's car don't carry over (the house drivers retire more in it). Track widths aren't scaled.
-- **The F1 car:** 805 kg, about 1000 hp, heavy downforce, rear-wheel drive. Calibration on six circuits is in progress,
-  plus its 0-300 km/h, since lap times alone trade drag for downforce. Speed traces against real pole laps will
-  follow: the F1 timing archive now needs an F1 account; OpenF1 is open outside live sessions.
+- **The F1 car:** 805 kg, about 1000 hp, heavy downforce, rear-wheel drive. Calibration (`npx tsx scripts/calibrate.ts
+  --f1 --trace <dir> [--fit]`): fitted point by point to the speed traces of eight dry 2024 pole laps (OpenF1 car data
+  registered onto our tracks, kept out of the repo). Best laps are within 4% of the poles, six of eight within 2%; the
+  traces are 7-10% rms. Braking 0.96 of real, traction out of corners 0.94, corner minimum speeds 0.97 (slow corners
+  1.01, fast ones 0.94). One downforce level everywhere: top speed 316 km/h (Monza 347 real).
+  - Our racing line changes direction faster than a real car (it gains about 5 s over the eight laps in the part-throttle
+    turns), and the fit pays that back in drag.
+  - The fits now lay each line fully refined, as the game does. The quicker, rougher line the fits used before lapped
+    3-5% slow on circuits, so a car fitted to it came out that much too fast. The Cup car is unaffected (within 1.9% either way).

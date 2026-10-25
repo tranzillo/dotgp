@@ -88,8 +88,15 @@ export const F1_CAR: CarSpec = {
   driveShare: 0.7,
 };
 
-/** The F1 car's fitted numbers (mutable: scripts/calibrate.ts --f1 --fit searches them). */
-export const F1_FIT = { cda: 1.1, cla: 4.5, grip: 1.6, loadSensitivity: 0.2 };
+/**
+ * The F1 car's fitted numbers (mutable: scripts/calibrate.ts --f1 --fit searches them), 2026-10-24: fitted to the
+ * speed traces of eight dry 2024 pole laps (Monza, Silverstone, Budapest, Spielberg, Sakhir, Zandvoort, Austin,
+ * Montreal; 7-10% rms point by point), best laps within 4% of the poles, six of them within 2%. One downforce level
+ * for every circuit: the top speed a few percent short of the low-drag circuits' (316 km/h against Monza's 347). Our
+ * line changes direction quicker than a real car does (it gains in the turns between braking and full throttle), so
+ * the fit takes that back in drag.
+ */
+export const F1_FIT = { cda: 1.705, cla: 4.772, grip: 2.2, loadSensitivity: 0.2 };
 
 /** The car in use at a track: the classic, or the experiment's (?spec=cup, f1, or series: by the kind of track). */
 export function carSpec(track?: PackageTrack): CarSpec {
