@@ -109,6 +109,10 @@ const metrics: Array<[keyof RaceSummary, string, number, boolean | null]> = [
   ['cautions', 'cautions', 1, true],
   ['stops', 'pit stops', 1, null],
   ['damageStops', '  called for damage', 1, true],
+  // Health lost on track: walls under green (with a car alongside), cars under green.
+  ['wallGreen', 'wall damage, green', 2, true],
+  ['wallAlongside', '  with a car alongside', 2, true],
+  ['carGreen', 'car damage, green', 2, true],
   ['pitLaneTime', '  pit entry to track (s)', 1, true],
   ['pitHits', '  pit-cycle contacts', 1, true],
   ['pitDamage', '  pit-cycle damage (health)', 2, true],
