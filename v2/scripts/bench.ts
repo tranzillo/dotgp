@@ -11,6 +11,7 @@
  *     tracks: presets, generated ovals (oval:<seed>[:<variant>[:<shape>]]), or ovals:N for N generated ovals (the same N every run)
  *     [--experiments '|?pitwidth=1.33']   one driver file raced as A and B with each set of the app's experiment switches
  *                 (src/sim/experiment.ts; '' for none), paired on the same seeds: an A/B of the switches
+ *     [--rules 1]   with the stewards (penalties, the black flag), as the app races
  *     [--h2h 1]   head to head as well: A and B in the same mixed field, every other grid slot, each seed raced twice with the
  *                 slots traded; judged on B's mean finishing place against A's (lower is better) and cars out per side
  */
@@ -40,6 +41,7 @@ const jobs = Number(args.get('jobs') ?? Math.max(1, cpus().length - 1));
 const field = args.get('field') ?? '24';
 const pace = args.get('pace') ?? '4';
 const laps = args.get('laps'); // shorter races, for a quick look
+const rules = args.get('rules') === '1'; // the stewards and their penalties (the app races with them)
 
 const dir = mkdtempSync(join(tmpdir(), 'bench-'));
 /** A race's results file: the side (a file's index, or h0 / h1 for the head-to-head races), the track, the seed. */
@@ -58,7 +60,7 @@ if (h2h && files.length === 2) {
 function run(job: Job): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn('npx', ['tsx', 'scripts/incidents.ts', files[job.file], '--tracks', job.track, '--seeds', '1',
-      '--seed-start', String(job.seed), '--field', field, '--pace', pace, '--marks', '0', '--json', job.out, ...(laps ? ['--laps', laps] : []),
+      '--seed-start', String(job.seed), '--field', field, '--pace', pace, '--marks', '0', '--json', job.out, ...(laps ? ['--laps', laps] : []), ...(rules ? ['--rules', '1'] : []),
       ...(job.swap !== undefined ? ['--mix', files[1], '--swap', String(job.swap)] : []),
       ...(experiments?.[job.file] ? ['--experiment', `"${experiments[job.file]}"`] : [])],
     { shell: true, stdio: ['ignore', 'ignore', 'inherit'] });
