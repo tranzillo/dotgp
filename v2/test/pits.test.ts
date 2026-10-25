@@ -58,6 +58,66 @@ describe('pit stop', () => {
   }
 });
 
+describe('reverse', () => {
+  /** A car on its in-lap, driven in by the pit maneuver to `short` metres short of its box. */
+  function nearItsBox(short: number) {
+    const track = ovalTrack(SHORT_TRACK);
+    const world = new World(track, { collisions: false });
+    const car = new Car(0);
+    placeOnGrid(car, track, 0, true);
+    world.addCar(car, new Team(new ScriptedDriver(0), new TowerSpotter(), new CallOnce({ tires: true, fuel: 30, repair: false })));
+    while (world.time < 300 && !(car.pit.phase === 'in' && car.surface === 'pit' && track.pitInR(car) > car.pit.boxS - short)) world.step();
+    return { track, world, car };
+  }
+
+  it('on pit road, held on the brakes at a standstill a car shifts into reverse and backs up, at a crawl; off the brakes, back in drive', () => {
+    const { track, world, car } = nearItsBox(25);
+    car.vx = 0; car.vy = 0;
+    world.controllers[0] = { decide: (c: Car) => { c.inputX = -1; c.inputY = 0; } };
+    const r0 = track.pitInR(car);
+    for (let k = 0; k < 0.4 * 120; k++) world.step();
+    expect(car.reversing).toBe(false);
+    expect(Math.abs(track.pitInR(car) - r0)).toBeLessThan(0.1); // the brakes only hold it, until it shifts
+    for (let k = 0; k < 4 * 120; k++) world.step();
+    expect(car.reversing).toBe(true);
+    expect(track.pitInR(car)).toBeLessThan(r0 - 3);
+    expect(car.speed).toBeLessThan(2.8); // its reverse speed (banking adds a little)
+    world.controllers[0] = { decide: (c: Car) => { c.inputX = 0.5; c.inputY = 0; } };
+    for (let k = 0; k < 3 * 120; k++) world.step();
+    expect(car.reversing).toBe(false);
+    expect(track.pitInR(car)).toBeGreaterThan(r0 - 20); // stopped rolling back, then drove on
+  });
+
+  it('on the track the brakes only ever stop a car', () => {
+    const track = ovalTrack(FLAT_TRACK);
+    const world = new World(track, { collisions: false });
+    const car = new Car(0);
+    placeOnGrid(car, track, 0, true);
+    car.vx = 0; car.vy = 0;
+    world.addCar(car, { decide: (c: Car) => { c.inputX = -1; c.inputY = 0; } });
+    const d0 = car.dist;
+    let least = d0;
+    for (let k = 0; k < 5 * 120; k++) { world.step(); least = Math.min(least, car.dist); }
+    expect(car.reversing).toBe(false);
+    expect(d0 - least).toBeLessThan(0.05); // never backwards
+  });
+
+  it('the pit maneuver stopped past its box backs up into it and makes its stop', () => {
+    for (const past of [4, 9, 14]) {
+      const { track, world, car } = nearItsBox(30);
+      const move = car.pit.boxS + past - track.pitInR(car);
+      car.placeOnTrack(track, track.wrapS(car.s + move), car.d, car.dist + move);
+      car.vx = 0; car.vy = 0;
+      let serviced = false;
+      for (let k = 0; k < 40 * 120 && car.pit.phase !== 'out'; k++) {
+        world.step();
+        if (car.pit.phase === 'service') serviced = true;
+      }
+      expect(serviced).toBe(true);
+    }
+  });
+});
+
 describe('crew chief', () => {
   it('calls the car in for fuel before it runs dry, and fuels only to the finish late on', () => {
     const track = ovalTrack(SPEEDWAY);

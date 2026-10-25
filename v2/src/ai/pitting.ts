@@ -348,6 +348,13 @@ const PIT_DECEL = 4;
 const PIT_GAP = 3;
 /** How long a car waits in its box for the fast lane to clear before going anyway (s). */
 const BOX_WAIT_LIMIT = 10;
+/**
+ * Stopped (or nearly) further past its box's centre than BACK_UP_FROM (m), a car backs up into it, at most at
+ * BACK_UP_SPEED (m/s: under the 1.5 its stop starts at) and slowing as it nears it, by BACK_UP_DECEL (m/s^2).
+ */
+const BACK_UP_FROM = 1;
+const BACK_UP_SPEED = 1.2;
+const BACK_UP_DECEL = 0.8;
 /** Abort the pit entry if not lined up this far before the wall's nose (m). */
 const ABORT_DISTANCE = 60;
 /** ... but not before the car has had this far past the pit entry (m) to move over. */
@@ -529,6 +536,14 @@ export class PitAutopilot {
         // Pit limiter speed, then a stop on the box.
         return Math.min(follow, PIT_SERVICE.SPEED_LIMIT - 1, Math.sqrt(2 * 3 * Math.max(0, pit.boxS - r)));
       };
+      // Past its box and (nearly) stopped: back up into it. A car drives whichever way it's pushed: braking from a
+      // standstill is reverse. (The maneuver only ever braked for its box: stopped past it, it sat there, and so did
+      // the pit drivers that learned from it, until a bump moved them on.)
+      const past = r0 - pit.boxS;
+      if (past > BACK_UP_FROM && car.speed < 2 && car.d > track.pit.wallD + track.pitOffset(car.s)) {
+        this.backUp(car, world, lane(car.s), past);
+        return;
+      }
       // Well under the cornering limit, leaving grip to work down the track.
       followLine(car, world, lane, cap, 0.75, path.laid || track.pitLong, this.driveGain);
     } else if (pit.phase === 'out') {
@@ -569,5 +584,21 @@ export class PitAutopilot {
       car.inputX = 0;
       car.inputY = 0;
     }
+  }
+
+  /** Back the car up along pit road toward its box, `past` metres behind it, holding the box's lane. */
+  private backUp(car: Car, world: World, laneD: number, past: number): void {
+    const track = world.track;
+    const i = car.trackIdx;
+    const tx = track.tx[i], ty = track.ty[i], nx = -ty, ny = tx;
+    const vLon = car.vx * tx + car.vy * ty, vLat = car.vx * nx + car.vy * ny;
+    const want = -Math.min(BACK_UP_SPEED, Math.sqrt(2 * BACK_UP_DECEL * past));
+    // In proportion both ways, as the maneuver drives (a student can copy that), and the lane held as followLine does.
+    const lon = (this.driveGain ?? 4) * (want - vLon);
+    const lat = 0.8 * (laneD - car.d) - 1.6 * vLat;
+    const wx = lon * tx + lat * nx, wy = lon * ty + lat * ny;
+    const fx = car.frameX, fy = car.frameY;
+    car.inputX = (wx * fx + wy * fy) / (P.OVERDRIVE_MAX * Math.max(1, car.capacityLon));
+    car.inputY = (wx * -fy + wy * fx) / (P.OVERDRIVE_MAX * Math.max(1, car.capacity));
   }
 }

@@ -38,6 +38,18 @@ export interface PitState {
   inFrom?: { call: PitCall | null; dist: number; r: number };
 }
 const RETIRED_DECEL = 8;
+/**
+ * Reverse: on pit road a car held on the brakes at a standstill for REVERSE_ENGAGE (s) shifts into reverse, and then
+ * the brakes drive it backwards along the road, up to REVERSE_SPEED (m/s) at REVERSE_ACCEL (m/s^2). Easing off at a
+ * standstill puts it back in drive, as does stopping off pit road (backed off it, it stays in reverse until it has
+ * stopped: in drive its brakes don't hold a car rolling backwards). Only on pit road for now: everywhere else a
+ * stopped car on its brakes (on the grid, queued under caution, in its box) stays put.
+ */
+const REVERSE_ENGAGE = 0.5;
+const REVERSE_SPEED = 2.5;
+const REVERSE_ACCEL = 2;
+/** A car this slow along the road is at a standstill, for shifting (m/s; sliding sideways down a banked apron counts). */
+const STANDSTILL = 0.3;
 
 /**
  * Cornering grip of a tire at a given life: a gentle fade from new to the
@@ -128,6 +140,9 @@ export class Car {
   // Per-step telemetry
   frameX = 1;
   frameY = 0;
+  /** In reverse (pit road: see REVERSE_ENGAGE), and how long it has been held on the brakes at a standstill (s). */
+  reversing = false;
+  reverseHold = 0;
   /** Tire capacity (m/s^2) across the direction of travel, and along it (braking/drive). */
   capacity = 0;
   capacityLon = 0;
@@ -271,9 +286,10 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1, wheel
   const vx = car.vx, vy = car.vy;
   const speed = Math.hypot(vx, vy);
 
-  // Travel frame. At very low speed, lean on the track direction so the frame is defined.
+  // Travel frame. At very low speed, lean on the track direction so the frame is defined. In reverse the car still
+  // faces the way the road runs (backing up, the frame would flip as it got going).
   const blend = Math.max(0, P.FRAME_BLEND_SPEED - speed);
-  let fx = vx + tx * blend, fy = vy + ty * blend;
+  let fx = car.reversing ? tx : vx + tx * blend, fy = car.reversing ? ty : vy + ty * blend;
   const fm = Math.hypot(fx, fy);
   if (fm > 1e-9) { fx /= fm; fy /= fm; } else { fx = tx; fy = ty; }
   const lx = -fy, ly = fx;
@@ -329,16 +345,29 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1, wheel
   if (im > 1) { ix /= im; iy /= im; }
   let aLon = ix * P.OVERDRIVE_MAX * capacityLon;
   let aLat = iy * P.OVERDRIVE_MAX * capacity;
+  // Shifting: into reverse held on the brakes at a standstill on pit road, back into drive off them at a standstill.
+  const still = Math.abs(vx * fx + vy * fy) < STANDSTILL;
+  if (!car.reversing) {
+    car.reverseHold = surfaceKind === 'pit' && still && ix < -0.3 ? car.reverseHold + dt : 0;
+    if (car.reverseHold >= REVERSE_ENGAGE) car.reversing = true;
+  } else if (still && (ix >= 0 || surfaceKind !== 'pit')) {
+    car.reversing = false;
+    car.reverseHold = 0;
+  }
+  const back = car.reversing ? -(vx * fx + vy * fy) : 0;
   // Brakes stop a car; they can't drive it backwards. At a crawl the frame leans on the track's direction,
   // so braking there pushed a stopped car backwards, and a car rolling backwards at half the blend speed
   // had its frame flip every step and the brakes hold it there (learners braking to a crawl were stuck
   // for good: lab, 2026-10-18).
-  if (aLon < 0) {
+  if (car.reversing) {
+    // The brakes drive it backwards (to its reverse speed); the throttle stops it rolling back, no further.
+    aLon = aLon < 0 ? (back < REVERSE_SPEED ? Math.max(aLon, -REVERSE_ACCEL) : 0) : Math.min(aLon, Math.max(0, back) / dt);
+  } else if (aLon < 0) {
     const forward = vx * fx + vy * fy;
     aLon = forward > 0 ? Math.max(aLon, -forward / dt) : 0;
   }
 
-  if (aLon > 0) {
+  if (aLon > 0 && !car.reversing) {
     const power = car.fuel > 0
       ? spec.power(track) * (car.damageModel === 2 ? powerLeft(car) : 1 - P.ENGINE_DAMAGE_POWER * car.damageEngine)
       : 0;

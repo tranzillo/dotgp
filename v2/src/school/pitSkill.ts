@@ -44,7 +44,12 @@ export interface PitSkillOptions {
   circuits?: number;
   epochs?: number;
   maxExamples?: number;
-  onRound?: (round: number, report: { loss: number; stops: number; completed: number; seconds: number }) => void;
+  /**
+   * Overshoot drills per track (alone), on top of the stop alone and the stop in traffic. None by default: the
+   * teacher's own overshoots in the ordinary drills teach backing up as well (RESULTS 2026-10-25).
+   */
+  overshoots?: number;
+  onRound?: (round: number, report: { loss: number; stops: number; completed: number; overshoots: number; recovered: number; seconds: number }) => void;
 }
 
 /** The pit maneuver's throttle as a teacher (1/s): see PitAutopilot.driveGain. */
@@ -56,13 +61,19 @@ const TEACHING_DRIVE_GAIN = 4;
  */
 const DRILL_SECONDS = 200;
 const AFTER_MERGE = 5;
+/**
+ * An overshoot drill: as the car nears its box it finds itself this far past it (m), stopped, and backs up into it
+ * (pit road has reverse: car.ts). Learned from the in-lap alone, a stop past the box was a state pit drivers had
+ * never seen: they sat there, in neither their box nor past it, for the rest of a race.
+ */
+const OVERSHOOT = [4, 14] as const;
 
 /**
  * One drill: the car on its in-lap with a stop called, the student or the maneuver driving; in traffic, two cars
  * ahead stopping too (the maneuver driving them) and four racing past (traffic racers), as the pit-traffic lesson
  * places them. Returns whether the stop got done.
  */
-function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number, examples: Example[], seed: number, traffic = false): boolean {
+function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number, examples: Example[], seed: number, traffic = false, overshoot = 0): boolean {
   const world = new World(track, { collisions: traffic, drafting: traffic });
   const limits: DriverLimits | undefined = d.limits && { ...d.limits, seed };
   const student = new NeuralDriver(d.weights, d.road, d.knowledge, { limits, pit: d.pit ?? undefined });
@@ -100,7 +111,15 @@ function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number
   let serviced = false;
   const phase = (): PitState['phase'] => car.pit.phase;
   let done = -1;
+  let overshot = !overshoot;
   for (let k = 0; k < DRILL_SECONDS / P.DT && !car.retired && (done < 0 || k - done < AFTER_MERGE / P.DT); k++) {
+    if (!overshot && phase() === 'in' && car.surface === 'pit' && track.pitInR(car) > car.pit.boxS - 30) {
+      overshot = true;
+      const move = car.pit.boxS + overshoot - track.pitInR(car);
+      car.placeOnTrack(track, track.wrapS(car.s + move), car.d, car.dist + move);
+      car.vx = 0;
+      car.vy = 0;
+    }
     world.step();
     if (phase() === 'service') serviced = true;
     if (done < 0 && serviced && phase() === 'none') done = k;
@@ -122,7 +141,7 @@ function speedAt(track: Track, s: number): number {
 
 /** Teach a group their pit skill (pit networks trained in place; a new one starts as a copy of the oval skill). */
 export function apprenticePitSkill(students: PitStudent[], seed: number, options: PitSkillOptions = {}): void {
-  const opts = { rounds: 6, ovals: 2, circuits: 2, epochs: 6, maxExamples: 40_000, ...options };
+  const opts = { rounds: 6, ovals: 2, circuits: 2, overshoots: 0, epochs: 6, maxExamples: 40_000, ...options };
   const rng = new Rng(hashSeed(seed, 'pit-skill'));
   const examples: Example[][] = students.map(() => []);
   for (const d of students) d.pit ??= d.weights.slice();
@@ -132,13 +151,19 @@ export function apprenticePitSkill(students: PitStudent[], seed: number, options
       ...Array.from({ length: opts.ovals }, (_, k) => apprenticeTrack(round * opts.ovals + k, seed)),
       ...Array.from({ length: opts.circuits }, (_, k) => circuitTrack(hashSeed(seed, `pit${round}:${k}`), k % 2 ? 'gp' : 'club')),
     ];
-    let stops = 0, completed = 0;
+    let stops = 0, completed = 0, overshoots = 0, recovered = 0;
     students.forEach((d, i) => {
       for (const track of tracks) {
         // One stop alone, one in traffic (as stops are in races: others pitting, the field racing past).
         for (const [lane, traffic] of [[-2, false], [2, true]] as const) {
           stops++;
           if (drill(track, d, round > 0, lane, examples[i], hashSeed(seed, `hands${round}:${d.lineage}:${track.length}:${lane}`), traffic)) completed++;
+        }
+        // And past its box, backing up into it.
+        for (let k = 0; k < opts.overshoots; k++) {
+          overshoots++;
+          const past = OVERSHOOT[0] + (OVERSHOOT[1] - OVERSHOOT[0]) * rng.next();
+          if (drill(track, d, round > 0, 0, examples[i], hashSeed(seed, `past${round}:${d.lineage}:${track.length}:${k}`), false, past)) recovered++;
         }
       }
     });
@@ -147,7 +172,7 @@ export function apprenticePitSkill(students: PitStudent[], seed: number, options
       const set = examples[i].length <= opts.maxExamples ? examples[i] : sample(examples[i], opts.maxExamples, rng);
       loss += trainSupervised(DRIVER_LAYERS, d.pit!, set, round === 0 ? 3 * opts.epochs : opts.epochs, 0.01, () => rng.next());
     });
-    opts.onRound?.(round, { loss: loss / students.length, stops, completed, seconds: (Date.now() - t0) / 1000 });
+    opts.onRound?.(round, { loss: loss / students.length, stops, completed, overshoots, recovered, seconds: (Date.now() - t0) / 1000 });
   }
 }
 

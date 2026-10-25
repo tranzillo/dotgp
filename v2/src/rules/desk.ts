@@ -146,7 +146,9 @@ export class StewardsDesk {
   private blackFlag(car: Car): void {
     car.disqualified = true;
     car.pendingPenalty = null;
-    this.flagged.set(car, car.lapsCompleted);
+    // Already past the flag (contact on the slowing-down lap): nothing to call it in for, it's out.
+    if (car.finished) car.retired = true;
+    else this.flagged.set(car, car.lapsCompleted);
   }
 
   /** Penalties being served: done once the car is back out of the box; green laps run out: black flag. */
