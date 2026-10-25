@@ -49,7 +49,9 @@ export interface PitSkillOptions {
    * teacher's own overshoots in the ordinary drills teach backing up as well (RESULTS 2026-10-25).
    */
   overshoots?: number;
-  onRound?: (round: number, report: { loss: number; stops: number; completed: number; overshoots: number; recovered: number; seconds: number }) => void;
+  /** Crowded drills per track: the student coming in with a column of cars all stopping the same lap. */
+  crowds?: number;
+  onRound?: (round: number, report: { loss: number; stops: number; completed: number; overshoots: number; recovered: number; crowds: number; crowdsDone: number; seconds: number }) => void;
 }
 
 /** The pit maneuver's throttle as a teacher (1/s): see PitAutopilot.driveGain. */
@@ -67,14 +69,27 @@ const AFTER_MERGE = 5;
  * never seen: they sat there, in neither their box nor past it, for the rest of a race.
  */
 const OVERSHOOT = [4, 14] as const;
+/**
+ * A crowded drill: the whole field stopping the same lap (a caution's stops). CROWD cars on their in-laps with the
+ * student, a column two wide, rows CROWD_GAP apart (m), the student's place in it drawn, at a share of the in-lap's speed
+ * (CROWD_SPEED: caution pace to green); every car's box drawn along pit road, so cars stop and pull out in the
+ * student's path. In CROWD_WRECK of them a car ahead breaks down on pit road and sits there CROWD_WRECK_HOLD (s). Pit
+ * drivers that only ever stopped alone or with two others drove into stopped cars at the limit: a caution's stops
+ * were most of a race's retirements (RESULTS 2026-10-25).
+ */
+const CROWD = 10;
+const CROWD_GAP = 12;
+const CROWD_SPEED = [0.6, 1] as const;
+const CROWD_WRECK = 0.3;
+const CROWD_WRECK_HOLD = 12;
 
 /**
  * One drill: the car on its in-lap with a stop called, the student or the maneuver driving; in traffic, two cars
  * ahead stopping too (the maneuver driving them) and four racing past (traffic racers), as the pit-traffic lesson
  * places them. Returns whether the stop got done.
  */
-function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number, examples: Example[], seed: number, traffic = false, overshoot = 0): boolean {
-  const world = new World(track, { collisions: traffic, drafting: traffic });
+function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number, examples: Example[], seed: number, traffic = false, overshoot = 0, crowd = false): boolean {
+  const world = new World(track, { collisions: traffic || crowd, drafting: traffic || crowd, autoClearWrecks: !crowd });
   const limits: DriverLimits | undefined = d.limits && { ...d.limits, seed };
   const student = new NeuralDriver(d.weights, d.road, d.knowledge, { limits, pit: d.pit ?? undefined });
   const team = new Team(student, new TowerSpotter(), null, studentDrives);
@@ -84,7 +99,9 @@ function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number
   const s = inLapStart(track);
   car.placeOnTrack(track, s, lane);
   // On ovals at the in-lap's usual speed; on circuits at what the line takes there.
-  const speed = track.kind === 'road' ? Math.min(START_SPEED, speedAt(track, s)) : START_SPEED;
+  const crowdRng = new Rng(hashSeed(seed, 'crowd'));
+  const fullSpeed = track.kind === 'road' ? Math.min(START_SPEED, speedAt(track, s)) : START_SPEED;
+  const speed = crowd ? fullSpeed * (CROWD_SPEED[0] + (CROWD_SPEED[1] - CROWD_SPEED[0]) * crowdRng.next()) : fullSpeed;
   car.vx = track.tx[car.trackIdx] * speed;
   car.vy = track.ty[car.trackIdx] * speed;
   car.pit.phase = 'in';
@@ -108,6 +125,30 @@ function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number
       setSpeed(other, track, track.kind === 'road' ? Math.min(START_SPEED, speedAt(track, s + ahead)) : START_SPEED);
     }
   }
+  let wreck: Car | null = null, wreckAt = -1;
+  if (crowd) {
+    const racer = () => new TrafficRacer(track.kind === 'road' ? { ...DEFAULT_STYLE, pass: Infinity } : DEFAULT_STYLE);
+    const stalls = track.pit.stalls;
+    const boxes = shuffled(stalls.length, crowdRng);
+    car.pit.boxS = stalls[boxes[0]];
+    // The column, two wide: the student's place in it drawn (cars ahead of it and behind), the rest around it.
+    const mine = Math.floor(crowdRng.next() * (CROWD + 1));
+    const side = (slot: number) => (slot % 2 ? 2.5 : -2.5);
+    car.placeOnTrack(track, s, side(mine));
+    setSpeed(car, track, speed);
+    for (let k = 0, slot = 0; k < CROWD; k++, slot++) {
+      if (slot === mine) slot++;
+      const other = new Car(world.cars.length);
+      const t = new Team(racer(), new TowerSpotter(), null, false, true);
+      world.addCar(other, t);
+      startInLap(other, t, track, (Math.floor(mine / 2) - Math.floor(slot / 2)) * CROWD_GAP, side(slot));
+      setSpeed(other, track, speed);
+      other.pit.boxS = stalls[boxes[(k + 1) % boxes.length]];
+    }
+    // The one that breaks down: a car ahead of the student, if there is one.
+    const ahead = world.cars.filter((c) => c !== car && track.distanceFrom(car.s, c.s) < track.length / 2);
+    if (ahead.length && crowdRng.next() < CROWD_WRECK) wreck = ahead[Math.floor(crowdRng.next() * ahead.length)];
+  }
   let serviced = false;
   const phase = (): PitState['phase'] => car.pit.phase;
   let done = -1;
@@ -120,11 +161,27 @@ function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number
       car.vx = 0;
       car.vy = 0;
     }
+    // The car that breaks down: some way down pit road, short of its box.
+    if (wreck && wreckAt < 0 && wreck.surface === 'pit' && wreck.pit.phase === 'in' && track.pitInR(wreck) > wreck.pit.boxS - 25) {
+      wreck.retired = true;
+      wreckAt = world.time;
+    }
+    if (wreck && wreckAt >= 0 && world.time - wreckAt > CROWD_WRECK_HOLD) wreck.cleared = true;
     world.step();
     if (phase() === 'service') serviced = true;
     if (done < 0 && serviced && phase() === 'none') done = k;
   }
   return serviced && phase() === 'none' && !car.retired;
+}
+
+/** 0..n-1 in a random order. */
+function shuffled(n: number, rng: Rng): number[] {
+  const order = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(rng.next() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return order;
 }
 
 /** A car at a speed along the track. */
@@ -141,7 +198,7 @@ function speedAt(track: Track, s: number): number {
 
 /** Teach a group their pit skill (pit networks trained in place; a new one starts as a copy of the oval skill). */
 export function apprenticePitSkill(students: PitStudent[], seed: number, options: PitSkillOptions = {}): void {
-  const opts = { rounds: 6, ovals: 2, circuits: 2, overshoots: 0, epochs: 6, maxExamples: 40_000, ...options };
+  const opts = { rounds: 6, ovals: 2, circuits: 2, overshoots: 0, crowds: 1, epochs: 6, maxExamples: 40_000, ...options };
   const rng = new Rng(hashSeed(seed, 'pit-skill'));
   const examples: Example[][] = students.map(() => []);
   for (const d of students) d.pit ??= d.weights.slice();
@@ -151,7 +208,7 @@ export function apprenticePitSkill(students: PitStudent[], seed: number, options
       ...Array.from({ length: opts.ovals }, (_, k) => apprenticeTrack(round * opts.ovals + k, seed)),
       ...Array.from({ length: opts.circuits }, (_, k) => circuitTrack(hashSeed(seed, `pit${round}:${k}`), k % 2 ? 'gp' : 'club')),
     ];
-    let stops = 0, completed = 0, overshoots = 0, recovered = 0;
+    let stops = 0, completed = 0, overshoots = 0, recovered = 0, crowds = 0, crowdsDone = 0;
     students.forEach((d, i) => {
       for (const track of tracks) {
         // One stop alone, one in traffic (as stops are in races: others pitting, the field racing past).
@@ -165,6 +222,11 @@ export function apprenticePitSkill(students: PitStudent[], seed: number, options
           const past = OVERSHOOT[0] + (OVERSHOOT[1] - OVERSHOOT[0]) * rng.next();
           if (drill(track, d, round > 0, 0, examples[i], hashSeed(seed, `past${round}:${d.lineage}:${track.length}:${k}`), false, past)) recovered++;
         }
+        // And in a crowd: the whole field stopping the same lap.
+        for (let k = 0; k < opts.crowds; k++) {
+          crowds++;
+          if (drill(track, d, round > 0, 0, examples[i], hashSeed(seed, `crowd${round}:${d.lineage}:${track.length}:${k}`), false, 0, true)) crowdsDone++;
+        }
       }
     });
     let loss = 0;
@@ -172,7 +234,7 @@ export function apprenticePitSkill(students: PitStudent[], seed: number, options
       const set = examples[i].length <= opts.maxExamples ? examples[i] : sample(examples[i], opts.maxExamples, rng);
       loss += trainSupervised(DRIVER_LAYERS, d.pit!, set, round === 0 ? 3 * opts.epochs : opts.epochs, 0.01, () => rng.next());
     });
-    opts.onRound?.(round, { loss: loss / students.length, stops, completed, overshoots, recovered, seconds: (Date.now() - t0) / 1000 });
+    opts.onRound?.(round, { loss: loss / students.length, stops, completed, overshoots, recovered, crowds, crowdsDone, seconds: (Date.now() - t0) / 1000 });
   }
 }
 

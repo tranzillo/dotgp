@@ -5,7 +5,7 @@
  * comes back with each driver's pit skill (and licensed to drive its own
  * stops).
  *
- *   npx tsx scripts/pitSkill.ts --in bundle.json --out out.json [--group 8] [--rounds 6] [--ovals 2] [--circuits 2] [--overshoots 0] [--seed 1] [--jobs N]
+ *   npx tsx scripts/pitSkill.ts --in bundle.json --out out.json [--group 8] [--rounds 6] [--ovals 2] [--circuits 2] [--overshoots 0] [--crowds 1] [--seed 1] [--jobs N]
  *   npx tsx scripts/pitSkill.ts --in bundle.json --group-only <first> --count <n> --out part.json ...   (one group)
  */
 import { spawn } from 'node:child_process';
@@ -20,7 +20,7 @@ for (let i = 2; i < process.argv.length; i++) if (process.argv[i].startsWith('--
 const inFile = args.get('in'), out = args.get('out');
 if (!inFile || !out) throw new Error('--in bundle.json --out out.json');
 const seed = Number(args.get('seed') ?? 1);
-const pass = ['rounds', 'seed', 'ovals', 'circuits', 'overshoots'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
+const pass = ['rounds', 'seed', 'ovals', 'circuits', 'overshoots', 'crowds'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
 
 interface Entry {
   lineage?: number; limits?: { latency: number; noise: number }; weights: number[];
@@ -42,7 +42,8 @@ if (args.has('group-only')) {
     ...(args.has('ovals') ? { ovals: Number(args.get('ovals')) } : {}),
     ...(args.has('circuits') ? { circuits: Number(args.get('circuits')) } : {}),
     ...(args.has('overshoots') ? { overshoots: Number(args.get('overshoots')) } : {}),
-    onRound: (round, r) => console.log(`group ${first} round ${round}: ${r.completed}/${r.stops} stops done, ${r.recovered}/${r.overshoots} backed up into the box, loss ${r.loss.toFixed(4)} (${r.seconds.toFixed(0)} s)`),
+    ...(args.has('crowds') ? { crowds: Number(args.get('crowds')) } : {}),
+    onRound: (round, r) => console.log(`group ${first} round ${round}: ${r.completed}/${r.stops} stops done, ${r.recovered}/${r.overshoots} backed up into the box, ${r.crowdsDone}/${r.crowds} in a crowd, loss ${r.loss.toFixed(4)} (${r.seconds.toFixed(0)} s)`),
   });
   writeFileSync(out, JSON.stringify({
     drivers: entries.map((e, i) => ({ ...e, pit: { weights: Array.from(students[i].pit!) }, pitLicensed: true, pitTrafficLicensed: true })),

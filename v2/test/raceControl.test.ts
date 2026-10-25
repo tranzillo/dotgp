@@ -464,6 +464,13 @@ describe('rolling starts: the starter\'s green', () => {
     }
   });
 
+  it('a car behind the front row going early is held up by the car ahead: no call for its speed', () => {
+    const { world, race, ctl } = rolling(1, (car) => car.id === 5);
+    while (world.time < 120) race.step();
+    expect(ctl.flag).toBe('green');
+    expect(race.stewards!.record.filter((r) => r.offence === 'jumped-restart')).toHaveLength(0);
+  });
+
   it('front rows not lined up as the pace car is due off: one more lap, once', () => {
     const { track, world, race, ctl } = rolling(1);
     const said: string[] = [];

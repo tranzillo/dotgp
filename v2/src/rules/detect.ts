@@ -33,10 +33,12 @@ const carLength = () => 2 * P.CAR_RADIUS;
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
 /**
- * A rolling start or restart: from the pace car pulling off to the green everyone holds pace speed in their place.
- * Over it by more than PACE_TOLERANCE for PACE_OVER_TIME (s) is going early: severity by how far over (a quarter, a
- * drive-through, at the tolerance; all of it at 40% over). A car catching up from more than PACE_CATCHING behind its
- * place isn't held to it (m).
+ * A rolling start or restart: from the pace car pulling off to the green the front row holds pace speed (the cars
+ * behind go with the car ahead: they can't go early without passing it, and that's judged at the green). Over it by
+ * more than PACE_TOLERANCE for PACE_OVER_TIME (s) is going early: severity by how far over (a quarter, a drive-through,
+ * at the tolerance; all of it at 40% over). A car catching up from more than PACE_CATCHING behind its place isn't held
+ * to it (m). (Held to it, everyone in a pack behind an early leader went with it: a dozen drive-throughs a start, all
+ * served on the same lap, and pit road a pile-up.)
  */
 const PACE_TOLERANCE = 0.1;
 const PACE_OVER_TIME = 0.5;
@@ -260,8 +262,9 @@ export class Detector {
       return;
     }
     const dt = P.DT;
-    for (const car of control.lineOrder()) {
-      if (this.wentEarly.has(car) || car.retired || car.pit.phase !== 'none' || control.wavedAround(car)) continue;
+    const front = control.lineOrder().filter((c) => !c.retired && c.pit.phase === 'none' && !control.wavedAround(c)).slice(0, 2);
+    for (const car of front) {
+      if (this.wentEarly.has(car)) continue;
       const gap = control.slotGap(car);
       if (gap !== null && gap > PACE_CATCHING) { this.overPace.delete(car); continue; } // catching up to its place
       const over = car.speed / control.paceSpeedAt(car.s) - 1;
