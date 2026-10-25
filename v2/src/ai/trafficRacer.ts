@@ -17,11 +17,10 @@ import { fastestLine, followRacingLine, lineAt, type RacingLine } from './racing
  *   alongside, on whichever side it is. Both cars do it, so two can go
  *   through a corner side by side. If there isn't the room, the car that's
  *   behind backs out (the one ahead holds its line).
- * - Passing: catching a car (faster by more than `pass` m/s) on a straight,
- *   with space beside it, it pulls out to the side with more road and goes
- *   for the inside of the corner coming (or past before it); on that line it
- *   drives no faster than the tighter arc allows. It doesn't start a pass in
- *   a corner, where a line beside another car can't be held.
+ * - Passing: catching a car (faster by more than `pass` m/s: its pace, or the
+ *   run a tow gives it), with space beside it, wherever it is, it pulls out to
+ *   the side with more road; on that line it drives no faster than the tighter
+ *   arc allows (physics, not a rule, says whether a pass in a corner works).
  * - Limits: never past the line's corridor (inside the track limits), even
  *   squeezed; if there's no room, it backs off.
  *
@@ -57,6 +56,12 @@ export interface RacerStyle {
    * a student can copy it), as the oval stable's teachers do. Unset: the formation script, with its own following.
    */
   smoothCautions?: boolean;
+  /**
+   * Closing on a car it means to pass, the speed it's willing to touch it at (m/s): a bump. Unset or 0: it keeps the
+   * room it insures. Bump-and-run and bump-drafting are real oval racing; what a touch costs (damage past the
+   * damage threshold, the stewards) is the physics' and the rules'. A driver's nerve.
+   */
+  bump?: number;
   /**
    * How fast its foot moves (the longitudinal command, throttle to brake, per second): from where the car's pedal is
    * now toward what it wants, no faster. Unset: at once. Behind another car or under caution an instant pedal flicks
@@ -96,6 +101,11 @@ export const DEFAULT_STYLE: RacerStyle = { grip: 0.85, margin: 0.6, room: 0.5, p
 const MARGINS = [1.0, 0.8, 0.6, 0.4];
 /** The deceleration of the car ahead the boldest racer insures against (m/s^2): a lift. */
 const BOLD_INSURE = 1.5;
+/**
+ * The speed the boldest racer is willing to bump a car it's passing at (m/s): a little past where contact starts to
+ * do damage. From middling nerve up it rises to this; below, no bumping.
+ */
+const BOLD_BUMP = 1.5 * P.DAMAGE_SPEED_THRESHOLD;
 
 /**
  * A racer's way of racing from who it is: nerve (0 timid, 1 fearless) and talent (0-1). Nerve sets how much of
@@ -114,6 +124,7 @@ export function racerStyle(nerve: number, talent: number, random: () => number):
       room: 1.0 - 0.8 * nerve,
       pass: 2.0 - 1.5 * nerve,
       insure: brake * Math.pow(BOLD_INSURE / brake, nerve),
+      bump: BOLD_BUMP * Math.max(0, 2 * nerve - 1),
       driveGain: OVAL_DRIVE_GAIN,
       smoothCautions: true,
     },
@@ -145,8 +156,6 @@ const CATCH_STEP = 10;
 const REACTION = 0.4;
 /** How fast it moves across the road to a new offset (m/s). */
 const CROSS_RATE = 3;
-/** A stretch of road counts as straight (for starting a pass) when no tighter than this (1/m). */
-const STRAIGHT = 1 / 300;
 /** A car slower than this (m/s) is stopped (a wreck, a spun or stranded car): gone round, not raced. */
 const STOPPED = 5;
 /** Off the line it tracks less precisely: this much more room kept from the corridor's edges (m). */
@@ -255,11 +264,28 @@ export class TrafficRacer {
     const width = 2 * P.CAR_RADIUS + room;
     const vMe = car.speed;
     const here = lineAt(line, car.s);
+    // Its pace on the line: the profile for its share of the grip its tyres have now (as it drives it).
+    const pace = line.at(Math.round(grip * car.grip * 50) / 50).speed;
+    const paceAt = (s: number) => {
+      const f = (((s / line.step) % pace.length) + pace.length) % pace.length, i = Math.floor(f), t = f - i;
+      return pace[i] + (pace[(i + 1) % pace.length] - pace[i]) * t;
+    };
+    // The fastest it can take a path `offset` beside the line at s: curvature k / (1 - k offset), tighter on the
+    // inside. The banking there carries the car round as on the line (the banked curve's limit, as the line's
+    // profile has it): flat-ground grip alone held an oval's banked turns to a crawl beside the line.
+    // (The car's own grip, downforce and load sensitivity: carSpec.ts. The classic car's: mu g, the banked-curve limit.)
+    const spec = car.spec ?? carSpec(track);
+    const arcLimit = (s: number, offset: number) => {
+      const at = lineAt(line, s), k = at.kappa;
+      const arc = Math.abs(k / Math.max(0.2, 1 - k * offset));
+      const bank = Math.sign(k) * track.bankAt(track.indexAt(s), at.d + offset);
+      return cornerSpeed(spec, track, P.TIRE_MU * grip, arc, bank, car.mass, Infinity);
+    };
 
     let want = 0; // the offset from the line it heads for
     let passing = false;
     let low = here.lo, high = here.hi; // absolute bounds on d now
-    let followCap = Infinity, followAt = 0;
+    let followCap = Infinity;
     let yieldTo = Infinity; // the speed of the slowest car alongside and ahead of it, to drop back behind if squeezed
     const reach = lookahead(vMe);
     for (const other of world.cars) {
@@ -284,7 +310,8 @@ export class TrafficRacer {
         if (other.d > car.d) high = Math.min(high, other.d - width);
         else low = Math.max(low, other.d + width);
         if (ds > 0) yieldTo = Math.min(yieldTo, other.speed);
-        continue;
+        // A nose ahead and crossing the road (to or from pit road): judged as ahead, below (let it across).
+        if (!(ds > 0 && other.pit.phase !== 'none' && other.surface !== 'pit')) continue;
       }
       // Ahead: in the path it would take (the line, where that car is, plus its own offset)?
       const there = lineAt(line, other.s);
@@ -293,42 +320,28 @@ export class TrafficRacer {
       // that side of it is in its way, and it isn't passed there. (Circuit pit entries cut across the line into the
       // corner before them, and cars turning in for the apex ran into pitters sliding over in front of them.)
       const pitting = other.pit.phase === 'in' && other.d < track.innerEdge(other.trackIdx) + P.CAR_RADIUS;
+      // Merging out of pit road, it crosses from the apron to the inside lane (and slower than the field): from there
+      // to where it is is its path. (Oval cars passing a merging car on its outside in turn 1, where it was going.)
+      const mergeTo = other.pit.phase === 'out' && other.surface !== 'pit' ? Math.min(other.d, track.innerEdge(other.trackIdx) - 2.5) : other.d;
       const vOther = other.retired ? 0 : other.speed;
       // A slower car is in the way wherever this car's path comes to it before it catches it, not just where the
       // path is beside it now: the line swings across to an apex, and a slow car already there (a pitter on the
       // inside) was only seen once the line reached it, too close to stop.
-      let inWay = Math.abs(other.d - myD) < width || (pitting && myD > other.d);
+      const across = (d: number) => (d > mergeTo - width && d < other.d + width) || (pitting && d > other.d);
+      let inWay = across(myD);
       const closing = vMe - vOther;
       if (!inWay && closing > 0) {
         const caught = Math.min(reach, (Math.max(0, ds) / closing) * vOther);
         for (let a = CATCH_STEP; a <= caught + CATCH_STEP / 2 && !inWay; a += CATCH_STEP) {
-          inWay = Math.abs(other.d - (lineAt(line, other.s + Math.min(a, caught)).d + this.offset)) < width;
+          inWay = across(lineAt(line, other.s + Math.min(a, caught)).d + this.offset);
         }
       }
       if (!inWay) continue;
-      // Faster: by what it's doing, or would on the line there (a car it's catching on the brakes still counts).
-      const faster = Math.min(vMe, there.speed) - vOther;
-      const straight = Math.abs(track.curvatureAt(car.s)) < STRAIGHT && Math.abs(track.curvatureAt(other.s)) < STRAIGHT;
-      // A pass under way (already pulled out) carries on into the braking zone; a new one starts only on a straight.
-      // A stopped car is gone round by every driver, wherever it is: one that waited behind it was stopped on track
-      // too, and race control retired it (a whole field queued behind a car that ran dry after the flag). Not a car
-      // just getting away (a standing start: everyone is slow), unless it's already going round it.
-      const stopped = other.retired || (vOther < STOPPED && (faster > 2 || this.passSide !== 0));
-      if (stopped || (faster > pass && (straight || Math.abs(this.offset) > 1))) {
-        // A way past: the side it's already going (a pass under way keeps its side), else the side with more road.
-        const left = pitting ? -1 : there.hi - OFF_LINE_BUFFER - (other.d + width), right = (other.d - width) - (there.lo + OFF_LINE_BUFFER);
-        const side = this.passSide > 0 && left > 0 ? 1 : this.passSide < 0 && right > 0 ? -1 : left > 0 || right > 0 ? (left >= right ? 1 : -1) : 0;
-        if (side !== 0 && !passing) {
-          // Beside it: where it is across the road, measured from the line where this car is now.
-          want = (side > 0 ? other.d + width : other.d - width) - here.d;
-          this.passSide = side;
-          passing = true;
-          // Beside it, it's not in the way; still behind it, it is, however the pass was meant to go. On banking at
-          // speed a passer barely moves across (its grip is the turn's), and one that stopped minding the car it
-          // meant to pass ran into it (cars braking hard for pit road: most of a generated superspeedway's wrecks).
-          if (Math.abs(other.d - car.d) >= width) continue;
-        }
-      }
+      // Faster: its own pace on its line there (its grip, its tyres) against that car's speed. Held up behind a car
+      // it follows at that car's speed, what it's doing now can't say; what it could do does. (Judged on its speed
+      // now, a racer that followed properly never pulled out: its passes had come from the follow bug flooring it.)
+      // Or by the run it has on it now (a tow on the straight: the draft carries it up to the car ahead).
+      const faster = Math.max(paceAt(other.s), vMe) - vOther;
       // Follow: no closer than the gap, closing it no faster than it can stop.
       const brake = 0.5 * P.TIRE_MU * G;
       // A car heading for pit road is about to brake hard, and shows it (down to the apron): room for that, full
@@ -336,9 +349,64 @@ export class TrafficRacer {
       // own following brake: under a safety car on circuits, cars at 40 m/s ran into pitters slowing for pit road.)
       const insure = other.pit.phase === 'in' ? P.TIRE_MU * G : this.style.insure;
       const gap = 2 * P.CAR_RADIUS + 2 + (insure === undefined ? REACTION * vMe : followLoss(vMe, REACTION, insure, brake));
-      const spare = Math.max(0, ds - gap);
-      const cap = Math.sqrt(vOther * vOther + 2 * brake * spare);
-      if (cap < followCap) { followCap = cap; followAt = ds; }
+      const capAt = (room: number) => Math.sqrt(vOther * vOther + 2 * brake * Math.max(0, ds - room));
+      // Pushing up to a car it means to pass, it closes on what it can really stop with (its car's braking, not the
+      // gentle braking it follows on): to the room its nerve insures, or, if it's willing to bump (its nerve), right up
+      // to that car, touching at no more than its bump speed. (Pulling out at the gentle limit, at oval speeds, was 20
+      // m back with a run that died before it got by; the field's passes had been bump-and-run, by a bug.) What a
+      // touch does is the physics': the car ahead loses speed, or both get damaged, and the stewards see it.
+      const pushing = this.passSide === 0 && !other.retired && other.pit.phase === 'none' && faster > pass;
+      const hard = brakingAt(spec, track, P.TIRE_MU * grip, vMe, car.mass);
+      const bump = this.style.bump ?? 0;
+      const capPush = Math.max(Math.sqrt(vOther * vOther + 2 * hard * Math.max(0, ds - gap)),
+        bump > 0 ? Math.sqrt((vOther + bump) ** 2 + 2 * hard * Math.max(0, ds - 2 * P.CAR_RADIUS)) : 0);
+      const cap = pushing ? capPush : capAt(gap);
+      // Catching it in its tow, it stays tucked in while the draft builds its run, and pulls out at the last moment
+      // it can (when it would have to brake for it, or once inside the room it follows at): still closing, so it goes
+      // by with the run instead of giving up the tow far back and arriving beside with nothing. A pass under way
+      // carries on.
+      const building = this.passSide === 0 && closing > 0 && ds > gap && (pushing ? capPush : capAt(gap)) > vMe;
+      // Anywhere (no rule against passing in a corner), but only where it pays: beside that car all the way to
+      // being past it, the path stays on the road and its arc can be driven faster than that car goes. (Without
+      // the judgement, racers pulled out mid-corner onto lines they couldn't hold: 240 wall hits in 40 laps.)
+      const besideWorks = (beside: number) => {
+        const rel = Math.max(0, ds) + 2 * alongside(), t = rel / Math.max(faster, 0.5);
+        const len = Math.min(reach, Math.max(0, ds) + vOther * t);
+        const off = beside - there.d; // beside it, as far from the line as it is
+        for (let a = 0; a <= len; a += CATCH_STEP) {
+          const at = lineAt(line, other.s + a), dAbs = at.d + off;
+          if (dAbs < at.lo + OFF_LINE_BUFFER || dAbs > at.hi - OFF_LINE_BUFFER) return false;
+          if (arcLimit(other.s + a, off) < vOther + pass) return false;
+        }
+        return true;
+      };
+      // A stopped car is gone round by every driver, wherever it is: one that waited behind it was stopped on track
+      // too, and race control retired it (a whole field queued behind a car that ran dry after the flag). Not a car
+      // just getting away (a standing start: everyone is slow), unless it's already going round it.
+      const stopped = other.retired || (vOther < STOPPED && (faster > 2 || this.passSide !== 0));
+      if (stopped || (faster > pass && !building)) {
+        // A way past: the side it's already going (a pass under way keeps its side), else the side with more road.
+        const left = pitting || mergeTo < other.d || !besideWorks(other.d + width) ? -1 : there.hi - OFF_LINE_BUFFER - (other.d + width);
+        const right = !besideWorks(mergeTo - width) ? -1 : (mergeTo - width) - (there.lo + OFF_LINE_BUFFER);
+        const side = this.passSide > 0 && left > 0 ? 1 : this.passSide < 0 && right > 0 ? -1 : left > 0 || right > 0 ? (left >= right ? 1 : -1) : 0;
+        if (side !== 0 && !passing) {
+          // Beside it: where it is across the road, measured from the line where this car is now.
+          want = (side > 0 ? other.d + width : mergeTo - width) - here.d;
+          this.passSide = side;
+          passing = true;
+          // Beside it, it's not in the way; still behind it, it is, however the pass was meant to go. On banking at
+          // speed a passer barely moves across (its grip is the turn's), and one that stopped minding the car it
+          // meant to pass ran into it (cars braking hard for pit road: most of a generated superspeedway's wrecks).
+          // Beside it is beside its path, where this car's own path is when it gets there.
+          if (!across(myD)) continue;
+          // Pulling out with a run: it isn't held back to that car's speed if it will be beside it before it reaches
+          // its tail (the room to its tail outlasts the closing at the time it takes to get across). Braked back
+          // to its speed while pulling out, a passer arrived beside with no run left and never got by.
+          const getAcross = Math.max(0, width - Math.abs(other.d - car.d)) / CROSS_RATE;
+          if (!pitting && mergeTo === other.d && ds - alongside() > Math.max(0, closing) * getAcross + 1) continue;
+        }
+      }
+      followCap = Math.min(followCap, cap);
     }
 
     // Where it wants to be: the wanted offset, within the room the cars alongside leave (squeezed: the middle
@@ -358,24 +426,19 @@ export class TrafficRacer {
 
     // Speed: off the line, no faster than its tighter arc allows (and braking for that ahead);
     // behind a car, the follow cap; squeezed, a little slower than the car beside.
-    // (The car's own grip, downforce and load sensitivity: carSpec.ts. The classic car's: mu g, the banked-curve limit.)
-    const spec = car.spec ?? carSpec(track);
     const cornerMu = brakingAt(spec, track, P.TIRE_MU * grip, car.speed, car.mass);
     const capAt = (ahead: number) => {
       let cap = Infinity;
       if (Math.abs(offset) > 0.3) {
         for (let a = ahead; a <= ahead + 80; a += 5) {
-          // A path beside the line, `offset` across: curvature k / (1 - k offset), tighter on the inside. The
-          // banking there carries the car round as on the line (the banked curve's limit, as the line's profile has
-          // it): flat-ground grip alone held an oval's banked turns to a crawl beside the line.
-          const at = lineAt(line, car.s + a), k = at.kappa;
-          const arc = Math.abs(k / Math.max(0.2, 1 - k * offset));
-          const bank = Math.sign(k) * track.bankAt(track.indexAt(car.s + a), at.d + offset);
-          const limit = cornerSpeed(spec, track, P.TIRE_MU * grip, arc, bank, car.mass, Infinity);
+          const limit = arcLimit(car.s + a, offset);
           cap = Math.min(cap, Math.sqrt(limit * limit + 2 * 0.8 * cornerMu * (a - ahead)));
         }
       }
-      if (followCap < Infinity && ahead <= followAt) cap = Math.min(cap, followCap);
+      // The car ahead is still ahead further on: capped at every distance, not just up to where it is now (a car
+      // closer than the speed plan's look ahead vanished from it, and the plan floored it into that car: most of a
+      // 40-car short oval's contact).
+      cap = Math.min(cap, followCap);
       if (low > high && yieldTo < Infinity) cap = Math.min(cap, Math.max(5, yieldTo - 4));
       return cap;
     };

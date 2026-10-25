@@ -46,6 +46,7 @@ What we've learned training drivers, from both funnels, with the evidence. Newes
 
     Trace a few cases before believing a number.
 11. **No scripts in races, eventually.** Scripts are teachers in class, never drivers in races. The bench measures their share. Ovals: the formation script is gone from the stable's races, and the pit maneuver remains. Circuits: formation 9.4%, pit maneuver 0.14% (ca4f1c5).
+12. **Teachers race by physics, not etiquette, and are judged on speed and passing as well as safety.** A safety fix that turns the field into a train is a regression (user: speed with a semi-realistic crash rate). No rules like "a pass only starts on a straight": the teacher judges whether a move pays (the path stays on the road, the arc beats the car), and contact costs what physics and stewards say (2026-10-24: the oval racer's passes had come from a follow bug, bump-and-run by accident; now a nerve-priced `bump`). Trace how a behaviour actually happens before designing a replacement for it.
 
 ## Ovals: where it stands (2026-10-23)
 

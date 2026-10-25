@@ -36,7 +36,7 @@ export interface RacingLine {
   readonly lo: Float32Array;
   readonly hi: Float32Array;
   /** The profile using only a share of the tyres' grip (a driver's margin): speed at each point, and its lap time. */
-  readonly at: (gripShare: number) => { speed: Float32Array; lapTime: number };
+  readonly at: (gripShare: number) => LineProfile;
 }
 
 export interface LineOptions {
@@ -136,6 +136,22 @@ function groundAt(
 }
 
 interface Profile { speed: Float64Array; lapTime: number }
+/**
+ * A line's speed at a share of the grip: the profile (as fast as the engine takes it out of each corner, braking for
+ * the next), and the grip limit alone (each corner's speed, and braking for it; no engine). On a straight the profile
+ * is what the engine does against the air; a car carried faster than that (in a tow) is still well under the limit.
+ */
+export interface LineProfile { speed: Float32Array; lapTime: number; limit: Float32Array }
+
+/** The grip limit round a closed line: the corners' speeds (vmax), and no faster than full braking to what comes next. */
+function gripLimit(n: number, vmax: Float64Array, ds: Float64Array, brakeAt: (k: number, v: number) => number): Float32Array {
+  const l = Float64Array.from(vmax);
+  for (let j = 1; j < 2 * n; j++) { // twice round: the slowest point isn't known, and braking carries across the line
+    const k = (2 * n - j) % n, nxt = (k + 1) % n;
+    l[k] = Math.min(l[k], Math.sqrt(l[nxt] * l[nxt] + 2 * brakeAt(nxt, l[nxt]) * ds[k]));
+  }
+  return Float32Array.from(l);
+}
 
 /**
  * The car the line is for, at this track: engine power (W), drag area (m^2), downforce per unit mass and speed^2
@@ -148,7 +164,9 @@ function profile(
   n: number, kappa: Float64Array, ds: Float64Array, muFull: Float64Array, roll: Float64Array, bank: Float64Array, mass: number, car: LineCar, gripShare = 1,
   /** Buffers to work in (refinement evaluates thousands of profiles); fresh ones otherwise. */
   work?: { vmax: Float64Array; latCap: Float64Array; v: Float64Array },
-): Profile {
+  /** Work out the grip limit too (profiles kept for driving; not the thousands refinement evaluates). */
+  withLimit = false,
+): Profile & { limit?: Float32Array } {
   const mu = gripShare === 1 ? muFull : muFull.map((m) => m * gripShare);
   /**
    * Load-sensitive tyres: the horizontal cornering at point k at speed v, at the limit. The load the tyres carry
@@ -213,7 +231,8 @@ function profile(
   }
   let t = 0;
   for (let k = 0; k < n; k++) t += (2 * ds[k]) / Math.max(0.5, v[k] + v[(k + 1) % n]);
-  return { speed: v, lapTime: t };
+  const limit = withLimit ? gripLimit(n, vmax, ds, (k, vk) => lonRoom(k, vk) + drag(vk) + roll[k]) : undefined;
+  return { speed: v, lapTime: t, limit };
 }
 
 /**
@@ -314,12 +333,12 @@ export function racingLine(track: Track, options: Partial<LineOptions> = {}): Ra
   best = profile(n, kappa, ds, mu, roll, bank, o.mass, car);
   pathCurvature(fine, line, kappa, ds);
   ground(track, fine, line, kappa, mu, roll, bank);
-  const shares = new Map<number, { speed: Float32Array; lapTime: number }>();
+  const shares = new Map<number, LineProfile>();
   const at = (gripShare: number) => {
     let p = shares.get(gripShare);
     if (!p) {
-      const q = profile(n, kappa, ds, mu, roll, bank, o.mass, car, gripShare);
-      p = { speed: Float32Array.from(q.speed), lapTime: q.lapTime };
+      const q = profile(n, kappa, ds, mu, roll, bank, o.mass, car, gripShare, undefined, true);
+      p = { speed: Float32Array.from(q.speed), lapTime: q.lapTime, limit: q.limit! };
       shares.set(gripShare, p);
     }
     return p;
@@ -396,11 +415,18 @@ export function followRacingLine(
   const capacity = Math.max(1, car.capacity);
   const capacityLon = Math.max(1, car.capacityLon);
   // Its share of the grip the tyres have now: worn tyres, slower (in steps of 2%, so profiles are shared).
-  const speeds = line.at(Math.round(grip * car.grip * 50) / 50).speed;
+  const { speed: speeds, limit } = line.at(Math.round(grip * car.grip * 50) / 50);
   const n = speeds.length;
-  const speedAt = (ahead: number) => {
+  const along = (arr: Float32Array, ahead: number) => {
     const f = ((((car.s + ahead) / line.step) % n) + n) % n, a = Math.floor(f), t = f - a;
-    const v = speeds[a] + (speeds[(a + 1) % n] - speeds[a]) * t;
+    return arr[a] + (arr[(a + 1) % n] - arr[a]) * t;
+  };
+  // Carried faster than the profile (a tow, a run off the corner): it keeps what it carries, up to the grip limit
+  // (braking where the limit says), rather than lifting back to what the engine alone would have done. Without
+  // this the draft was worth nothing: a car in the tow was held to the speed it would have had out of it.
+  const carried = Math.max(0, car.vx * tx + car.vy * ty - along(speeds, 0));
+  const speedAt = (ahead: number) => {
+    const v = Math.min(along(limit, ahead), along(speeds, ahead) + carried);
     return capAt ? Math.min(v, capAt(ahead)) : v;
   };
 
