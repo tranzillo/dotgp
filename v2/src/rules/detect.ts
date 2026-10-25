@@ -32,6 +32,16 @@ const carLength = () => 2 * P.CAR_RADIUS;
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
+/**
+ * A rolling start or restart: from the pace car pulling off to the green everyone holds pace speed in their place.
+ * Over it by more than PACE_TOLERANCE for PACE_OVER_TIME (s) is going early: severity by how far over (a quarter, a
+ * drive-through, at the tolerance; all of it at 40% over). A car catching up from more than PACE_CATCHING behind its
+ * place isn't held to it (m).
+ */
+const PACE_TOLERANCE = 0.1;
+const PACE_OVER_TIME = 0.5;
+const PACE_CATCHING = 20;
+
 export class Detector {
   /** Pairs of cars alongside each other (a possible pass) and the evidence so far. */
   private readonly alongside = new Map<string, { a: Car; b: Car; aStartedAhead: boolean; moments: number; aBelow: number; bBelow: number }>();
@@ -39,6 +49,11 @@ export class Detector {
   private restartAhead: Map<Car, Car[]> | null = null;
   /** Lined-up cars that have crossed the line since the pace car pulled off. */
   private restartCrossed = new Set<Car>();
+  /** Before a rolling green: each car's time over pace speed so far and its worst, and cars already reported. */
+  private overPace = new Map<Car, { seconds: number; worst: number }>();
+  /** Cars that went early at this restart (kept to its end: passing before the line is the same offence). */
+  private wentEarly = new Set<Car>();
+  private paceFlag = '';
   private lastFlag = '';
   /** Whether this track has the line rule (its size class). */
   private readonly lineRule: boolean;
@@ -62,6 +77,7 @@ export class Detector {
     this.contact(out, now);
     this.line(out, now);
     this.restart(out, now);
+    this.paceBeforeGreen(out, now);
     if (this.rules.trackLimits) this.trackLimits(out, now);
     if (control.pacing) this.alongside.clear();
     else if (this.lineRule) this.belowTheLine(out, now);
@@ -230,15 +246,51 @@ export class Detector {
   }
 
   /**
-   * A restart. The green comes when the leader crosses the line and the field
-   * accelerates, but no car may gain a place until it has crossed the line
-   * itself. When the pace car pulls off, the cars in the line (within their
-   * place; cars still catching up aren't lined up yet), and any that got by
-   * the pace car and are still ahead of it, and the official order are the
-   * reference. Each lined-up car is judged as it crosses the line:
+   * A rolling start or restart (the pace car's, not the safety car's): from the pace car pulling off until the
+   * starter's green, every car in its place (or ahead of it) holds pace speed. Leaders went from the moment the pace
+   * car pulled off, up to twice pace speed, and got by it; nothing was said.
+   */
+  private paceBeforeGreen(out: Violation[], now: number): void {
+    const control = this.control;
+    const fresh = control.flag === 'restart' && this.paceFlag !== 'restart';
+    this.paceFlag = control.flag;
+    if (fresh) this.wentEarly.clear();
+    if (control.flag !== 'restart' || control.safetyCar) {
+      this.overPace.clear();
+      return;
+    }
+    const dt = P.DT;
+    for (const car of control.lineOrder()) {
+      if (this.wentEarly.has(car) || car.retired || car.pit.phase !== 'none' || control.wavedAround(car)) continue;
+      const gap = control.slotGap(car);
+      if (gap !== null && gap > PACE_CATCHING) { this.overPace.delete(car); continue; } // catching up to its place
+      const over = car.speed / control.paceSpeedAt(car.s) - 1;
+      if (over <= PACE_TOLERANCE) { this.overPace.delete(car); continue; }
+      const o = this.overPace.get(car) ?? { seconds: 0, worst: 0 };
+      o.seconds += dt;
+      o.worst = Math.max(o.worst, over);
+      this.overPace.set(car, o);
+      if (o.seconds < PACE_OVER_TIME) continue;
+      this.wentEarly.add(car);
+      out.push({
+        offence: 'jumped-restart', car, time: now, against: null, severity: clamp01(o.worst / 0.4),
+        detail: `went before the green, ${(100 * o.worst).toFixed(0)}% over pace speed`,
+      });
+    }
+  }
+
+  /**
+   * A restart. Behind the safety car the green comes when the leader crosses
+   * the line and the field accelerates, but no car may gain a place until it
+   * has crossed the line itself; behind the pace car the starter's green is
+   * the start, and no car may gain a place before it. When the pace car pulls
+   * off, the cars in the line (within their place; cars still catching up
+   * aren't lined up yet), and any that got by the pace car and are still
+   * ahead of it, and the official order are the reference. Each lined-up car
+   * is judged as it crosses the line (all of them at the starter's green):
    * clear (a car length) ahead of a car from an earlier row that hasn't
    * crossed yet, it got by before the line. A place taken and given back
-   * before the line is no case.
+   * before then is no case.
    */
   private restart(out: Violation[], now: number): void {
     const flag = this.control.flag;
@@ -255,13 +307,17 @@ export class Detector {
     }
     if (flag === 'caution') this.restartAhead = null; // a caution before the field got going: no restart to judge
     if (this.restartAhead) {
-      // Lap timing registers each crossing of the start/finish line (the first one at the start included).
-      for (const c of this.restartAhead.keys()) if (this.control.crossedLine(c)) this.restartCrossed.add(c);
+      // Lap timing registers each crossing of the start/finish line (the first one at the start included). Behind
+      // the pace car the starter's green is the start, wherever the field is: from it, it's racing, and every car is
+      // judged where it is then. (Behind the safety car the line is.)
+      const atGreen = !this.control.safetyCar && flag === 'green' && this.lastFlag === 'restart';
+      for (const c of this.restartAhead.keys()) if (atGreen || this.control.crossedLine(c)) this.restartCrossed.add(c);
       const crossed = (c: Car) => this.restartCrossed.has(c);
       for (const [car, wasAhead] of this.restartAhead) {
         if (car.retired || car.pit.phase !== 'none') { this.restartAhead.delete(car); continue; }
         if (!crossed(car)) continue;
         this.restartAhead.delete(car);
+        if (this.wentEarly.has(car)) continue; // already called for going early
         const passed = wasAhead.filter((o) => !o.retired && o.pit.phase === 'none' && !crossed(o) && this.ahead(car, o) > carLength());
         if (!passed.length) continue;
         out.push({

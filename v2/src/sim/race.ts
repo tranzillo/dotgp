@@ -9,6 +9,9 @@ import { Rng } from '../ai/rng';
 
 export type RaceState = 'green' | 'checkered' | 'finished';
 
+/** Once the winner has the flag, the rest have this many of its average laps to take it; then the race is over. */
+const FLAG_LAPS = 3;
+
 export interface Standing {
   car: Car;
   position: number;
@@ -23,7 +26,10 @@ export interface Standing {
  * forms up behind it and the race starts on the green flag; cautions slow the
  * field while wreckers clear the track. The leader completing the distance
  * brings out the checkered flag; everyone else finishes when they next cross
- * the line. Retired cars stay out (no respawns in a race).
+ * the line. Retired cars stay out (no respawns in a race). The race is over
+ * when everyone has the flag or is out, or FLAG_LAPS of the winner's average
+ * laps after its flag: a car still out then (stopped on pit road, say) is
+ * classified where it is.
  */
 export class Race {
   readonly world: World;
@@ -40,6 +46,8 @@ export class Race {
   private readonly lapsAtFlag = new Map<Car, number>();
   /** Race clock starts when the leader takes the green at the line. */
   private startTime = NaN;
+  /** When the winner took the flag (world time). */
+  private flagTime = NaN;
 
   /** The stewards, when the race is run to a rulebook (needs race control). */
   readonly stewards: StewardsDesk | null = null;
@@ -54,8 +62,9 @@ export class Race {
       world.officials.push({ car: this.control.paceCar, controller: paceCar });
       this.control.safetyCar = rules?.rulebook.neutralise === 'safety-car';
       const start = rules?.rulebook.start;
+      const rng = new Rng((rules?.seed ?? 1) ^ 0x2545f491);
+      this.control.random = () => rng.next();
       if (start?.kind === 'standing') {
-        const rng = new Rng((rules?.seed ?? 1) ^ 0x2545f491);
         this.control.formUpStanding(world.cars, start, () => rng.next());
         this.control.onLightsOut = () => this.lightsOut();
       } else {
@@ -96,11 +105,14 @@ export class Race {
   private greenFlag(leader: Car): void {
     if (this.started) return; // a restart, not the start
     this.started = true;
-    this.startTime = leader.lapStartTime;
+    // The starter's green can come before the line: then lap 1 starts for each car as it crosses it, the clock with
+    // the first.
+    const atLine = this.control!.crossedLine(leader);
+    this.startTime = atLine ? leader.lapStartTime : NaN;
     for (const car of this.world.cars) {
       car.lapTimes.length = 0;
       car.lapValid.length = 0;
-      if (car !== leader) car.lapStartTime = -1;
+      if (car !== leader || !atLine) car.lapStartTime = -1;
     }
   }
 
@@ -116,14 +128,16 @@ export class Race {
       if (this.finishTime.has(car) || car.retired || car.disqualified) continue;
       const leaderDone = this.state !== 'green';
       if (car.lapsCompleted >= this.laps || (leaderDone && car.lapTimes.length > (this.lapsAtFlag.get(car) ?? car.lapTimes.length))) {
-        if (this.state === 'green') this.state = 'checkered';
+        if (this.state === 'green') { this.state = 'checkered'; this.flagTime = world.time; }
         this.finishOrder.push(car);
         this.finishTime.set(car, car.lapStartTime - this.startTime);
         this.finishLaps.set(car, car.lapsCompleted);
         car.finished = true;
       }
     }
-    if (this.state === 'checkered' && world.cars.every((c) => c.retired || this.finishTime.has(c))) {
+    // (Two cars stopped on pit road kept a race open for ever: it waited for them.)
+    const lap = (this.flagTime - this.startTime) / this.laps;
+    if (this.state === 'checkered' && (world.cars.every((c) => c.retired || this.finishTime.has(c)) || world.time > this.flagTime + FLAG_LAPS * lap)) {
       this.state = 'finished';
     }
     if (this.state === 'green') for (const car of world.cars) this.lapsAtFlag.set(car, car.lapTimes.length);

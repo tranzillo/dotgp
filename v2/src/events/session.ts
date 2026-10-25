@@ -621,8 +621,9 @@ export class Session {
     if (race) {
       const leader = race.leader();
       const L = this.track.length;
+      // (A rolling start's green can come before the line: the race is under way from the leader's first crossing.)
       event.at = race.state !== 'green' ? 1
-        : race.started && leader ? Math.min(1, (leader.lapsCompleted + this.track.wrapS(leader.s) / L) / race.laps) : 0;
+        : race.started && leader && leader.lapStartTime >= 0 ? Math.min(1, (leader.lapsCompleted + this.track.wrapS(leader.s) / L) / race.laps) : 0;
       event.lap = leader ? Math.min(race.laps, leader.lapsCompleted + 1) : race.laps;
     }
     const q = this.qualifying;

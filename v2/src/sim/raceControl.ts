@@ -1,3 +1,4 @@
+import { Rng } from '../ai/rng';
 import { Car } from './car';
 import { G, PHYSICS as P, PIT_SERVICE } from './constants';
 import { gridBox, POLE_BOX } from './grid';
@@ -45,6 +46,12 @@ const STUCK_TIME = 30;
 const QUEUE_GAP = 25;
 /** Stalling under green this many times, a car is out (the first time, it gets going again if it can). */
 const STALLS_OUT = 2;
+/**
+ * s a car on its way to its box may sit stopped on pit road, with nothing stopped in front of it, before its crew
+ * pushes it into the garage: out of the race. (A pit driver 10 m short of its box gave no throttle from lap 1 to the
+ * flag; the race, waiting for it, never ended.)
+ */
+const PIT_STUCK_TIME = 60;
 /** Marshals' time to lift a wrecked car off a circuit (s). */
 const MARSHAL_TIME = 25;
 /** A car going from behind the pace car to ahead of it within this much of it got by it (m): not one half a lap away. */
@@ -88,6 +95,22 @@ export interface FormationSlot {
 
 /** How far the virtual pace car may run ahead of a leader that can't keep up before it waits for it (m). */
 const VIRTUAL_LEAD_MAX = 100;
+/**
+ * A rolling start or restart: the starter waves the green somewhere between these shares of the leader's time from the
+ * pace car pulling off to the line at pace speed (drawn each time: nobody can know when), or as the leader reaches
+ * the line, whichever is first. Until then everyone holds pace speed in their place (detect.ts judges it).
+ */
+const GREEN_EARLIEST = 0.3;
+const GREEN_LATEST = 0.9;
+/**
+ * The starter looks at the line-up as the pace car nears pulling off (from this far before it, m: before it starts
+ * down for pit road): the first LINEUP_CARS each within LINEUP_ALONG of their place, row mates side by side (in
+ * separate files, either way round), or the pace car stays out one more lap (once a caution: a wave-off costs
+ * everyone a lap).
+ */
+const LINEUP_LOOK = 250;
+const LINEUP_CARS = 6;
+const LINEUP_ALONG = 10;
 
 export class RaceControl {
   readonly world: World;
@@ -117,6 +140,8 @@ export class RaceControl {
   private readonly cautionedLap = new Map<Car, number>();
   /** Times each car has stalled on track under green (stopped long enough to bring out a caution). */
   private readonly stalls = new Map<Car, number>();
+  /** How long each car on its way to its box has sat stopped on pit road. */
+  private readonly pitStopped = new Map<Car, number>();
   private garageSlots = 0;
   /** Cars in formation order this tick, and their slots. */
   private order: Car[] = [];
@@ -220,6 +245,12 @@ export class RaceControl {
   lights = 0;
   /** A safety car (circuits) rather than a pace car: drives the track, single file throughout, marshals recover wrecks. */
   safetyCar = false;
+  /** Race control's own draws (the starter's green, the lights' hold): seeded by the race. */
+  random: () => number = (() => { const rng = new Rng(1); return () => rng.next(); })();
+  /** When the starter waves the green at this rolling restart (world time; NaN: at the line). */
+  private greenAt = NaN;
+  /** The starter has looked at this restart's line-up (and waved it off or not). */
+  private lineupJudged = false;
   private standing: StandingStart | null = null;
   private readonly boxes = new Map<Car, { s: number; d: number }>();
   /** Cars stopped on the grid, held where they stopped until the lights go out. */
@@ -433,9 +464,23 @@ export class RaceControl {
       this.releasePaceCar(head);
     }
     // The pace car pulls off onto pit road; the leader takes the field to the green.
+    // The starter's look at the line-up as the pace car nears pulling off: not in neat double file, one more lap.
+    if (!this.safetyCar && (this.flag === 'pace' || this.flag === 'caution') && this.paceCarOut && this.oneToGo && !this.lineupJudged) {
+      const r = t.pitInS(this.paceCar.s), pull = pullOffS(t);
+      if (r > pull - LINEUP_LOOK && r < pull) {
+        this.lineupJudged = true;
+        const head = this.order[0];
+        if (head && !this.linedUp()) {
+          this.oneToGo = false; // a start's comes back at the line; a caution's once its extra lap is run
+          if (this.flag === 'caution') this.cautionMinLaps = head.lapsCompleted - this.cautionLap + 1;
+          this.world.announce(head, 'flag', 'Not lined up: one more lap');
+        }
+      }
+    }
     if ((this.flag === 'pace' || this.flag === 'caution') && this.paceCarOut && this.oneToGo
       && this.paceCar.d > t.innerEdge(this.paceCar.trackIdx) + 0.5 && this.paceCarHeadingIn()) {
       this.flag = 'restart';
+      this.greenAt = this.safetyCar ? NaN : this.drawGreen();
       this.world.announce(this.order[0] ?? leader ?? this.paceCar, 'flag', this.safetyCar ? 'Safety car in this lap: leader to the line for the restart' : 'Pace car is off: leader to the line for the green');
     }
     if (this.paceCarOut && this.oneToGo && this.paceCar.surface === 'pit' && t.pitInS(this.paceCar.s) > t.pit.wallStart + 15
@@ -447,14 +492,33 @@ export class RaceControl {
     // The green is the head of the official order's to take, at the line: not whoever is furthest round (a car out of
     // place ahead of it, past the safety car, took the green for the field).
     const head = this.order[0];
-    if (this.flag === 'restart' && head && this.crossedLine(head)) {
+    if (this.flag === 'restart' && head && (this.crossedLine(head) || this.world.time >= this.greenAt)) {
       this.flag = 'green';
+      this.greenAt = NaN;
+      this.lineupJudged = false;
       this.gotByPaceCar.clear();
       this.world.announce(head, 'flag', 'Green flag!');
       this.onGreen?.(head);
     }
     this.watchPaceCar();
     this.lineup();
+  }
+
+  /** The starter's moment for the green: a random share of the leader's time to the line at pace speed. */
+  private drawGreen(): number {
+    const head = this.order[0];
+    if (!head) return NaN;
+    const toLine = this.track.distanceFrom(head.s, 0) / this.paceSpeed;
+    return this.world.time + toLine * (GREEN_EARLIEST + (GREEN_LATEST - GREEN_EARLIEST) * this.random());
+  }
+
+  /** The front rows in neat double file: each car in its place along the line, row mates side by side. */
+  private linedUp(): boolean {
+    const front = this.order.slice(0, LINEUP_CARS);
+    const inPlace = front.every((c) => { const gap = this.slotGap(c); return gap !== null && Math.abs(gap) < LINEUP_ALONG; });
+    let abreast = true;
+    for (let i = 0; i + 1 < front.length; i += 2) if (Math.abs(front[i].d - front[i + 1].d) < FILE_OFFSET) abreast = false;
+    return inPlace && (this.singleFile || abreast);
   }
 
   /** A car that got by the pace car once it had the field, not yet back behind it (detect.ts judges these at a restart). */
@@ -599,10 +663,23 @@ export class RaceControl {
     const t = this.track;
     for (const car of this.world.cars) {
       if (this.handled.has(car) || car.cleared) continue;
-      // A car stopped on the racing surface (out of fuel, spun) is a wreck too; waiting on the grid it's just
-      // waiting (a car that doesn't get away counts from the start). A car that has taken the flag is done: one that
-      // runs dry on its slowing-down lap (crews fuel to the flag) isn't a wreck to bring the safety car out for.
-      if (!car.retired && !car.finished && this.flag !== 'grid' && car.pit.phase === 'none' && car.speed < 3 && car.d < t.innerEdge(car.trackIdx) + 1) {
+      if (!car.retired && car.pit.phase === 'in' && car.surface === 'pit' && car.speed < 0.3 && !this.queued(car)) {
+        const since = (this.pitStopped.get(car) ?? 0) + dt;
+        this.pitStopped.set(car, since);
+        if (since > PIT_STUCK_TIME) {
+          car.vx = 0; car.vy = 0;
+          car.retired = true; car.parked = true; car.cleared = true;
+          this.handled.add(car);
+          this.world.announce(car, 'retired', 'Stopped on pit road');
+          continue;
+        }
+      } else this.pitStopped.delete(car);
+      // A car stopped on the racing surface (out of fuel, spun) is a wreck too, whether or not it was on its way in;
+      // waiting on the grid it's just waiting (a car that doesn't get away counts from the start). A car that has taken
+      // the flag is done: one that runs dry on its slowing-down lap (crews fuel to the flag) isn't a wreck to bring the
+      // safety car out for.
+      const onTrack = car.pit.phase === 'none' || (car.pit.phase === 'in' && car.surface !== 'pit');
+      if (!car.retired && !car.finished && this.flag !== 'grid' && onTrack && car.speed < 3 && car.d < t.innerEdge(car.trackIdx) + 1) {
         const since = (this.stoppedSince.get(car) ?? 0) + dt;
         this.stoppedSince.set(car, since);
         // A stopped car is a hazard: a caution under green. It's a wreck only if it can't go on (out of fuel), or
@@ -651,10 +728,13 @@ export class RaceControl {
   }
 
   private throwCaution(cause: Car): void {
+    // The checkered flag is out: the race is over, the rest are only finishing their lap.
+    if (this.world.cars.some((c) => c.finished)) return;
     this.flag = 'caution';
     this.cautions++;
     this.oneToGo = false;
     this.cautionMinLaps = MIN_CAUTION_LAPS;
+    this.lineupJudged = false;
     const leader = this.order[0];
     this.cautionLap = leader ? leader.lapsCompleted : 0;
     this.world.announce(cause, 'flag', this.safetyCar ? 'Safety car deployed: no overtaking' : 'Caution! Field slows, pace car coming out');
@@ -671,6 +751,7 @@ export class RaceControl {
     this.cautions++;
     this.oneToGo = false;
     this.cautionMinLaps = minLaps;
+    this.lineupJudged = false;
     this.cautionLap = this.order[0].lapsCompleted;
     this.world.announce(this.order[0], 'flag', this.safetyCar ? 'Safety car deployed for debris: no overtaking' : 'Caution for debris: field slows, pace car coming out');
   }
@@ -712,7 +793,9 @@ export class RaceControl {
   private updateFormation(leader: Car | null, dt: number): void {
     const t = this.track;
     this.slots.clear();
-    const inLine = (c: Car) => !c.retired && !c.cleared && c.pit.phase === 'none';
+    // (A car that has taken the flag is done: one that ran dry on its slowing-down lap was picked up by the safety car
+    // as the head of the line, and the caution waited for it for ever.)
+    const inLine = (c: Car) => !c.retired && !c.cleared && !c.finished && c.pit.phase === 'none';
     const byDistance = (a: Car, b: Car) => b.dist - a.dist;
     const L = t.length;
     const lapsBehind = (head: Car | undefined, c: Car) => (head ? Math.max(0, Math.floor((head.dist - c.dist) / L)) : 0);
@@ -776,7 +859,11 @@ export class RaceControl {
       // slowed for them, the leader stuck behind them slowed too, the slots (set from the leader) stopped,
       // and the whole field crawled into each other.
       const ahead = Number.isNaN(this.virtualS) ? NaN : t.distanceFrom(head.s, this.virtualS);
-      if (Number.isNaN(ahead) || ahead > VIRTUAL_LEAD_MAX) this.virtualS = head.s; // new, behind the leader, or the leader lost it
+      // (Once the pace car has pulled off for a rolling restart the reference runs on at pace speed, whoever runs off
+      // ahead of it: a leader gone early is ahead of its place, not the line's reference. It was: leaders went off from
+      // the pace car pulling off, 10% over pace 330-760 m before the line, their place always where they were.)
+      const runOff = this.flag === 'restart' && !this.safetyCar && !Number.isNaN(ahead) && ahead > t.length / 2;
+      if (!runOff && (Number.isNaN(ahead) || ahead > VIRTUAL_LEAD_MAX)) this.virtualS = head.s; // new, behind the leader, or the leader lost it
       else this.virtualS = t.wrapS(this.virtualS + this.paceSpeedAt(this.virtualS) * (this.flag === 'caution' ? 1.15 : 1) * dt);
       // The real pace car out on track ahead, waiting to pick up the leader: the line can't run past it.
       if (this.paceCarOut && pc.d < t.innerEdge(pc.trackIdx) + 1 && t.distanceFrom(head.s, pc.s) < t.length / 2) {

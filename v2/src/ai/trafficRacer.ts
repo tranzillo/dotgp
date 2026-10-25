@@ -193,7 +193,7 @@ export class TrafficRacer {
     // Under caution it drives toward its speed smoothly (as it brakes above it), not flat out below it: a teacher's
     // throttle has to be one a student can copy.
     this.formation = new FormationDriver(traits, (car, world, lane) => this.cautionCap(car, world, lane), CAUTION_DRIVE_GAIN);
-    this.smooth = style.smoothCautions ? new SmoothFormation((car) => this.formation.traitsFor(car), style.cautionGain, style.cautionGrip, this.lineFor) : null;
+    this.smooth = style.smoothCautions ? new SmoothFormation((car) => this.formation.traitsFor(car), style.cautionGain, style.cautionGrip) : null;
   }
 
   /** Under a caution (once it has reacted to the flag, and until it has reacted to the green): the formation's. */
