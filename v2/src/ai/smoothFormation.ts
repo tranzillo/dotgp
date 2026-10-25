@@ -56,10 +56,9 @@ export class SmoothFormation {
       lane = Math.max(-6, Math.min(6, car.d));
       v = pace + tr.eagerness * this.closing(car, world, lane);
     } else {
-      // Metres the slot is ahead (+) or behind (-); a slot far behind is reached by going round.
-      let err = t.distanceFrom(car.s, slot.s);
-      if (err > t.length / 2) err -= t.length;
-      if (err < -150) err += t.length;
+      // Metres the slot is ahead (+) or behind (-); a slot far behind is reached by going round (but not by a car that
+      // got by the pace car: it drops back).
+      const err = ctl.slotGap(car)!;
       const base = Math.max(slot.speed, pace);
       // Toward the place: faster when behind it, slower when ahead, saturating at the driver's eagerness.
       v = Math.max(3, base + tr.eagerness * Math.tanh((0.3 * err) / Math.max(1, tr.eagerness)));

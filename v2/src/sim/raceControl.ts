@@ -1,5 +1,6 @@
 import { Car } from './car';
 import { G, PHYSICS as P, PIT_SERVICE } from './constants';
+import { gridBox, POLE_BOX } from './grid';
 import type { Track } from './track';
 import type { World } from './world';
 import type { StartProcedure } from '../rules/rulebook';
@@ -18,8 +19,6 @@ import type { StartProcedure } from '../rules/rulebook';
 export type Flag = 'pace' | 'restart' | 'green' | 'caution' | 'formation' | 'grid';
 /** A standing start's settings (the rulebook's). */
 export type StandingStart = Extract<StartProcedure, { kind: 'standing' }>;
-/** Metres from the start line back to the pole position's box. */
-const POLE_BOX = 12;
 /** How hard the formation lap slows to a stop on the grid (m/s^2): gently. */
 const FORMATION_DECEL = 2.5;
 /** How far short of its box each car is as a race joins the end of the formation lap (m). */
@@ -48,6 +47,10 @@ const QUEUE_GAP = 25;
 const STALLS_OUT = 2;
 /** Marshals' time to lift a wrecked car off a circuit (s). */
 const MARSHAL_TIME = 25;
+/** A car going from behind the pace car to ahead of it within this much of it got by it (m): not one half a lap away. */
+const PASS_RANGE = 50;
+/** A place in line more than this far behind a car is reached by going round (m), unless the car got by the pace car. */
+const GO_ROUND = 150;
 
 /** The pace car's livery number; it never appears in standings. */
 export const PACE_CAR_ID = -1;
@@ -135,7 +138,7 @@ export class RaceControl {
   private readonly ruled = new Set<string>();
 
   /** For the stewards: a car that didn't give a place back within a lap of being told, or passed before the green at a restart. */
-  private readonly cases: Array<{ car: Car; against: Car; restart: boolean }> = [];
+  private readonly cases: Array<{ car: Car; against: Car | null; restart: boolean }> = [];
   /** Calls still open when the green came out, carried until a lap after each. */
   private carried: Array<{ car: Car; against: Car; dist: number }> = [];
 
@@ -183,7 +186,8 @@ export class RaceControl {
     return null;
   }
 
-  takeLineupCases(): Array<{ car: Car; against: Car; restart: boolean }> {
+  /** The stewards' cases from the line (against null: the pace car, still ahead of it). */
+  takeLineupCases(): Array<{ car: Car; against: Car | null; restart: boolean }> {
     return this.cases.splice(0);
   }
 
@@ -218,6 +222,12 @@ export class RaceControl {
   safetyCar = false;
   private standing: StandingStart | null = null;
   private readonly boxes = new Map<Car, { s: number; d: number }>();
+  /** Cars stopped on the grid, held where they stopped until the lights go out. */
+  private readonly held = new Map<Car, { x: number; y: number; s: number; d: number; idx: number; dist: number }>();
+  /** Each car in line's distance ahead of the pace car (- behind) at the last look, while the pace car leads the line. */
+  private readonly paceCarGap = new Map<Car, number>();
+  /** Cars that got by the pace car once it had the field, and their race distance then: told to drop back behind it. */
+  private readonly gotByPaceCar = new Map<Car, number>();
   /** How far the formation lap has left to its boxes, when the lights sequence began, how long they hold. */
   private formationLeft = 0;
   private lightsFrom = NaN;
@@ -263,26 +273,27 @@ export class RaceControl {
   }
 
   /**
-   * A standing start: every car in its own grid box behind the line,
-   * staggered left and right, stopped; the pace car parked on pit road for
-   * cautions. With a formation lap the race joins it at its end (watchers
-   * needn't sit through the rest): the field rolls up to its boxes in grid
-   * order, already staggered, and brakes to a stop in them; then the lights.
+   * A standing start: every car in its own grid box behind the line (the
+   * track's painted grid, sim/grid.ts), staggered left and right, stopped;
+   * the pace car parked on pit road for cautions. With a formation lap the
+   * race joins it at its end (watchers needn't sit through the rest): the
+   * field rolls up to its boxes in grid order, already staggered, and brakes
+   * to a stop in them; then the lights. A car stopped on the grid is held
+   * there on its brakes until they go out.
    */
   formUpStanding(cars: Car[], start: StandingStart, random: () => number): void {
     const t = this.track;
     this.standing = start;
     this.hold = start.hold[0] + random() * (start.hold[1] - start.hold[0]);
-    const stagger = Math.min(t.halfWidth * 0.45, FILE_OFFSET + 0.4);
     this.formationLeft = start.formationLap ? FORMATION_ARRIVAL : 0;
     this.virtualS = t.wrapS(-POLE_BOX - this.formationLeft);
     const v = this.formationApproachSpeed();
     cars.forEach((car, k) => {
-      const s = -POLE_BOX - k * start.gridPitch;
-      const d = k % 2 === 0 ? stagger : -stagger;
-      car.placeOnTrack(t, s - this.formationLeft, d, s - this.formationLeft);
+      const box = gridBox(t, k, start.gridPitch);
+      const s = t.signedS(box.s);
+      car.placeOnTrack(t, s - this.formationLeft, box.d, s - this.formationLeft);
       setSpeed(car, t, v);
-      this.boxes.set(car, { s: t.wrapS(s), d });
+      this.boxes.set(car, box);
     });
     this.paceCar.placeOnTrack(t, (t.pit.wallStart + t.pit.wallEnd) / 2, t.pit.laneD + 2 + t.pitOffset((t.pit.wallStart + t.pit.wallEnd) / 2));
     this.paceCar.cleared = true;
@@ -339,6 +350,7 @@ export class RaceControl {
   private startLights(): void {
     const start = this.standing!;
     const now = this.world.time;
+    this.holdOnGrid();
     if (Number.isNaN(this.lightsFrom)) {
       const running = this.world.cars.filter((c) => !c.retired && c.pit.phase === 'none');
       if (running.every((c) => c.speed < 0.3)) {
@@ -354,8 +366,29 @@ export class RaceControl {
     }
     this.lights = 0;
     this.flag = 'green';
+    this.held.clear();
     this.world.announce(this.order[0] ?? this.paceCar, 'flag', 'Lights out!');
     this.onLightsOut?.();
+  }
+
+  /**
+   * On the grid a car that has stopped stays where it stopped, on its brakes,
+   * until the lights go out: whatever its driver asks of it, it doesn't creep
+   * (a driver's network holds a car still only so well; front rows crept tens
+   * of metres down the straight before the start).
+   */
+  private holdOnGrid(): void {
+    for (const car of this.world.cars) {
+      if (car.retired || car.pit.phase !== 'none') continue;
+      const at = this.held.get(car);
+      if (at) {
+        car.x = at.x; car.y = at.y; car.s = at.s; car.d = at.d; car.trackIdx = at.idx; car.dist = at.dist;
+        car.vx = 0; car.vy = 0;
+      } else if (car.speed < 0.3) {
+        this.held.set(car, { x: car.x, y: car.y, s: car.s, d: car.d, idx: car.trackIdx, dist: car.dist });
+        car.vx = 0; car.vy = 0;
+      }
+    }
   }
 
   /**
@@ -403,7 +436,7 @@ export class RaceControl {
     if ((this.flag === 'pace' || this.flag === 'caution') && this.paceCarOut && this.oneToGo
       && this.paceCar.d > t.innerEdge(this.paceCar.trackIdx) + 0.5 && this.paceCarHeadingIn()) {
       this.flag = 'restart';
-      this.world.announce(leader ?? this.paceCar, 'flag', this.safetyCar ? 'Safety car in this lap: leader to the line for the restart' : 'Pace car is off: leader to the line for the green');
+      this.world.announce(this.order[0] ?? leader ?? this.paceCar, 'flag', this.safetyCar ? 'Safety car in this lap: leader to the line for the restart' : 'Pace car is off: leader to the line for the green');
     }
     if (this.paceCarOut && this.oneToGo && this.paceCar.surface === 'pit' && t.pitInS(this.paceCar.s) > t.pit.wallStart + 15
       && t.pitInS(this.paceCar.s) < t.pit.wallEnd - 20) {
@@ -411,12 +444,73 @@ export class RaceControl {
       this.pickedUp = false;
       this.paceCar.cleared = true; // parked off to the side: not an obstacle on pit road
     }
-    if (this.flag === 'restart' && leader && this.crossedLine(leader)) {
+    // The green is the head of the official order's to take, at the line: not whoever is furthest round (a car out of
+    // place ahead of it, past the safety car, took the green for the field).
+    const head = this.order[0];
+    if (this.flag === 'restart' && head && this.crossedLine(head)) {
       this.flag = 'green';
-      this.world.announce(leader, 'flag', 'Green flag!');
-      this.onGreen?.(leader);
+      this.gotByPaceCar.clear();
+      this.world.announce(head, 'flag', 'Green flag!');
+      this.onGreen?.(head);
     }
+    this.watchPaceCar();
     this.lineup();
+  }
+
+  /** A car that got by the pace car once it had the field, not yet back behind it (detect.ts judges these at a restart). */
+  gotBy(car: Car): boolean {
+    return this.gotByPaceCar.has(car);
+  }
+
+  /**
+   * Nobody gets by the pace car (or the safety car) once it has the field:
+   * a car that does is told to drop back behind it, and still ahead of it a
+   * lap later it's the stewards' case. Cars already ahead of it when it
+   * picked up the leader are going round to the tail, and cars waved around
+   * are meant to pass it. At a restart, a car still ahead is judged with the
+   * field (detect.ts): it took places before the green.
+   */
+  private watchPaceCar(): void {
+    const t = this.track, pc = this.paceCar;
+    for (const car of [...this.gotByPaceCar.keys()]) if (!this.order.includes(car)) this.gotByPaceCar.delete(car); // pitted, out
+    const leads = (this.flag === 'caution' || this.flag === 'pace') && this.paceCarOut && this.pickedUp && !this.paceCarHeadingInAndOff();
+    if (!leads) {
+      this.paceCarGap.clear();
+      return;
+    }
+    for (const car of this.order) {
+      if (this.waved.has(car)) { this.paceCarGap.delete(car); continue; }
+      let gap = t.distanceFrom(pc.s, car.s);
+      if (gap > t.length / 2) gap -= t.length;
+      const was = this.paceCarGap.get(car);
+      this.paceCarGap.set(car, gap);
+      const since = this.gotByPaceCar.get(car);
+      if (since !== undefined) {
+        if (gap < 0) this.gotByPaceCar.delete(car); // back behind it
+        else if (car.dist >= since + t.length) {
+          this.gotByPaceCar.delete(car);
+          this.cases.push({ car, against: null, restart: false });
+        }
+      } else if (was !== undefined && was <= 0 && gap > 0 && gap < PASS_RANGE) {
+        this.gotByPaceCar.set(car, car.dist);
+        this.world.announce(car, 'crew', `Race control: #${car.number}, drop back behind the ${this.safetyCar ? 'safety' : 'pace'} car`);
+      }
+    }
+  }
+
+  /**
+   * Metres from a car to its place in line, the way it should go to it (+ its place is ahead, - behind): a place far
+   * behind is reached by going round, as a car that was running ahead of the pace car when it picked up the leader
+   * does, but never by one that got by the pace car (it drops back). Null without a place.
+   */
+  slotGap(car: Car): number | null {
+    const slot = this.slots.get(car);
+    if (!slot) return null;
+    const t = this.track;
+    let err = t.distanceFrom(car.s, slot.s);
+    if (err > t.length / 2) err -= t.length;
+    if (err < -GO_ROUND && !this.gotByPaceCar.has(car)) err += t.length;
+    return err;
   }
 
   /** Signed distance from a car to its slot along the track: + it's behind its place, - ahead of it. */

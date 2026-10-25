@@ -162,9 +162,11 @@ export class Detector {
    */
   private line(out: Violation[], now: number): void {
     for (const c of this.control.takeLineupCases()) {
+      // (Against no car: the pace car, got by and still ahead of it.)
+      const whom = c.against ? `#${c.against.number}` : `the ${this.control.safetyCar ? 'safety' : 'pace'} car`;
       out.push(c.restart
-        ? { offence: 'jumped-restart', car: c.car, time: now, against: c.against, severity: 1, detail: `passed #${c.against.number} before the green` }
-        : { offence: 'passing-under-caution', car: c.car, time: now, against: c.against, severity: 1, detail: `still ahead of #${c.against.number} a lap after being told` });
+        ? { offence: 'jumped-restart', car: c.car, time: now, against: c.against, severity: 1, detail: `passed ${whom} before the green` }
+        : { offence: 'passing-under-caution', car: c.car, time: now, against: c.against, severity: 1, detail: `still ahead of ${whom} a lap after being told` });
     }
   }
 
@@ -231,8 +233,9 @@ export class Detector {
    * A restart. The green comes when the leader crosses the line and the field
    * accelerates, but no car may gain a place until it has crossed the line
    * itself. When the pace car pulls off, the cars in the line (within their
-   * place; cars still catching up aren't lined up yet) and the official order
-   * are the reference. Each lined-up car is judged as it crosses the line:
+   * place; cars still catching up aren't lined up yet), and any that got by
+   * the pace car and are still ahead of it, and the official order are the
+   * reference. Each lined-up car is judged as it crosses the line:
    * clear (a car length) ahead of a car from an earlier row that hasn't
    * crossed yet, it got by before the line. A place taken and given back
    * before the line is no case.
@@ -240,7 +243,9 @@ export class Detector {
   private restart(out: Violation[], now: number): void {
     const flag = this.control.flag;
     if (flag === 'restart' && this.lastFlag !== 'restart') {
-      const lined = this.control.lineOrder().filter((c) => this.inLine(c));
+      // (A car that got by the pace car is out of its place ahead: it gains places if it keeps them to the line, and
+      // before, it took the green for the field.)
+      const lined = this.control.lineOrder().filter((c) => this.inLine(c) || this.control.gotBy(c));
       // The cars each one must not get by before the line: those in earlier rows of the official order (the
       // field is doubled up; row mates are level). Passing a car that's out of place ahead isn't gaining one.
       const order = this.control.lineOrder();

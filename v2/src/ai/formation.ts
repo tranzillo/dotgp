@@ -96,10 +96,9 @@ export class FormationDriver {
       this.drive(car, world, holdLane, follow(holdLane, want));
       return;
     }
-    let err = t.distanceFrom(car.s, slot.s); // metres the slot is ahead of us
-    if (err > t.length / 2) err -= t.length;
-    // A slot far behind (a lapped car ahead of the leader) is reached by going around, not by stopping.
-    if (err < -150) err += t.length;
+    // Metres the slot is ahead of us. A slot far behind (a lapped car ahead of the leader) is reached by going
+    // around, not by stopping; but a car that got by the pace car drops back behind it.
+    const err = ctl.slotGap(car)!;
     // Never below a crawl while the line is moving; a slot standing still (a grid box) is stopped in. Catching up
     // a driver may go the pace for where it is (behind a safety car: quick on a straight while the safety car is in
     // a hairpin) plus its own eagerness; the car ahead still sets the limit.

@@ -302,9 +302,10 @@ export type LineStyle = 'edge' | 'blend' | 'entry' | 'lane' | 'stall' | 'start';
 
 export type Marking =
   /** A line along the track at lateral position d over an s range. */
-  | { kind: 'line'; range: SRange; d: Edge; style: LineStyle }
+  | { kind: 'line'; range: SRange; d: Edge; style: LineStyle; grid?: boolean }
   /** Short lines across the track at each s, from d0 to d1 (pit stalls, start/finish). */
-  | { kind: 'ticks'; s: number[]; d0: number; d1: number; style: LineStyle };
+  | { kind: 'ticks'; s: number[]; d0: number; d1: number; style: LineStyle; grid?: boolean };
+// (grid: a standing start's grid boxes, painted by the track itself on road layouts: sim/grid.ts.)
 
 /** Purely visual dressing. Add a kind here and a painter in the renderer. */
 export type Decoration =

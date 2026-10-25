@@ -1,5 +1,6 @@
 import { Centerline } from './centerline';
 import { PHYSICS } from './constants';
+import { gridMarkings } from './grid';
 import { PolygonIndex } from './polygon';
 import type { PitState } from './car';
 import { legacyNetwork, RoadGraph } from './roads';
@@ -153,6 +154,11 @@ export class Track extends Centerline {
     this.bounded = scenery || this.neighbours.length > 0;
     this.roads = new RoadGraph(layout.infield.network ?? legacyNetwork(this));
     this.barriers = layout.barriers ?? [];
+    // A road layout's standing-start grid, painted where race control lines the field up (a box for every car a race
+    // here takes). Painted afresh on whatever layout comes in: one handed on from another track keeps no stale grid.
+    if (!scenery && this.kind === 'road') {
+      this.layout = { ...layout, markings: [...layout.markings.filter((m) => !m.grid), ...gridMarkings(this, this.maxField)] };
+    }
   }
 
   /** Inside edge of the racing surface at a sample index. */

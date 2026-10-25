@@ -122,11 +122,158 @@ describe('safety car', () => {
       }
       if (ctl.flag === 'caution') for (const c of ctl.lineOrder()) singleFile &&= ctl.slotFor(c)?.d === 0;
     }
-    expect(flags).toEqual(['formation', 'grid', 'green', 'caution', 'restart', 'green']);
+    // (Circuits start with the field in its grid boxes: no formation lap's end.)
+    expect(flags).toEqual(['grid', 'green', 'caution', 'restart', 'green']);
     expect(singleFile).toBe(true);
     expect(wrecked!.cleared).toBe(true); // lifted off by the marshals
     expect(race.state).toBe('finished');
     expect(race.standings().filter((s) => s.status === 'finished').length).toBe(5);
+  });
+});
+
+describe('the grid', () => {
+  it('a road layout has its grid painted where race control lines the field up, and only once', async () => {
+    const { Track } = await import('../src/sim/track');
+    const { generateLayout, presetTrack } = await import('../src/trackgen');
+    const { gridBox } = await import('../src/sim/grid');
+    const track = new Track(generateLayout({ type: 'circuit', seed: 1, variant: 'club' }));
+    const grid = track.layout.markings.filter((m) => m.grid);
+    // A box for every car a race here takes: a line across its front and its two sides.
+    expect(grid.filter((m) => m.kind === 'ticks')).toHaveLength(track.maxField);
+    expect(grid).toHaveLength(3 * track.maxField);
+    // Each box's front line just ahead of where its car stands, across it.
+    grid.filter((m) => m.kind === 'ticks').forEach((m, k) => {
+      const box = gridBox(track, k);
+      if (m.kind !== 'ticks') return;
+      expect(m.s[0] - track.signedS(box.s)).toBeGreaterThan(0);
+      expect(m.s[0] - track.signedS(box.s)).toBeLessThan(3);
+      expect((m.d0 + m.d1) / 2).toBeCloseTo(box.d, 6);
+    });
+    // Handed on (a worker, a venue's other layout): painted afresh, not twice.
+    expect(new Track(track.layout).layout.markings.filter((m) => m.grid)).toHaveLength(grid.length);
+    expect(presetTrack('short').layout.markings.some((m) => m.grid)).toBe(false); // ovals start rolling
+  });
+
+  it('a circuit race starts with the field in its boxes, held still until the lights go out', async () => {
+    const { CIRCUIT_RULES } = await import('../src/rules/rulebook');
+    const { Track } = await import('../src/sim/track');
+    const { generateLayout } = await import('../src/trackgen');
+    const { gridBox } = await import('../src/sim/grid');
+    const track = new Track(generateLayout({ type: 'circuit', seed: 1, variant: 'club' }));
+    const world = new World(track, { wearScale: 4 });
+    // Drivers with their foot down from the start: nobody leaves the grid before the lights go out all the same.
+    const floored = { decide: (car: Car) => { car.inputX = 1; car.inputY = 0; } };
+    for (let k = 0; k < 6; k++) world.addCar(new Car(k), floored);
+    const race = new Race(world, 3, new PaceCarDriver(), { rulebook: CIRCUIT_RULES, seed: 1 });
+    const ctl = race.control!;
+    const flags: string[] = [];
+    let worst = 0;
+    while (ctl.flag !== 'green' && world.time < 30) {
+      race.step();
+      if (flags[flags.length - 1] !== ctl.flag) flags.push(ctl.flag);
+      if (ctl.flag !== 'grid') continue;
+      world.cars.forEach((c, k) => {
+        const box = gridBox(track, k);
+        const [x, y] = track.toWorld(box.s, box.d);
+        worst = Math.max(worst, Math.hypot(c.x - x, c.y - y));
+      });
+    }
+    expect(flags).toEqual(['grid', 'green']);
+    expect(worst).toBeLessThan(0.05); // each in its own box all the while
+    expect(race.started).toBe(true);
+    for (let k = 0; k < 120; k++) race.step();
+    expect(world.cars.every((c) => c.speed > 2)).toBe(true); // and away they go
+  });
+});
+
+describe('getting by the safety car', () => {
+  /** A circuit race with scripted drivers, green, then a debris caution until the safety car has the field. */
+  async function underTheSafetyCar() {
+    const { ScriptedDriver, Team } = await import('../src/ai/drivers');
+    const { TowerSpotter } = await import('../src/ai/spotter');
+    const { CIRCUIT_RULES } = await import('../src/rules/rulebook');
+    const { Track } = await import('../src/sim/track');
+    const { generateLayout } = await import('../src/trackgen');
+    const track = new Track(generateLayout({ type: 'circuit', seed: 1, variant: 'club' }));
+    const world = new World(track, { wearScale: 1 });
+    for (let k = 0; k < 6; k++) world.addCar(new Car(k), new Team(new ScriptedDriver(0, 0.8 + 0.01 * k), new TowerSpotter()));
+    const race = new Race(world, 30, new PaceCarDriver(), { rulebook: CIRCUIT_RULES, seed: 2 });
+    const ctl = race.control!;
+    while ((!race.started || world.time < 60) && world.time < 200) race.step();
+    ctl.debrisCaution(3);
+    // The safety car has the field once it has picked up the leader and the line has closed up behind it.
+    const closed = () => ctl.lineOrder().every((c) => Math.abs(ctl.slotGap(c) ?? Infinity) < 30);
+    while (!(ctl.pickedUp && ctl.paceCarOut && closed()) && world.time < 600) race.step();
+    expect(ctl.pickedUp).toBe(true);
+    const said: string[] = [];
+    const announce = world.announce.bind(world);
+    world.announce = (car, kind, text, about) => { said.push(`#${car.number} ${text}`); announce(car, kind, text, about); };
+    return { track, world, race, ctl, said };
+  }
+
+  /** Puts a car this far ahead of another, going its speed: moved along the track, race distance and all. */
+  function holdAhead(track: import('../src/sim/track').Track, car: Car, of: Car, gap: number) {
+    const s = track.wrapS(of.s + gap);
+    const ds = track.distanceFrom(car.s, s);
+    const advance = ds > track.length / 2 ? ds - track.length : ds;
+    const [x, y] = track.toWorld(s, 0);
+    const p = track.project(x, y);
+    car.x = x; car.y = y; car.s = p.s; car.d = p.d; car.trackIdx = p.idx; car.dist += advance;
+    car.vx = of.vx; car.vy = of.vy;
+  }
+
+  it('a car that gets by it is told to drop back, and does: no case', async () => {
+    const { track, race, ctl, said } = await underTheSafetyCar();
+    const passer = ctl.lineOrder()[0];
+    holdAhead(track, passer, ctl.paceCar, -2);
+    race.step();
+    holdAhead(track, passer, ctl.paceCar, 20);
+    race.step();
+    expect(ctl.gotBy(passer)).toBe(true);
+    expect(said.some((t) => t.startsWith(`#${passer.number} Race control`) && t.includes('drop back behind the safety car'))).toBe(true);
+    // Its place is behind the safety car, not a lap ahead: it drops back to it.
+    expect(ctl.slotGap(passer)!).toBeLessThan(0);
+    for (let k = 0; k < 30 / 0.008333 && ctl.gotBy(passer); k++) race.step();
+    expect(ctl.gotBy(passer)).toBe(false);
+    for (let k = 0; k < 10 / 0.008333; k++) race.step();
+    expect(race.stewards!.record.filter((r) => r.car === passer && r.offence === 'passing-under-caution')).toHaveLength(0);
+  });
+
+  it("still ahead of it a lap later: the stewards' case", async () => {
+    const { track, world, race, ctl } = await underTheSafetyCar();
+    const passer = ctl.lineOrder()[1];
+    holdAhead(track, passer, ctl.paceCar, -2);
+    race.step();
+    const from = passer.dist;
+    while (passer.dist < from + track.length + 50 && ctl.flag === 'caution' && world.time < 900) {
+      holdAhead(track, passer, ctl.paceCar, 20);
+      race.step();
+    }
+    for (let k = 0; k < 20 / 0.008333; k++) race.step(); // the stewards' review
+    const ruled = race.stewards!.record.filter((r) => r.car === passer && r.offence === 'passing-under-caution');
+    expect(ruled).toHaveLength(1);
+    expect(ruled[0].detail).toContain('the safety car');
+  });
+
+  it("still ahead at the restart: the green is the leader's, and it jumped the restart", async () => {
+    const { track, world, race, ctl, said } = await underTheSafetyCar();
+    while (!ctl.oneToGo && world.time < 900) race.step();
+    const head = ctl.lineOrder()[0];
+    const passer = ctl.lineOrder()[1];
+    holdAhead(track, passer, ctl.paceCar, -2);
+    race.step();
+    // Ahead of the safety car to the end of the caution, then ahead of the leader to the line.
+    let passerCrossed = NaN;
+    while (ctl.flag !== 'green' && world.time < 900) {
+      holdAhead(track, passer, ctl.flag === 'restart' ? head : ctl.paceCar, 40);
+      race.step();
+      if (Number.isNaN(passerCrossed) && ctl.crossedLine(passer)) passerCrossed = world.time;
+    }
+    expect(ctl.flag).toBe('green');
+    expect(passerCrossed).toBeLessThan(world.time); // it got to the line first
+    expect(said.filter((t) => t.endsWith('Green flag!'))).toEqual([`#${head.number} Green flag!`]);
+    for (let k = 0; k < 20 / 0.008333; k++) race.step();
+    expect(race.stewards!.record.filter((r) => r.car === passer && r.offence === 'jumped-restart')).toHaveLength(1);
   });
 });
 

@@ -230,10 +230,9 @@ export function observeCaution(car: Car, world: World, out: Float32Array): Float
   out[1] = ctl.oneToGo || ctl.flag === 'restart' ? 1 : 0;
   const slot = ctl.slotFor(car);
   if (!slot) return out;
-  // Metres the slot is ahead of us (a slot far behind is reached by going round, as the formation script does).
-  let err = track.distanceFrom(car.s, slot.s);
-  if (err > track.length / 2) err -= track.length;
-  if (err < -150) err += track.length;
+  // Metres the slot is ahead of us (a slot far behind is reached by going round, as the formation script does, but
+  // not by a car that got by the pace car: it drops back).
+  const err = ctl.slotGap(car)!;
   out[2] = Math.max(-3, Math.min(3, err / 40));
   out[3] = Math.max(-2, Math.min(2, (slot.d - car.d) / track.halfWidth));
   out[4] = Math.max(-2, Math.min(2, (slot.speed - car.speed) / 20));
@@ -263,10 +262,7 @@ export function observeCautionRange(car: Car, world: World, out: Float32Array): 
   const track = world.track;
   const slot = ctl.slotFor(car);
   if (!slot) return out;
-  let err = track.distanceFrom(car.s, slot.s);
-  if (err > track.length / 2) err -= track.length;
-  if (err < -150) err += track.length;
-  out[0] = Math.asinh(err / 40);
+  out[0] = Math.asinh(ctl.slotGap(car)! / 40);
   const ahead = ctl.carAheadInFile(car, slot.d);
   out[1] = ahead ? Math.sqrt(Math.max(0, Math.min(1, (track.distanceFrom(car.s, ahead.s) - 2 * P.CAR_RADIUS) / 200))) : 1;
   return out;

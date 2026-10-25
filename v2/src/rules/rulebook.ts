@@ -1,3 +1,4 @@
+import { GRID_PITCH } from '../sim/grid';
 import type { LayoutKind } from '../sim/layout';
 
 /**
@@ -137,13 +138,16 @@ export const OVAL_RULES: Rulebook = {
 };
 
 /**
- * Road circuit rules: standing start after a formation lap, the safety car.
- * The line rule is an oval thing; everything else carries over.
+ * Road circuit rules: standing start, the safety car. The race joins the
+ * start with the field in its grid boxes (the track's painted grid): rolling
+ * up to them at the end of a formation lap, the front rows overshot theirs
+ * by 25-105 m and started from there (drivers' networks stop a car only so
+ * precisely). The line rule is an oval thing; everything else carries over.
  */
 export const CIRCUIT_RULES: Rulebook = {
   ...OVAL_RULES,
   name: 'Circuit',
-  start: { kind: 'standing', formationLap: true, gridPitch: 8, lights: 5, lightInterval: 1, hold: [0.2, 3] },
+  start: { kind: 'standing', formationLap: false, gridPitch: GRID_PITCH, lights: 5, lightInterval: 1, hold: [0.2, 3] },
   neutralise: 'safety-car',
   qualifying: 'group',
   belowTheLineOn: [],
