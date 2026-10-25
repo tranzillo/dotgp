@@ -35,7 +35,15 @@ export const FILE_OFFSET = 2.6; // m either side of the centerline for the two f
 const WRECKER_SPEED = 22;
 const TOW_SPEED = 15;
 const HOOK_TIME = 8;
-const STALL_TIME = 5; // s stopped on the racing surface before a car counts as a wreck
+const STALL_TIME = 5; // s stopped on the racing surface before it's a hazard (a caution under green)
+/**
+ * s stopped on the racing surface before a car that could still go (fuel, not wrecked) counts as a wreck, unless it's
+ * waiting in line behind another stopped car: a field queued behind a wreck under caution is doing as it's told.
+ * (At STALL_TIME, race control retired every car in such a queue: each became a wreck for a wrecker to tow.)
+ */
+const STUCK_TIME = 30;
+/** A stopped car this close behind another stopped car (or the pace car), in its lane, is queued (m). */
+const QUEUE_GAP = 25;
 /** Marshals' time to lift a wrecked car off a circuit (s). */
 const MARSHAL_TIME = 25;
 
@@ -497,12 +505,19 @@ export class RaceControl {
       if (!car.retired && !car.finished && this.flag !== 'grid' && car.pit.phase === 'none' && car.speed < 3 && car.d < t.innerEdge(car.trackIdx) + 1) {
         const since = (this.stoppedSince.get(car) ?? 0) + dt;
         this.stoppedSince.set(car, since);
-        if (since > STALL_TIME) {
+        // A stopped car is a hazard: a caution under green. It's a wreck only if it can't go on (out of fuel), or
+        // it has sat there a long while with nothing stopped in front of it.
+        if (since > STALL_TIME && this.flag === 'green' && !this.cautioned.has(car)) {
+          this.cautioned.add(car);
+          this.throwCaution(car);
+        }
+        if (since > STALL_TIME && (car.fuel <= 0 || (since > STUCK_TIME && !this.queued(car)))) {
           car.retired = true;
           this.world.announce(car, 'retired', 'Stopped on track');
         }
       } else {
         this.stoppedSince.delete(car);
+        if (!car.retired) this.cautioned.delete(car); // going again: a later stop or wreck is a new hazard
       }
       if (!car.retired) continue;
       // Caution as soon as a car is out on or near the racing surface; the wrecker goes once it stops.
@@ -514,6 +529,16 @@ export class RaceControl {
       this.handled.add(car);
       this.dispatchWrecker(car);
     }
+  }
+
+  /** Stopped behind another stopped car (or the pace car) in its lane: waiting in line, not stuck. */
+  private queued(car: Car): boolean {
+    const t = this.track;
+    return [...this.world.cars, this.paceCar].some((o) => {
+      if (o === car || o.cleared || o.speed > 3) return false;
+      const gap = t.wrapS(o.s - car.s);
+      return gap > 0 && gap < QUEUE_GAP && Math.abs(o.d - car.d) < 2 * P.CAR_RADIUS + 1;
+    });
   }
 
   private throwCaution(cause: Car): void {

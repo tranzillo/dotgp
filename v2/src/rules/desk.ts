@@ -21,6 +21,9 @@ export interface PenaltyRecord {
   detail: string;
 }
 
+/** Laps a black-flagged car has to come in before it's out where it is. */
+const BLACK_FLAG_LAPS = 2;
+
 export const PENALTY_NAMES: Record<Penalty, string> = {
   none: 'no further action', warning: 'a warning', time: 'a time penalty', tail: 'to the back of the line',
   'drive-through': 'a drive-through', 'stop-go': 'a stop-and-go', 'black-flag': 'the black flag',
@@ -33,6 +36,8 @@ export class StewardsDesk {
   readonly stewards: Stewards;
   private readonly warnings = new Map<Car, number>();
   private readonly lapsSeen = new Map<Car, number>();
+  /** Black-flagged cars still on track, and the lap they were shown it on. */
+  private readonly flagged = new Map<Car, number>();
   /** What a car owes a drive-through or stop-and-go for. */
   private readonly owed = new Map<Car, Offence>();
   /** Track limits strikes so far, per car. */
@@ -133,14 +138,27 @@ export class StewardsDesk {
     this.world.announce(car, 'steward', `Stewards: ${text}`, about ? { others: [about.against], incidentTime: about.time } : {});
   }
 
+  /**
+   * Out of the race, but not a wreck: the car is called in on the radio (its team, next time it can make pit road)
+   * and parked in its box (World). Stopped where it was, it had been a wreck on the racing surface: a caution and a
+   * wrecker for a car that could drive.
+   */
   private blackFlag(car: Car): void {
     car.disqualified = true;
-    car.retired = true;
     car.pendingPenalty = null;
+    this.flagged.set(car, car.lapsCompleted);
   }
 
   /** Penalties being served: done once the car is back out of the box; green laps run out: black flag. */
   private serving(): void {
+    // A black-flagged car whose team never brings it in (a driver without one) is out where it is, as before.
+    for (const [car, lap] of this.flagged) {
+      if (car.retired) this.flagged.delete(car);
+      else if (car.lapsCompleted > lap + BLACK_FLAG_LAPS && car.pit.phase === 'none') {
+        car.retired = true;
+        this.flagged.delete(car);
+      }
+    }
     for (const car of this.world.cars) {
       const p = car.pendingPenalty;
       if (!p || car.retired) continue;
@@ -150,6 +168,12 @@ export class StewardsDesk {
         continue;
       }
       const seen = this.lapsSeen.get(car) ?? car.lapsCompleted;
+      // On pit road serving it: a lap completed there (pit road runs across the line) isn't a lap gone by. (Counted,
+      // a car serving on its last lap was shown the black flag in its box.)
+      if (car.pit.phase !== 'none' && car.pit.call?.penalty) {
+        this.lapsSeen.set(car, car.lapsCompleted);
+        continue;
+      }
       if (car.lapsCompleted > seen) {
         this.lapsSeen.set(car, car.lapsCompleted);
         if (this.control.flag === 'green') p.greenLapsLeft--;

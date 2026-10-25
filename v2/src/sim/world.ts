@@ -153,6 +153,14 @@ export class World {
         pit.phase = 'none';
         pit.call = null;
         this.announce(car, 'missed-pit', 'Missed the pit entry');
+      } else if (inPitLane && Math.abs(r - pit.boxS) < BOX_HALF_LENGTH && car.speed < 1.5 && pit.call?.retire) {
+        // Black-flagged: parked in its box, out of the race (off the physics: the box is its garage).
+        car.vx = 0;
+        car.vy = 0;
+        car.retired = true;
+        car.parked = true;
+        car.cleared = true;
+        this.announce(car, 'retired', 'Disqualified: parked');
       } else if (inPitLane && Math.abs(r - pit.boxS) < BOX_HALF_LENGTH && car.speed < 1.5) {
         pit.phase = 'service';
         pit.timer = serviceTime(car, pit.call!);

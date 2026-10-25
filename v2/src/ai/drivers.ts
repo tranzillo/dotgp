@@ -94,20 +94,22 @@ export class Team implements Controller {
   decide(car: Car, world: World): void {
     const track = world.track;
     const r = track.signedS(car.s);
-    if (car.pit.phase === 'none' && (this.crewChief || car.pendingPenalty)) {
+    if (car.pit.phase === 'none' && (this.crewChief || car.pendingPenalty || car.disqualified)) {
       const dp = pitDecisionS(track);
       if (this.lastS < dp && r >= dp && r - this.lastS < 50) {
-        // A penalty to serve comes first, under green (stewards' orders); otherwise the chief decides.
+        // Shown the black flag: in, and park it. A penalty to serve comes next, under green (stewards' orders);
+        // otherwise the chief decides.
         const p = car.pendingPenalty;
         const serve = p && (!world.control || world.control.flag === 'green');
-        const call = serve
-          ? { tires: false, fuel: 0, repair: false, penalty: p.kind, penaltySeconds: p.seconds }
+        const call = car.disqualified ? { tires: false, fuel: 0, repair: false, retire: true }
+          : serve ? { tires: false, fuel: 0, repair: false, penalty: p.kind, penaltySeconds: p.seconds }
           : this.crewChief?.decide(car, world) ?? null;
         if (call) {
           car.pit.phase = 'in';
           car.pit.call = call;
           this.autopilot.begin(car);
-          world.announce(car, 'crew', serve ? `Serve the ${p.kind === 'stop-go' ? `${p.seconds} s stop-and-go` : 'drive-through'} this lap` : this.crewChief!.lastMessage);
+          world.announce(car, 'crew', car.disqualified ? `Black flag: bring it in, we're done`
+            : serve ? `Serve the ${p.kind === 'stop-go' ? `${p.seconds} s stop-and-go` : 'drive-through'} this lap` : this.crewChief!.lastMessage);
         }
       }
     }

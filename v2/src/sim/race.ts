@@ -112,7 +112,8 @@ export class Race {
     if (!this.started) return;
     for (const car of world.cars) {
       if (Number.isNaN(this.startTime) && car.lapStartTime >= 0) this.startTime = car.lapStartTime;
-      if (this.finishTime.has(car) || car.retired) continue;
+      // (A black-flagged car on its way in takes no flag.)
+      if (this.finishTime.has(car) || car.retired || car.disqualified) continue;
       const leaderDone = this.state !== 'green';
       if (car.lapsCompleted >= this.laps || (leaderDone && car.lapTimes.length > (this.lapsAtFlag.get(car) ?? car.lapTimes.length))) {
         if (this.state === 'green') this.state = 'checkered';
@@ -132,7 +133,7 @@ export class Race {
   leader(): Car | null {
     let best: Car | null = null;
     for (const c of this.world.cars) {
-      if (c.retired || this.finishTime.has(c)) continue;
+      if (c.retired || c.disqualified || this.finishTime.has(c)) continue;
       if (!best || c.dist > best.dist) best = c;
     }
     return best;
@@ -150,10 +151,10 @@ export class Race {
     const finished = [...this.finishOrder]
       .sort((a, b) => this.finishLaps.get(b)! - this.finishLaps.get(a)! || raceTime(a) - raceTime(b))
       .map((car) => ({ car, status: 'finished' as const }));
-    const running = cars.filter((c) => !this.finishTime.has(c) && !c.retired)
+    const running = cars.filter((c) => !this.finishTime.has(c) && !c.retired && !c.disqualified)
       .sort((a, b) => b.dist - a.dist)
       .map((car) => ({ car, status: car.pit.phase === 'none' ? 'running' as const : 'pit' as const }));
-    const out = cars.filter((c) => !this.finishTime.has(c) && c.retired)
+    const out = cars.filter((c) => !this.finishTime.has(c) && (c.retired || c.disqualified))
       .sort((a, b) => b.dist - a.dist)
       .map((car) => ({ car, status: 'out' as const }));
     return [...finished, ...running, ...out].map((e, i) => ({
