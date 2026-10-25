@@ -117,6 +117,12 @@ const LOCKSTEP_MIN = 30;
 /** Twins are compared at the same spot: bins this long (m), and a car is following another that passed the spot this recently (s). */
 const SPOT_BIN = 5;
 const SPOT_FOLLOW = 2;
+/**
+ * A pass came with contact, or from the draft, if the pair touched, or the passer was in a tow, this recently (s);
+ * a tow is this much less drag at least (a leader's push from the car behind is under it).
+ */
+const PASS_CONTACT = 3;
+const TOWED = 0.1;
 
 /** A preset by name, or a generated oval: oval:<seed>[:<variant>[:<shape>]]. */
 function trackFor(name: string): Track {
@@ -179,6 +185,15 @@ interface PackStats {
   /** Places gained on track under green (sampled once a second), and clean green car-laps run. */
   passes: number;
   carLaps: number;
+  /**
+   * Passes against contact (green): passes where the pair touched in the PASS_CONTACT seconds before, and where one
+   * of those touches did damage; passes from the draft (the passer in a tow in those seconds); and damaging car-to-car
+   * contacts (a pair's hits within a second are one).
+   */
+  passTouch: number;
+  passDamage: number;
+  passDraft: number;
+  greenHits: number;
   /** Lane (d, m): sum and sum of squares, for the spread of the field across the track. */
   laneSum: number;
   laneSq: number;
@@ -330,7 +345,7 @@ function runRace(trackName: string, seed: number): RaceStats {
   const stats: RaceStats = {
     track: trackName, seed, laps, finished: 0, cautions: 0, cautionLaps: 0, retirements: [], wearPerLap: [], burnPerLap: [],
     stops: [], pitRoad: { transits: [], hits: 0, damage: 0 }, lapsByTire: [], slideSteps: [0, 0, 0], steps: 0, harm: 0, penalties: [], coverage: [],
-    pack: { samples: 0, alongside: 0, drafting: 0, passes: 0, carLaps: 0, laneSum: 0, laneSq: 0,
+    pack: { samples: 0, alongside: 0, drafting: 0, passes: 0, carLaps: 0, passTouch: 0, passDamage: 0, passDraft: 0, greenHits: 0, laneSum: 0, laneSq: 0,
       lockSame: { ab: 0, aa: 0, bb: 0, n: 0 }, lockDiff: { ab: 0, aa: 0, bb: 0, n: 0 },
       spotSame: { d: 0, v: 0, steer: 0, n: 0 }, spotDiff: { d: 0, v: 0, steer: 0, n: 0 } },
     entrants: [], driving: { samples: 0, formation: 0, pit: 0 },
@@ -431,10 +446,42 @@ function runRace(trackName: string, seed: number): RaceStats {
       const gap = a.dist - b.dist;
       if (Math.abs(gap) < 2 * P.CAR_RADIUS) continue;
       const now = Math.sign(gap), was = order.get(key);
-      if (was !== undefined && was !== now) pack.passes++;
+      if (was !== undefined && was !== now) {
+        pack.passes++;
+        const since = world.time - PASS_CONTACT;
+        if ((touched.get(key) ?? -Infinity) >= since) pack.passTouch++;
+        if ((damaged.get(key) ?? -Infinity) >= since) pack.passDamage++;
+        if ((towed.get(now > 0 ? a : b) ?? -Infinity) >= since) pack.passDraft++;
+      }
       order.set(key, now);
     }
     for (const key of [...order.keys()]) if (!live.has(key)) order.delete(key);
+  };
+  // Contact and the draft, for the passes above: when each pair last touched (any contact, damaging or not) and last
+  // did damage, and when each car was last in a tow. Under green only.
+  const touched = new Map<number, number>(), damaged = new Map<number, number>(), towed = new Map<Car, number>();
+  const bySpot: Car[] = [];
+  const sampleContact = (healthBefore: number[]) => {
+    if (ctl.flag !== 'green' || !race.started) return;
+    const L = track.length, reach = 2 * P.CAR_RADIUS + 0.05;
+    bySpot.length = 0;
+    for (const c of cars) if (racing(c)) { bySpot.push(c); if (c.draftFactor < 1 - TOWED) towed.set(c, world.time); }
+    bySpot.sort((p, q) => p.s - q.s);
+    for (let i = 0; i < bySpot.length; i++) {
+      for (let j = i + 1; j <= i + bySpot.length - 1; j++) {
+        const A = bySpot[i], B = bySpot[j % bySpot.length];
+        if (((B.s - A.s) % L + L) % L > reach) break;
+        if (Math.hypot(A.x - B.x, A.y - B.y) < reach) touched.set(Math.min(A.id, B.id) * fieldSize + Math.max(A.id, B.id), world.time);
+      }
+    }
+    cars.forEach((c, k) => {
+      const imp = c.lastImpact;
+      if (c.health >= healthBefore[k] - 1e-4 || imp?.kind !== 'car' || imp.other === null || c.pit.phase !== 'none') return;
+      const key = Math.min(c.id, imp.other) * fieldSize + Math.max(c.id, imp.other);
+      if (world.time - (damaged.get(key) ?? -Infinity) > 1) pack.greenHits++;
+      damaged.set(key, world.time);
+      touched.set(key, world.time);
+    });
   };
   const out = new Set<Car>();
   const prevPhase = new Map<Car, string>();
@@ -454,6 +501,7 @@ function runRace(trackName: string, seed: number): RaceStats {
     if (ctl.flag === 'green' && flagBefore !== 'green') lastGreen = world.time;
     if (ctl.flag === 'caution' && flagBefore !== 'caution') cautionStart = world.time;
     marks?.stamp(cars);
+    sampleContact(healthBefore);
     if (world.tick % P.CONTROL_EVERY === 0) { samplePack(); sampleDriving(); }
     if (world.tick % Math.round(1 / P.DT) === 0) samplePasses();
 
@@ -580,6 +628,12 @@ export interface RaceSummary {
   atFault: number; hitByAnother: number; formationWrecks: number; harm: number; lapTime: number;
   /** Pack racing under green: places gained per 100 green car-laps; shares of car-time alongside another car and in the draft. */
   passes: number; alongside: number; drafting: number;
+  /**
+   * Passes against contact: passes with no touch between the pair (per 100 green car-laps), the shares of passes that
+   * came with a damaging touch and from the draft, damaging car-to-car contacts per 100 green car-laps, and clean
+   * passes per damaging contact (NaN without either).
+   */
+  cleanPasses: number; passDamage: number; passDraft: number; greenHits: number; passesPerHit: number;
   /** Standard deviation of the field's lane across the track (m). */
   laneSpread: number;
   /** Lockstep: correlation of neighbouring cars' control changes (0 independent, 1 moving as one), same brain and different brains. */
@@ -614,6 +668,11 @@ function raceSummary(s: RaceStats): RaceSummary {
     passes: 100 * s.pack.passes / Math.max(1, s.pack.carLaps),
     alongside: s.pack.alongside / Math.max(1, s.pack.samples),
     drafting: s.pack.drafting / Math.max(1, s.pack.samples),
+    cleanPasses: 100 * (s.pack.passes - s.pack.passTouch) / Math.max(1, s.pack.carLaps),
+    passDamage: s.pack.passes ? s.pack.passDamage / s.pack.passes : NaN,
+    passDraft: s.pack.passes ? s.pack.passDraft / s.pack.passes : NaN,
+    greenHits: 100 * s.pack.greenHits / Math.max(1, s.pack.carLaps),
+    passesPerHit: s.pack.greenHits ? (s.pack.passes - s.pack.passTouch) / s.pack.greenHits : NaN,
     laneSpread: Math.sqrt(Math.max(0, s.pack.laneSq / Math.max(1, s.pack.samples) - (s.pack.laneSum / Math.max(1, s.pack.samples)) ** 2)),
     lockSame: corr(s.pack.lockSame), lockDiff: corr(s.pack.lockDiff),
     spotSameD: s.pack.spotSame.d / s.pack.spotSame.n, spotDiffD: s.pack.spotDiff.d / s.pack.spotDiff.n,
@@ -674,6 +733,10 @@ for (const name of trackNames) {
   const avg = (key: 'passes' | 'alongside' | 'drafting' | 'laneSpread' | 'lockSame' | 'lockDiff') => mean(sums.map((x) => x[key]).filter(Number.isFinite));
   console.log(`  PACK    ${f(avg('passes'))} passes/100 green car-laps, alongside ${pct(avg('alongside'))}, drafting ${pct(avg('drafting'))}, `
     + `lane spread ${f(avg('laneSpread'), 2)} m; lockstep same brain ${f(avg('lockSame'), 3)}, different brains ${f(avg('lockDiff'), 3)}`);
+  const total = (key: 'passes' | 'passTouch' | 'passDamage' | 'passDraft' | 'greenHits' | 'carLaps') => runs.reduce((a, r) => a + r.pack[key], 0);
+  console.log(`  PASSING ${f(100 * (total('passes') - total('passTouch')) / Math.max(1, total('carLaps')))} clean passes/100 green car-laps; of all passes `
+    + `${pct(total('passTouch') / Math.max(1, total('passes')))} with contact, ${pct(total('passDamage') / Math.max(1, total('passes')))} damaging, `
+    + `${pct(total('passDraft') / Math.max(1, total('passes')))} from the draft; ${f(100 * total('greenHits') / Math.max(1, total('carLaps')))} damaging contacts/100 green car-laps`);
   const spotAvg = (key: 'spotSameD' | 'spotDiffD' | 'spotSameV' | 'spotDiffV' | 'spotSameSteer' | 'spotDiffSteer') =>
     mean(sums.map((x) => x[key]).filter(Number.isFinite));
   console.log(`  TWINS   following within ${SPOT_FOLLOW} s, at the same spot as the car ahead: same brain lane ${f(spotAvg('spotSameD'), 2)} m, `

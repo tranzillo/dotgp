@@ -117,6 +117,12 @@ const metrics: Array<[keyof RaceSummary, string, number, boolean | null]> = [
   ['scripted', 'share driven by scripts', 3, true],
   ['scriptedRetirements', '  out while scripted', 1, true],
   ['passes', 'passes /100 green car-laps', 1, null],
+  // Passing against contact: clean passes (no touch between the pair) and damaging contacts, per 100 green car-laps.
+  ['cleanPasses', '  clean passes', 1, false],
+  ['passDamage', '  share with damage', 3, true],
+  ['passDraft', '  share from the draft', 3, null],
+  ['greenHits', 'damaging contacts /100', 1, true],
+  ['passesPerHit', 'clean passes per contact', 2, false],
   ['alongside', 'share of time alongside', 3, null],
   ['drafting', 'share of time drafting', 3, null],
   ['laneSpread', 'lane spread (m)', 2, null],
