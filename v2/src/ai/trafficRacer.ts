@@ -160,6 +160,8 @@ const CROSS_RATE = 3;
 const STOPPED = 5;
 /** Off the line it tracks less precisely: this much more room kept from the corridor's edges (m). */
 const OFF_LINE_BUFFER = 1;
+/** Seconds ahead a lane held off the line is kept clear of the road's edges (it moves over at CROSS_RATE). */
+const EDGE_LOOK = 2;
 
 export class TrafficRacer {
   private offset = 0;
@@ -420,6 +422,19 @@ export class TrafficRacer {
     else target = Math.max(low, Math.min(high, target));
     const buffer = Math.abs(target - here.d) > 0.3 || hemmed ? OFF_LINE_BUFFER : 0;
     target = Math.max(here.lo + Math.min(buffer, Math.max(0, here.d - here.lo)), Math.min(here.hi - Math.min(buffer, Math.max(0, here.hi - here.d)), target));
+    // The line sweeps across the road (out of a corner toward the wall), and a lane held beside it sweeps with it, as
+    // fast across: clamped only where it met the edge, the car arrived there still moving across and hit the wall
+    // (cars going round pitters at a speedway's corner exit, 1000 wall touches in 25 laps). Off the line, the offset
+    // keeps clear of the edges over the next stretch, so the car is moving over in time.
+    if (Math.abs(target - here.d) > 0.3) {
+      let loRoom = here.d - here.lo - OFF_LINE_BUFFER, hiRoom = here.hi - OFF_LINE_BUFFER - here.d;
+      for (let a = CATCH_STEP; a <= EDGE_LOOK * vMe; a += CATCH_STEP) {
+        const at = lineAt(line, car.s + a);
+        loRoom = Math.min(loRoom, at.d - at.lo - OFF_LINE_BUFFER);
+        hiRoom = Math.min(hiRoom, at.hi - OFF_LINE_BUFFER - at.d);
+      }
+      target = here.d + Math.max(-Math.max(0, loRoom), Math.min(Math.max(0, hiRoom), target - here.d));
+    }
     const step = CROSS_RATE * dt;
     this.offset += Math.max(-step, Math.min(step, target - here.d - this.offset));
     const offset = Math.max(here.lo, Math.min(here.hi, here.d + this.offset)) - here.d;
