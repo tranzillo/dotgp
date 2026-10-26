@@ -60,7 +60,13 @@ export interface BrokenSkillOptions {
   maxExamples?: number;
   /** Share of a round's training moments that are racing ones (the rest: broken). Default none. */
   racingShare?: number;
-  onRound?: (round: number, report: BrokenReport & { loss: number; seconds: number }) => void;
+  /**
+   * Drills per track where a car ahead of the student breaks (the field's side: going round it), which teach its
+   * racing network: their moments, all of them racing in a pack, train it (none by default). Students hit the broken
+   * car in a fifth of these drills, their teachers in one in a hundred (2026-10-25).
+   */
+  ahead?: number;
+  onRound?: (round: number, report: BrokenReport & { loss: number; seconds: number; ahead: BrokenReport; racingLoss: number }) => void;
 }
 
 /** How drills went: how many, how many got the car to the apron (and how fast), and what it cost. */
@@ -117,12 +123,14 @@ const TEACHER_DRIVE_GAIN = 4;
 const teacher = (d: BrokenStudent) => new BrokenTeacher(d);
 
 /**
- * One drill on a track: the pack racing, the student's car among them breaking to `health` after a while. Who drives
- * the student's car: its teacher (watching), or the student (its broken-car skill once broken). Moments are recorded
- * to `examples` when given.
+ * One drill on a track: the pack racing, the student's car among them breaking to `health` after a while (`breaks`
+ * 'own'), or a car one to three places ahead of it ('ahead': the field's side of a broken car, going round it). Who
+ * drives the student's car: its teacher (watching), or the student (its broken-car skill once broken). Moments are
+ * recorded to `examples` when given. Hits are the student's car's; the apron and stalls, the broken car's.
  */
 export function brokenDrill(
   track: Track, d: BrokenStudent, studentDrives: boolean, health: number, seed: number, examples: Example[] | null, field = 12,
+  breaks: 'own' | 'ahead' = 'own',
 ): DrillResult {
   const rng = new Rng(seed);
   const world = new World(track, { collisions: true, drafting: true });
@@ -145,9 +153,12 @@ export function brokenDrill(
     const { style, traits } = racerStyle(0.15 + 0.7 * who.next(), who.next(), () => who.next());
     world.addCar(car, new Team(new TrafficRacer(style, undefined, traits), new TowerSpotter(), null, false, true));
   }
-  const car = me!;
+  const mine = me!;
   const settle = SETTLE[0] + (SETTLE[1] - SETTLE[0]) * rng.next();
-  for (let t = 0; t < settle && !car.retired; t += P.DT) world.step();
+  for (let t = 0; t < settle && !mine.retired; t += P.DT) world.step();
+  const order = world.cars.filter((c) => !c.retired).sort((a, b) => b.dist - a.dist);
+  const ahead = order[order.indexOf(mine) - 1 - rng.int(3)];
+  const car = breaks === 'ahead' && ahead ? ahead : mine; // the car that breaks
   car.health = Math.min(car.health, health);
   const before = world.cars.map((c) => c.health);
   const result: DrillResult = { apronAt: -1, hits: 0, harm: 0, stalled: false, out: false };
@@ -156,7 +167,7 @@ export function brokenDrill(
     const h = world.cars.map((c) => c.health);
     world.step();
     world.cars.forEach((c, k) => {
-      if (h[k] - c.health > 1e-4 && c.lastImpact?.kind === 'car' && (c === car || c.lastImpact.other === car.id)) result.hits++;
+      if (h[k] - c.health > 1e-4 && c.lastImpact?.kind === 'car' && (c === mine || c.lastImpact.other === mine.id)) result.hits++;
     });
     const onTrack = car.d <= track.innerEdge(car.trackIdx);
     if (result.apronAt < 0 && !onTrack) result.apronAt = t;
@@ -165,7 +176,7 @@ export function brokenDrill(
   }
   // (The broken car's own health was set by the drill, not lost: only what it lost after counts.)
   result.harm = world.cars.reduce((a, c, k) => a + Math.max(0, before[k] - c.health), 0);
-  result.out = car.retired;
+  result.out = mine.retired;
   return result;
 }
 
@@ -180,16 +191,21 @@ function report(results: DrillResult[]): BrokenReport {
 
 /** Teach a group their broken-car skill (networks trained in place; a new one starts as a copy of the racing one). */
 export function apprenticeBrokenCar(students: BrokenStudent[], seed: number, options: BrokenSkillOptions = {}): void {
-  const opts = { rounds: 6, tracks: 2, drills: 4, field: 12, epochs: 6, maxExamples: 40_000, racingShare: 0, ...options };
+  const opts = { rounds: 6, tracks: 2, drills: 4, field: 12, epochs: 6, maxExamples: 40_000, racingShare: 0, ahead: 0, ...options };
   const rng = new Rng(hashSeed(seed, 'broken-car'));
   const broken: Example[][] = students.map(() => []), racing: Example[][] = students.map(() => []);
+  const field: Example[][] = students.map(() => []);
   for (const d of students) d.broken ??= d.weights.slice();
   for (let round = 0; round < opts.rounds; round++) {
     const t0 = Date.now();
     const tracks = Array.from({ length: opts.tracks }, (_, k) => apprenticeTrack(round * opts.tracks + k, seed));
-    const results: DrillResult[] = [];
+    const results: DrillResult[] = [], aheads: DrillResult[] = [];
     students.forEach((d, i) => {
       for (const track of tracks) {
+        for (let k = 0; k < opts.ahead; k++) {
+          const health = HEALTH[0] + (HEALTH[1] - HEALTH[0]) * rng.next();
+          aheads.push(brokenDrill(track, d, round > 0, health, hashSeed(seed, `ahead${round}:${d.lineage}:${track.length}:${k}`), field[i], opts.field, 'ahead'));
+        }
         for (let k = 0; k < opts.drills; k++) {
           const health = HEALTH[0] + (HEALTH[1] - HEALTH[0]) * rng.next();
           const recorded: Example[] = [];
@@ -198,13 +214,16 @@ export function apprenticeBrokenCar(students: BrokenStudent[], seed: number, opt
         }
       }
     });
-    let loss = 0;
+    let loss = 0, racingLoss = 0;
     students.forEach((d, i) => {
       const nRacing = Math.min(racing[i].length, Math.round(opts.maxExamples * opts.racingShare));
       const set = [...pick(broken[i], opts.maxExamples - nRacing, rng), ...pick(racing[i], nRacing, rng)];
       loss += trainFinite(d.broken!, set, round === 0 ? 3 * opts.epochs : opts.epochs, rng);
+      if (field[i].length) racingLoss += trainFinite(d.weights, pick(field[i], opts.maxExamples, rng), round === 0 ? 3 * opts.epochs : opts.epochs, rng);
     });
-    opts.onRound?.(round, { ...report(results), loss: loss / students.length, seconds: (Date.now() - t0) / 1000 });
+    opts.onRound?.(round, {
+      ...report(results), loss: loss / students.length, seconds: (Date.now() - t0) / 1000, ahead: report(aheads), racingLoss: racingLoss / students.length,
+    });
   }
 }
 

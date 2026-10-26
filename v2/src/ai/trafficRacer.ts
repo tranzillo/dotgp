@@ -164,6 +164,13 @@ const STOPPED = 5;
 const OFF_LINE_BUFFER = 1;
 /** How much faster than a stopped or smoking car the way round it must be (m/s), whatever the driver's passing edge. */
 const GO_ROUND_EDGE = 1;
+/** A pass under way carries on while its line beside the car it's passing is no slower than this against it (m/s). */
+const PASS_HOLD = -1;
+/** ... looking this far ahead (s) for its side to work. */
+const PASS_HOLD_LOOK = 2;
+/** Making a pass, the more of the tyres' grip it uses than it races on, and the most it uses. */
+const PASS_PUSH = 0.06;
+const PASS_GRIP = 0.95;
 /** Added to a broken car's passing threshold (m/s): it passes nothing. */
 const SAVE_PASS = 60;
 /** How far ahead (m) a broken car sees the pit wall's nose coming, heading for the apron. */
@@ -307,11 +314,16 @@ export class TrafficRacer {
       if (mirrorView(car, world, this.mirror)[MIRROR.LOW] > 1 - SAVE_CLEAR / MIRROR_TIME) saveD = Math.min(saveD, car.d);
       hiEdge = Math.max(here.hi, saveD + OFF_LINE_BUFFER);
     }
-    const arcLimit = (s: number, offset: number) => {
+    // Making a pass it pushes: beside a car, off its line, it uses PASS_PUSH more of the grip than it races on (up to
+    // PASS_GRIP). Judged at its racing share, a line a car's width off the line was slower than the car it meant to
+    // pass on nearly every attempt (a short oval: 1118 of 1131 attempts given up, nearly all with neither side's line
+    // fast enough), and side by side racing hardly happened.
+    const passMu = P.TIRE_MU * Math.min(PASS_GRIP, grip + PASS_PUSH) * car.condition;
+    const arcLimit = (s: number, offset: number, m = mu) => {
       const at = lineAt(line, s), k = at.kappa;
       const arc = Math.abs(k / Math.max(0.2, 1 - k * offset));
       const bank = Math.sign(k) * track.bankAt(track.indexAt(s), at.d + offset);
-      return cornerSpeed(spec, track, mu, arc, bank, car.mass, Infinity);
+      return cornerSpeed(spec, track, m, arc, bank, car.mass, Infinity);
     };
 
     let want = saveD - here.d; // the offset from the line it heads for
@@ -410,19 +422,25 @@ export class TrafficRacer {
       // the judgement, racers pulled out mid-corner onto lines they couldn't hold: 240 wall hits in 40 laps.)
       // Going round a stopped or smoking car, the arc need only beat it by GO_ROUND_EDGE: judged on the driver's
       // own passing edge, a racer that never passes (pass: Infinity, the circuit teachers) found no way round ever.
-      const edge = stopped ? Math.min(pass, GO_ROUND_EDGE) : pass;
+      // A pass under way holds its side while its line there is no more than PASS_HOLD slower than that car: side by
+      // side, the two run at nearly the same speed, and judged on its passing edge every moment, a racer gave up the
+      // moment it drew alongside (2026-10-25: 3302 attempts on a short oval in 10 minutes, 2 completed, 0.8 s each).
+      const holding = this.passSide !== 0 && !stopped && !(faster > pass) && faster > PASS_HOLD;
+      const edge = stopped ? Math.min(pass, GO_ROUND_EDGE) : holding ? PASS_HOLD : pass;
       const besideWorks = (beside: number) => {
-        const rel = Math.max(0, ds) + 2 * alongside(), t = rel / Math.max(faster, 0.5);
+        // (Holding a pass under way, only as far as it will be beside it in the next PASS_HOLD_LOOK s: side by side the
+        // edge is near none, and the whole way past reached into a corner it couldn't beat it through.)
+        const rel = Math.max(0, ds) + 2 * alongside(), t = holding ? PASS_HOLD_LOOK : rel / Math.max(faster, 0.5);
         const len = Math.min(reach, Math.max(0, ds) + vOther * t);
         const off = beside - there.d; // beside it, as far from the line as it is
         for (let a = 0; a <= len; a += CATCH_STEP) {
           const at = lineAt(line, other.s + a), dAbs = at.d + off;
           if (dAbs < at.lo + OFF_LINE_BUFFER || dAbs > at.hi - OFF_LINE_BUFFER) return false;
-          if (arcLimit(other.s + a, off) < vOther + edge) return false;
+          if (arcLimit(other.s + a, off, stopped ? mu : passMu) < vOther + edge) return false;
         }
         return true;
       };
-      if (stopped || (faster > pass && !building)) {
+      if (stopped || (faster > pass && !building) || holding) {
         // A way past: the side it's already going (a pass under way keeps its side), else the side with more road.
         const left = pitting || mergeTo < other.d || !besideWorks(other.d + width) ? -1 : there.hi - OFF_LINE_BUFFER - (other.d + width);
         const right = !besideWorks(mergeTo - width) ? -1 : (mergeTo - width) - (there.lo + OFF_LINE_BUFFER);
@@ -482,7 +500,7 @@ export class TrafficRacer {
       let cap = Infinity;
       if (Math.abs(offset) > 0.3) {
         for (let a = ahead; a <= ahead + 80; a += 5) {
-          const limit = arcLimit(car.s + a, offset);
+          const limit = arcLimit(car.s + a, offset, this.passSide !== 0 ? passMu : mu);
           cap = Math.min(cap, Math.sqrt(limit * limit + 2 * 0.8 * cornerMu * (a - ahead)));
         }
       }

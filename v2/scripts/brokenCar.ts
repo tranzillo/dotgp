@@ -4,7 +4,7 @@
  * processes; the bundle comes back with each driver's skill, and its licence if it passed the test (brokenCarTest,
  * after training: not stamped).
  *
- *   npx tsx scripts/brokenCar.ts --in bundle.json --out out.json [--group 8] [--rounds 6] [--tracks 2] [--drills 4] [--racing 0] [--epochs 6] [--examples 40000] [--seed 1] [--jobs N]
+ *   npx tsx scripts/brokenCar.ts --in bundle.json --out out.json [--group 8] [--rounds 6] [--tracks 2] [--drills 4] [--racing 0] [--epochs 6] [--examples 40000] [--ahead 0 (drills a car ahead breaks: trains the racing network too)] [--seed 1] [--jobs N]
  *   npx tsx scripts/brokenCar.ts --in bundle.json --group-only <first> --count <n> --out part.json ...   (one group)
  *   npx tsx scripts/brokenCar.ts --in bundle.json --test-only 1   (each driver's licence test as it stands: teacher and student)
  */
@@ -20,7 +20,7 @@ for (let i = 2; i < process.argv.length; i++) if (process.argv[i].startsWith('--
 const inFile = args.get('in'), out = args.get('out');
 if (!inFile || (!out && !args.has('test-only'))) throw new Error('--in bundle.json --out out.json');
 const seed = Number(args.get('seed') ?? 1);
-const pass = ['rounds', 'seed', 'tracks', 'drills', 'racing', 'epochs', 'examples'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
+const pass = ['rounds', 'seed', 'tracks', 'drills', 'racing', 'epochs', 'examples', 'ahead'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
 
 interface Entry {
   lineage?: number; nerve?: number; talent?: number; limits?: { latency: number; noise: number }; weights: number[];
@@ -57,12 +57,16 @@ if (args.has('test-only')) {
     ...(args.has('racing') ? { racingShare: Number(args.get('racing')) } : {}),
     ...(args.has('epochs') ? { epochs: Number(args.get('epochs')) } : {}),
     ...(args.has('examples') ? { maxExamples: Number(args.get('examples')) } : {}),
-    onRound: (round, r) => console.log(`group ${first} round ${round}: ${describe(r)}, loss ${r.loss.toFixed(4)} (${r.seconds.toFixed(0)} s)`),
+    ...(args.has('ahead') ? { ahead: Number(args.get('ahead')) } : {}),
+    onRound: (round, r) => console.log(`group ${first} round ${round}: ${describe(r)}, loss ${r.loss.toFixed(4)}`
+      + (r.ahead.drills ? `; a car ahead breaking: ${r.ahead.hits} hits in ${r.ahead.drills} drills, racing loss ${r.racingLoss.toFixed(4)}` : '') + ` (${r.seconds.toFixed(0)} s)`),
   });
   const tests = students.map((d) => brokenCarTest(d, seed));
   tests.forEach((t, i) => console.log(`group ${first} driver ${first + i} licence ${t.passed ? 'PASSED' : 'failed'}: ${describe(t.report)}`));
   writeFileSync(out!, JSON.stringify({
-    drivers: entries.map((e, i) => ({ ...e, broken: { weights: Array.from(students[i].broken!) }, brokenLicensed: tests[i].passed })),
+    drivers: entries.map((e, i) => ({
+      ...e, ...(args.has('ahead') ? { weights: Array.from(students[i].weights) } : {}), broken: { weights: Array.from(students[i].broken!) }, brokenLicensed: tests[i].passed,
+    })),
   }));
 } else {
   const group = Number(args.get('group') ?? 8);
