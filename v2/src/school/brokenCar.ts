@@ -32,7 +32,7 @@ import { placeOnGrid } from '../sim/grid';
 import type { Track } from '../sim/track';
 import { World } from '../sim/world';
 import { hashSeed, presetTrack } from '../trackgen';
-import { apprenticeTrack, teacherOf } from './ovalApprentice';
+import { apprenticeTrack, soloDrives, teacherOf } from './ovalApprentice';
 import { Recorder } from './recorder';
 
 /** A driver as far as a broken car goes: who it is (its teacher), its skills, its line and its human limits. */
@@ -63,7 +63,9 @@ export interface BrokenSkillOptions {
   /**
    * Drills per track where a car ahead of the student breaks (the field's side: going round it), which teach its
    * racing network: their moments, all of them racing in a pack, train it (none by default). Students hit the broken
-   * car in a fifth of these drills, their teachers in one in a hundred (2026-10-25).
+   * car in a fifth of these drills, their teachers in one in a hundred (2026-10-25). Half its training is solo drives
+   * on the round's tracks: on pack moments alone it forgot driving alone (a stable fresh from solo drives on many ovals
+   * went back to riding the outside wall of an unseen one, health lost solo 0.14 -> 0.57, 2026-10-26).
    */
   ahead?: number;
   onRound?: (round: number, report: BrokenReport & { loss: number; seconds: number; ahead: BrokenReport; racingLoss: number }) => void;
@@ -194,12 +196,15 @@ export function apprenticeBrokenCar(students: BrokenStudent[], seed: number, opt
   const opts = { rounds: 6, tracks: 2, drills: 4, field: 12, epochs: 6, maxExamples: 40_000, racingShare: 0, ahead: 0, ...options };
   const rng = new Rng(hashSeed(seed, 'broken-car'));
   const broken: Example[][] = students.map(() => []), racing: Example[][] = students.map(() => []);
-  const field: Example[][] = students.map(() => []);
+  const field: Example[][] = students.map(() => []), alone: Example[][] = students.map(() => []);
+  // The students as the apprenticeship's solo drives take them (their racing network drives).
+  const soloists = students.map((d) => ({ ...d, limits: d.limits ?? { latency: 0.15, noise: 0.05 }, caution: d.caution ?? null }));
   for (const d of students) d.broken ??= d.weights.slice();
   for (let round = 0; round < opts.rounds; round++) {
     const t0 = Date.now();
     const tracks = Array.from({ length: opts.tracks }, (_, k) => apprenticeTrack(round * opts.tracks + k, seed));
     const results: DrillResult[] = [], aheads: DrillResult[] = [];
+    if (opts.ahead > 0) for (const track of tracks) soloDrives(track, soloists, round > 0 ? { kind: 'student' } : { kind: 'teacher' }, alone, rng, round, seed);
     students.forEach((d, i) => {
       for (const track of tracks) {
         for (let k = 0; k < opts.ahead; k++) {
@@ -219,7 +224,8 @@ export function apprenticeBrokenCar(students: BrokenStudent[], seed: number, opt
       const nRacing = Math.min(racing[i].length, Math.round(opts.maxExamples * opts.racingShare));
       const set = [...pick(broken[i], opts.maxExamples - nRacing, rng), ...pick(racing[i], nRacing, rng)];
       loss += trainFinite(d.broken!, set, round === 0 ? 3 * opts.epochs : opts.epochs, rng);
-      if (field[i].length) racingLoss += trainFinite(d.weights, pick(field[i], opts.maxExamples, rng), round === 0 ? 3 * opts.epochs : opts.epochs, rng);
+      const half = Math.floor(opts.maxExamples / 2);
+      if (field[i].length) racingLoss += trainFinite(d.weights, [...pick(field[i], half, rng), ...pick(alone[i], half, rng)], round === 0 ? 3 * opts.epochs : opts.epochs, rng);
     });
     opts.onRound?.(round, {
       ...report(results), loss: loss / students.length, seconds: (Date.now() - t0) / 1000, ahead: report(aheads), racingLoss: racingLoss / students.length,

@@ -7,6 +7,7 @@
  *
  *   npx tsx scripts/stable.ts --out stable.json [--drivers 40] [--group 8] [--rounds 10] [--laps 30] [--field 40] [--seed 1] [--jobs N]
  *   npx tsx scripts/stable.ts --group-only <first> --count <n> --out part.json ...   (one group: what the parent runs)
+ *     [--solo-tracks N]      solo drives on N more generated ovals each round (besides the round's own track)
  *     [--from bundle.json]   carry on the apprenticeship of a bundle's drivers (their oval racing and caution skills,
  *                            widened to today's inputs) rather than new ones; the bundle comes back with those two
  *                            skills replaced and every other kept
@@ -22,7 +23,7 @@ const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i++) if (process.argv[i].startsWith('--')) args.set(process.argv[i].slice(2), process.argv[++i]);
 const out = args.get('out') ?? 'stable.json';
 const seed = Number(args.get('seed') ?? 1);
-const pass = ['rounds', 'laps', 'field', 'seed', 'debris', 'epochs', 'shake', 'from'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
+const pass = ['rounds', 'laps', 'field', 'seed', 'debris', 'epochs', 'shake', 'from', 'solo-tracks'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
 
 const toJson = (d: StableDriver) => ({
   lineage: d.lineage, rounds: 0, nerve: d.nerve, talent: d.talent, limits: d.limits, cautionLicensed: true, weights: Array.from(d.weights),
@@ -48,8 +49,9 @@ if (args.has('group-only')) {
     ...(args.has('debris') ? { debris: Number(args.get('debris')) } : {}),
     ...(args.has('epochs') ? { epochs: Number(args.get('epochs')) } : {}),
     ...(args.has('shake') ? { shake: Number(args.get('shake')) } : {}),
+    ...(args.has('solo-tracks') ? { soloTracks: Number(args.get('solo-tracks')) } : {}),
     onRound: (round, r) => console.log(`group ${first} round ${round} ${r.track}: ${r.out} out, ${r.examples} moments (${r.damaged} damaged), `
-      + `loss ${(r.losses.reduce((a, b) => a + b, 0) / r.losses.length).toFixed(4)}, cautions ${r.cautionLoss.toFixed(4)}, solo crashes ${r.soloCrashes}/${3 * count} (${r.seconds.toFixed(0)} s)${r.nonFinite.length ? `, dropped non-finite ${r.nonFinite.join(', ')}` : ''}`),
+      + `loss ${(r.losses.reduce((a, b) => a + b, 0) / r.losses.length).toFixed(4)}, cautions ${r.cautionLoss.toFixed(4)}, solo crashes ${r.soloCrashes}/${3 * count * (1 + Number(args.get('solo-tracks') ?? 0))} (${r.seconds.toFixed(0)} s)${r.nonFinite.length ? `, dropped non-finite ${r.nonFinite.join(', ')}` : ''}`),
   });
   writeFileSync(out, JSON.stringify({ drivers: students.map(toJson) }));
 } else {

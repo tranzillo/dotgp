@@ -85,9 +85,14 @@ export function setRecordExtra(f: ((car: Car, world: World) => Float32Array) | n
 export function apprenticeTrack(round: number, seed: number): Track {
   const presets = [SHORT_TRACK, SPEEDWAY, FLAT_TRACK];
   if (round % 2 === 0) return ovalTrack(presets[(round / 2) % presets.length]);
+  return generatedOval(seed, `apprentice${round}`);
+}
+
+/** A generated oval for this key (another draw if the generator can't lay one out). */
+function generatedOval(seed: number, key: string): Track {
   for (let k = 0; ; k++) {
     try {
-      return new Track(generateLayout({ type: 'oval', seed: hashSeed(seed, `apprentice${round}:${k}`) }));
+      return new Track(generateLayout({ type: 'oval', seed: hashSeed(seed, `${key}:${k}`) }));
     } catch (e) {
       if (k >= 5) throw e;
     }
@@ -106,6 +111,13 @@ export interface OvalApprenticeOptions {
   epochs?: number;
   /** Moments trained on per student per round: a fresh sample of everything recorded so far. */
   maxExamples?: number;
+  /**
+   * Generated ovals each round's solo drives also run on, besides the round's own track. A round races one oval, so
+   * alone a student saw a few ovals in all and drove the rest from them: on an unseen short oval with long tight
+   * corners, the stable arrived 3-6 m/s over the line's speed and rode the outside wall (2026-10-26), and a round of
+   * solo drives on that oval alone had it at its teacher's pace.
+   */
+  soloTracks?: number;
   /**
    * After the first round: 0, the students drive (DAgger); above 0, their teachers drive through shaken hands
    * (noise injection), the drifting error this share of the inputs' range at full strength (reached by round 3).
@@ -135,7 +147,7 @@ const SOLO_SECONDS = 60;
  * the student alone, the way it is only a few percent of the time in a 40-car race, where it would learn to brake
  * for the car ahead and never where to brake for the corner. Returns how many drives the student crashed.
  */
-function soloDrives(track: Track, students: StableDriver[], driving: Driving, examples: Example[][], rng: Rng, round: number, seed: number): number {
+export function soloDrives(track: Track, students: StableDriver[], driving: Driving, examples: Example[][], rng: Rng, round: number, seed: number): number {
   let crashed = 0;
   students.forEach((d, s) => {
     for (const lane of SOLO_LANES) {
@@ -162,7 +174,7 @@ function soloDrives(track: Track, students: StableDriver[], driving: Driving, ex
  */
 export function apprenticeStable(students: StableDriver[], seed: number, options: OvalApprenticeOptions = {}): void {
   const opts = {
-    rounds: 10, field: 40, laps: 30, debris: 0.05, epochs: 4, maxExamples: 60_000, shake: 0, ...options,
+    rounds: 10, field: 40, laps: 30, debris: 0.05, epochs: 4, maxExamples: 60_000, shake: 0, soloTracks: 0, ...options,
   };
   const rng = new Rng(hashSeed(seed, 'apprentice'));
   const examples: Example[][] = students.map(() => []);
@@ -173,7 +185,8 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
     // Round 0 the students watch; then, noise injection (the teacher shaken, harder as the rounds go on) or DAgger.
     const driving: Driving = round === 0 ? { kind: 'teacher' }
       : opts.shake > 0 ? { kind: 'shaken', sigma: opts.shake * Math.min(1, round / 3) } : { kind: 'student' };
-    const soloCrashes = soloDrives(track, students, driving, alone, rng, round, seed);
+    let soloCrashes = soloDrives(track, students, driving, alone, rng, round, seed);
+    for (let k = 0; k < opts.soloTracks; k++) soloCrashes += soloDrives(generatedOval(seed, `solo${round}:${k}`), students, driving, alone, rng, round, seed);
     const { out } = classroomRace(track, students, driving, examples, rng, { field: opts.field, laps: opts.laps, debris: opts.debris, extra: recordExtra ?? undefined }, round, seed);
     const cautionLosses: number[] = [];
     // A moment with a non-finite input or label would turn a driver's weights to NaN in one step (stable-save, 2026-10-25:
