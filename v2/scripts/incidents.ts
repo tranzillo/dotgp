@@ -79,7 +79,8 @@ const TIRE_BANDS = [1, 0.8, 0.6, 0.4, 0.3, 0.2, 0];
 
 /** Drivers; one with a caution license (both pit licenses) drives its own cautions (stops), as in races. */
 type Entrant = {
-  weights: number[]; cautionLicensed?: boolean; pitLicensed?: boolean; pitTrafficLicensed?: boolean;
+  weights: number[]; cautionLicensed?: boolean; pitLicensed?: boolean; pitTrafficLicensed?: boolean; brokenLicensed?: boolean;
+  broken?: { weights: number[] };
   limits?: { latency: number; noise: number };
   /** The caution skill (a network that drives while the field is pacing). */
   caution?: { weights: number[] };
@@ -338,6 +339,8 @@ function runRace(trackName: string, seed: number): RaceStats {
         limits: limits && { ...limits, seed: (seed * 7919 + k * 104729) >>> 0 },
         caution: d.caution && adaptWeights(Float32Array.from(d.caution.weights)),
         pit: d.pit && adaptWeights(Float32Array.from(d.pit.weights)),
+        // Its broken-car skill drives a broken car once it's licensed (scripts/brokenCar.ts); until then its racing does.
+        broken: d.brokenLicensed && d.broken ? adaptWeights(Float32Array.from(d.broken.weights)) : undefined,
       }));
   }
   const race = new Race(world, laps, new PaceCarDriver(), withRules ? { rulebook: OVAL_RULES, seed } : undefined);

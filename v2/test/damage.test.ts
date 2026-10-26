@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomTraits, StrategistCrewChief } from '../src/ai/pitting';
-import { observeDamage, observePitCalls, PIT_CALLS_SIZE } from '../src/ai/observe';
+import { brokenRoute, CAUTION_SIZE, KNOWLEDGE_AHEAD, observeDamage, observePitCalls, PIT_CALLS_SIZE, PIT_SIZE } from '../src/ai/observe';
+import { DRIVER_LAYERS, KNOWLEDGE_FROM, NeuralDriver } from '../src/ai/drivers';
+import { genomeSize } from '../src/ai/network';
+import { Rng } from '../src/ai/rng';
+import { RADIO_SIZE } from '../src/ai/spotter';
 import { fastestLine, lineAt } from '../src/ai/racingLine';
 import { racerStyle, TrafficRacer } from '../src/ai/trafficRacer';
 import { applyImpact, Car, stepCar } from '../src/sim/car';
@@ -169,6 +173,24 @@ describe('the second damage model', () => {
       for (let t = 0; t < 60; t += P.DT) { car.health = 0.15; w.step(); }
       expect(track.signedS(car.s)).toBeGreaterThan(track.pit.wallStart + 100);
       expect(car.lastImpact).toBeNull();
+    });
+
+    it('a broken car is driven by its broken-car skill, which knows the way to the apron as its line', () => {
+      const w = scene([600, 0, 40, 0.3]);
+      const car = w.cars[0];
+      const rng = new Rng(3);
+      const weights = Float32Array.from({ length: genomeSize(DRIVER_LAYERS) }, () => rng.gaussian() * 0.1);
+      const skilled = new NeuralDriver(weights, undefined, undefined, { broken: weights.slice() });
+      const plain = new NeuralDriver(weights);
+      const radio = new Float32Array(RADIO_SIZE), pit = new Float32Array(PIT_SIZE), caution = new Float32Array(CAUTION_SIZE);
+      const seen = (d: NeuralDriver) => d.inputs(car, w, radio, pit, caution);
+      expect(skilled.netAt(track, seen(skilled))).toBe(skilled.brokenNet);
+      expect(plain.netAt(track, seen(plain))).toBe(plain.net);
+      // Where its line runs (the first look ahead: here): the apron's route for the skill, the racing line without it.
+      expect(seen(skilled)[KNOWLEDGE_FROM] * 10 + car.d).toBeCloseTo(brokenRoute(track)(car.s + KNOWLEDGE_AHEAD[0]), 3);
+      expect(seen(skilled)[KNOWLEDGE_FROM]).toBeGreaterThan(seen(plain)[KNOWLEDGE_FROM] + 0.3);
+      car.health = 0.8; // mended: its racing again
+      expect(skilled.netAt(track, seen(skilled))).toBe(skilled.net);
     });
 
     it('a smoking car ahead is gone round high, even by a racer that never passes', () => {

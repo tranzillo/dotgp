@@ -7,7 +7,7 @@ import { genomeSize, Network, widenNetwork } from './network';
 import { PHYSICS as P, PIT_SERVICE } from '../sim/constants';
 import { PitAutopilot, pitDecisionS, pitRoute, WAVE_OFF_FUEL_LAPS, type CrewChief } from './pitting';
 import {
-  CALLS_SIZE, PIT_CALLS_SIZE, observePitCalls, CAUTION_RANGE_SIZE, observeCautionRange, DAMAGE_SIZE, observeDamage, CAUTION_SIZE, KNOWLEDGE_AHEAD, KNOWLEDGE_SIZE, LOOKAHEAD, OBS_SIZE, observe, observeCalls, observeCaution, observeKnowledge, observePit, observePreview,
+  brokenRoute, CALLS_SIZE, PIT_CALLS_SIZE, observePitCalls, CAUTION_RANGE_SIZE, observeCautionRange, DAMAGE_SIZE, observeDamage, CAUTION_SIZE, KNOWLEDGE_AHEAD, KNOWLEDGE_SIZE, LOOKAHEAD, OBS_SIZE, observe, observeCalls, observeCaution, observeKnowledge, observePit, observePreview,
   PIT_LOOKAHEAD, PIT_SIZE, PREVIEW_SIZE, type TrackKnowledge,
 } from './observe';
 import { Rng } from './rng';
@@ -250,6 +250,12 @@ export interface NeuralDriverExtras {
    * them (if it drives its own stops at all).
    */
   pit?: Float32Array;
+  /**
+   * Its broken-car skill (the second damage model: past half health): a network that drives a broken car under green,
+   * off the line and along the apron to its stop, so learning it can't cost it its racing. Without one, its racing
+   * skill drives on (seeing its own damage, which a racing skill never learned to answer).
+   */
+  broken?: Float32Array;
 }
 
 /**
@@ -345,6 +351,8 @@ export class NeuralDriver implements DriverBrain {
   readonly cautionNet: Network | null;
   readonly roadCautionNet: Network | null;
   readonly pitNet: Network | null;
+  /** The broken-car skill (see NeuralDriverExtras.broken). */
+  readonly brokenNet: Network | null;
   /** The last inputs were mirrored (the coming corner turns right): labels for them must be mirrored too. */
   mirrored = false;
 
@@ -358,12 +366,13 @@ export class NeuralDriver implements DriverBrain {
     /** Its human limits (latency, motor noise), and its caution skill (a network for when the field is pacing). */
     extras: NeuralDriverExtras = {},
   ) {
-    const { limits, caution: cautionWeights, roadCaution, pit } = extras;
+    const { limits, caution: cautionWeights, roadCaution, pit, broken } = extras;
     this.net = new Network(DRIVER_LAYERS, weights);
     this.roadNet = roadWeights ? new Network(DRIVER_LAYERS, roadWeights) : null;
     this.cautionNet = cautionWeights ? new Network(DRIVER_LAYERS, cautionWeights) : null;
     this.roadCautionNet = roadCaution ? new Network(DRIVER_LAYERS, roadCaution) : null;
     this.pitNet = pit ? new Network(DRIVER_LAYERS, pit) : null;
+    this.brokenNet = broken ? new Network(DRIVER_LAYERS, broken) : null;
     this.hands = limits && (limits.latency > 0 || limits.noise > 0) ? new Hands(limits, P.CONTROL_EVERY * P.DT) : null;
   }
 
@@ -376,7 +385,8 @@ export class NeuralDriver implements DriverBrain {
   netAt(track: Track, input: Float32Array): Network {
     // A stop (under green or caution) is the pit skill's.
     if (this.pitNet && (input[PIT_FROM] !== 0 || input[PIT_FROM + 1] !== 0)) return this.pitNet;
-    if (input[CAUTION_FROM] === 0) return this.netFor(track);
+    // A broken car under green is the broken-car skill's (stops and cautions still their own skills').
+    if (input[CAUTION_FROM] === 0) return this.brokenNet && input[DAMAGE_FROM] > 0 ? this.brokenNet : this.netFor(track);
     return (track.kind === 'road' ? this.roadCautionNet ?? this.cautionNet : this.cautionNet) ?? this.netFor(track);
   }
 
@@ -388,7 +398,9 @@ export class NeuralDriver implements DriverBrain {
     this.input.set(pit, OBS_SIZE + RADIO_SIZE);
     this.input.set(caution, OBS_SIZE + RADIO_SIZE + PIT_SIZE);
     this.input.set(observePreview(car, world.track, this.preview), PREVIEW_FROM);
-    this.input.set(observeKnowledge(car, world.track, this.known, this.knowledge), KNOWLEDGE_FROM);
+    // A broken car on an oval: the broken-car skill knows where it's going (the apron), as its line.
+    const broken = this.brokenNet && world.track.kind !== 'road' && compromise(car) > 0;
+    this.input.set(observeKnowledge(car, world.track, this.known, this.knowledge, broken ? brokenRoute(world.track) : undefined), KNOWLEDGE_FROM);
     this.input.set(observeCalls(car, world, this.calls), CALLS_FROM);
     this.input.set(observePitCalls(car, world, this.pitCalls), PIT_CALLS_FROM);
     this.input.set(observeCautionRange(car, world, this.cautionRange), CAUTION_RANGE_FROM);

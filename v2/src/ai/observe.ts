@@ -89,17 +89,32 @@ export const KNOWLEDGE_MARGINS = [0.6, 0.9, 1.2, 1.5] as const;
  * with this against 64% without, and more with its labels taken from where the car really is). Drivers from before
  * have zero weights from these inputs, so they drive as they did.
  */
-export function observeKnowledge(car: Car, track: Track, out: Float32Array, knowledge: TrackKnowledge = DEFAULT_KNOWLEDGE): Float32Array {
+export function observeKnowledge(
+  car: Car, track: Track, out: Float32Array, knowledge: TrackKnowledge = DEFAULT_KNOWLEDGE,
+  /** Where it's driving instead of its line, if anywhere (a broken car: brokenRoute). Its line's speeds still. */
+  route?: (s: number) => number,
+): Float32Array {
   const line = fastestLine(track, knowledge.margin);
   const speed = line.at(Math.round(knowledge.grip * car.grip * 50) / 50).speed;
   const n = line.d.length;
   KNOWLEDGE_AHEAD.forEach((a, j) => {
     const f = ((((car.s + a) / line.step) % n) + n) % n, i = Math.floor(f), k = (i + 1) % n, t = f - i;
-    out[j] = (line.d[i] + (line.d[k] - line.d[i]) * t - car.d) / 10;
+    out[j] = ((route ? route(car.s + a) : line.d[i] + (line.d[k] - line.d[i]) * t) - car.d) / 10;
     out[KNOWLEDGE_AHEAD.length + j] = (speed[i] + (speed[k] - speed[i]) * t - car.speed) / 20;
   });
   return out;
 }
+
+/**
+ * Where a broken car drives on an oval (the second damage model): the middle of the apron, out of the field's way,
+ * but clear of the pit wall, which stands on it (on the track side of it along it, over in good time for its nose).
+ * A driver with the broken-car skill knows it, as its track knowledge, as a driver called in knows the pit route.
+ */
+export function brokenRoute(track: Track): (s: number) => number {
+  return (s) => Math.min((track.innerEdgeAt(s) + track.apronEdgeAt(s)) / 2, track.pitWallClear(s, 1.5), track.pitWallClear(s + BROKEN_WALL_LEAD, 1.5));
+}
+/** How far ahead (m) a broken car sees the pit wall's nose coming (the track's own approach is a caution's, short at a crawl). */
+const BROKEN_WALL_LEAD = 150;
 
 /** Distances ahead (m) at which the driver sees where the pit route runs. */
 export const PIT_LOOKAHEAD = [0, 25, 50, 100] as const;

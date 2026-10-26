@@ -23,6 +23,18 @@
       "name": "Stable candidate",
       "file": "stable-candidate.json",
       "note": "The milestone's candidate (v2, 2026-10-23): the 40 stable individuals with every skill, no scripted driving. Oval racing and oval cautions: the oval stable v10 (oval machine). Road racing (24-round apprenticeship to each personality's road teacher with knocks, packs and wear, through its human limits; PPO 300; ES racecraft 150), road cautions (classroom races on circuits with start drills) and the pit skill (12 rounds of drills on ovals and circuits, half in traffic): circuit machine. Readiness 0 of 17 cells (training/experiments/2026-10-23-readiness-bundle-v2). Build on this one: replace a skill by lineage."
+    },
+    {
+      "id": "stable-candidate-v3",
+      "name": "Stable candidate v3",
+      "file": "stable-candidate-v3.json",
+      "note": "The candidate (v2) with the circuit machine's skills since (2026-10-25): a pit skill retrained with crowded drills (a column of cars all stopping the same lap, a car broken down in the lane) that backs up into its box when it overshoots (pit road's reverse gear), and road cautions retrained (off the track while catching the safety car 27% -> 8%). Racing and oval cautions unchanged (the oval stable v10). Ovals, 40 cars, 4 races each (short / speedway / flat): out 21.5 / 25.0 / 15.5 (v2: 23.5 / 28.8 / 20.0); clean passes per 100 green car-laps 12.4 / 51.2 / 13.7. Its own pit stops are still most of its wrecks: see the scripted-stops version. Circuits: most of the field out on the first lap. Read-only."
+    },
+    {
+      "id": "stable-candidate-v3-scripted-pits",
+      "name": "Stable candidate v3, scripted stops",
+      "file": "stable-candidate-v3-scripted-pits.json",
+      "note": "Stable candidate v3 with the pit maneuver driving its stops (no pit-traffic license) until the learned pit skill handles a crowded pit road. Ovals: the oval stable's races exactly, out 20.3 / 24.3 / 0.5 (short / speedway / flat, 40 cars) against v3's 21.5 / 25.0 / 15.5; clean passes per 100 green car-laps 7.7 / 47.5 / 6.9. Circuits: as v3. Read-only."
     }
   ]
 }
