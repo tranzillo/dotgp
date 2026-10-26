@@ -16,7 +16,7 @@
  * stops for damage.
  *
  *   npx tsx scripts/readiness.ts drivers.json [--tier quick|full] [--seeds 4] [--fields 20,40] [--circuits 4] [--only ovals|circuits]
- *     [--jobs N] [--json out.json] [--md out.md]
+ *     [--jobs N] [--json out.json] [--md out.md] [--rules 0]   (ovals race with the stewards, as the app does, unless --rules 0)
  *   --tier quick (2 seeds, 20 cars, 2 circuits: for iterating); full (the default: 4 seeds, 20 and 40 cars, 4 circuits: for gates)
  *
  * Not covered yet: rovals and venue rings (no race benchmark races them), qualifying.
@@ -40,6 +40,8 @@ const seeds = args.get('seeds') ?? (quick ? '2' : '4');
 const fields = (args.get('fields') ?? (quick ? '20' : '20,40')).split(',');
 const circuitCount = args.get('circuits') ?? (quick ? '2' : '4');
 const only = args.get('only');
+/** With the stewards (penalties, the black flag), as the app races: on unless --rules 0. */
+const rules = args.get('rules') !== '0';
 const jobs = args.get('jobs') ?? String(Math.max(1, cpus().length - 1));
 
 /** A cell is ready within this much of its teachers' pace, and with less than this share of driving scripted. */
@@ -105,7 +107,7 @@ if (only !== 'circuits') {
   for (const field of fields) {
     const json = join(dir, `ovals-${field}.json`);
     process.stderr.write(`ovals, ${field} cars...\n`);
-    await run('bench', [`teacher:${bundle}`, bundle, '--tracks', OVALS.join(','), '--seeds', seeds, '--field', field, '--jobs', jobs, '--json', json]);
+    await run('bench', [`teacher:${bundle}`, bundle, '--tracks', OVALS.join(','), '--seeds', seeds, '--field', field, '--jobs', jobs, '--json', json, ...(rules ? ['--rules', '1'] : [])]);
     const report = JSON.parse(readFileSync(json, 'utf8')) as { tracks: Record<string, Record<string, Metric>> };
     for (const [track, m] of Object.entries(report.tracks)) {
       const lap = m.lapTime.values;

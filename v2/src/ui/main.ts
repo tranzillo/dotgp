@@ -406,6 +406,9 @@ const host = new EventHost({
       camPos = null;
     }
   },
+  rubber(handle, strokes) {
+    renderer.setRubber(metas.get(handle)!.track, strokes);
+  },
   rounds(handle, reports) {
     lessonRounds(handle, reports);
   },

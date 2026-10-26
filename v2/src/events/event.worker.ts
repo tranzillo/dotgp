@@ -1,4 +1,5 @@
 /// <reference lib="webworker" />
+import { trackRubber } from '../ai/rubber';
 import { applyExperiment } from '../sim/experiment';
 import { PHYSICS as P } from '../sim/constants';
 import type { EventProgress, FromEvent, ToEvent } from './protocol';
@@ -62,6 +63,10 @@ self.onmessage = (e: MessageEvent<ToEvent>) => {
       applyExperiment(msg.experiment ?? '');
       if (msg.event.what === 'session') {
         const s = new Session(msg.event.spec);
+        // The grooves' rubber from practice, for the page to lay under the race's own (ovals; the lines are the
+        // racers' anyway).
+        const rubber = trackRubber(s.track);
+        if (rubber.length) post({ type: 'rubber', strokes: rubber }, [rubber.buffer]);
         if (msg.warm > 0) s.advance(msg.warm);
         session = s;
       } else {

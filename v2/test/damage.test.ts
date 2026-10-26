@@ -193,13 +193,22 @@ describe('the second damage model', () => {
       expect(skilled.netAt(track, seen(skilled))).toBe(skilled.net);
     });
 
-    it('a smoking car ahead is gone round high, even by a racer that never passes', () => {
-      // (Down the back straight: into a turn the line runs out to the wall, with no room beside it up there.)
-      const w = scene([1300, 0, 60, 1], [1340, 0, 30, 0.2]);
-      const r = new TrafficRacer({ ...racerStyle(0.5, 0.5, () => 0.5).style, pass: Infinity });
-      r.decide(w.cars[0], w);
-      expect(r.last.passing).toBe(true);
-      expect(r.last.want).toBeLessThan(0); // high: away from the inside it's heading for
+    it('a smoking car ahead is got by cleanly, even by a racer that never passes', () => {
+      // (Down the back straight, room to slow for it. The speedway's line runs high by the wall, so there is no way
+      // round above it until it heads down: a snapshot can't say which side; driving it out can.)
+      const w = new World(track, { collisions: true, drafting: true });
+      const [car, smoking] = ([[1300, 60, 1], [1380, 30, 0.2]] as const).map(([s, speed, health], k) => {
+        const c = new Car(k);
+        c.placeOnTrack(track, s, lineAt(line, s).d);
+        c.vx = track.tx[c.trackIdx] * speed;
+        c.vy = track.ty[c.trackIdx] * speed;
+        c.health = health;
+        w.addCar(c, new TrafficRacer({ ...racerStyle(0.5, 0.5, () => 0.5).style, pass: Infinity }));
+        return c;
+      });
+      for (let t = 0; t < 10; t += P.DT) { smoking.health = 0.2; w.step(); }
+      expect(car.dist).toBeGreaterThan(smoking.dist);
+      expect(car.lastImpact).toBeNull();
     });
   });
 });

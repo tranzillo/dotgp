@@ -65,6 +65,8 @@ export type FromEvent =
   | { type: 'finished'; results: EntrantResult[]; snapshot: SessionSnapshot; timeline: TimelineEvent[]; tape: TapeSegment | null }
   /** The event moved to another track (driving school rotates tracks between rounds). */
   | { type: 'track'; layout: TrackLayout }
+  /** Rubber already down on the track's grooves (strokes, as in a frame), laid under the race's own marks. */
+  | { type: 'rubber'; strokes: Float32Array }
   /** Driving-school rounds ended: each student's result and improved weights, and the rounds kept on tape. */
   | { type: 'rounds'; reports: RoundReport[]; tapes: RoundTape[] }
   /** Drivers learned while racing. */

@@ -170,6 +170,8 @@ export interface TrackView {
   zoomToFit(w: number, h: number, share?: number): number;
   clearMarks(): void;
   stampStrokes(strokes: Float32Array): void;
+  /** Rubber a track has down before any race, kept under its marks through every clear. */
+  setRubber(track: Track, strokes: Float32Array): void;
   render(cars: RenderCar[], liveryOf: (car: RenderCar) => Livery | undefined, highlight?: readonly RenderCar[], officials?: RenderOfficials): void;
 }
 
@@ -198,6 +200,7 @@ export class BlankView implements TrackView {
   }
   clearMarks(): void {}
   stampStrokes(): void {}
+  setRubber(): void {}
   render(): void {}
 }
 

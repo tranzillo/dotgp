@@ -48,10 +48,17 @@ export interface LineOptions {
   mass: number;
   /** Refinement for lap time: tries per point. */
   refine: number;
+  /** The share of the tyres' grip lap time is judged at while refining (drivers drive at 0.82-0.90 of it). */
+  gripShare: number;
+  /**
+   * A groove instead of the fastest line: this far across from the inside limit of the corridor (m), all the way round
+   * (where the road narrows, as near as it can), with its own speed profile. Unset: the fastest line.
+   */
+  groove?: number;
   seed: number;
 }
 
-const DEFAULTS: LineOptions = { margin: 0.6, step: 2.5, mass: P.DRY_MASS + P.FUEL_CAPACITY / 2, refine: 30, seed: 1 };
+const DEFAULTS: LineOptions = { margin: 0.6, step: 2.5, mass: P.DRY_MASS + P.FUEL_CAPACITY / 2, refine: 30, seed: 1, gripShare: 1 };
 const TOP_SPEED = 105;
 
 /** Geometry of the corridor: centreline points, normals (+d), and the bounds of d. */
@@ -275,6 +282,7 @@ export function racingLine(track: Track, options: Partial<LineOptions> = {}): Ra
   const o = { ...DEFAULTS, mass: spec.dryMass + P.FUEL_CAPACITY / 2, ...options };
   const car: LineCar = { power: spec.power(track), cda: spec.cda(track), q: (0.5 * P.AIR_DENSITY * spec.cla(track)) / o.mass, k: spec.loadSensitivity, drive: spec.driveShare };
   const fine = corridor(track, o.step, o.margin);
+  if (o.groove !== undefined) return grooveLine(track, fine, o, car);
   // Smoothest path, coarse to fine: 20 m, 10 m, 5 m, then the line's own spacing.
   let d: Float64Array | null = null;
   for (const spacing of [20, 10, 5]) {
@@ -294,9 +302,29 @@ export function racingLine(track: Track, options: Partial<LineOptions> = {}): Ra
   const evaluate = (dd: Float64Array): Profile => {
     pathCurvature(fine, dd, kappa, ds);
     ground(track, fine, dd, kappa, mu, roll, bank);
-    return profile(n, kappa, ds, mu, roll, bank, o.mass, car);
+    return profile(n, kappa, ds, mu, roll, bank, o.mass, car, o.gripShare);
   };
   let best = evaluate(line);
+  // Other places to start from: grooves across the road (on a banked oval the high groove can beat the smoothest
+  // path, which refinement's local bumps never reach: the speedway's top groove lapped 1.3% under the line). Each is
+  // judged as it stands; the quickest is refined.
+  for (let from = 1.5; ; from += 2 * P.CAR_RADIUS) {
+    let any = false;
+    const g = new Float64Array(n);
+    let turn = 0;
+    for (let k = 0; k < n; k++) turn += track.kappa[track.indexAt(fine.s[k])];
+    for (let k = 0; k < n; k++) {
+      const d = turn >= 0 ? fine.hi[k] - from : fine.lo[k] + from;
+      if (d > fine.lo[k] && d < fine.hi[k]) any = true;
+      g[k] = Math.max(fine.lo[k], Math.min(fine.hi[k], d));
+    }
+    if (!any) break;
+    smoothest(fine, g, 200);
+    const p = evaluate(g);
+    if (p.lapTime < best.lapTime) { best = p; line.set(g); }
+  }
+  pathCurvature(fine, line, kappa, ds);
+  ground(track, fine, line, kappa, mu, roll, bank);
 
   // Refinement for lap time: smooth bumps of the line (about a corner's length), kept if the lap gets faster.
   // A bump only moves its stretch, so only that stretch's curvature and ground are worked out again (and put
@@ -323,7 +351,7 @@ export function racingLine(track: Track, options: Partial<LineOptions> = {}): Ra
     }
     for (let j = from; j <= to; j++) curvatureAt(fine, line, (centre + j + n) % n, kappa, ds);
     for (let j = from; j <= to; j++) groundAt(track, fine, line, kappa, (centre + j + n) % n, mu, roll, bank);
-    const lapTime = profile(n, kappa, ds, mu, roll, bank, o.mass, car, 1, work).lapTime;
+    const lapTime = profile(n, kappa, ds, mu, roll, bank, o.mass, car, o.gripShare, work).lapTime;
     if (lapTime < best.lapTime) { best = { speed: best.speed, lapTime }; continue; }
     for (let j = from; j <= to; j++) {
       const k = (centre + j + n) % n;
@@ -345,6 +373,44 @@ export function racingLine(track: Track, options: Partial<LineOptions> = {}): Ra
   };
   return {
     step: fine.step, d: Float32Array.from(line), kappa: Float32Array.from(kappa), speed: Float32Array.from(best.speed), lapTime: best.lapTime, at,
+    lo: Float32Array.from(fine.lo), hi: Float32Array.from(fine.hi),
+  };
+}
+
+/**
+ * A groove: a lane held at the same distance from the inside limit all the way round (inside: the side the corners
+ * turn toward, +d on ovals), smoothed only where the corridor's edge jumps, with its own speeds from the same physics
+ * as the line (its curvature, banking, length). Oval packs race in grooves; the fastest line swings from the wall to
+ * the apex and back, so a car beside a car on it has nowhere to be.
+ */
+function grooveLine(track: Track, fine: Corridor, o: LineOptions, car: LineCar): RacingLine {
+  const n = fine.n, from = o.groove!;
+  // Which side is inside: where the curvature points, on the whole.
+  let turn = 0;
+  for (let k = 0; k < n; k++) turn += track.kappa[track.indexAt(fine.s[k])];
+  const line = new Float64Array(n);
+  for (let k = 0; k < n; k++) {
+    const d = turn >= 0 ? fine.hi[k] - from : fine.lo[k] + from;
+    line[k] = Math.max(fine.lo[k], Math.min(fine.hi[k], d));
+  }
+  smoothest(fine, line, 200);
+  const kappa = new Float64Array(n), ds = new Float64Array(n);
+  const mu = new Float64Array(n), roll = new Float64Array(n), bank = new Float64Array(n);
+  pathCurvature(fine, line, kappa, ds);
+  ground(track, fine, line, kappa, mu, roll, bank);
+  const full = profile(n, kappa, ds, mu, roll, bank, o.mass, car, 1);
+  const shares = new Map<number, LineProfile>();
+  const at = (gripShare: number) => {
+    let p = shares.get(gripShare);
+    if (!p) {
+      const q = profile(n, kappa, ds, mu, roll, bank, o.mass, car, gripShare, undefined, true);
+      p = { speed: Float32Array.from(q.speed), lapTime: q.lapTime, limit: q.limit! };
+      shares.set(gripShare, p);
+    }
+    return p;
+  };
+  return {
+    step: fine.step, d: Float32Array.from(line), kappa: Float32Array.from(kappa), speed: Float32Array.from(full.speed), lapTime: full.lapTime, at,
     lo: Float32Array.from(fine.lo), hi: Float32Array.from(fine.hi),
   };
 }
@@ -371,9 +437,48 @@ export function fastestLine(track: Track, margin = DEFAULTS.margin): RacingLine 
   let byMargin = lines.get(track);
   if (!byMargin) { byMargin = new Map(); lines.set(track, byMargin); }
   let line = byMargin.get(margin);
-  if (!line) { line = racingLine(track, { margin }); byMargin.set(margin, line); }
+  if (!line) {
+    line = racingLine(track, { margin, gripShare: track.kind === 'road' ? 1 : DRIVEN_GRIP });
+    byMargin.set(margin, line);
+  }
   return line;
 }
+
+const grooveCache = new WeakMap<Track, Map<number, RacingLine[]>>();
+
+/**
+ * A track's grooves (see grooveLine), for a racer's margin: lanes a car's width and a little apart, from the inside
+ * limit out, as many as the road has room for (inside first). Ovals only: none on road layouts.
+ */
+export function grooves(track: Track, margin = DEFAULTS.margin): RacingLine[] {
+  if (track.kind === 'road') return [];
+  let byMargin = grooveCache.get(track);
+  if (!byMargin) { byMargin = new Map(); grooveCache.set(track, byMargin); }
+  let list = byMargin.get(margin);
+  if (!list) {
+    list = [];
+    const best = fastestLine(track, margin);
+    let width = 0;
+    for (let k = 0; k < best.lo.length; k++) width += best.hi[k] - best.lo[k];
+    width /= best.lo.length;
+    for (let from = P.CAR_RADIUS; from <= width - P.CAR_RADIUS; from += GROOVE_SPACING) {
+      list.push(racingLine(track, { margin, groove: from }));
+    }
+    byMargin.set(margin, list);
+  }
+  return list;
+}
+
+/** Grooves are this far apart (m): a car's width and room for its line to wander. */
+const GROOVE_SPACING = 2 * P.CAR_RADIUS + 0.6;
+
+/**
+ * The share of the tyres' grip ovals' lines are laid for: the middle of the field's (racers drive at 0.82-0.90).
+ * The fastest line at full grip isn't the fastest at the grip drivers use: laid for theirs, the Cup car's teachers lap
+ * 0.4-1.1% quicker on the preset ovals at the same 86% (speedway 31.67 -> 31.33 s, solo; 2026-10-26). Road layouts keep
+ * the full-grip line until their students are retrained on a new one (the line is a driver input).
+ */
+const DRIVEN_GRIP = 0.86;
 
 /** The share of the friction ellipse a scripted racer leaves spare for its own corrections. */
 const CONTROL_SPARE = 0.05;

@@ -280,6 +280,8 @@ export class GlRenderer implements TrackView {
   private mesh: VenueMesh | null = null;
   private meshStale = false;
   private marks: Marks | null = null;
+  /** Rubber a track has down before any race (its grooves'), laid again whenever the marks are cleared. */
+  private readonly rubber = new WeakMap<Track, Float32Array>();
   private fitScale = 1;
   private scale = 1;
   private offsetX = 0;
@@ -535,6 +537,14 @@ export class GlRenderer implements TrackView {
       gl.clear(gl.COLOR_BUFFER_BIT);
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const rubber = this.track && this.rubber.get(this.track);
+    if (rubber) this.stampStrokes(rubber);
+  }
+
+  /** The rubber `track` has down before any race (strokes): laid now if it's on screen, and after every clear. */
+  setRubber(track: Track, strokes: Float32Array): void {
+    this.rubber.set(track, strokes);
+    if (track === this.track) this.stampStrokes(strokes);
   }
 
   /** Stamp mark strokes (from a StrokeCollector) into the groove and skid textures, where they stay. */

@@ -6,7 +6,7 @@ import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
 import { FormationDriver, formationTraits, type FormationTraits } from './formation';
 import { SmoothFormation } from './smoothFormation';
-import { fastestLine, followRacingLine, lineAt, type RacingLine } from './racingLine';
+import { fastestLine, followRacingLine, lineAt, type RacingLine, grooves } from './racingLine';
 import { MIRROR, MIRROR_SIZE, MIRROR_TIME, mirrorView } from './spotter';
 
 /**
@@ -180,8 +180,36 @@ const SAVE_CLEAR = 2.5;
 /** Seconds ahead a lane held off the line is kept clear of the road's edges (it moves over at CROSS_RATE). */
 const EDGE_LOOK = 2;
 
+/**
+ * The groove beside a car to pass it in: on `side` of `beside` (the nearest lane at least that far across, where that
+ * car is), clear of that car's path (`theirs`, by s) by `width` all the way `len` past it, at its own speeds (at
+ * `share` of the grip) no slower than `need` there. Null if none.
+ */
+function grooveBeside(track: Track, margin: number, side: number, beside: number, s: number, len: number,
+  theirs: (s: number) => number, width: number, need: number, share: number): RacingLine | null {
+  let best: RacingLine | null = null, bestD = Infinity;
+  for (const g of grooves(track, margin)) {
+    const d = lineAt(g, s).d;
+    if ((side > 0 ? d - beside : beside - d) < -0.3) continue;
+    const speed = g.at(share).speed;
+    let ok = true;
+    for (let a = 0; a <= len && ok; a += CATCH_STEP) {
+      const at = lineAt(g, s + a);
+      const f = ((((s + a) / g.step) % speed.length) + speed.length) % speed.length;
+      ok = Math.abs(at.d - theirs(s + a)) >= width - 0.3 && speed[Math.floor(f)] >= need;
+    }
+    if (ok && Math.abs(d - beside) < bestD) { best = g; bestD = Math.abs(d - beside); }
+  }
+  return best;
+}
+
 export class TrafficRacer {
   private offset = 0;
+  /**
+   * The path it drives: the racing line (null) or a groove (racing in a lane beside another car). Its offset is from
+   * this path; a switch keeps where the car is and eases onto the new one.
+   */
+  private path: RacingLine | null = null;
   private lastTime = -Infinity;
   /** The side of a pass under way (+1: +d, -1: -d, 0: none): kept until the pass is done or given up. */
   private passSide = 0;
@@ -260,7 +288,7 @@ export class TrafficRacer {
    * isn't there, which no student can learn from what it sees.
    */
   takeOver(car: Car, world: World): void {
-    this.offset = car.d - lineAt(this.lineFor(world.track), car.s).d;
+    this.offset = car.d - lineAt(this.path ?? this.lineFor(world.track), car.s).d;
   }
 
   decide(car: Car, world: World): void {
@@ -280,7 +308,10 @@ export class TrafficRacer {
       return;
     }
     const track = world.track;
-    const line = this.lineFor(track);
+    const racingLineHere = this.lineFor(track);
+    const line = this.path ?? racingLineHere;
+    // The path for the next decision: a groove to pass in, or back to the racing line (undefined: as it is).
+    let nextPath: RacingLine | null | undefined;
     const { room, grip } = this.style;
     // Broken (smoking, under the second damage model: down to a fraction of its pace at once): saving the car, not
     // racing it. It passes nothing (it still goes round a stopped car), and on an oval it heads for the apron: out of
@@ -452,6 +483,17 @@ export class TrafficRacer {
         if (side !== 0 && !passing) {
           // Beside it: where it is across the road, measured from the line where this car is now.
           want = (side > 0 ? other.d + width : mergeTo - width) - here.d;
+          // Or in a groove beside it: a lane held across the road all the way past, at that lane's own speeds, if
+          // they beat that car's (as it goes on along the racing line, as far across from it as now). On the racing
+          // line shifted beside it, a passer through a corner ran to the wall at the exit or the apex.
+          const groove = grooveBeside(track, this.style.margin, side, side > 0 ? other.d + width : mergeTo - width, other.s,
+            Math.min(reach, Math.max(0, ds) + vOther * ((Math.max(0, ds) + 2 * alongside()) / Math.max(faster, 0.5))),
+            (s) => lineAt(racingLineHere, s).d + (other.d - lineAt(racingLineHere, other.s).d), width,
+            vOther + edge, Math.round(grip * car.grip * 50) / 50);
+          if (groove) {
+            want = groove === this.path ? 0 : lineAt(groove, car.s).d - here.d;
+            nextPath = groove;
+          }
           this.passSide = side;
           passing = true;
           // Beside it, it's not in the way; still behind it, it is, however the pass was meant to go. On banking at
@@ -469,6 +511,8 @@ export class TrafficRacer {
       followCap = Math.min(followCap, cap);
     }
 
+    // Done passing, nobody beside it: back to the racing line.
+    if (!passing && this.path && low <= here.lo && high >= here.hi) nextPath = null;
     // Where it wants to be: the wanted offset, within the room the cars alongside leave (squeezed: the middle
     // of what's left) and the corridor. It gets there across the road at a crossing rate, never in a jump.
     if (!passing) this.passSide = 0;
@@ -517,5 +561,11 @@ export class TrafficRacer {
     };
     this.last = { want, offset, low, high, follow: followCap, squeezed: low > high, passing };
     followRacingLine(car, world, line, grip, offset, capAt, this.style.driveGain, this.style.followGain);
+    if (nextPath !== undefined && nextPath !== this.path) {
+      // Same place on the road, measured from the new path.
+      const at = here.d + this.offset;
+      this.path = nextPath;
+      this.offset = at - lineAt(nextPath ?? racingLineHere, car.s).d;
+    }
   }
 }

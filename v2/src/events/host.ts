@@ -46,6 +46,8 @@ export interface HostListener {
   finished(handle: EventHandle): void;
   /** The event moved to another track. */
   track(handle: EventHandle, layout: TrackLayout): void;
+  /** Rubber already down on the event's track (its grooves), under the race's own marks. */
+  rubber(handle: EventHandle, strokes: Float32Array): void;
   /** Driving-school rounds ended. */
   rounds(handle: EventHandle, reports: RoundReport[]): void;
   /** Driving-school rounds kept on tape (watched, or a license earned). */
@@ -187,6 +189,9 @@ export class EventHost {
         break;
       case 'track':
         this.listener.track(handle, msg.layout);
+        break;
+      case 'rubber':
+        this.listener.rubber(handle, msg.strokes);
         break;
       case 'rounds':
         handle.roundTapes.push(...msg.tapes);
