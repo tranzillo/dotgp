@@ -235,6 +235,8 @@ export interface DriverLimits {
 }
 /** A driver's optional parts beyond its networks for ovals and road circuits. */
 export interface NeuralDriverExtras {
+  /** Its road skill (neuralTeam only: NeuralDriver takes it as its own argument). */
+  road?: Float32Array;
   /** Its human limits (latency, motor noise). */
   limits?: DriverLimits;
   /** Its caution skill: a network that drives while the field is pacing. */
@@ -441,7 +443,7 @@ export function neuralTeam(
   weights: Float32Array, crewChief: CrewChief | null = null, driverPits = false, driverCautions = false, knowledge?: TrackKnowledge,
   extras: NeuralDriverExtras = {},
 ): Team {
-  return new Team(new NeuralDriver(weights, undefined, knowledge, extras), new TowerSpotter(), crewChief, driverPits, driverCautions);
+  return new Team(new NeuralDriver(weights, extras.road, knowledge, extras), new TowerSpotter(), crewChief, driverPits, driverCautions);
 }
 
 /**

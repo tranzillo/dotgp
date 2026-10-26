@@ -43,7 +43,7 @@ if (args.has('group-only')) {
     ...(args.has('circuits') ? { circuits: Number(args.get('circuits')) } : {}),
     ...(args.has('overshoots') ? { overshoots: Number(args.get('overshoots')) } : {}),
     ...(args.has('crowds') ? { crowds: Number(args.get('crowds')) } : {}),
-    onRound: (round, r) => console.log(`group ${first} round ${round}: ${r.completed}/${r.stops} stops done, ${r.recovered}/${r.overshoots} backed up into the box, ${r.crowdsDone}/${r.crowds} in a crowd, loss ${r.loss.toFixed(4)} (${r.seconds.toFixed(0)} s)`),
+    onRound: (round, r) => console.log(`group ${first} round ${round}: ${r.completed}/${r.stops} stops done, ${r.recovered}/${r.overshoots} backed up into the box, ${r.crowdsDone}/${r.crowds} in a crowd, ${(100 * r.caught).toFixed(0)}% of stops speeding, loss ${r.loss.toFixed(4)} (${r.seconds.toFixed(0)} s)`),
   });
   writeFileSync(out, JSON.stringify({
     drivers: entries.map((e, i) => ({ ...e, pit: { weights: Array.from(students[i].pit!) }, pitLicensed: true, pitTrafficLicensed: true })),

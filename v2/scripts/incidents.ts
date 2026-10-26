@@ -86,6 +86,8 @@ type Entrant = {
   caution?: { weights: number[] };
   /** A pit skill: the network that drives its own stops. */
   pit?: { weights: number[] };
+  /** Its road skill (circuits) and road caution skill. Without them it races circuits with its oval skills. */
+  roadCourse?: { weights: number[]; caution?: { weights: number[] } };
   /** The line it knows (track knowledge): its own, as it was taught. Default the usual line. */
   knowledge?: { grip: number; margin: number };
 };
@@ -337,6 +339,9 @@ function runRace(trackName: string, seed: number): RaceStats {
       (d.pitLicensed && d.pitTrafficLicensed) ?? false, d.cautionLicensed ?? false,
       d.knowledge, {
         limits: limits && { ...limits, seed: (seed * 7919 + k * 104729) >>> 0 },
+        // (Raced without its road skill, a bundle went round circuits on its oval skill: the field out in a lap or two.)
+        road: d.roadCourse && adaptWeights(Float32Array.from(d.roadCourse.weights)),
+        roadCaution: d.roadCourse?.caution && adaptWeights(Float32Array.from(d.roadCourse.caution.weights)),
         caution: d.caution && adaptWeights(Float32Array.from(d.caution.weights)),
         pit: d.pit && adaptWeights(Float32Array.from(d.pit.weights)),
         // Its broken-car skill drives a broken car once it's licensed (scripts/brokenCar.ts); until then its racing does.

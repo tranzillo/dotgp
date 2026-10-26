@@ -16,7 +16,7 @@ import { fastestLine } from '../ai/racingLine';
 import { Rng } from '../ai/rng';
 import { TowerSpotter } from '../ai/spotter';
 import { Car, type PitState } from '../sim/car';
-import { PHYSICS as P } from '../sim/constants';
+import { PHYSICS as P, PIT_SERVICE } from '../sim/constants';
 import type { Track } from '../sim/track';
 import { World } from '../sim/world';
 import { hashSeed } from '../trackgen';
@@ -26,6 +26,7 @@ import { inLapStart, startInLap, START_SPEED } from './pitLesson';
 import { PITTERS, RACERS } from './pitTrafficLesson';
 import { DEFAULT_STYLE, TrafficRacer } from '../ai/trafficRacer';
 import { circuitTrack } from './roadLesson';
+import { OVAL_RULES } from '../rules/rulebook';
 
 /** A driver as far as pit stops go: its skills (the pit skill once it has one), its line and its human limits. */
 export interface PitStudent {
@@ -51,7 +52,7 @@ export interface PitSkillOptions {
   overshoots?: number;
   /** Crowded drills per track: the student coming in with a column of cars all stopping the same lap. */
   crowds?: number;
-  onRound?: (round: number, report: { loss: number; stops: number; completed: number; overshoots: number; recovered: number; crowds: number; crowdsDone: number; seconds: number }) => void;
+  onRound?: (round: number, report: { loss: number; stops: number; completed: number; overshoots: number; recovered: number; crowds: number; crowdsDone: number; caught: number; seconds: number }) => void;
 }
 
 /** The pit maneuver's throttle as a teacher (1/s): see PitAutopilot.driveGain. */
@@ -88,7 +89,8 @@ const CROWD_WRECK_HOLD = 12;
  * ahead stopping too (the maneuver driving them) and four racing past (traffic racers), as the pit-traffic lesson
  * places them. Returns whether the stop got done.
  */
-function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number, examples: Example[], seed: number, traffic = false, overshoot = 0, crowd = false): boolean {
+function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number, examples: Example[], seed: number, traffic = false, overshoot = 0, crowd = false, tally?: { caught: number },
+): boolean {
   const world = new World(track, { collisions: traffic || crowd, drafting: traffic || crowd, autoClearWrecks: !crowd });
   const limits: DriverLimits | undefined = d.limits && { ...d.limits, seed };
   const student = new NeuralDriver(d.weights, d.road, d.knowledge, { limits, pit: d.pit ?? undefined });
@@ -125,7 +127,7 @@ function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number
       setSpeed(other, track, track.kind === 'road' ? Math.min(START_SPEED, speedAt(track, s + ahead)) : START_SPEED);
     }
   }
-  let wreck: Car | null = null, wreckAt = -1;
+  let wreck: Car | null = null, wreckAt = -1, over = 0;
   if (crowd) {
     const racer = () => new TrafficRacer(track.kind === 'road' ? { ...DEFAULT_STYLE, pass: Infinity } : DEFAULT_STYLE);
     const stalls = track.pit.stalls;
@@ -168,9 +170,13 @@ function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number
     }
     if (wreck && wreckAt >= 0 && world.time - wreckAt > CROWD_WRECK_HOLD) wreck.cleared = true;
     world.step();
+    // Over the limit on pit road as the stewards judge it (the rulebook's tolerance), for how long.
+    if (car.surface === 'pit' && car.speed > PIT_SERVICE.SPEED_LIMIT + OVAL_RULES.pitSpeedTolerance) over += P.DT;
     if (phase() === 'service') serviced = true;
     if (done < 0 && serviced && phase() === 'none') done = k;
   }
+  // A stop the stewards would have called for speeding.
+  if (tally && over > OVAL_RULES.pitSpeedGrace) tally.caught++;
   return serviced && phase() === 'none' && !car.retired;
 }
 
@@ -209,12 +215,13 @@ export function apprenticePitSkill(students: PitStudent[], seed: number, options
       ...Array.from({ length: opts.circuits }, (_, k) => circuitTrack(hashSeed(seed, `pit${round}:${k}`), k % 2 ? 'gp' : 'club')),
     ];
     let stops = 0, completed = 0, overshoots = 0, recovered = 0, crowds = 0, crowdsDone = 0;
+    const tally = { caught: 0 };
     students.forEach((d, i) => {
       for (const track of tracks) {
         // One stop alone, one in traffic (as stops are in races: others pitting, the field racing past).
         for (const [lane, traffic] of [[-2, false], [2, true]] as const) {
           stops++;
-          if (drill(track, d, round > 0, lane, examples[i], hashSeed(seed, `hands${round}:${d.lineage}:${track.length}:${lane}`), traffic)) completed++;
+          if (drill(track, d, round > 0, lane, examples[i], hashSeed(seed, `hands${round}:${d.lineage}:${track.length}:${lane}`), traffic, 0, false, tally)) completed++;
         }
         // And past its box, backing up into it.
         for (let k = 0; k < opts.overshoots; k++) {
@@ -225,7 +232,7 @@ export function apprenticePitSkill(students: PitStudent[], seed: number, options
         // And in a crowd: the whole field stopping the same lap.
         for (let k = 0; k < opts.crowds; k++) {
           crowds++;
-          if (drill(track, d, round > 0, 0, examples[i], hashSeed(seed, `crowd${round}:${d.lineage}:${track.length}:${k}`), false, 0, true)) crowdsDone++;
+          if (drill(track, d, round > 0, 0, examples[i], hashSeed(seed, `crowd${round}:${d.lineage}:${track.length}:${k}`), false, 0, true, tally)) crowdsDone++;
         }
       }
     });
@@ -234,7 +241,7 @@ export function apprenticePitSkill(students: PitStudent[], seed: number, options
       const set = examples[i].length <= opts.maxExamples ? examples[i] : sample(examples[i], opts.maxExamples, rng);
       loss += trainSupervised(DRIVER_LAYERS, d.pit!, set, round === 0 ? 3 * opts.epochs : opts.epochs, 0.01, () => rng.next());
     });
-    opts.onRound?.(round, { loss: loss / students.length, stops, completed, overshoots, recovered, crowds, crowdsDone, seconds: (Date.now() - t0) / 1000 });
+    opts.onRound?.(round, { loss: loss / students.length, stops, completed, overshoots, recovered, crowds, crowdsDone, caught: tally.caught / (stops + crowds), seconds: (Date.now() - t0) / 1000 });
   }
 }
 
