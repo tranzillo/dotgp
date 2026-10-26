@@ -41,6 +41,12 @@
       "name": "Stable candidate v4",
       "file": "stable-candidate-v4.json",
       "note": "Stable candidate v3 with its pit skill trained 24 rounds more (2026-10-25): its box anywhere down pit road (the drills had always used the first box, so in races it sped down the lane to a far one) and a teacher at pit speed 30 m before the line. Racing, cautions and road cautions as v3. 40 cars, out: ovals 15.8 / 23.5 / 9.0 (short / speedway / flat; v3 21.5 / 25.0 / 15.5, scripted stops 20.3 / 24.3 / 0.5); circuits 36.0 / 33.3 (club / GP; scripted stops 26.3 / 4.7): its stops on circuit pit roads are still its wrecks there. Read-only."
+    },
+    {
+      "id": "stable-candidate-v5",
+      "name": "Stable candidate v5",
+      "file": "stable-candidate-v5.json",
+      "note": "Stable candidate v4 with the oval machine's work since (2026-10-25): the racing network retrained on drills where a car ahead breaks (going round it), and the broken-car skill (a broken car under green drives itself to the apron; 31 of 40 licensed, the rest drive on with their racing network). Pit stops, cautions, road skills as v4: circuits race exactly as v4. Ovals, 40 cars, 4 races each, against v4 (short / speedway / flat): out 6.3 / 15.5 / 5.0 (v4 15.8 / 23.5 / 9.0), cautions 2.8 / 4.8 / 3.5 (7.5 / 5.3 / 4.0); but less racing: clean passes per 100 green car-laps 3.7 / 16.8 / 7.0 (5.7 / 41.3 / 9.9), time side by side 7.5% / 6.5% / 5.7% (8.8% / 17.1% / 10.0%), laps 0.15-0.5 s slower. Cleaner and duller: the teachers it learned going round from hardly pass. Read-only."
     }
   ]
 }
