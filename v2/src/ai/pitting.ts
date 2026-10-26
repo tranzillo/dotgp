@@ -346,6 +346,11 @@ export function pitRoute(track: Track, car: Car, fromLane: number): (s: number) 
 /** Braking pit-road traffic rules plan around (m/s^2), and the gap kept to the car ahead (m, bumper to bumper). */
 const PIT_DECEL = 4;
 const PIT_GAP = 3;
+/**
+ * How far before the limit line the maneuver is down to pit speed (m). Braking to reach it at the line, it taught pit
+ * drivers to: their lag took them over it there, and half their stops in races were called for speeding.
+ */
+const LIMIT_EARLY = 30;
 /** How long a car waits in its box for the fast lane to clear before going anyway (s). */
 const BOX_WAIT_LIMIT = 10;
 /**
@@ -532,7 +537,7 @@ export class PitAutopilot {
       const follow = this.followLimit(car, world, lane);
       const cap = (s: number) => {
         const r = track.pitInAt(car, s);
-        if (r < track.pit.wallStart - 5 || r > track.pit.wallEnd + 5) return Math.min(follow, path.inCap(r));
+        if (r < track.pit.wallStart - LIMIT_EARLY || r > track.pit.wallEnd + 5) return Math.min(follow, path.inCap(r));
         // Pit limiter speed, then a stop on the box.
         return Math.min(follow, PIT_SERVICE.SPEED_LIMIT - 1, Math.sqrt(2 * 3 * Math.max(0, pit.boxS - r)));
       };

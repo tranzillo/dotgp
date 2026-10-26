@@ -4,7 +4,7 @@
  * through the blend lane and merging), on ovals and road circuits alike,
  * from the scripted pit maneuver: the teacher for now, as the line follower
  * and the traffic racer are for racing. The maneuver drives the first round
- * (the student watches); then the student drives through its own human
+ * (a student new to stops watches); then the student drives through its own human
  * limits (DAgger), the maneuver saying at every decision what it would do
  * from where the car is. Only the pit network learns, so stops can't cost a
  * driver its racing.
@@ -127,6 +127,9 @@ function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number
       setSpeed(other, track, track.kind === 'road' ? Math.min(START_SPEED, speedAt(track, s + ahead)) : START_SPEED);
     }
   }
+  // Its box anywhere along pit road, as in a race. (Always the first box, 25-50 m past the limit line, the skill only
+  // ever braked for it: in races, its box far down the lane and nothing ahead, it went through the line over the limit.)
+  car.pit.boxS = track.pit.stalls[Math.floor(new Rng(hashSeed(seed, 'box')).next() * track.pit.stalls.length)];
   let wreck: Car | null = null, wreckAt = -1, over = 0;
   if (crowd) {
     const racer = () => new TrafficRacer(track.kind === 'road' ? { ...DEFAULT_STYLE, pass: Infinity } : DEFAULT_STYLE);
@@ -207,6 +210,9 @@ export function apprenticePitSkill(students: PitStudent[], seed: number, options
   const opts = { rounds: 6, ovals: 2, circuits: 2, overshoots: 0, crowds: 1, epochs: 6, maxExamples: 40_000, ...options };
   const rng = new Rng(hashSeed(seed, 'pit-skill'));
   const examples: Example[][] = students.map(() => []);
+  // A driver new to stops watches the maneuver's first round; one with a pit skill drives from the start (the first
+  // round's teacher-only examples, trained on alone, made it forget how to get back from its own mistakes).
+  const watches = students.map((d) => !d.pit);
   for (const d of students) d.pit ??= d.weights.slice();
   for (let round = 0; round < opts.rounds; round++) {
     const t0 = Date.now();
@@ -221,25 +227,25 @@ export function apprenticePitSkill(students: PitStudent[], seed: number, options
         // One stop alone, one in traffic (as stops are in races: others pitting, the field racing past).
         for (const [lane, traffic] of [[-2, false], [2, true]] as const) {
           stops++;
-          if (drill(track, d, round > 0, lane, examples[i], hashSeed(seed, `hands${round}:${d.lineage}:${track.length}:${lane}`), traffic, 0, false, tally)) completed++;
+          if (drill(track, d, round > 0 || !watches[i], lane, examples[i], hashSeed(seed, `hands${round}:${d.lineage}:${track.length}:${lane}`), traffic, 0, false, tally)) completed++;
         }
         // And past its box, backing up into it.
         for (let k = 0; k < opts.overshoots; k++) {
           overshoots++;
           const past = OVERSHOOT[0] + (OVERSHOOT[1] - OVERSHOOT[0]) * rng.next();
-          if (drill(track, d, round > 0, 0, examples[i], hashSeed(seed, `past${round}:${d.lineage}:${track.length}:${k}`), false, past)) recovered++;
+          if (drill(track, d, round > 0 || !watches[i], 0, examples[i], hashSeed(seed, `past${round}:${d.lineage}:${track.length}:${k}`), false, past)) recovered++;
         }
         // And in a crowd: the whole field stopping the same lap.
         for (let k = 0; k < opts.crowds; k++) {
           crowds++;
-          if (drill(track, d, round > 0, 0, examples[i], hashSeed(seed, `crowd${round}:${d.lineage}:${track.length}:${k}`), false, 0, true, tally)) crowdsDone++;
+          if (drill(track, d, round > 0 || !watches[i], 0, examples[i], hashSeed(seed, `crowd${round}:${d.lineage}:${track.length}:${k}`), false, 0, true, tally)) crowdsDone++;
         }
       }
     });
     let loss = 0;
     students.forEach((d, i) => {
       const set = examples[i].length <= opts.maxExamples ? examples[i] : sample(examples[i], opts.maxExamples, rng);
-      loss += trainSupervised(DRIVER_LAYERS, d.pit!, set, round === 0 ? 3 * opts.epochs : opts.epochs, 0.01, () => rng.next());
+      loss += trainSupervised(DRIVER_LAYERS, d.pit!, set, round === 0 && watches[i] ? 3 * opts.epochs : opts.epochs, 0.01, () => rng.next());
     });
     opts.onRound?.(round, { loss: loss / students.length, stops, completed, overshoots, recovered, crowds, crowdsDone, caught: tally.caught / (stops + crowds), seconds: (Date.now() - t0) / 1000 });
   }

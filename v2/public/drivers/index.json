@@ -35,6 +35,12 @@
       "name": "Stable candidate v3, scripted stops",
       "file": "stable-candidate-v3-scripted-pits.json",
       "note": "Stable candidate v3 with the pit maneuver driving its stops (no pit-traffic license) until the learned pit skill handles a crowded pit road. Ovals: the oval stable's races exactly, out 20.3 / 24.3 / 0.5 (short / speedway / flat, 40 cars) against v3's 21.5 / 25.0 / 15.5; clean passes per 100 green car-laps 7.7 / 47.5 / 6.9. Circuits (40 cars, 3 races each, club / GP): out 26.3 / 4.7 against v3's 38.7 / 37.0; on the GP circuit 322 clean passes per 100 green car-laps, 4 per damaging contact (teachers 227, 7). Read-only."
+    },
+    {
+      "id": "stable-candidate-v4",
+      "name": "Stable candidate v4",
+      "file": "stable-candidate-v4.json",
+      "note": "Stable candidate v3 with its pit skill trained 24 rounds more (2026-10-25): its box anywhere down pit road (the drills had always used the first box, so in races it sped down the lane to a far one) and a teacher at pit speed 30 m before the line. Racing, cautions and road cautions as v3. 40 cars, out: ovals 15.8 / 23.5 / 9.0 (short / speedway / flat; v3 21.5 / 25.0 / 15.5, scripted stops 20.3 / 24.3 / 0.5); circuits 36.0 / 33.3 (club / GP; scripted stops 26.3 / 4.7): its stops on circuit pit roads are still its wrecks there. Read-only."
     }
   ]
 }
