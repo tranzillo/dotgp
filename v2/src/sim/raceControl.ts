@@ -2,8 +2,11 @@ import { Rng } from '../ai/rng';
 import { Car } from './car';
 import { G, PHYSICS as P, PIT_SERVICE } from './constants';
 import { gridBox, POLE_BOX } from './grid';
+import { pitBoxD, pitFastD, type RoadNode } from './layout';
+import { pathLength, type RoadsFrom } from './roads';
 import type { Track } from './track';
 import type { World } from './world';
+import { driveTruck, setOff, trail, TRUCK, truckBody, TruckPath, TRUCKS_SOLID, type TruckDrive } from './wrecker';
 import type { StartProcedure } from '../rules/rulebook';
 
 /**
@@ -32,9 +35,55 @@ const FIRST_ROW_GAP = 16; // m from the pace car to the front row
 /** Single file under caution: a car length and the formation's following gap between cars (m). */
 const SINGLE_FILE_GAP = 9;
 export const FILE_OFFSET = 2.6; // m either side of the centerline for the two files
-const WRECKER_SPEED = 22;
-const TOW_SPEED = 15;
-const HOOK_TIME = 8;
+/** Hooking a car up (s), and rolling it off into its bay in the garage. */
+const HOOK_TIME = 10;
+const DROP_TIME = 6;
+/** A truck goes by a wreck this far to its inside (m): its width and the car's clear of it. */
+const PASS = TRUCK.RADIUS + P.CAR_RADIUS + 1.2;
+/** Where it pulls up to back up to a wreck, on from it in its lane (m). */
+const HOOK_AHEAD = TRUCK.HITCH + TRUCK.BACK_UP;
+/** Longest it backs up for (s), however far it has to go. */
+const BACK_TIME = 15;
+/** Pace estimates (m/s) for choosing a truck and its route: by road in the infield, and along the apron. */
+const ROAD_PACE = 10;
+const APRON_PACE = 16;
+/** How much the tow back to the garage counts in choosing, against getting to the wreck (the caution waits on that). */
+const TURNAROUND_WEIGHT = 0.25;
+/** Along the apron against the traffic counts this much more than with it (it meets the field head on). */
+const AGAINST_TRAFFIC = 1.5;
+/** Turning onto (or off) the apron through more than this (cos of the turn), a U-turn, counts this many seconds. */
+const U_TURN_COS = -0.3;
+const U_TURN_COST = 20;
+/** Trucks posted round the infield besides the garage's, and how much sooner they must reach the far side. */
+const MAX_LOT_TRUCKS = 2;
+const LOT_GAIN = 0.9;
+/** A truck making no headway this long is moved on (s); a wreck no truck has set out for this long, lifted off. */
+const STALLED_TIME = 15;
+/**
+ * A truck going out on the racing surface waits for a gap in the traffic coming: no car there before it's out of the
+ * way again (out there at CROSS_PACE, m/s, and a few seconds more); this long at most (s).
+ */
+const CROSS_PACE = 7;
+const CROSS_MARGIN = 4;
+const YIELD_TIME = 30;
+/** Where a road meets the apron, a truck joins (or leaves) the apron's lane this far along (m, a multiple of 3). */
+const JOIN_RUN = 24;
+/**
+ * A road meeting the apron turned back more than this against the way a truck goes (rad) it leaves (or joins) DIVE_DEPTH
+ * metres into the infield, crossing the grass to (from) the apron's lane DIVE_RUN metres on (before).
+ */
+const DIVE_TURN = (100 * Math.PI) / 180;
+const DIVE_DEPTH = 14;
+const DIVE_RUN = 30;
+/** A free truck this near a wreck (m) may go straight to it across the grass. */
+const DIRECT_RANGE = 60;
+/** A truck parked within this far of the apron (m) may cross the grass onto it rather than go by road. */
+const GRASS_ENTRY = 50;
+/** Out of a truck's way across the track to the apron with a tow (m). */
+const TOW_CROSSING = 45;
+const CALLOUT_GIVE_UP = 120;
+/** The wreckers' ids (down from here); the pace car is -1. */
+const WRECKER_ID = -10;
 const STALL_TIME = 5; // s stopped on the racing surface before it's a hazard (a caution under green)
 /**
  * s stopped on the racing surface before a car that could still go (fuel, not wrecked) counts as a wreck, unless it's
@@ -59,30 +108,59 @@ const PASS_RANGE = 50;
 /** A place in line more than this far behind a car is reached by going round (m), unless the car got by the pace car. */
 const GO_ROUND = 150;
 
+/** The pace car's post is this far short of the pit wall's end (m). */
+const PACE_POST_BACK = 8;
+
 /** The pace car's livery number; it never appears in standings. */
 export const PACE_CAR_ID = -1;
 
-type WreckerPhase = 'drive' | 'hook' | 'tow' | 'done';
+/**
+ * idle: parked at its post; drive: out to a wreck; hook: hooking it up; tow:
+ * towing it to the garage; drop: rolling it off into its bay; return: back
+ * to its post. done: marshals' work finished.
+ */
+type WreckerPhase = 'idle' | 'drive' | 'hook' | 'tow' | 'drop' | 'return' | 'done';
 
 export interface Wrecker {
-  wreck: Car;
+  /** The truck (null: marshals with a crane, circuits). */
+  truck: TruckDrive | null;
+  /** The car it's out for or towing. */
+  wreck: Car | null;
   x: number;
   y: number;
-  /** Track position while on the oval; a path index once on infield roads. */
-  s: number;
-  d: number;
   phase: WreckerPhase;
   timer: number;
-  /** Remaining waypoints (world) once it leaves the oval for the garage. */
-  route: Array<[number, number]>;
-  /** Track s where it leaves the oval with the tow, and direction of travel (+1/-1). */
-  exitS: number;
+  /** Where it parks between jobs. */
+  post: [number, number];
+  /** Which way round it's going along the apron (+1 the way the race runs). */
   dir: number;
-  /** The road network node where it leaves the oval with the tow (an apron access), or '' (marshals). */
+  /** The road network node where it leaves the oval with the tow (an apron access). */
   via: string;
+  /** The garage bay it's taking the car to. */
+  bay?: [number, number];
+  /** How far along its path it had got when last it made headway, and how long since. */
+  progress: number;
+  stalled: number;
+  /** Times it has gone round to a wreck knocked away from where it was. */
+  tries: number;
+  /** How long it has waited this job for a gap in traffic to go out onto the racing surface (s). */
+  waited: number;
   /** Marshals with a crane (circuits) rather than a tow truck. */
   marshals?: boolean;
 }
+
+/** A wreck waiting for a truck, how long it has waited (s), and whether any free truck has had a way to it. */
+interface Callout { wreck: Car; waited: number; reachable?: boolean }
+
+/** A wreck (and what's with it) on the racing surface to go round: where it is along the lap, and across it (d). */
+export interface WorkZone { s: number; lo: number; hi: number }
+
+/** Wrecks and trucks within this far along the track of one another are one thing to go round (m). */
+const ZONE_LENGTH = 30;
+
+/** A truck's way to a wreck: onto the apron at `via` (track s), round the way dir runs, off with the tow at `out`. */
+/** (direct: straight across the grass to the wreck; grass: across the grass onto the apron's lane at s, not by road.) */
+interface Approach { via: string; s: number; dir: number; out: string; cost: number; direct?: boolean; grass?: boolean }
 
 export interface FormationSlot {
   index: number;
@@ -143,6 +221,16 @@ export class RaceControl {
   /** How long each car on its way to its box has sat stopped on pit road. */
   private readonly pitStopped = new Map<Car, number>();
   private garageSlots = 0;
+  private fleetBuilt = false;
+  /** Where trucks can get onto the oval, and where they can leave it for the garage (with the road there's to go). */
+  private entries: Array<{ id: string; s: number; tangent: [number, number] }> = [];
+  /** (away: the way its road leaves the apron.) */
+  private exits: Array<{ id: string; s: number; garage: number; tangent: [number, number]; away: [number, number] }> = [];
+  /** The garage bays wrecks are towed to, and how many have been used. */
+  private bays: Array<[number, number]> = [];
+  private baysUsed = 0;
+  /** Wrecks waiting for a truck. */
+  private readonly callouts: Callout[] = [];
   /** Cars in formation order this tick, and their slots. */
   private order: Car[] = [];
   /** Stewards' penalty, or a car that couldn't keep pace: to the back of the official order. */
@@ -453,7 +541,7 @@ export class RaceControl {
     }
     if (this.flag === 'caution') {
       const laps = leader ? leader.lapsCompleted - this.cautionLap : 0;
-      const clear = this.wreckers.every((w) => w.phase === 'done' || (w.phase === 'tow' && w.wreck.d > t.innerEdge(w.wreck.trackIdx) + 3));
+      const clear = this.trackClear();
       // One to go once the track is clear and the minimum laps are run. Race control doesn't wait for the
       // field to be lined up: cars still catching up restart from where they are. But the pace car has to have
       // the field first, and a full lap behind it to sort the line out: there's no restart to count down to without it.
@@ -770,12 +858,37 @@ export class RaceControl {
     const across = t.pit.wallD + t.pit.wallThickness / 2 + 3 + t.pitOffset(t.pit.wallEnd - 5) - t.innerEdgeAt(t.pit.wallEnd - 5);
     const early = 5 * Math.max(0, across - 4.8);
     if (toExit > FIRST_ROW_GAP + early && toExit < FIRST_ROW_GAP + ROW_GAP + early) {
-      this.paceCar.placeOnTrack(t, t.pit.wallEnd - 5, t.pit.wallD + t.pit.wallThickness / 2 + 3 + t.pitOffset(t.pit.wallEnd - 5));
+      // From its post (put there, if it hadn't got to it yet).
+      const post = this.paceCarPost();
+      const [px, py] = t.toWorld(post.s, post.d);
+      if (Math.hypot(this.paceCar.x - px, this.paceCar.y - py) > 10) this.paceCar.placeOnTrack(t, post.s, post.d);
       setSpeed(this.paceCar, t, this.paceSpeedAt(this.paceCar.s));
       this.paceCar.retired = false;
       this.paceCar.cleared = false;
       this.paceCarOut = true;
     }
+  }
+
+  /**
+   * Where the pace car waits while it's off: at the end of pit road, past the
+   * boxes, on their side of it: out of the fast lane cars leave by.
+   */
+  paceCarPost(): { s: number; d: number } {
+    const t = this.track;
+    const s = t.wrapS(t.pit.wallEnd - PACE_POST_BACK);
+    return { s, d: pitBoxD(t.pit) + t.pitOffset(s) };
+  }
+
+  /** How far the pace car has to go down pit road to its post (m; 0 there or past it). */
+  paceCarToPost(s: number): number {
+    return Math.max(0, this.track.pit.wallEnd - PACE_POST_BACK - this.track.pitInS(s));
+  }
+
+  /** Its way down pit road to its post: the fast lane, over to the boxes' side at the end. */
+  paceLaneD(s: number): number {
+    const t = this.track;
+    const f = smooth(1 - this.paceCarToPost(s) / 30);
+    return mix(pitFastD(t.pit), pitBoxD(t.pit), f) + t.pitOffset(s);
   }
 
   private paceCarHeadingIn(): boolean {
@@ -886,17 +999,33 @@ export class RaceControl {
     });
   }
 
-  /** The nearest stopped wreck still on the racing surface within range ahead of this car, if any. */
-  wreckAhead(car: Car, range = 250): Car | null {
+  /**
+   * The nearest wreck still on the racing surface within range ahead of this
+   * car, as the stretch of track to go round: the wreck, and with it whatever
+   * else is there (other wrecks, a wrecker at work on it), across from lo to
+   * hi (d, widened for anything bigger than a car). Going round only the one
+   * nearest, cars drove into the truck pulling up beside it.
+   */
+  wreckAhead(car: Car, range = 250): WorkZone | null {
     const t = this.track;
-    let best: Car | null = null;
+    const there = [...this.world.cars.filter((c) => c.retired), ...this.world.solidVehicles]
+      .filter((o) => !o.cleared && o.d <= t.innerEdge(o.trackIdx) + 1 + o.radius - P.CAR_RADIUS);
+    let near: Car | null = null;
     let bestGap = range;
-    for (const other of this.world.cars) {
-      if (!other.retired || other.cleared || other.d > t.innerEdge(other.trackIdx) + 1) continue;
+    for (const other of there) {
       const gap = t.distanceFrom(car.s, other.s);
-      if (gap > 0 && gap < bestGap) { bestGap = gap; best = other; }
+      if (gap > 0 && gap < bestGap) { bestGap = gap; near = other; }
     }
-    return best;
+    if (!near) return null;
+    const zone: WorkZone = { s: near.s, lo: Infinity, hi: -Infinity };
+    for (const o of there) {
+      const ds = t.distanceFrom(near.s, o.s);
+      if (Math.min(ds, t.length - ds) > ZONE_LENGTH) continue;
+      const wide = o.radius - P.CAR_RADIUS;
+      zone.lo = Math.min(zone.lo, o.d - wide);
+      zone.hi = Math.max(zone.hi, o.d + wide);
+    }
+    return zone;
   }
 
   private paceCarHeadingInAndOff(): boolean {
@@ -922,120 +1051,501 @@ export class RaceControl {
 
   // ---------- wreckers ----------
 
-  private dispatchWrecker(wreck: Car): void {
+  /**
+   * The wrecker fleet, parked at its posts: most in the garage, and one more
+   * round the infield or two (in a parking lot, or staged just off the apron
+   * up an escape road) where that gets a truck to the far side of the track
+   * much sooner. Built at the first step (the rulebook may call for marshals
+   * instead).
+   */
+  private ensureFleet(): void {
+    if (this.fleetBuilt) return;
+    this.fleetBuilt = true;
+    if (this.safetyCar) return;
     const t = this.track;
-    if (this.safetyCar) {
-      // Marshals and a crane where the car stopped: lifted over the barrier, then it's gone.
-      this.wreckers.push({
-        wreck, x: wreck.x, y: wreck.y, s: wreck.s, d: wreck.d,
-        phase: 'hook', timer: MARSHAL_TIME, route: [], exitS: 0, dir: 1, via: '', marshals: true,
-      });
-      return;
+    const roads = t.roads;
+    const sOf = (n: RoadNode) => t.wrapS(n.s ?? t.project(n.at[0], n.at[1]).s);
+    const tangentAt = (n: RoadNode): [number, number] => { const i = t.project(n.at[0], n.at[1]).idx; return [t.tx[i], t.ty[i]]; };
+    this.entries = [...roads.nodes.values()].filter((n) => n.kind === 'apron').map((n) => ({ id: n.id, s: sOf(n), tangent: tangentAt(n) }));
+    this.exits = roads.accesses.flatMap((n) => {
+      const way = roads.pathToGarage(n.id);
+      if (!way) return [];
+      const far = way.find((p) => Math.hypot(p[0] - n.at[0], p[1] - n.at[1]) > 5) ?? way[way.length - 1];
+      const len = Math.hypot(far[0] - n.at[0], far[1] - n.at[1]) || 1;
+      return [{
+        id: n.id, s: sOf(n), garage: pathLength([n.at, ...way]), tangent: tangentAt(n),
+        away: [(far[0] - n.at[0]) / len, (far[1] - n.at[1]) / len] as [number, number],
+      }];
+    });
+    if (!this.entries.length || !this.exits.length) return;
+
+    // The garage's trucks park at the back of its parking; the wrecks they bring in fill it from the front.
+    const g = t.infield.garage;
+    const inGarage = Math.max(1, Math.min(t.length < 1000 ? 4 : 5, g.parking.length - 1));
+    const posts = g.parking.slice(-inGarage).reverse();
+    this.bays = g.parking.length > inGarage ? g.parking.slice(0, -inGarage) : [...g.parking];
+    // How long the slowest call round the lap takes from the posts so far (s, by the pace estimates).
+    const samples: number[] = [];
+    for (let s = 0; s < t.length; s += 25) samples.push(s);
+    const reach = (from: RoadsFrom) => samples.map((s) => Math.min(...this.entries.map((a) => {
+      const road = from.dist.get(a.id);
+      return road === undefined ? Infinity : road / ROAD_PACE + Math.min(t.distanceFrom(a.s, s), t.distanceFrom(s, a.s)) / APRON_PACE;
+    })));
+    let best = reach(roads.from(...posts[0]));
+    const worst = (r: number[]) => Math.max(...r);
+    const lots = stagingPosts(t).map((at) => ({ at, reach: reach(roads.from(...at)) }));
+    for (let k = 0; k < MAX_LOT_TRUCKS && lots.length; k++) {
+      const pick = lots.map((lot) => ({ lot, r: best.map((v, i) => Math.min(v, lot.reach[i])) }))
+        .reduce((a, b) => (worst(b.r) < worst(a.r) ? b : a));
+      if (worst(pick.r) > LOT_GAIN * worst(best)) break;
+      posts.push(pick.lot.at);
+      best = pick.r;
+      lots.splice(lots.indexOf(pick.lot), 1);
     }
-    const start = t.toWorld(t.pit.wallEnd, t.apronEdgeAt(t.pit.wallEnd) - 2);
-    // Drive the shorter way round along the apron (against traffic is fine for a wrecker).
-    const fwd = t.distanceFrom(t.pit.wallEnd, wreck.s);
-    this.wreckers.push({
-      wreck, x: start[0], y: start[1], s: t.pit.wallEnd, d: t.apronEdgeAt(t.pit.wallEnd) - 2,
-      phase: 'drive', timer: 0, route: [], exitS: 0, dir: fwd < t.length / 2 ? 1 : -1, via: '',
+    posts.forEach((post, k) => {
+      const body = truckBody(WRECKER_ID - k, t, post);
+      body.cleared = true; // parked out of everyone's way
+      this.world.vehicles.push(body);
+      this.wreckers.push({
+        truck: { body, heading: 0, speed: 0, kappa: 0, path: null, idx: 0 },
+        wreck: null, x: post[0], y: post[1], phase: 'idle', timer: 0, post, dir: 1, via: '', progress: 0, stalled: 0, tries: 0, waited: 0,
+      });
     });
   }
 
-  private stepWreckers(dt: number): void {
-    const t = this.track;
-    for (const w of this.wreckers) {
-      if (w.phase === 'drive') {
-        const remaining = w.dir > 0 ? t.distanceFrom(w.s, w.wreck.s) : t.distanceFrom(w.wreck.s, w.s);
-        const stepS = Math.min(remaining, WRECKER_SPEED * dt);
-        w.s = t.wrapS(w.s + w.dir * stepS);
-        // Swing over to the wreck's lane as it gets close.
-        const targetD = remaining < 60 ? w.wreck.d : t.apronEdgeAt(w.s) - 2;
-        w.d += Math.sign(targetD - w.d) * Math.min(Math.abs(targetD - w.d), 6 * dt);
-        [w.x, w.y] = t.toWorld(w.s, w.d);
-        if (remaining < 1 && Math.abs(w.d - w.wreck.d) < 1) {
-          w.phase = 'hook';
-          w.timer = HOOK_TIME;
-          w.wreck.cleared = true; // off the physics from here on
-          w.wreck.towed = true;
-        }
-      } else if (w.phase === 'hook') {
-        w.timer -= dt;
-        if (w.timer <= 0 && w.marshals) {
-          // Lifted off: parked out of the way in the paddock.
-          const park = t.infield.garage.parking[this.garageSlots++ % t.infield.garage.parking.length];
-          w.wreck.cleared = true;
-          [w.x, w.y] = park;
-          this.parkWreck(w);
-        } else if (w.timer <= 0) this.planTow(w);
-      } else if (w.phase === 'tow') {
-        if (w.route.length === 0) {
-          // On the oval: back to the apron, then along it to the exit point.
-          const remaining = w.dir > 0 ? t.distanceFrom(w.s, w.exitS) : t.distanceFrom(w.exitS, w.s);
-          w.s = t.wrapS(w.s + w.dir * Math.min(remaining, TOW_SPEED * dt));
-          const targetD = t.apronEdgeAt(w.s) - 2;
-          w.d += Math.sign(targetD - w.d) * Math.min(Math.abs(targetD - w.d), 4 * dt);
-          [w.x, w.y] = t.toWorld(w.s, w.d);
-          if (remaining < 1) w.route = this.routeToGarage(w);
-        } else {
-          const [tx, ty] = w.route[0];
-          const dx = tx - w.x, dy = ty - w.y;
-          const dist = Math.hypot(dx, dy);
-          const step = TOW_SPEED * dt;
-          if (dist <= step) {
-            w.x = tx; w.y = ty;
-            w.route.shift();
-            if (w.route.length === 0) this.parkWreck(w);
-          } else {
-            w.x += (dx / dist) * step;
-            w.y += (dy / dist) * step;
-          }
-        }
-        // The wreck trails the truck.
-        if (w.phase === 'tow') {
-          w.wreck.x = w.x;
-          w.wreck.y = w.y;
-          w.wreck.vx = 0;
-          w.wreck.vy = 0;
-          const p = t.project(w.x, w.y, w.wreck.trackIdx);
-          w.wreck.trackIdx = p.idx; w.wreck.s = p.s; w.wreck.d = p.d;
+  private dispatchWrecker(wreck: Car): void {
+    if (this.safetyCar || !this.wreckers.some((w) => w.truck)) {
+      // Marshals and a crane where the car stopped: lifted over the barrier, then it's gone.
+      this.wreckers.push({
+        truck: null, wreck, x: wreck.x, y: wreck.y, phase: 'hook', timer: MARSHAL_TIME,
+        post: [wreck.x, wreck.y], dir: 1, via: '', progress: 0, stalled: 0, tries: 0, waited: 0, marshals: true,
+      });
+      return;
+    }
+    this.callouts.push({ wreck, waited: 0 });
+  }
+
+  /**
+   * Send trucks to the wrecks waiting for one: of every free truck (parked, or
+   * on its way back) and wreck, the pair that gets a truck there soonest,
+   * then the next, until the trucks or the wrecks run out.
+   */
+  private assignWreckers(dt: number): void {
+    for (const c of this.callouts) c.waited += dt;
+    // A wreck no truck has had a way to is lifted off by marshals in the end, so a caution always ends. (One waiting
+    // for a truck to be free waits: given up on, wrecks vanished from the track.)
+    for (const c of this.callouts.filter((c) => c.waited > CALLOUT_GIVE_UP && !c.reachable)) {
+      this.callouts.splice(this.callouts.indexOf(c), 1);
+      this.wreckers.push({
+        truck: null, wreck: c.wreck, x: c.wreck.x, y: c.wreck.y, phase: 'hook', timer: MARSHAL_TIME,
+        post: [c.wreck.x, c.wreck.y], dir: 1, via: '', progress: 0, stalled: 0, tries: 0, waited: 0, marshals: true,
+      });
+    }
+    const ways = new Map<Wrecker, RoadsFrom>();
+    while (this.callouts.length) {
+      let best: { w: Wrecker; callout: Callout; plan: Approach } | null = null;
+      for (const w of this.wreckers) {
+        if (!w.truck || (w.phase !== 'idle' && w.phase !== 'return')) continue;
+        let from = ways.get(w);
+        if (!from) ways.set(w, (from = this.track.roads.from(w.truck.body.x, w.truck.body.y)));
+        for (const callout of this.callouts) {
+          const plan = this.approach(from, callout.wreck, w.truck.body);
+          if (plan) callout.reachable = true;
+          if (plan && (!best || plan.cost < best.plan.cost)) best = { w, callout, plan };
         }
       }
+      if (!best) return;
+      this.callouts.splice(this.callouts.indexOf(best.callout), 1);
+      this.sendOut(best.w, best.callout.wreck, best.plan, ways.get(best.w)!);
     }
   }
 
-  /** Pick the nearest way off the oval that leads to a garage (an escape road, pit entry...), along the apron. */
-  private planTow(w: Wrecker): void {
+  /**
+   * The quickest way to a wreck from where a truck is: by road to a way onto
+   * the apron, along it either way round to the wreck, and on the same way
+   * with it to the first way off that leads to the garage. Weighed mostly by
+   * the time to the wreck (what the caution waits on), a little by the rest.
+   */
+  private approach(from: RoadsFrom, wreck: Car, truck: Car): Approach | null {
     const t = this.track;
-    const accesses = t.roads.accesses
-      .filter((n) => t.roads.pathToGarage(n.id))
-      .map((n) => ({ via: n.id, exitS: t.wrapS(n.s ?? t.project(...n.at).s) }));
-    const options = accesses.map(({ via, exitS }) => {
-      const fwd = t.distanceFrom(w.s, exitS);
-      return fwd < t.length / 2 ? { via, exitS, dir: 1, dist: fwd } : { via, exitS, dir: -1, dist: t.length - fwd };
-    }).sort((a, b) => a.dist - b.dist);
-    w.exitS = options[0].exitS;
-    w.dir = options[0].dir;
-    w.via = options[0].via;
-    w.phase = 'tow';
-    w.route = [];
+    let best: Approach | null = null;
+    // Near enough to go straight there across the grass: from the side that lines it up (the wreck behind it as it
+    // comes down to it, so it pulls up ahead of it without turning back).
+    const near = Math.hypot(truck.x - wreck.x, truck.y - wreck.y);
+    const side = t.distanceFrom(wreck.s, truck.s) < t.length / 2 ? 1 : -1;
+    for (const dir of [1, -1]) {
+      const hookS = t.wrapS(wreck.s + dir * HOOK_AHEAD);
+      // (A road that turns back on the way it goes, onto the apron or off it, is a U-turn: on a truck's turning
+      // circle, a loop out across the track.)
+      const uTurn = (tangent: [number, number], way: [number, number]) => (dir * (tangent[0] * way[0] + tangent[1] * way[1]) < U_TURN_COS ? U_TURN_COST : 0);
+      let out: { id: string; dist: number; cost: number } | null = null;
+      for (const e of this.exits) {
+        const dist = along(t, hookS, e.s, dir) + e.garage;
+        const cost = TURNAROUND_WEIGHT * (dist / ROAD_PACE) + uTurn(e.tangent, e.away);
+        if (!out || cost < out.cost) out = { id: e.id, dist, cost };
+      }
+      if (!out) continue;
+      if (near < DIRECT_RANGE && dir === side) {
+        const cost = near / TRUCK.GRASS_SPEED + out.cost;
+        if (!best || cost < best.cost) best = { via: '', s: wreck.s, dir, out: out.id, cost, direct: true };
+      }
+      // Parked near the apron (staged up an escape road, a lot by it): across the grass onto its lane, a little way on.
+      if (truck.d - t.apronEdgeAt(truck.s) < GRASS_ENTRY) {
+        const s0 = t.wrapS(truck.s + dir * DIVE_RUN);
+        const [lx, ly] = t.toWorld(s0, this.truckLane(s0));
+        if (along(t, s0, wreck.s, dir) < along(t, truck.s, wreck.s, dir)) {
+          const cost = Math.hypot(lx - truck.x, ly - truck.y) / TRUCK.GRASS_SPEED
+            + (along(t, s0, wreck.s, dir) / APRON_PACE) * (dir < 0 ? AGAINST_TRAFFIC : 1) + out.cost;
+          if (!best || cost < best.cost) best = { via: '', s: s0, dir, out: out.id, cost, grass: true };
+        }
+      }
+      for (const a of this.entries) {
+        const road = from.dist.get(a.id);
+        if (road === undefined) continue;
+        const way = from.path(a.id)!;
+        const [px, py] = way.length > 1 ? way[way.length - 2] : way[0], [qx, qy] = way[way.length - 1];
+        const len = Math.hypot(qx - px, qy - py) || 1;
+        const cost = road / ROAD_PACE + (along(t, a.s, wreck.s, dir) / APRON_PACE) * (dir < 0 ? AGAINST_TRAFFIC : 1)
+          + out.cost + uTurn(a.tangent, [(qx - px) / len, (qy - py) / len]);
+        if (!best || cost < best.cost) best = { via: a.id, s: a.s, dir, out: out.id, cost };
+      }
+    }
+    return best;
   }
 
-  /** From the access it left the oval at, along the road network's shortest way to a garage, to a parking spot. */
-  private routeToGarage(w: Wrecker): Array<[number, number]> {
+  /** The apron's lane for a truck: along its inside, its own width clear of the grass (on the grass where there's no apron). */
+  private truckLane(s: number): number {
     const t = this.track;
-    const g = t.infield.garage;
-    const park = g.parking[this.garageSlots++ % g.parking.length];
-    return [...(t.roads.pathToGarage(w.via) ?? []), park];
+    const r = TRUCK.RADIUS + 0.4;
+    return t.apronWidth >= 2 * r + 0.5 ? t.apronEdgeAt(s) - r : t.apronEdgeAt(s) + r;
+  }
+
+  /** World points along the oval the way dir runs from s0, `length` metres, at lateral d(u, s) (u: metres from s0). */
+  private alongOval(s0: number, dir: number, length: number, d: (u: number, s: number) => number): Array<[number, number]> {
+    const t = this.track;
+    const pts: Array<[number, number]> = [];
+    if (!(length >= 0)) length = 0; // (never a NaN's endless run)
+    for (let u = 0; ; u = Math.min(length, u + 3)) {
+      const s = t.wrapS(s0 + dir * u);
+      pts.push(t.toWorld(s, d(u, s)));
+      if (u >= length) break;
+    }
+    return pts;
+  }
+
+  /**
+   * Where the truck pulls up to hook up: past the wreck, in its lane (clear of
+   * the wall), to back up to it. In line, the two are one thing in one lane
+   * for the field to go round. (Pulled up alongside, cars going round the
+   * wreck on that side drove into the truck.)
+   */
+  private hookPoint(wreck: Car, dir: number): { s: number; d: number } {
+    const t = this.track;
+    const s = t.wrapS(wreck.s + dir * HOOK_AHEAD);
+    return { s, d: Math.max(wreck.d, t.outerEdgeAt(s) + TRUCK.RADIUS + 0.3) };
+  }
+
+  private sendOut(w: Wrecker, wreck: Car, plan: Approach, from: RoadsFrom): void {
+    const t = this.track;
+    const tr = w.truck!;
+    if (plan.direct) {
+      // Straight across: down to the wreck's inside, and into its lane ahead of it.
+      const hook = this.hookPoint(wreck, plan.dir);
+      const by = t.toWorld(t.wrapS(wreck.s + plan.dir * 4), Math.max(wreck.d + PASS + 3, this.truckLane(wreck.s)));
+      setOff(tr, new TruckPath([[tr.body.x, tr.body.y], by, t.toWorld(hook.s, hook.d)], t, TRUCK.SPEED, TRUCK.BRAKE));
+      tr.body.cleared = false;
+      Object.assign(w, { wreck, phase: 'drive', dir: plan.dir, via: plan.out, progress: 0, stalled: 0, tries: 0, waited: 0 });
+      return;
+    }
+    const head: Array<[number, number]> = plan.grass ? [[tr.body.x, tr.body.y]] : from.path(plan.via)!;
+    // A road meeting the apron at too sharp an angle the way it's going: across the grass onto the apron instead.
+    const dive = plan.grass ? null : this.dive(head, plan.dir, true);
+    // (A wreck nearer than that: down onto the lane just short of it.)
+    if (dive && along(t, dive.s, wreck.s, plan.dir) > along(t, plan.s, wreck.s, plan.dir)) dive.s = t.wrapS(wreck.s - plan.dir * 8);
+    const start = dive ? dive.s : plan.s;
+    const total = along(t, start, wreck.s, plan.dir);
+    const hook = this.hookPoint(wreck, plan.dir);
+    // Along the apron, over to go by the wreck on its inside, and into its lane ahead of it.
+    const by = wreck.d + PASS;
+    const u0 = Math.max(0, total - 70), u1 = Math.max(0, total - 8), u2 = total + 2, u3 = total + HOOK_AHEAD;
+    const oval = this.alongOval(start, plan.dir, u3, (u, s) => (u < u2
+      ? mix(this.truckLane(s), by, smooth((u - u0) / Math.max(1, u1 - u0)))
+      : mix(by, hook.d, smooth((u - u2) / (u3 - u2)))));
+    // (Onto the apron's lane a little way along from where the road meets it: room to turn onto it on a curve.)
+    const pts = dive ? [...dive.points, ...oval] : plan.grass ? [...head, ...oval] : [...head, ...oval.slice(JOIN_RUN / 3)];
+    setOff(tr, new TruckPath(pts, t, TRUCK.SPEED, TRUCK.BRAKE));
+    tr.body.cleared = false;
+    Object.assign(w, { wreck, phase: 'drive', dir: plan.dir, via: plan.out, progress: 0, stalled: 0, tries: 0, waited: 0 });
+  }
+
+  private stepWreckers(dt: number): void {
+    this.ensureFleet();
+    this.assignWreckers(dt);
+    // Marshals' finished jobs drop out (the fleet stays first in the list: a frame has room for WRECKER_SLOTS; finished
+    // jobs kept, the trucks at work past them went missing from the viewer).
+    for (let k = this.wreckers.length - 1; k >= 0; k--) if (this.wreckers[k].phase === 'done') this.wreckers.splice(k, 1);
+    const t = this.track;
+    for (const w of this.wreckers) {
+      if (w.marshals) {
+        if (w.phase !== 'hook') continue;
+        w.timer -= dt;
+        if (w.timer <= 0) {
+          // Lifted off: parked out of the way in the paddock.
+          const park = t.infield.garage.parking[this.garageSlots++ % t.infield.garage.parking.length];
+          w.wreck!.cleared = true;
+          [w.x, w.y] = park;
+          this.parkWreck(w);
+        }
+        continue;
+      }
+      const tr = w.truck!, body = tr.body;
+      if (w.phase === 'idle') continue;
+      if (w.phase === 'hook') {
+        // Backing up to the car (straight back: it pulled up in line with it), then hooking it up.
+        const wreck = w.wreck!;
+        const gap = Math.hypot(wreck.x - body.x, wreck.y - body.y);
+        if (gap > TRUCK.HITCH + 0.2 && w.timer > HOOK_TIME) {
+          const step = Math.min(gap - TRUCK.HITCH, TRUCK.BACK_SPEED * dt);
+          body.x += ((wreck.x - body.x) / gap) * step;
+          body.y += ((wreck.y - body.y) / gap) * step;
+          w.timer -= dt;
+        } else w.timer = Math.min(w.timer, HOOK_TIME) - dt;
+        // Hooked up: away once there's a gap in the traffic coming (if it's out on the racing surface).
+        if (w.timer <= 0 && (!TRUCKS_SOLID || w.timer < -YIELD_TIME || !this.onRacingSurface(body) || !this.trafficComing(body.s, TOW_CROSSING))) this.towAway(w);
+      } else if (w.phase === 'drop') {
+        // The crew rolls the car off into its bay.
+        const wreck = w.wreck!, [bx, by] = w.bay!;
+        const f = Math.min(1, dt / Math.max(dt, w.timer));
+        wreck.x += (bx - wreck.x) * f;
+        wreck.y += (by - wreck.y) * f;
+        w.timer -= dt;
+        if (w.timer <= 0) {
+          this.parkWreck(w);
+          const back = t.roads.from(body.x, body.y).to(...w.post);
+          setOff(tr, new TruckPath(back.points, t, TRUCK.RETURN_SPEED, TRUCK.BRAKE));
+          Object.assign(w, { phase: 'return', progress: 0, stalled: 0 });
+        }
+      } else {
+        const hold = this.mustWait(w, dt);
+        const arrived = driveTruck(tr, dt, w.phase === 'tow', hold);
+        if (!arrived && !hold) this.watchProgress(w, dt);
+        if (w.phase === 'tow') {
+          const wreck = w.wreck!;
+          trail(wreck, body);
+          wreck.vx = 0; wreck.vy = 0;
+          const p = t.project(wreck.x, wreck.y);
+          wreck.trackIdx = p.idx; wreck.s = p.s; wreck.d = p.d;
+        }
+        if (arrived && w.phase === 'drive') this.reachWreck(w);
+        else if (arrived && w.phase === 'tow') Object.assign(w, { phase: 'drop', timer: DROP_TIME });
+        else if (arrived && w.phase === 'return') {
+          w.phase = 'idle';
+          tr.path = null;
+          body.cleared = true;
+        }
+      }
+      // (Found afresh: in the infield, following on from the last step's wanders to the far side of the oval.)
+      const p = t.project(body.x, body.y);
+      body.trackIdx = p.idx; body.s = p.s; body.d = p.d;
+      w.x = body.x; w.y = body.y;
+    }
+  }
+
+  /** Pulled up at the wreck: hook up, unless it has been knocked away meanwhile (then go round to where it is now). */
+  private reachWreck(w: Wrecker): void {
+    const t = this.track;
+    const tr = w.truck!, wreck = w.wreck!;
+    if (Math.hypot(wreck.x - tr.body.x, wreck.y - tr.body.y) > TRUCK.HITCH + 3 && w.tries++ < 3) {
+      const hook = this.hookPoint(wreck, w.dir);
+      setOff(tr, new TruckPath([[tr.body.x, tr.body.y], t.toWorld(hook.s, hook.d)], t, TRUCK.GRASS_SPEED, TRUCK.BRAKE));
+      return;
+    }
+    w.phase = 'hook';
+    w.timer = HOOK_TIME + BACK_TIME;
+    wreck.cleared = true; // off the physics from here on
+    wreck.towed = true;
+  }
+
+  /** Hooked up: back to the apron and along it to the way off, then by road into a bay in the garage. */
+  private towAway(w: Wrecker): void {
+    const t = this.track;
+    const tr = w.truck!, body = tr.body;
+    const exit = this.exits.find((e) => e.id === w.via)!;
+    const bay = this.bays[this.baysUsed++ % this.bays.length];
+    let road = t.roads.fromNode(w.via).to(...bay).points;
+    let total = along(t, body.s, exit.s, w.dir);
+    if (total > t.length - 20) total = 0;
+    // A road leaving the apron back the way it came: off across the grass to it instead, turning round out there.
+    const dive = this.dive(road, w.dir, false);
+    const dove = !!dive && along(t, body.s, dive.s, w.dir) < total;
+    if (dove) { road = dive!.points; total = along(t, body.s, dive!.s, w.dir); }
+    const d0 = body.d;
+    const oval = this.alongOval(body.s, w.dir, total, (u, s) => mix(d0, this.truckLane(s), smooth(u / 40)));
+    // On through the bay by the tow line's length, so the car it tows comes to rest in it.
+    const [px, py] = road.length > 1 ? road[road.length - 2] : oval[oval.length - 1];
+    const len = Math.hypot(bay[0] - px, bay[1] - py) || 1;
+    const through: [number, number] = [bay[0] + ((bay[0] - px) / len) * TRUCK.HITCH, bay[1] + ((bay[1] - py) / len) * TRUCK.HITCH];
+    const lead = dove ? oval : oval.slice(0, Math.max(1, oval.length - JOIN_RUN / 3));
+    setOff(tr, new TruckPath([...lead, ...road, through], t, TRUCK.TOW_SPEED, TRUCK.TOW_BRAKE));
+    Object.assign(w, { phase: 'tow', bay, progress: 0, stalled: 0, waited: 0 });
+  }
+
+  /**
+   * Where a road meets the apron turned back against the way a truck goes
+   * along it (it would turn through more than DIVE_TURN, a loop out across
+   * the track on its turning circle): the road as far as it's well into the
+   * infield, and the s where the truck meets the apron's lane, DIVE_RUN on
+   * from there (entering) or before it (leaving). The truck turns round on
+   * the grass. Null where the road meets it fine (or never gets that deep).
+   * points: entering, the way to the apron (ending at it); leaving, from it.
+   */
+  private dive(points: Array<[number, number]>, dir: number, entering: boolean): { points: Array<[number, number]>; s: number } | null {
+    const t = this.track;
+    if (points.length < 2) return null;
+    const depth = (p: [number, number]) => { const q = t.project(p[0], p[1]); return q.d - t.apronEdgeAt(q.s); };
+    const ordered = entering ? [...points].reverse() : points; // from the apron out
+    const at = ordered[0];
+    const far = ordered.find((p) => Math.hypot(p[0] - at[0], p[1] - at[1]) > 12) ?? ordered[ordered.length - 1];
+    const q = t.project(at[0], at[1]);
+    const ux = far[0] - at[0], uy = far[1] - at[1], len = Math.hypot(ux, uy) || 1;
+    // The way the road runs along the lap, away from the apron: entering, the truck comes down it the other way.
+    const along = (t.tx[q.idx] * ux + t.ty[q.idx] * uy) / len;
+    // (The cosine of the turn from the road onto the lane, or off it.)
+    if ((entering ? -along : along) * dir > Math.cos(DIVE_TURN)) return null;
+    const k = ordered.findIndex((p) => depth(p) >= DIVE_DEPTH);
+    if (k < 0) return null;
+    const deep = ordered[k];
+    const sDeep = t.project(deep[0], deep[1]).s;
+    return entering
+      ? { points: points.slice(0, points.length - k), s: t.wrapS(sDeep + dir * DIVE_RUN) }
+      : { points: points.slice(k), s: t.wrapS(sDeep - dir * DIVE_RUN) };
+  }
+
+  private onRacingSurface(c: Car): boolean {
+    return c.d < this.track.innerEdge(c.trackIdx) + 1;
+  }
+
+  /**
+   * A car on its way round to s on the racing surface (or there), coming fast enough to get there before a truck
+   * going out there to drive `out` metres on it is out of the way again.
+   */
+  private trafficComing(s: number, out: number): boolean {
+    const t = this.track;
+    const needs = out / CROSS_PACE + CROSS_MARGIN;
+    return [...this.world.cars, ...(this.paceCarOut ? [this.paceCar] : [])].some((c) => {
+      if (c.retired || c.cleared || c.pit.phase !== 'none' || !this.onRacingSurface(c)) return false;
+      const gap = t.distanceFrom(c.s, s);
+      return t.distanceFrom(s, c.s) < 15 || (gap < t.length / 2 && gap / Math.max(8, c.speed) < needs);
+    });
+  }
+
+  /**
+   * A truck about to go out onto the racing surface waits short of it for a
+   * gap in the traffic coming (cars ran into trucks crossing to a wreck). Once
+   * out there, it gets on with it.
+   */
+  private mustWait(w: Wrecker, dt: number): boolean {
+    const tr = w.truck!, path = tr.path!, body = tr.body;
+    // (Trucks cars pass through needn't wait for them.)
+    if (!TRUCKS_SOLID || this.onRacingSurface(body) || w.waited > YIELD_TIME) return false;
+    const look = path.at[tr.idx] + 20 + (tr.speed * tr.speed) / (2 * TRUCK.BRAKE);
+    for (let j = tr.idx; j < path.x.length && path.at[j] < look; j++) {
+      if (!path.racing[j]) continue;
+      // (Out there to the end of the drive: in line with the wreck, pulled up to hook it, the field goes by the two.)
+      if (!this.trafficComing(this.track.project(path.x[j], path.y[j]).s, path.length - path.at[j])) break;
+      w.waited += dt;
+      return true;
+    }
+    return false;
+  }
+
+  /** A truck that has made no headway along its path in a while (caught on something) is moved on along it. */
+  private watchProgress(w: Wrecker, dt: number): void {
+    const tr = w.truck!, path = tr.path!;
+    const at = path.at[tr.idx];
+    if (at > w.progress + 1) { w.progress = at; w.stalled = 0; return; }
+    w.stalled += dt;
+    if (w.stalled < STALLED_TIME) return;
+    let j = tr.idx;
+    while (j < path.x.length - 1 && path.at[j] < at + 10) j++;
+    const k = Math.min(path.x.length - 1, j + 1);
+    tr.body.x = path.x[j]; tr.body.y = path.y[j];
+    if (k > j) tr.heading = Math.atan2(path.y[k] - path.y[j], path.x[k] - path.x[j]);
+    tr.idx = j; tr.kappa = 0;
+    w.progress = path.at[j];
+    w.stalled = 0;
+  }
+
+  /** The track is clear of wrecks: none waiting for a truck, none still on the racing surface. */
+  private trackClear(): boolean {
+    const t = this.track;
+    if (this.callouts.length) return false;
+    return this.wreckers.every((w) => !w.wreck || w.phase === 'done'
+      || ((w.phase === 'tow' || w.phase === 'drop') && w.wreck.d > t.innerEdge(w.wreck.trackIdx) + 3));
   }
 
   private parkWreck(w: Wrecker): void {
-    w.phase = 'done';
-    w.wreck.towed = false;
-    w.wreck.parked = true;
-    w.wreck.x = w.x;
-    w.wreck.y = w.y;
+    const wreck = w.wreck!;
+    if (w.marshals) w.phase = 'done';
+    wreck.towed = false;
+    wreck.parked = true;
+    if (w.marshals) { wreck.x = w.x; wreck.y = w.y; }
+    w.wreck = null;
   }
 }
+
+/**
+ * Where a truck can wait round the infield: in each parking lot, a little way
+ * in from where its lane reaches it; and staged up each escape road, on its
+ * verge a little way from the apron (as wreckers wait at the turns).
+ */
+function stagingPosts(t: Track): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (const road of t.roads.roads) {
+    if (!/^lot\d+$/.test(road.to) || road.points.length < 2) continue;
+    const [ax, ay] = road.points[road.points.length - 2], [bx, by] = road.points[road.points.length - 1];
+    const len = Math.hypot(bx - ax, by - ay) || 1;
+    out.push([bx + ((bx - ax) / len) * 8, by + ((by - ay) / len) * 8]);
+  }
+  for (const road of t.roads.roads) {
+    if (road.grade !== 'escape' || t.roads.nodes.get(road.from)?.kind !== 'apron') continue;
+    const at = pointAlong(road.points, STAGE_UP_ESCAPE);
+    if (!at) continue;
+    const [x, y, ux, uy] = at;
+    const side = road.width / 2 + TRUCK.RADIUS + 1;
+    // On whichever verge is further from the racing surface.
+    const verges: Array<[number, number]> = [[x - uy * side, y + ux * side], [x + uy * side, y - ux * side]];
+    const inset = (p: [number, number]) => { const q = t.project(p[0], p[1]); return q.d - t.apronEdgeAt(q.s); };
+    const post = inset(verges[0]) > inset(verges[1]) ? verges[0] : verges[1];
+    if (inset(post) > 3) out.push(post);
+  }
+  return out;
+}
+
+/** How far up an escape road from the apron a truck waits (m). */
+const STAGE_UP_ESCAPE = 25;
+
+/** The point `dist` metres along a polyline, and the way it runs there; null if it's shorter. */
+function pointAlong(pts: Array<[number, number]>, dist: number): [number, number, number, number] | null {
+  for (let k = 0; k + 1 < pts.length; k++) {
+    const [ax, ay] = pts[k], [bx, by] = pts[k + 1];
+    const seg = Math.hypot(bx - ax, by - ay);
+    if (seg > 1e-9 && dist <= seg) return [ax + ((bx - ax) * dist) / seg, ay + ((by - ay) * dist) / seg, (bx - ax) / seg, (by - ay) / seg];
+    dist -= seg;
+  }
+  return null;
+}
+
+/** Metres from a to b the way dir runs round the lap. */
+function along(t: Track, a: number, b: number, dir: number): number {
+  return dir > 0 ? t.distanceFrom(a, b) : t.distanceFrom(b, a);
+}
+
+const mix = (a: number, b: number, f: number) => a + (b - a) * f;
+const smooth = (x: number) => {
+  const f = Math.max(0, Math.min(1, x));
+  return f * f * (3 - 2 * f);
+};
 
 /** Pace-car speed: comfortably below the corner limit on the low line of the tightest corner. */
 export function paceSpeedFor(track: Track): number {

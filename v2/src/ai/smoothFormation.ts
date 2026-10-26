@@ -101,9 +101,10 @@ export class SmoothFormation {
     const wreck = ctl.wreckAhead(car);
     if (wreck) {
       const gap = t.distanceFrom(car.s, wreck.s);
-      const side = car.d < wreck.d ? -1 : 1;
-      const clear = wreck.d + side * 5;
-      const w = (1 - ramp(gap, 60, 200)) * (1 - ramp(Math.abs(wreck.d - lane), 3, 6));
+      const side = car.d < (wreck.lo + wreck.hi) / 2 ? -1 : 1;
+      const clear = side < 0 ? wreck.lo - 5 : wreck.hi + 5;
+      const off = Math.max(0, wreck.lo - lane, lane - wreck.hi);
+      const w = (1 - ramp(gap, 60, 200)) * (1 - ramp(off, 3, 6));
       lane = (1 - w) * lane + w * clear;
     }
     v = Math.min(v, this.followCap(car, world, lane, tr));
@@ -127,16 +128,20 @@ export class SmoothFormation {
     const t = world.track;
     const gap = 2 * P.CAR_RADIUS + tr.followGap + followLoss(car.speed, REACTION, BRAKE, BRAKE);
     let cap = Infinity;
-    for (const other of [...world.cars, ...(ctl.paceCarOut ? [ctl.paceCar] : [])]) {
+    // (Wreckers at work too: bigger, and moving at what they're doing along the track.)
+    for (const other of [...world.cars, ...(ctl.paceCarOut ? [ctl.paceCar] : []), ...world.solidVehicles]) {
       if (other === car || other.cleared || other.waiting) continue;
       const ds = t.distanceFrom(car.s, other.s);
       if (ds <= 0 || ds > LOOK) continue;
       // Where this car will be across the road when it gets there: heading for the lane, a few metres a second.
       const reach = ds / Math.max(1, car.speed);
       const there = car.d + Math.max(-3 * reach, Math.min(3 * reach, lane - car.d));
-      const overlap = 1 - ramp(Math.abs(other.d - there), 2 * P.CAR_RADIUS, 2 * P.CAR_RADIUS + 1.5);
+      const touch = P.CAR_RADIUS + other.radius;
+      const overlap = 1 - ramp(Math.abs(other.d - there), touch, touch + 1.5);
       if (overlap <= 0) continue;
-      const vOther = other.retired ? 0 : other.speed;
+      const i = other.trackIdx;
+      const vOther = other.retired ? 0
+        : world.vehicles.includes(other) ? Math.max(0, other.vx * t.tx[i] + other.vy * t.ty[i]) : other.speed;
       const full = Math.sqrt(vOther * vOther + 2 * BRAKE * Math.max(0, ds - gap));
       cap = Math.min(cap, full / overlap);
     }

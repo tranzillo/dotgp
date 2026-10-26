@@ -4,7 +4,7 @@ import { adaptChiefWeights, initialChiefWeights } from '../ai/neuralChief';
 import { randomTraits, type CrewChiefTraits } from '../ai/pitting';
 import type { Rng } from '../ai/rng';
 import { PERFECT_SPOTTER, randomSpotterSkill, type SpotterSkill } from '../ai/spotter';
-import { randomLivery, withLegibleBorder, type Livery } from '../render/livery';
+import { randomLivery, withLegibleBorder, withTrim, type Livery } from '../render/livery';
 
 /**
  * The people behind the cars. Drivers, spotters and crew chiefs are separate
@@ -42,6 +42,9 @@ export interface DriverAgent {
   caution?: { weights: Float32Array };
   /** Its pit skill: a network that drives its own pit stops, on ovals and circuits. */
   pit?: { weights: Float32Array };
+  /** Its broken-car skill: a network that drives a broken car off the line to the apron (ovals, under green); drives with the licence. */
+  broken?: { weights: Float32Array };
+  brokenLicensed?: boolean;
   /** Human limits: seconds from seeing to the car answering, and motor noise (share of an input it strays by). */
   limits?: { latency: number; noise: number };
   /**
@@ -376,6 +379,7 @@ export class Roster {
         } : {}),
         ...(d.caution ? { caution: { weights: Array.from(d.caution.weights) } } : {}),
         ...(d.pit ? { pit: { weights: Array.from(d.pit.weights) } } : {}),
+        ...(d.broken ? { broken: { weights: Array.from(d.broken.weights) } } : {}),
       })),
       spotters: [...this.spotters.values()],
       chiefs: [...this.chiefs.values()].map((c) => ({
@@ -397,7 +401,7 @@ export class Roster {
       weights: number[]; rounds?: number; nerve?: number; cautionLicensed?: boolean;
       roadCourse?: { weights: number[]; rounds?: number; licensed?: boolean; style?: RoadStyle; caution?: { weights: number[] } };
       caution?: { weights: number[] }; limits?: { latency: number; noise: number }; pit?: { weights: number[] };
-      pitLicensed?: boolean; pitTrafficLicensed?: boolean;
+      pitLicensed?: boolean; pitTrafficLicensed?: boolean; broken?: { weights: number[] }; brokenLicensed?: boolean;
     }>,
     fieldSize: number,
     rng: Rng,
@@ -422,6 +426,7 @@ export class Roster {
         caution: src.caution ? { weights: adaptWeights(Float32Array.from(src.caution.weights)) } : undefined,
         pit: src.pit ? { weights: adaptWeights(Float32Array.from(src.pit.weights)) } : undefined,
         pitLicensed: src.pitLicensed, pitTrafficLicensed: src.pitTrafficLicensed,
+        broken: src.broken ? { weights: adaptWeights(Float32Array.from(src.broken.weights)) } : undefined, brokenLicensed: src.brokenLicensed,
         limits: src.limits,
       };
       r.drivers.set(driver.id, driver);
@@ -446,9 +451,9 @@ export class Roster {
     const d = data as Record<string, unknown>;
     if (d && d.version === 3) {
       r.counter = Number(d.counter) || 0;
-      for (const x of d.drivers as Array<Omit<DriverAgent, 'roadCourse' | 'caution' | 'pit'> & {
+      for (const x of d.drivers as Array<Omit<DriverAgent, 'roadCourse' | 'caution' | 'pit' | 'broken'> & {
         weights: number[]; roadCourse?: { weights: number[]; rounds: number; licensed: boolean; caution?: { weights: number[] } }; caution?: { weights: number[] };
-        pit?: { weights: number[] };
+        pit?: { weights: number[] }; broken?: { weights: number[] };
       }>) {
         r.drivers.set(x.id, {
           ...x, weights: adaptWeights(Float32Array.from(x.weights)), licensed: x.licensed ?? (x.rounds > 0 || x.mentor !== null),
@@ -458,6 +463,7 @@ export class Roster {
           } : undefined,
           caution: x.caution ? { weights: adaptWeights(Float32Array.from(x.caution.weights)) } : undefined,
           pit: x.pit ? { weights: adaptWeights(Float32Array.from(x.pit.weights)) } : undefined,
+          broken: x.broken ? { weights: adaptWeights(Float32Array.from(x.broken.weights)) } : undefined,
         });
       }
       for (const x of d.spotters as SpotterAgent[]) r.spotters.set(x.id, x);
@@ -467,7 +473,7 @@ export class Roster {
           : { kind: 'scripted', traits: x.brain.traits! };
         r.chiefs.set(x.id, { ...x, brain });
       }
-      r.teams = (d.teams as TeamEntry[]).map((t) => ({ ...t, livery: withLegibleBorder(t.livery) }));
+      r.teams = (d.teams as TeamEntry[]).map((t) => ({ ...t, livery: withTrim(withLegibleBorder(t.livery)) }));
       return r.teams.length ? r : null;
     }
     // Older formats: one team per listed driver.
@@ -488,7 +494,7 @@ export class Roster {
       r.teams.push({
         id: r.teams.length,
         livery: x.number && x.fill && x.border
-          ? withLegibleBorder({ number: x.number, fill: x.fill, border: x.border })
+          ? withTrim(withLegibleBorder({ number: x.number, fill: x.fill, border: x.border }))
           : randomLivery(r.teams.map((t) => t.livery.number), r.random),
         driver: driver.id,
         spotter: r.newSpotter().id,

@@ -5,6 +5,7 @@ import { damageModel } from './damage';
 import type { RaceControl } from './raceControl';
 import { pastTrackLimits } from './limits';
 import type { Track } from './track';
+import { TRUCKS_SOLID } from './wrecker';
 
 /** Whatever controls a car (usually a team: spotter + driver). Sets car.inputX / car.inputY. */
 export interface Controller {
@@ -59,6 +60,12 @@ export class World {
   control: RaceControl | null = null;
   /** Officials' cars (the pace car): physical, but not competitors. */
   readonly officials: Array<{ car: Car; controller: Controller }> = [];
+  /** Service vehicles (the wreckers), driven by race control (not the car physics). */
+  readonly vehicles: Car[] = [];
+  /** The service vehicles cars can hit and drivers see as traffic: none while TRUCKS_SOLID is off. */
+  get solidVehicles(): Car[] {
+    return TRUCKS_SOLID ? this.vehicles : [];
+  }
   time = 0;
   tick = 0;
 
@@ -114,7 +121,8 @@ export class World {
       resolveWalls(car, track, 0);
     }
     if (this.opts.collisions) {
-      const all = this.officials.length ? [...cars, ...this.officials.map((o) => o.car)] : cars;
+      const solid = this.solidVehicles;
+      const all = this.officials.length || solid.length ? [...cars, ...this.officials.map((o) => o.car), ...solid] : cars;
       const before = cars.map((c) => c.retired);
       resolveCarCollisions(all, track);
       cars.forEach((c, i) => {
@@ -123,7 +131,7 @@ export class World {
         this.announce(c, 'retired', 'Out of the race after contact', { others: [other ?? null] });
       });
       for (const car of all) reproject(car, track);
-      for (const { car } of this.officials) { car.health = 1; car.retired = false; } // officials don't wreck
+      for (const car of [...this.officials.map((o) => o.car), ...this.vehicles]) { car.health = 1; car.retired = false; } // officials don't wreck
     }
 
     this.time += dt;

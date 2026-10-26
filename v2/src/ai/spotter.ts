@@ -155,7 +155,9 @@ export class TowerSpotter implements Spotter {
     let hazardGap = Infinity, hazardD = 0;
     // The pace car (safety car) and wreckers out on track are traffic too: unnamed, the pace car was the car a quarter
     // of the damaging contacts under caution came from.
-    const traffic = world.officials.length ? [...world.cars, ...world.officials.map((o) => o.car)] : world.cars;
+    const trucks = world.solidVehicles;
+    const traffic = world.officials.length || trucks.length
+      ? [...world.cars, ...world.officials.map((o) => o.car), ...trucks] : world.cars;
     const pacing = !!world.control?.pacing;
     const normal = pacing ? null : normalSpeeds(track);
 

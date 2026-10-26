@@ -92,7 +92,7 @@ export class FormationDriver {
       const want = ahead ? ctl.paceSpeedAt(car.s) + tr.eagerness : ctl.paceSpeedAt(car.s);
       let holdLane = lane;
       const wreck = ctl.wreckAhead(car);
-      if (wreck && Math.abs(wreck.d - holdLane) < 4) holdLane = car.d < wreck.d ? wreck.d - 5 : wreck.d + 5;
+      if (wreck && holdLane > wreck.lo - 4 && holdLane < wreck.hi + 4) holdLane = car.d < (wreck.lo + wreck.hi) / 2 ? wreck.lo - 5 : wreck.hi + 5;
       this.drive(car, world, holdLane, follow(holdLane, want));
       return;
     }
@@ -145,7 +145,7 @@ export class FormationDriver {
     // A wreck in our lane ahead: go around it on the side we're already on, never across in front of it
     // (choosing by where the wreck is flipped sides as a sliding wreck crossed the middle).
     const wreck = ctl.wreckAhead(car);
-    if (wreck && Math.abs(wreck.d - lane) < 4) lane = car.d < wreck.d ? wreck.d - 5 : wreck.d + 5;
+    if (wreck && lane > wreck.lo - 4 && lane < wreck.hi + 4) lane = car.d < (wreck.lo + wreck.hi) / 2 ? wreck.lo - 5 : wreck.hi + 5;
     // Never faster than lets us stop comfortably behind whatever is ahead in our lane (at our own gap).
     v = follow(lane, v);
     this.drive(car, world, lane, v);
@@ -168,14 +168,20 @@ export class FormationDriver {
 export class PaceCarDriver implements Controller {
   decide(car: Car, world: World): void {
     const ctl = world.control;
+    const t = world.track;
     if (!ctl || !ctl.paceCarOut) {
-      car.inputX = 0;
-      car.inputY = 0;
-      car.vx = 0;
-      car.vy = 0;
+      // Off: on down pit road to its post at the end of it, and parked there until it's wanted.
+      const left = ctl && car.surface === 'pit' ? ctl.paceCarToPost(car.s) : 0;
+      if (left < 0.5 || (left < 1.5 && car.speed < 0.5)) {
+        car.inputX = 0;
+        car.inputY = 0;
+        car.vx = 0;
+        car.vy = 0;
+        return;
+      }
+      followLine(car, world, (s) => ctl!.paceLaneD(s), (s) => Math.min(PIT_SERVICE.SPEED_LIMIT - 1, Math.sqrt(2 * 2.5 * Math.max(0, ctl!.paceCarToPost(s) - 0.5))), 0.75);
       return;
     }
-    const t = world.track;
     const r = t.pitInS(car.s);
     const wallClear = t.pit.wallD + t.pit.wallThickness / 2 + P.CAR_RADIUS + 1.2;
     const fastLane = Math.max(pitFastD(t.pit), wallClear);

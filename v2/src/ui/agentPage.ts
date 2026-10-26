@@ -83,7 +83,7 @@ export class AgentPage {
     };
 
     const facts: string[] = [
-      team ? `<span class="dot" style="background:${team.livery.fill};border-color:${team.livery.border}"></span>#${team.livery.number}` : 'Academy (no seat)',
+      team ? `<span class="dot" style="background:${team.livery.fill};border-color:${team.livery.border}${team.livery.trim ? `;box-shadow:inset 0 0 0 1px ${team.livery.trim}` : ''}"></span>#${team.livery.number}` : 'Academy (no seat)',
       where ? `<b>${esc(where.label)}</b>` : 'Available',
     ];
     if (role === 'driver') {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { borderReads, randomLivery, withLegibleBorder } from '../src/render/livery';
+import { borderReads, randomLivery, withLegibleBorder, withTrim } from '../src/render/livery';
 
 describe('liveries', () => {
   it('only gives borders that read on the asphalt', () => {
@@ -20,5 +20,16 @@ describe('liveries', () => {
     expect(withLegibleBorder(old)).toEqual(a);
     const fine = { number: 3, fill: '#111111', border: '#ffd60a' };
     expect(withLegibleBorder(fine)).toBe(fine);
+  });
+
+  it('gives every new livery a trim, and an old one the same trim every time', () => {
+    let seed = 3;
+    const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < 100; i++) expect(randomLivery([], random).trim).toMatch(/^#[0-9a-f]{6}$/);
+    const old = { number: 12, fill: '#e63946', border: '#f8f9fa' };
+    expect(withTrim(old).trim).toBeTruthy();
+    expect(withTrim(old)).toEqual(withTrim(old));
+    const trimmed = { ...old, trim: '#111111' };
+    expect(withTrim(trimmed)).toBe(trimmed);
   });
 });

@@ -1,9 +1,11 @@
-/** A car's look: fill colour, thick border colour, and its number. */
+/** A car's look: fill colour, thick border colour, a thin trim ring between them, and its number. */
 export interface Livery {
   number: number;
   fill: string;
   border: string;
-  /** Text drawn instead of the number (e.g. "PC" for the pace car). */
+  /** The thin ring round the fill, inside the border (may match either). None: the border runs to the fill. */
+  trim?: string;
+  /** Text drawn instead of the number (e.g. "PC" for the pace car; empty, none: the wreckers). */
   label?: string;
 }
 
@@ -11,6 +13,7 @@ export interface Livery {
 export const RACING_SURFACE = '#4a4a50';
 
 export const PACE_CAR_LIVERY: Livery = { number: 0, fill: '#f4f4f4', border: '#f5c518', label: 'PC' };
+export const WRECKER_LIVERY: Livery = { number: 0, fill: '#ff7a1a', border: '#26262a', label: '' };
 
 const PALETTE = [
   '#e63946', // red
@@ -54,15 +57,20 @@ export function borderReads(border: string): boolean {
 
 const BORDERS = PALETTE.filter(borderReads);
 
-/** Black or white, whichever reads better on the fill. */
+const numberColors = new Map<string, string>();
+
+/** Black or white, whichever reads better on the fill. (Asked for every car every frame: remembered.) */
 export function numberColor(fill: string): string {
-  return contrast(fill, '#111111') >= contrast(fill, '#ffffff') ? '#111111' : '#ffffff';
+  let c = numberColors.get(fill);
+  if (!c) numberColors.set(fill, (c = contrast(fill, '#111111') >= contrast(fill, '#ffffff') ? '#111111' : '#ffffff'));
+  return c;
 }
 
 /**
- * A random fill/border pair with enough contrast to read as two colours, and
- * an unused number. Any palette colour can be the fill; the border comes from
- * the ones that read on the asphalt.
+ * A random fill/border pair with enough contrast to read as two colours, a
+ * trim, and an unused number. Any palette colour can be the fill or the trim
+ * (the trim may match either); the border comes from the ones that read on
+ * the asphalt.
  */
 export function randomLivery(taken: Iterable<number>, random: () => number = Math.random): Livery {
   const used = new Set(taken);
@@ -71,7 +79,7 @@ export function randomLivery(taken: Iterable<number>, random: () => number = Mat
   for (;;) {
     const fill = PALETTE[Math.floor(random() * PALETTE.length)];
     const border = BORDERS[Math.floor(random() * BORDERS.length)];
-    if (fill !== border && contrast(fill, border) >= 1.8) return { number, fill, border };
+    if (fill !== border && contrast(fill, border) >= 1.8) return { number, fill, border, trim: PALETTE[Math.floor(random() * PALETTE.length)] };
   }
 }
 
@@ -85,4 +93,12 @@ export function withLegibleBorder(livery: Livery): Livery {
   const ok = BORDERS.filter((b) => b !== livery.fill && contrast(livery.fill, b) >= 1.8);
   const pool = ok.length ? ok : BORDERS;
   return { ...livery, border: pool[livery.number % pool.length] };
+}
+
+/**
+ * The livery, given a trim if it was saved before liveries had one.
+ * Deterministic (picked by car number), like `withLegibleBorder`.
+ */
+export function withTrim(livery: Livery): Livery {
+  return livery.trim ? livery : { ...livery, trim: PALETTE[(livery.number * 5) % PALETTE.length] };
 }

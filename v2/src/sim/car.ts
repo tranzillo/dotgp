@@ -74,6 +74,9 @@ export class Car {
   number: number;
   color: string;
 
+  /** How big it is (m): every car the same; a service vehicle bigger. */
+  radius: number = P.CAR_RADIUS;
+
   // World state
   x = 0;
   y = 0;

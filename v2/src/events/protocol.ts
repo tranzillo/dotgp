@@ -47,8 +47,20 @@ export interface TimelineNews {
   events: TimelineEvent[];
 }
 
+/** How hard the worker worked for one frame (the page's performance readout). */
+export interface WorkerFramePerf {
+  /** Stepping the sim (ms), and the steps and sim seconds that bought. */
+  stepMs: number;
+  steps: number;
+  sim: number;
+  /** Sim time it couldn't fit in its budget and dropped (s): the asked-for speed is more than this machine can run. */
+  dropped: number;
+  /** Building the frame to send (ms). */
+  sendMs: number;
+}
+
 export type FromEvent =
-  | { type: 'frame'; snapshot: SessionSnapshot; strokes: Float32Array; radio: RadioLine[]; timeline: TimelineNews; tape: TapeSegment | null }
+  | { type: 'frame'; snapshot: SessionSnapshot; strokes: Float32Array; radio: RadioLine[]; timeline: TimelineNews; tape: TapeSegment | null; perf: WorkerFramePerf }
   | { type: 'progress'; progress: EventProgress; radio: RadioLine[] }
   | { type: 'finished'; results: EntrantResult[]; snapshot: SessionSnapshot; timeline: TimelineEvent[]; tape: TapeSegment | null }
   /** The event moved to another track (driving school rotates tracks between rounds). */

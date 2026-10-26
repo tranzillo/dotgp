@@ -135,13 +135,17 @@ function loop(): void {
     // Real time x speed, as much of it as the step budget allows.
     simDebt += Math.min(0.1, (now - lastReal) / 1000) * speed;
     lastReal = now;
+    const stepStart = performance.now();
     const until = now + STEP_BUDGET_MS;
+    let steps = 0, dropped = 0;
     while (simDebt >= P.DT) {
       s.step();
+      steps++;
       simDebt -= P.DT;
       if (classroom?.trackChanged) break; // send the new track before frames on it
-      if (performance.now() > until) { simDebt = 0; break; } // can't keep up: drop the rest
+      if (performance.now() > until) { dropped = simDebt; simDebt = 0; break; } // can't keep up: drop the rest
     }
+    const sendStart = performance.now();
     const strokes = s.strokes.drain();
     const timeline = s.timeline ?? [];
     const news = { from: timelineSent, events: timeline.slice(timelineSent) };
@@ -152,7 +156,9 @@ function loop(): void {
     }
     const tape = s.tape ? s.tape.segment(tapeSent) : null;
     if (tape && s.tape) tapeSent = s.tape.end;
-    post({ type: 'frame', snapshot: s.snapshot(), strokes, radio: s.takeRadio(), timeline: news, tape },
+    const snapshot = s.snapshot();
+    const perf = { stepMs: sendStart - stepStart, steps, sim: steps * P.DT, dropped, sendMs: performance.now() - sendStart };
+    post({ type: 'frame', snapshot, strokes, radio: s.takeRadio(), timeline: news, tape, perf },
       tape ? [strokes.buffer, tape.bytes] : [strokes.buffer]);
     reportFinish(s);
     // On the beat, not a frame after this one finished; a beat already missed starts a new one.

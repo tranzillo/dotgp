@@ -20,16 +20,28 @@
       #app { display: grid; grid-template-columns: minmax(0, 1fr) 360px; grid-template-rows: minmax(0, 1fr); height: 100vh; height: 100dvh; overflow: hidden; }
       /* The track view over the control bar. */
       #stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
-      #view { position: relative; min-height: 0; }
+      /* A size container: the HUD's type scales with the track view's width (cqi), not the window's. */
+      #view { position: relative; min-height: 0; container-type: inline-size; }
       /* Out of the flow: the canvas's pixel size (set to match the stage) must never size the stage back. */
       #track { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
       /* One line per row of the HUD (ellipsis rather than wrapping), so its height, which the track is fitted under, holds steady. */
-      #hud { position: absolute; left: 16px; right: 16px; top: 12px; font-family: var(--mono); color: var(--muted); font-size: 12px; pointer-events: none;
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      /* Never smaller than 12px; grows with a wider view, up to 18px. */
+      #hud { position: absolute; left: 16px; right: 16px; top: 12px; font-family: var(--mono); color: var(--muted); font-size: clamp(12px, 0.95cqi, 18px); pointer-events: none;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; contain: layout paint; will-change: transform; }
       #hud b { color: var(--text); font-weight: 600; }
+      /* Performance readout (P): two lines over the top right of the view, beside the HUD (which makes room for it). */
+      #perf { position: absolute; right: 16px; top: 12px; font-family: var(--mono); color: var(--muted); font-size: clamp(12px, 0.95cqi, 18px);
+        font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; pointer-events: none; contain: layout paint; will-change: transform; }
+      #perf[hidden] { display: none; }
+      /* Where the track can't be drawn (no WebGL2): why, in the middle of the view. */
+      .no-view { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); font-family: var(--mono); pointer-events: none; }
+      #perf .warn { color: #f5c518; }
+      #perf .bad { color: #ff5a5a; }
+      #perf button { pointer-events: auto; margin-left: 4px; padding: 1px 6px; font: 11px/1 var(--mono); vertical-align: 1px; }
+      #view.perf-on #hud { right: calc(16px + 62ch); }
       /* Control bar: transport, timeline, speed, camera, display options */
       /* The timeline runs the full width on top; transport left, view options right, below it. */
-      #controls { display: flex; align-items: center; gap: 6px 14px; padding: 4px 16px 8px; border-top: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+      #controls { contain: layout paint; display: flex; align-items: center; gap: 6px 14px; padding: 4px 16px 8px; border-top: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
       #controls .push { margin-left: auto; }
       #controls .group { display: flex; align-items: center; gap: 6px; }
       #controls .ctl-label { color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
@@ -41,10 +53,11 @@
       .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 28px; padding: 0; }
       .icon-btn svg { width: 14px; height: 14px; fill: currentColor; }
       #timeline { order: -1; flex: 1 1 100%; display: flex; align-items: center; gap: 12px; }
-      #tlBar { position: relative; flex: 1; height: 18px; cursor: pointer; touch-action: none; }
+      /* The fill and playhead move by transform (set from script, the playhead in cqw of the bar), each on its own layer: no layout or repaint as they go. */
+      #tlBar { position: relative; flex: 1; height: 18px; cursor: pointer; touch-action: none; container-type: inline-size; }
       /* Rewound: how far the race has got (the playhead can go back to it). */
-      #tlLive { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: #4a4a55; border-radius: 3px; }
-      #tlHead { position: absolute; top: 3px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 2px var(--panel); pointer-events: none; opacity: 0; transition: opacity .15s; }
+      #tlLive { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; transform: translateX(-100%); will-change: transform; background: #4a4a55; border-radius: 3px; }
+      #tlHead { position: absolute; left: 0; top: 3px; will-change: transform; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 2px var(--panel); pointer-events: none; opacity: 0; transition: opacity .15s; }
       #tlBar:hover #tlHead, #tlBar.replay #tlHead { opacity: 1; }
       .live-btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--muted); }
       .live-btn i { width: 7px; height: 7px; border-radius: 50%; background: #55555e; }
@@ -53,7 +66,7 @@
       .live-btn[hidden] { display: none; }
       button.icon-btn.on { background: var(--text); color: var(--bg); }
       .tl-line { position: absolute; left: 0; right: 0; top: 6px; height: 6px; border-radius: 3px; background: #22222a; overflow: hidden; }
-      #tlFill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--text); border-radius: 3px; }
+      #tlFill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; transform: translateX(-100%); will-change: transform; background: var(--text); border-radius: 3px; }
       #tlCautions, #tlTicks, #tlMarks { position: absolute; inset: 0; }
       #tlCautions span { position: absolute; top: 0; bottom: 0; background: #f5c518; }
       #tlTicks i { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(13,13,15,0.7); }
@@ -97,7 +110,8 @@
         clip-path: polygon(0 15%, 65% 15%, 65% 40%, 100% 15%, 100% 85%, 65% 60%, 65% 85%, 0 85%); }
       #displayPop h2 { margin: 4px 0 8px; }
       #displayPop h2 + .row { margin-top: 0; }
-      aside { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 14px 14px 24px; }
+      /* The panels refresh several times a second: contained, so that redoes their own layout and paint, not the page's. */
+      aside { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 14px 14px 24px; contain: layout paint style; }
       h2 { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; font-weight: 600; }
       h2:first-child { margin-top: 0; }
       .row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
@@ -242,6 +256,7 @@
               <div class="row"><span class="label">Marks</span><button id="clearMarks" title="Clear the skid marks">Clear</button></div>
               <h2>Debug</h2>
               <div class="row"><span class="label">Layers</span><span id="debugButtons" class="row inline"></span></div>
+              <div class="row"><span class="label" title="Frame rate, frame times, sim speed achieved and the worker's load, with a report to copy or save (P)">Perf</span><span id="perfButtons" class="row inline"></span></div>
             </div>
           </div>
         </div>

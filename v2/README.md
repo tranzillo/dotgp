@@ -56,9 +56,11 @@ Viewer controls sit in the bar under the track: the race timeline (progress by t
 | `src/ai/online.ts` | Learning while racing: lap-against-lap evolution strategies (a small variation one lap, its opposite on another, coin-toss order), stepping toward the faster, cleaner direction |
 | `src/ai/es.ts` | Evolution strategies: each lineage is one persistent driver improving through practice |
 | `src/ai/practice.worker.ts` | Live practice in a Web Worker for the viewer |
-| `src/render/renderer.ts` | Track layers, permanent groove and skid layers, follow camera, numbered livery dots |
+| `src/render/gl/glRenderer.ts`, `trackMesh.ts` | The track view on the GPU (WebGL2): the venue as geometry built once per track, groove and skid textures, follow camera, numbered livery dots, trails and exhaust, the draft's wind walls |
+| `src/render/draft.ts` | The draft, drawn: links from the sim's own rule (`draftStrength`), streaks flowing down the flanks of every drafting train over a faint band, a bow wave on the car at the front; all scaled by the drag the draft saves (strength × speed²), so a pacing field shows none. The Draft debug layer labels each link with the drag it saves |
+| `src/render/view.ts` | The track view's contract with the viewer, the palette, the banking debug text |
 | `src/render/marks.ts` | How cars mark the track: a faint, capped groove from tire work, and skids only from real slides (shared with the benchmark) |
-| `src/render/livery.ts` | Random contrasting fill/border pairs and unique numbers |
+| `src/render/livery.ts` | Random contrasting fill/border pairs, a trim ring between them, and unique numbers |
 | `src/ui/roster.ts` | Agent pools (drivers, spotters, crew chiefs), teams, mix and match, persistence and migration |
 | `src/ui/season.ts` | Seasons, points, careers, off-season (relegated seats go to rookies from the top) |
 | `src/events/session.ts` | One session (race, practice, ghost laps) as a DOM-free object: world, race control, respawns, radio, technique, standings; snapshots for the viewer, results for the records |

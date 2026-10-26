@@ -1,6 +1,6 @@
 import type { CarView, SessionSnapshot } from '../events/session';
 import type { Track } from '../sim/track';
-import type { RenderOfficials } from './renderer';
+import type { RenderOfficials } from './view';
 
 /**
  * Smooth playback of an event's frames.
@@ -147,7 +147,7 @@ export function between(track: Track, a: SessionSnapshot, b: SessionSnapshot, ti
     return ca && t < 1 ? carBetween(track, ca, cb, t, span) : cb;
   });
   const ra = a.race, rb = b.race;
-  const paceCar = rb?.paceCar && ra?.paceCar && t < 1 ? pointBetween(track, ra.paceCar, rb.paceCar, t) : rb?.paceCar ?? null;
+  const paceCar = rb?.paceCar && ra?.paceCar && t < 1 ? { ...rb.paceCar, ...pointBetween(track, ra.paceCar, rb.paceCar, t) } : rb?.paceCar ?? null;
   const wreckers = (rb?.wreckers ?? []).map((w, k) => {
     const wa = ra?.wreckers.length === rb?.wreckers.length ? ra?.wreckers[k] : undefined;
     return wa && t < 1 ? { ...w, ...pointBetween(track, wa, w, t) } : w;

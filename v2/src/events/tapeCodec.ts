@@ -1,4 +1,4 @@
-import { frameBytes, frameFields, type FrameField, type TapeHeader, type TapeSegment } from './tape';
+import { frameFields, tapeFrameBytes, type FrameField, type TapeHeader, type TapeSegment } from './tape';
 
 /**
  * Tapes for keeping: a tape packed small for storage (replays in IndexedDB),
@@ -75,8 +75,8 @@ async function gzip(bytes: Uint8Array, mode: 'compress' | 'decompress'): Promise
 
 /** Pack a tape segment for storage. */
 export async function packTape(seg: TapeSegment): Promise<Uint8Array> {
-  const n = seg.header.cars.length, size = frameBytes(n);
-  const fields = frameFields(n);
+  const n = seg.header.cars.length, size = tapeFrameBytes(seg.header);
+  const fields = frameFields(n, seg.header.wreckers ?? 4);
   const view = new DataView(seg.bytes);
   const out = new Varints();
   const header = new TextEncoder().encode(JSON.stringify(seg.header));
@@ -110,7 +110,7 @@ export async function unpackTape(stored: Uint8Array): Promise<TapeSegment> {
   if (pv.getUint32(0, true) !== MAGIC) throw new Error('not a stored tape');
   const first = pv.getUint32(4, true), count = pv.getUint32(8, true), headerLength = pv.getUint32(12, true);
   const header = JSON.parse(new TextDecoder().decode(packed.subarray(16, 16 + headerLength))) as TapeHeader;
-  const n = header.cars.length, size = frameBytes(n);
+  const n = header.cars.length, size = tapeFrameBytes(header);
   const bytes = new ArrayBuffer(count * size);
   const view = new DataView(bytes);
   let at = 16 + headerLength;
@@ -123,7 +123,7 @@ export async function unpackTape(stored: Uint8Array): Promise<TapeSegment> {
     } while (b >= 128);
     return z % 2 === 0 ? z / 2 : -(z + 1) / 2;
   };
-  for (const f of frameFields(n)) {
+  for (const f of frameFields(n, header.wreckers ?? 4)) {
     let prev = 0, prevDelta = 0;
     for (let i = 0; i < count; i++) {
       const delta = f.order === 2 ? prevDelta + next() : next();

@@ -2,7 +2,7 @@ import type { EventRef } from '../records/activity';
 import { experimentName } from '../sim/experiment';
 import type { RoundReport, RoundTape } from '../school/classroom';
 import type { TrackLayout } from '../sim/layout';
-import type { EventProgress, EventSpec, FromEvent, ToEvent } from './protocol';
+import type { EventProgress, EventSpec, FromEvent, ToEvent, WorkerFramePerf } from './protocol';
 import type { EntrantResult, LearnedStep, RadioLine, SessionSnapshot, TimelineEvent } from './session';
 import type { EventRef as Ref } from '../records/activity';
 import { Tape } from './tape';
@@ -40,7 +40,7 @@ export interface EventHandle {
 
 export interface HostListener {
   /** A frame from the attached event. */
-  frame(handle: EventHandle, snapshot: SessionSnapshot, strokes: Float32Array, radio: RadioLine[]): void;
+  frame(handle: EventHandle, snapshot: SessionSnapshot, strokes: Float32Array, radio: RadioLine[], perf: WorkerFramePerf): void;
   /** Progress (and radio) from a background event. */
   progress(handle: EventHandle, radio: RadioLine[]): void;
   finished(handle: EventHandle): void;
@@ -166,7 +166,7 @@ export class EventHost {
           if (handle.tape?.header.id !== msg.tape.header.id) handle.tape = new Tape(msg.tape.header);
           handle.tape.append(msg.tape.first, msg.tape.count, msg.tape.bytes);
         }
-        if (handle.attachedTo) this.listener.frame(handle, msg.snapshot, msg.strokes, msg.radio);
+        if (handle.attachedTo) this.listener.frame(handle, msg.snapshot, msg.strokes, msg.radio, msg.perf);
         break;
       case 'progress':
         handle.progress = msg.progress;

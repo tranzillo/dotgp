@@ -20,7 +20,7 @@ import { createQualifying, type Qualifying, type QualifyingFormat, type Qualifyi
 import { Race } from '../sim/race';
 import { Track } from '../sim/track';
 import { World, type WorldEvent } from '../sim/world';
-import { OPEN_SESSION_FRAMES, Tape, TAPE_STEPS } from './tape';
+import { OPEN_SESSION_FRAMES, Tape, TAPE_STEPS, WRECKER_SLOTS } from './tape';
 import type { Offence, Penalty } from '../rules/rulebook';
 import { defaultSeries, racesOn, seriesById, type Series } from '../rules/series';
 import type { StewardTraits } from '../rules/stewards';
@@ -53,6 +53,8 @@ export interface EntrantSpec {
     /** Its caution skill on road circuits, if it has one of its own; its pit skill, if it has one. */
     roadCautionWeights?: Float32Array;
     pitWeights?: Float32Array;
+    /** Its broken-car skill, if it's licensed to drive with it. */
+    brokenWeights?: Float32Array;
   };
   spotter: { id: string; skill: SpotterSkill };
   chief: { id: string; brain: { kind: 'neural'; weights: Float32Array } | { kind: 'scripted'; traits: CrewChiefTraits } };
@@ -137,7 +139,9 @@ export interface RaceView {
   lights: number;
   /** Neutralised by a safety car (circuits) rather than a pace car. */
   safetyCar: boolean;
-  paceCar: { x: number; y: number } | null;
+  /** Where the pace car is: out on track, or parked at its post (out false). */
+  paceCar: { x: number; y: number; out: boolean } | null;
+  /** The wrecker fleet, parked or at work (and marshals' cranes). */
   wreckers: Array<{ x: number; y: number; phase: string }>;
 }
 
@@ -291,7 +295,8 @@ export class Session {
       else this.rollingStart(car); // ghosts share one spot
       const limits = entrant.driver.limits && { ...entrant.driver.limits, seed: (spec.seed ^ ((k + 1) * 0x85ebca6b)) >>> 0 };
       const driver = new NeuralDriver(entrant.driver.weights, entrant.driver.roadWeights, entrant.driver.roadKnowledge,
-        { limits, caution: entrant.driver.cautionWeights, roadCaution: entrant.driver.roadCautionWeights, pit: entrant.driver.pitWeights });
+        { limits, caution: entrant.driver.cautionWeights, roadCaution: entrant.driver.roadCautionWeights, pit: entrant.driver.pitWeights,
+          broken: entrant.driver.brokenWeights });
       const chief = qualifying ? new RunChief((c) => this.qualifying!.wantsIn(c)) : contact ? makeChief(entrant.chief.brain) : null;
       const team = new Team(driver, new TowerSpotter(entrant.spotter.skill), chief,
         // Its own stops where it has learned to make them: a pit road set back across grass needs that too.
@@ -320,6 +325,7 @@ export class Session {
       id: 0,
       cars: this.world.cars.map((car) => ({ id: car.id, key: this.entrants.get(car.id)!.key, color: car.color })),
       laps: this.race ? spec.laps : null,
+      wreckers: WRECKER_SLOTS,
     }, this.race || this.qualifying ? Infinity : OPEN_SESSION_FRAMES);
   }
 
@@ -452,7 +458,7 @@ export class Session {
         pacing: ctl?.pacing ?? false,
         lights: ctl?.lights ?? 0,
         safetyCar: ctl?.safetyCar ?? false,
-        paceCar: ctl?.paceCarOut ? { x: ctl.paceCar.x, y: ctl.paceCar.y } : null,
+        paceCar: ctl ? { x: ctl.paceCar.x, y: ctl.paceCar.y, out: ctl.paceCarOut } : null,
         wreckers: (ctl?.wreckers ?? []).map((w) => ({ x: w.x, y: w.y, phase: w.phase })),
       } : null,
       technique: technique ? [...this.technique].map(([key, h]) => [key, Array.from(h)]) : [],

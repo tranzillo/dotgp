@@ -1,4 +1,4 @@
-import { Tape, TAPE_STEPS, type TapeSegment } from '../events/tape';
+import { Tape, TAPE_STEPS, WRECKER_SLOTS, type TapeSegment } from '../events/tape';
 import { adaptWeights } from '../ai/drivers';
 import {
   adamStep, centeredRanks, DEFAULT_ES, LICENSE_HEALTH, ROOKIE_DAMAGE_SHARE, rookieDamageScale, rookieDamageSeconds,
@@ -259,6 +259,8 @@ export interface SchoolView {
   students: Array<{ key: number; id: string; name: string; rounds: number; licensed: boolean; pitLicensed: boolean; pitTrafficLicensed: boolean; cautionLicensed: boolean; roadLicensed: boolean; passed: string[]; last: RoundSummary | null }>;
   /** Road courses: the tightest corner this round's circuit may have (m). */
   roadRadius?: number;
+  /** Whether this round's cars draft each other (not every drill does). */
+  drafting?: boolean;
 }
 
 /** A driving-school round kept on tape: watched, or someone earned a license in it. */
@@ -533,6 +535,7 @@ export class Classroom {
       id: this.round + 1,
       cars: snap.cars.filter((c) => !c.variant).map((c) => ({ id: c.id, key: c.key, color: c.color })),
       laps: null,
+      wreckers: WRECKER_SLOTS,
     });
     this.roundWatched = false; // until it's on screen while it runs
   }
@@ -910,6 +913,7 @@ export class Classroom {
           pitTrafficLicensed: s.pitTrafficLicensed, cautionLicensed: s.cautionLicensed, roadLicensed: s.roadLicensed, passed: [...s.passed], last: s.last,
         })),
         roadRadius: this.lesson.id === 'circuits' ? this.roadRadius : undefined,
+        drafting: this.trial.world.opts.drafting,
       },
     };
   }

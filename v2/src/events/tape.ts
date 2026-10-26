@@ -36,6 +36,8 @@ export interface TapeHeader {
   cars: Array<{ id: number; key: number; color: string; variant?: boolean }>;
   /** Races: laps. */
   laps: number | null;
+  /** Wrecker slots in each frame (WRECKER_SLOTS; absent, 4: tapes from before the wrecker fleet). */
+  wreckers?: number;
 }
 
 /** Frames from index `first` on, packed (what the worker sends the page; what a stored replay holds). */
@@ -52,15 +54,21 @@ const PENALTIES: Array<CarView['penalty']> = [null, 'drive-through', 'stop-go'];
 const STATUSES: Array<StandingView['status']> = ['running', 'finished', 'out', 'pit'];
 const FLAGS: Flag[] = ['pace', 'restart', 'green', 'caution', 'formation', 'grid'];
 const STATES: Array<RaceView['state']> = ['green', 'checkered', 'finished'];
-const WRECKER_PHASES = ['drive', 'hook', 'tow', 'done'];
-const MAX_WRECKERS = 4;
+// (Phases added at the end: tapes from before keep theirs.)
+const WRECKER_PHASES = ['drive', 'hook', 'tow', 'done', 'idle', 'drop', 'return'];
+/** Wrecker slots a frame has room for: the fleet, and marshals' cranes at work. */
+export const WRECKER_SLOTS = 8;
+const slotsOf = (header: TapeHeader) => header.wreckers ?? 4;
 /** No mark across a jump this long between frames (m): a car put back on track, not driving. */
 const STROKE_TELEPORT = 30;
 
 // Frame header: time, race state, pace car, wreckers.
 const H_TIME = 0, H_BITS = 8, H_STATE = 9, H_FLAG = 10, H_LIGHTS = 11, H_PACE = 12, H_NWRECK = 20, H_WRECK = 21;
 const WRECK_BYTES = 9;
-const HEADER_BYTES = H_WRECK + MAX_WRECKERS * WRECK_BYTES; // 57
+/** The header's size: 57 bytes with 4 wrecker slots, 93 with 8. */
+const headerBytes = (slots: number) => H_WRECK + slots * WRECK_BYTES;
+/** In the wrecker count's byte: the pace car is parked (off track, waiting), not out. */
+const NWRECK_PACE_PARKED = 0x80;
 const BIT_RACE = 1, BIT_STARTED = 2, BIT_ONE_TO_GO = 4, BIT_PACING = 8, BIT_SAFETY = 16, BIT_PACE_CAR = 32, BIT_STANDINGS = 64, BIT_QUALI = 128;
 /**
  * Qualifying (never in a race) reuses the race's header fields: round, rounds,
@@ -86,7 +94,8 @@ const i8 = (v: number, scale: number) => clampInt(v * scale, -127, 127);
 const i16 = (v: number, scale: number) => clampInt(v * scale, -32767, 32767);
 const u16 = (v: number, scale: number) => clampInt(v * scale, 0, 65535);
 
-export const frameBytes = (cars: number) => HEADER_BYTES + cars + cars * CAR_BYTES;
+export const frameBytes = (cars: number, slots = WRECKER_SLOTS) => headerBytes(slots) + cars + cars * CAR_BYTES;
+export const tapeFrameBytes = (header: TapeHeader) => frameBytes(header.cars.length, slotsOf(header));
 
 /**
  * One field of a frame, for storage (tapeCodec.ts): where it is, its type,
@@ -103,17 +112,18 @@ export interface FrameField {
 }
 
 /** Every field of a frame with this many cars, in storage order. */
-export function frameFields(cars: number): FrameField[] {
+export function frameFields(cars: number, slots = WRECKER_SLOTS): FrameField[] {
+  const head = headerBytes(slots);
   const f = (at: number, type: FrameField['type'], scale = 1, order: 1 | 2 = 1): FrameField => ({ at, type, scale, order });
   const out: FrameField[] = [
     f(H_TIME, 'f64', 1e4, 2), f(H_BITS, 'u8'), f(H_STATE, 'u8'), f(H_FLAG, 'u8'), f(H_LIGHTS, 'u8'),
     f(H_PACE, 'f32', 100, 2), f(H_PACE + 4, 'f32', 100, 2), f(H_NWRECK, 'u8'),
   ];
-  for (let k = 0; k < MAX_WRECKERS; k++) {
+  for (let k = 0; k < slots; k++) {
     const o = H_WRECK + k * WRECK_BYTES;
     out.push(f(o, 'f32', 100), f(o + 4, 'f32', 100), f(o + 8, 'u8'));
   }
-  for (let p = 0; p < cars; p++) out.push(f(HEADER_BYTES + p, 'u8'));
+  for (let p = 0; p < cars; p++) out.push(f(head + p, 'u8'));
   const car: Array<[number, FrameField['type'], number, 1 | 2]> = [
     [C_X, 'f32', 100, 2], [C_Y, 'f32', 100, 2], [C_S, 'f32', 100, 2], [C_D, 'f32', 100, 2], [C_DIST, 'f32', 100, 2],
     // Kept coarser than in memory, still finer than anything shows: speed to 0.1 m/s, heading to a
@@ -127,7 +137,7 @@ export function frameFields(cars: number): FrameField[] {
   ];
   // Field by field, car by car: each car's run of a field is one smooth series.
   for (const [at, type, scale, order] of car) {
-    for (let slot = 0; slot < cars; slot++) out.push(f(HEADER_BYTES + cars + slot * CAR_BYTES + at, type, scale, order));
+    for (let slot = 0; slot < cars; slot++) out.push(f(head + cars + slot * CAR_BYTES + at, type, scale, order));
   }
   return out;
 }
@@ -146,8 +156,8 @@ function encode(snap: SessionSnapshot, header: TapeHeader, index: Map<number, nu
     v.setUint8(at + H_LIGHTS, r.lights);
     v.setFloat32(at + H_PACE, r.paceCar?.x ?? 0, true);
     v.setFloat32(at + H_PACE + 4, r.paceCar?.y ?? 0, true);
-    const wreckers = r.wreckers.slice(0, MAX_WRECKERS);
-    v.setUint8(at + H_NWRECK, wreckers.length);
+    const wreckers = r.wreckers.slice(0, slotsOf(header));
+    v.setUint8(at + H_NWRECK, wreckers.length | (r.paceCar && !r.paceCar.out ? NWRECK_PACE_PARKED : 0));
     wreckers.forEach((w, k) => {
       const o = at + H_WRECK + k * WRECK_BYTES;
       v.setFloat32(o, w.x, true);
@@ -169,7 +179,7 @@ function encode(snap: SessionSnapshot, header: TapeHeader, index: Map<number, nu
   v.setUint8(at + H_BITS, bits);
 
   // Running order, as car slots (of the cars on tape).
-  const orderAt = at + HEADER_BYTES;
+  const orderAt = at + headerBytes(slotsOf(header));
   snap.order.filter((id) => index.has(id)).forEach((id, p) => { if (p < n) v.setUint8(orderAt + p, index.get(id)!); });
 
   const standing = new Map(snap.standings?.map((st) => [st.id, st]) ?? []);
@@ -218,7 +228,7 @@ function encode(snap: SessionSnapshot, header: TapeHeader, index: Map<number, nu
 function decode(header: TapeHeader, v: DataView, at: number, track?: Track): SessionSnapshot {
   const n = header.cars.length;
   const bits = v.getUint8(at + H_BITS);
-  const orderAt = at + HEADER_BYTES;
+  const orderAt = at + headerBytes(slotsOf(header));
   const cars: CarView[] = header.cars.map((hc, slot) => {
     const o = orderAt + n + slot * CAR_BYTES;
     const heading = v.getInt16(o + C_HEADING, true) / 10000;
@@ -258,7 +268,8 @@ function decode(header: TapeHeader, v: DataView, at: number, track?: Track): Ses
     : null;
   let race: RaceView | null = null;
   if (bits & BIT_RACE) {
-    const nw = v.getUint8(at + H_NWRECK);
+    const nw = v.getUint8(at + H_NWRECK) & ~NWRECK_PACE_PARKED;
+    const out = !(v.getUint8(at + H_NWRECK) & NWRECK_PACE_PARKED);
     race = {
       laps: header.laps ?? 0,
       state: STATES[v.getUint8(at + H_STATE)],
@@ -268,7 +279,7 @@ function decode(header: TapeHeader, v: DataView, at: number, track?: Track): Ses
       pacing: !!(bits & BIT_PACING),
       lights: v.getUint8(at + H_LIGHTS),
       safetyCar: !!(bits & BIT_SAFETY),
-      paceCar: bits & BIT_PACE_CAR ? { x: v.getFloat32(at + H_PACE, true), y: v.getFloat32(at + H_PACE + 4, true) } : null,
+      paceCar: bits & BIT_PACE_CAR ? { x: v.getFloat32(at + H_PACE, true), y: v.getFloat32(at + H_PACE + 4, true), out } : null,
       wreckers: Array.from({ length: nw }, (_, k) => {
         const o = at + H_WRECK + k * WRECK_BYTES;
         return { x: v.getFloat32(o, true), y: v.getFloat32(o + 4, true), phase: WRECKER_PHASES[v.getUint8(o + 8)] };
@@ -303,7 +314,7 @@ export class Tape {
 
   constructor(header: TapeHeader, private readonly maxFrames = Infinity) {
     this.header = header;
-    this.frameBytes = frameBytes(header.cars.length);
+    this.frameBytes = tapeFrameBytes(header);
     this.index = new Map(header.cars.map((c, k) => [c.id, k]));
   }
 
@@ -397,12 +408,13 @@ export class Tape {
     from = Math.max(from, this.first);
     to = Math.min(to, this.end - 1);
     const n = this.header.cars.length;
+    const head = headerBytes(slotsOf(this.header));
     const out: number[] = [];
     for (let i = from + 1; i <= to; i++) {
       const [pv, pat] = this.locate(i - 1);
       const [v, at] = this.locate(i);
       for (let slot = 0; slot < n; slot++) {
-        const po = pat + HEADER_BYTES + n + slot * CAR_BYTES, o = at + HEADER_BYTES + n + slot * CAR_BYTES;
+        const po = pat + head + n + slot * CAR_BYTES, o = at + head + n + slot * CAR_BYTES;
         const x0 = pv.getFloat32(po + C_X, true), y0 = pv.getFloat32(po + C_Y, true);
         const x1 = v.getFloat32(o + C_X, true), y1 = v.getFloat32(o + C_Y, true);
         const len = Math.hypot(x1 - x0, y1 - y0);

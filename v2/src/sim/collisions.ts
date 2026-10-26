@@ -26,7 +26,7 @@ export function resolveWalls(car: Car, track: Track, damageScale = 1): void {
       const t = Math.max(0, Math.min(1, ((car.x - ax) * vx + (car.y - ay) * vy) / (vx * vx + vy * vy || 1)));
       const dx = car.x - (ax + vx * t), dy = car.y - (ay + vy * t);
       const dist = Math.hypot(dx, dy);
-      const pen = P.CAR_RADIUS + b.thickness / 2 - dist;
+      const pen = car.radius + b.thickness / 2 - dist;
       if (pen > 0 && dist > 1e-9) {
         const Nx = dx / dist, Ny = dy / dist;
         wallImpact(car, Nx, Ny, pen, Nx * nx + Ny * ny, wasInContact, damageScale);
@@ -53,7 +53,7 @@ function hitWalls(
   car: Car, track: Track, s: number, d: number, wnx: number, wny: number, onx: number, ony: number,
   wasInContact: boolean, damageScale: number, twoSided: boolean,
 ): void {
-  const r = P.CAR_RADIUS;
+  const r = car.radius;
   const axis = wnx * onx + wny * ony;
   for (const wall of track.walls) {
     if (!track.inRange(s, wall.range)) continue;
@@ -138,13 +138,13 @@ export function faultShare(A: Car, B: Car, track: Track): number {
 
 /** Circle-circle impulses between every overlapping pair; damage done is charged by fault (with a track). */
 export function resolveCarCollisions(cars: Car[], track?: Track): void {
-  const r2 = 2 * P.CAR_RADIUS;
   for (let a = 0; a < cars.length; a++) {
     const A = cars[a];
     if (A.cleared) continue;
     for (let b = a + 1; b < cars.length; b++) {
       const B = cars[b];
       if (B.cleared) continue;
+      const r2 = A.radius + B.radius;
       const dx = B.x - A.x, dy = B.y - A.y;
       if (Math.abs(dx) > r2 || Math.abs(dy) > r2) continue;
       const dist2 = dx * dx + dy * dy;
@@ -194,6 +194,17 @@ export function resolveCarCollisions(cars: Car[], track?: Track): void {
   }
 }
 
+/**
+ * How much of a car's slipstream another gets, `gap` m behind it along the
+ * track and `lateral` m across: 1 tucked right in, falling off linearly to 0
+ * at DRAFT_LENGTH back or DRAFT_WIDTH aside (and 0 ahead of it). The draft's
+ * one rule: the sim's drag and the viewer's wind wall (render/draft.ts).
+ */
+export function draftStrength(gap: number, lateral: number): number {
+  if (lateral > P.DRAFT_WIDTH || gap <= 0 || gap > P.DRAFT_LENGTH) return 0;
+  return (1 - gap / P.DRAFT_LENGTH) * (1 - lateral / P.DRAFT_WIDTH);
+}
+
 /** Slipstream: a car tucked behind another in the same lane sees less drag. */
 export function computeDraft(cars: Car[], track: Track): void {
   for (const c of cars) c.draftFactor = 1;
@@ -205,9 +216,8 @@ export function computeDraft(cars: Car[], track: Track): void {
       // Every pair, every step: the cheap test first.
       const lateral = Math.abs(B.d - A.d);
       if (lateral > P.DRAFT_WIDTH) continue;
-      const gap = track.wrapS(B.s - A.s);
-      if (gap <= 0 || gap > P.DRAFT_LENGTH) continue;
-      const strength = (1 - gap / P.DRAFT_LENGTH) * (1 - lateral / P.DRAFT_WIDTH);
+      const strength = draftStrength(track.wrapS(B.s - A.s), lateral);
+      if (strength <= 0) continue;
       if (strength > best) best = strength;
       // The leader gets a small push from the car behind.
       B.draftFactor = Math.min(B.draftFactor, 1 - P.DRAFT_PUSH * strength);

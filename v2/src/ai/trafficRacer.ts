@@ -236,14 +236,18 @@ export class TrafficRacer {
       + followLoss(car.speed, REACTION, other.pit.phase === 'in' ? P.TIRE_MU * G : brake, brake);
     // A wreck the lane it's heading for clears (it's going round it) isn't the car ahead: stopping behind it, it
     // couldn't steer round it, and the whole line would queue behind. The next car ahead in the file is.
-    const clears = (o: Car) => o.retired && Math.abs(o.d - lane) >= 2 * P.CAR_RADIUS + 0.3;
+    // (A wrecker at work is in the way like a wreck, but moving: what it's doing along the track.)
+    const truck = (o: Car) => world.vehicles.includes(o);
+    const clears = (o: Car) => (o.retired || truck(o)) && Math.abs(o.d - lane) >= P.CAR_RADIUS + o.radius + 0.3;
     let cap = Infinity;
-    for (const other of [...world.cars, ...(ctl.paceCarOut ? [ctl.paceCar] : [])]) {
+    for (const other of [...world.cars, ...(ctl.paceCarOut ? [ctl.paceCar] : []), ...world.solidVehicles]) {
       if (other === car || other.cleared || clears(other)) continue;
-      if (Math.abs(other.d - lane) > 2.6 && Math.abs(other.d - car.d) > 2.6) continue; // the formation's file
+      const file = other.radius + 1.1;
+      if (Math.abs(other.d - lane) > file && Math.abs(other.d - car.d) > file) continue; // the formation's file
       const ds = world.track.distanceFrom(car.s, other.s);
       if (ds <= 0 || ds > 220) continue;
-      const vOther = other.retired ? 0 : other.speed;
+      const i = other.trackIdx;
+      const vOther = other.retired ? 0 : truck(other) ? Math.max(0, other.vx * world.track.tx[i] + other.vy * world.track.ty[i]) : other.speed;
       cap = Math.min(cap, Math.sqrt(vOther * vOther + 2 * brake * Math.max(0, ds - gapBehind(other))));
     }
     return cap;
