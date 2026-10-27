@@ -474,7 +474,8 @@ export function applyImpact(
 ): void {
   // (The second damage model: light contact and scraping are free.)
   const thr = car.damageModel === 2 ? DAMAGE2.FREE_IMPACT : P.DAMAGE_SPEED_THRESHOLD;
-  let severity = Math.max(0, impactSpeed * impactSpeed - thr * thr) * P.DAMAGE_PER_ENERGY;
+  let severity = car.damageModel === 2 ? DAMAGE2.RAMP * Math.max(0, impactSpeed - thr) ** 2
+    : Math.max(0, impactSpeed * impactSpeed - thr * thr) * P.DAMAGE_PER_ENERGY;
   if (car.damageModel !== 2) severity += scrapeWork * P.SCRAPE_DAMAGE;
   severity *= damageScale;
   if (severity <= 0) return;

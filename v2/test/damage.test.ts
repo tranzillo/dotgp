@@ -34,10 +34,17 @@ describe('the second damage model', () => {
   afterAll(() => { EXPERIMENT.damage = 0; });
   const track = presetTrack('speedway');
 
-  it('light contact and scraping cost no health; a real hit still does, and still wrecks', () => {
+  it('light contact and scraping cost no health; past it, more the harder; a real hit still wrecks', () => {
     const car = new Car(0);
-    applyImpact(car, 0, -1, 5, 200);
+    applyImpact(car, 0, -1, 1.5, 200);
     expect(car.health).toBe(1);
+    // A bump costs next to nothing, a harder one more than in proportion.
+    applyImpact(car, 0, -1, 3, 0);
+    const bump = 1 - car.health;
+    expect(bump).toBeGreaterThan(0);
+    expect(bump).toBeLessThan(0.005);
+    applyImpact(car, 0, -1, 6, 0);
+    expect(1 - car.health - bump).toBeGreaterThan(10 * bump);
     applyImpact(car, 0, -1, 30, 0);
     expect(car.health).toBe(0);
     expect(car.retired).toBe(true);

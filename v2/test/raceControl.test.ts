@@ -284,7 +284,9 @@ describe('the caution order: lead-lap cars ahead of lapped cars', () => {
     const { presetTrack } = await import('../src/trackgen');
     const track = presetTrack('short');
     const L = track.length;
-    const world = new World(track, { wearScale: 1 });
+    // No collisions: the house drivers bump each other all race, and since bumps over 2 m/s cost health they wrecked
+    // each other before anyone was lapped. The order is what's tested.
+    const world = new World(track, { wearScale: 1, collisions: false });
     // Five quick cars and the slowest house driver, who gets lapped.
     const teams = [0, 1, 2, 0, 1, 3].map((d) => neuralTeam(drivers[d]));
     teams.forEach((team, k) => world.addCar(new Car(k), team));

@@ -5,10 +5,12 @@ import { EXPERIMENT } from './experiment';
  * circuits the first (the second isn't measured there yet); ?damage=1 or ?damage=2 races one everywhere. Each car
  * carries the one its race runs (Car.damageModel, set as it's put on a track):
  *
- * - Light contact is free: rubbing, bumping and brushing the wall (impacts under FREE_IMPACT, and scraping) cost
- *   speed and tyres, as the physics has it, but no health. Under the first model it wore cars down until the next
- *   real hit finished them (most cars wrecked were under 0.3 health before the hit that did it), and the clean
- *   teachers' wall scrapes made nearly half their pit stops repairs.
+ * - Light contact is free: rubbing, leaning on a car, brushing the wall (impacts under FREE_IMPACT, and scraping) cost
+ *   speed and tyres, as the physics has it, but no health. Past it a hit costs more the harder it is, from next to
+ *   nothing to the first model's cost for hard hits (RAMP). Under the first model light contact wore cars down until
+ *   the next real hit finished them (most cars wrecked were under 0.3 health before the hit that did it), and the
+ *   clean teachers' wall scrapes made nearly half their pit stops repairs; with everything under 6 m/s free, a pack
+ *   could bounce off itself all race for nothing (2026-10-26: students 5-25x the teachers' contacts over 2 m/s).
  * - One curve from health to pace, whatever was hit: down to SOUND_ABOVE a car loses a little, more the further
  *   down it is (a buffer: worth racing on and fixing at the next stop); past it the car breaks, going over the limit:
  *   at once it's down to a fraction of its power with much more drag, then less and less, barely moving by a tenth
@@ -23,7 +25,12 @@ import { EXPERIMENT } from './experiment';
  */
 export const DAMAGE2 = {
   /** Normal impact speed below which contact costs no health (m/s; the first model's threshold is 4). */
-  FREE_IMPACT: 6,
+  FREE_IMPACT: 2,
+  /**
+   * Health a hit costs per (m/s over FREE_IMPACT)^2: a 3 m/s bump 0.002, 4 m/s 0.01, 6 m/s 0.04; from 10 m/s up about
+   * the first model's (12 m/s: 0.25 both).
+   */
+  RAMP: 0.00248,
   /** Health above which a car is sound: a little lost pace, no smoke. */
   SOUND_ABOVE: 0.5,
   /** Down at SOUND_ABOVE, the share of the engine's power left (falling slowly from full health, then faster) ... */
