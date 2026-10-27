@@ -287,6 +287,9 @@ export class TrafficRacer {
    * here"; left to itself its offset follows its own plan wherever the car goes, and its labels answer a car that
    * isn't there, which no student can learn from what it sees.
    */
+  /** Its lane plan: +1 passing on the +d side, -1 on the -d side, 0 holding its lane (a student's tactics copy it). */
+  get intent(): number { return this.passSide; }
+
   takeOver(car: Car, world: World): void {
     this.offset = car.d - lineAt(this.path ?? this.lineFor(world.track), car.s).d;
   }

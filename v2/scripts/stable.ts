@@ -28,15 +28,17 @@ const pass = ['rounds', 'laps', 'field', 'seed', 'debris', 'epochs', 'shake', 'f
 const toJson = (d: StableDriver) => ({
   lineage: d.lineage, rounds: 0, nerve: d.nerve, talent: d.talent, limits: d.limits, cautionLicensed: true, weights: Array.from(d.weights),
   ...(d.caution ? { caution: { weights: Array.from(d.caution) } } : {}),
+  ...(d.tactics ? { tactics: { weights: Array.from(d.tactics) } } : {}),
   knowledge: lineOf(d),
 });
 
 // A bundle's driver as a student: who it is, and its oval skills as far as it has got.
-interface BundleDriver { lineage: number; nerve: number; talent: number; limits: { latency: number; noise: number }; weights: number[]; caution?: { weights: number[] } }
+interface BundleDriver { lineage: number; nerve: number; talent: number; limits: { latency: number; noise: number }; weights: number[]; caution?: { weights: number[] }; tactics?: { weights: number[] } }
 const from: BundleDriver[] | null = args.has('from') ? JSON.parse(readFileSync(args.get('from')!, 'utf8')).drivers : null;
 const fromBundle = (d: BundleDriver): StableDriver => ({
   lineage: d.lineage, nerve: d.nerve, talent: d.talent, limits: d.limits,
   weights: adaptWeights(Float32Array.from(d.weights)), caution: d.caution ? adaptWeights(Float32Array.from(d.caution.weights)) : null,
+  tactics: d.tactics ? Float32Array.from(d.tactics.weights) : null,
 });
 
 if (args.has('group-only')) {
@@ -51,7 +53,7 @@ if (args.has('group-only')) {
     ...(args.has('shake') ? { shake: Number(args.get('shake')) } : {}),
     ...(args.has('solo-tracks') ? { soloTracks: Number(args.get('solo-tracks')) } : {}),
     onRound: (round, r) => console.log(`group ${first} round ${round} ${r.track}: ${r.out} out, ${r.examples} moments (${r.damaged} damaged), `
-      + `loss ${(r.losses.reduce((a, b) => a + b, 0) / r.losses.length).toFixed(4)}, cautions ${r.cautionLoss.toFixed(4)}, solo crashes ${r.soloCrashes}/${3 * count * (1 + Number(args.get('solo-tracks') ?? 0))} (${r.seconds.toFixed(0)} s)${r.nonFinite.length ? `, dropped non-finite ${r.nonFinite.join(', ')}` : ''}`),
+      + `loss ${(r.losses.reduce((a, b) => a + b, 0) / r.losses.length).toFixed(4)}, cautions ${r.cautionLoss.toFixed(4)}, tactics ${r.tacticsLoss.toFixed(4)} (${r.plans} plans to go by), solo crashes ${r.soloCrashes}/${3 * count * (1 + Number(args.get('solo-tracks') ?? 0))} (${r.seconds.toFixed(0)} s)${r.nonFinite.length ? `, dropped non-finite ${r.nonFinite.join(', ')}` : ''}`),
   });
   writeFileSync(out, JSON.stringify({ drivers: students.map(toJson) }));
 } else {
@@ -72,7 +74,7 @@ if (args.has('group-only')) {
   }));
   const trained = groups.flatMap((g) => JSON.parse(readFileSync(g.file, 'utf8')).drivers);
   // Carried on from a bundle: its drivers with their oval skills replaced, everything else as it was.
-  const all = from ? from.map((d, k) => ({ ...d, weights: trained[k].weights, caution: trained[k].caution })) : trained;
+  const all = from ? from.map((d, k) => ({ ...d, weights: trained[k].weights, caution: trained[k].caution, ...(trained[k].tactics ? { tactics: trained[k].tactics } : {}) })) : trained;
   rmSync(dir, { recursive: true, force: true });
   writeFileSync(out, JSON.stringify({ drivers: all }));
   console.log(`${all.length} drivers -> ${out} (${((Date.now() - t0) / 60000).toFixed(1)} min)`);

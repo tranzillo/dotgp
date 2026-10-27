@@ -36,6 +36,8 @@ export interface ClassroomStudent {
   /** Its road racing skill and road caution skill (circuits). */
   road?: Float32Array;
   roadCaution?: Float32Array | null;
+  /** Its tactics (its lane plan racing), once it has them. */
+  tactics?: Float32Array | null;
 }
 
 export interface ClassroomOptions {
@@ -48,6 +50,8 @@ export interface ClassroomOptions {
   startOnly?: number;
   /** More to record with what the students saw (experiments). */
   extra?: RecorderOptions['extra'];
+  /** Where each student's tactics moments go (RecorderOptions.tactics), by student. */
+  tactics?: Example[][];
 }
 
 /**
@@ -118,12 +122,12 @@ export function classroomRace(
     const limits: DriverLimits = { ...d.limits, seed: hashSeed(seed, `hands${round}:${d.lineage}`) };
     const student = road
       ? new NeuralDriver(d.weights, d.road, lineOf(d), { limits, roadCaution: d.roadCaution ?? undefined })
-      : new NeuralDriver(d.weights, undefined, lineOf(d), { limits, caution: d.caution ?? undefined });
+      : new NeuralDriver(d.weights, undefined, lineOf(d), { limits, caution: d.caution ?? undefined, tactics: d.tactics ?? undefined });
     const team = new Team(student, new TowerSpotter(), chief, false, true);
     team.autopilot.nerve = d.nerve;
     const { style, traits } = road ? roadTeacherOf(d) : teacherOf(d);
     world.addCar(car, new Recorder(team, student, new TrafficRacer(style, undefined, { ...traits, reaction: 0 }), driving, examples[s], rng,
-      { latency: d.limits.latency, extra: opts.extra }));
+      { latency: d.limits.latency, extra: opts.extra, tactics: road ? undefined : opts.tactics?.[s] }));
   }
   const race = new Race(world, opts.laps, new PaceCarDriver(), road ? { rulebook: CIRCUIT_RULES, seed: hashSeed(seed, `race${round}`) } : undefined);
   const debrisPerSecond = opts.debris / lapSeconds(track);

@@ -24,7 +24,7 @@ const pass = ['rounds', 'seed', 'tracks', 'drills', 'racing', 'epochs', 'example
 
 interface Entry {
   lineage?: number; nerve?: number; talent?: number; limits?: { latency: number; noise: number }; weights: number[];
-  knowledge?: { grip: number; margin: number }; caution?: { weights: number[] }; pit?: { weights: number[] }; broken?: { weights: number[] };
+  knowledge?: { grip: number; margin: number }; caution?: { weights: number[] }; pit?: { weights: number[] }; broken?: { weights: number[] }; tactics?: { weights: number[] };
 }
 const bundle = JSON.parse(readFileSync(inFile, 'utf8')) as { drivers: Entry[] };
 const student = (e: Entry, lineage: number): BrokenStudent => ({
@@ -33,6 +33,7 @@ const student = (e: Entry, lineage: number): BrokenStudent => ({
   caution: e.caution && adaptWeights(Float32Array.from(e.caution.weights)),
   pit: e.pit && adaptWeights(Float32Array.from(e.pit.weights)),
   broken: e.broken ? adaptWeights(Float32Array.from(e.broken.weights)) : null,
+  tactics: e.tactics && Float32Array.from(e.tactics.weights),
 });
 const describe = (r: BrokenReport) =>
   `${r.apron}/${r.drills} to the apron (median ${r.toApron.toFixed(1)} s), ${r.hits} hits, ${r.stalls} stalls, harm ${r.harm.toFixed(2)}`;

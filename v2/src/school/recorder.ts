@@ -5,7 +5,7 @@
  * at each moment what it would have done from where the car really is (DAgger). Before, each skill had its own copy,
  * and fixes landed in one and not the others (the oval copy never mirrored its steering labels).
  */
-import { NeuralDriver, Team } from '../ai/drivers';
+import { CAUTION_FROM, DAMAGE_FROM, NeuralDriver, PIT_FROM, TACTIC, Team } from '../ai/drivers';
 import type { Example } from '../ai/network';
 import { observeCaution } from '../ai/observe';
 import { Rng } from '../ai/rng';
@@ -23,6 +23,8 @@ export type Driving = { kind: 'teacher' } | { kind: 'shaken'; sigma: number } | 
 /** A teacher: a scripted driver, and if it keeps a plan of its own, a way to answer from where the car really is. */
 export interface Teacher extends Controller {
   takeOver?(car: Car, world: World): void;
+  /** Its lane plan, if it races to one (+1 the +d side, -1 the -d side, 0 holding): what a student's tactics learn. */
+  readonly intent?: number;
 }
 
 export interface RecorderOptions {
@@ -43,6 +45,13 @@ export interface RecorderOptions {
   knock?: number;
   /** More to record with what the student saw, as it saw it (mirrored or not) (experiments: what else would it need to see?). */
   extra?: (car: Car, world: World, mirrored: boolean) => Float32Array;
+  /**
+   * Where its tactics' moments go (racing under green, sound): what it saw, its own last plan among it, and the plan
+   * its teacher made from there (TACTIC: a score of 0.9 for it, -0.9 the others). Its own last plan, not its teacher's:
+   * shown its teacher's, the tactics learned to keep the plan they had, and racing, kept their own (2026-10-26: with
+   * the teacher passing high on the short oval, the student's plan was to hold two times in three).
+   */
+  tactics?: Example[];
 }
 
 /** Share of the students' decisions recorded, by default. */
@@ -93,7 +102,11 @@ export class Recorder implements Controller {
     this.studentDrives = driving.kind === 'student';
     this.hands = driving.kind === 'shaken' ? new ShakenHands(opts.latency ?? 0, driving.sigma, rng) : null;
     this.stops = opts.skill === 'stops';
+    // While it has no tactics of its own, it races to its teacher's plan; recorded, it's shown its teacher's plan.
+    if (teacher && 'intent' in teacher) student.intentFrom = () => teacher.intent ?? 0;
   }
+
+
 
   /** Who drove (the team's mode: the driver, the pit maneuver, the formation). */
   get mode(): string { return this.team.mode; }
@@ -105,6 +118,7 @@ export class Recorder implements Controller {
       car.vy *= keep;
     }
     const px = car.inputX, py = car.inputY;
+    const lastPlan = this.student.intent;
     let label: [number, number] | null = null;
     if (this.stops) {
       // The maneuver's answer from here (it also keeps track of the stop as it goes).
@@ -120,6 +134,7 @@ export class Recorder implements Controller {
       this.teacher.decide(car, world);
       label = [car.inputX, car.inputY];
     }
+    const plan = this.teacher?.intent ?? 0;
     car.inputX = px;
     car.inputY = py;
     // The team always runs (the crew chief calls the stops, its maneuver or pit skill drives them); watching, the
@@ -138,7 +153,22 @@ export class Recorder implements Controller {
     this.team.spotter.call(car, world, this.team.radio);
     this.team.observePit(car, world);
     observeCaution(car, world, this.team.cautionInputs);
+    // What its tactics saw (its own last plan among it) and the plan the teacher made; then shown its teacher's plan,
+    // so the driving it's taught is the driving of that plan.
+    const hasPlan = this.teacher && 'intent' in this.teacher;
+    if (hasPlan && this.opts.tactics) {
+      this.student.shownIntent = lastPlan;
+      const before = this.student.inputs(car, world, this.team.radio, this.team.pitInputs, this.team.cautionInputs);
+      if (before[CAUTION_FROM] === 0 && before[PIT_FROM] === 0 && before[PIT_FROM + 1] === 0 && before[DAMAGE_FROM] === 0) {
+        const side = this.student.mirrored ? -plan : plan;
+        const y = new Float32Array(3).fill(-0.9);
+        y[side > 0 ? TACTIC.LOW : side < 0 ? TACTIC.HIGH : TACTIC.HOLD] = 0.9;
+        this.opts.tactics.push({ x: before.slice(), y, mask: Float32Array.of(1, 1, 1) });
+      }
+    }
+    if (hasPlan) this.student.shownIntent = plan;
     const seen = this.student.inputs(car, world, this.team.radio, this.team.pitInputs, this.team.cautionInputs);
+    this.student.shownIntent = null;
     let x = seen.slice();
     if (this.opts.extra) {
       const more = this.opts.extra(car, world, this.student.mirrored);

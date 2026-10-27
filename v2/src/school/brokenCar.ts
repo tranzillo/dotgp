@@ -47,6 +47,8 @@ export interface BrokenStudent {
   pit?: Float32Array;
   /** The broken-car skill, once it has one. */
   broken: Float32Array | null;
+  /** Its tactics (its lane plan racing), if it has them. */
+  tactics?: Float32Array;
 }
 
 export interface BrokenSkillOptions {
@@ -111,6 +113,8 @@ class BrokenTeacher {
     this.racer = new TrafficRacer(style, undefined, { ...traits, reaction: 0 });
   }
   takeOver(car: Car, world: World): void { this.racer.takeOver?.(car, world); }
+  /** Its lane plan: the racer's (a broken car's moments aren't the racing skill's). */
+  get intent(): number { return this.racer.intent; }
   decide(car: Car, world: World): void {
     if (compromise(car) === 0 || world.track.kind === 'road') { this.racer.decide(car, world); return; }
     const route = brokenRoute(world.track);
@@ -143,7 +147,7 @@ export function brokenDrill(
     placeOnGrid(car, track, k, true);
     if (k === slot) {
       const limits: DriverLimits | undefined = d.limits && { ...d.limits, seed: (seed * 7919) >>> 0 };
-      const student = new NeuralDriver(d.weights, undefined, d.knowledge, { limits, caution: d.caution, pit: d.pit, broken: d.broken ?? undefined });
+      const student = new NeuralDriver(d.weights, undefined, d.knowledge, { limits, caution: d.caution, pit: d.pit, broken: d.broken ?? undefined, tactics: d.tactics });
       const team = new Team(student, new TowerSpotter(), null, false, true);
       world.addCar(car, examples
         ? new Recorder(team, student, teacher(d), { kind: studentDrives ? 'student' : 'teacher' }, examples, rng, { latency: d.limits?.latency })

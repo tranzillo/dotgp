@@ -32,8 +32,25 @@ export const CAUTION_RANGE_FROM = PIT_CALLS_FROM + PIT_CALLS_SIZE;
 export const DAMAGE_FROM = CAUTION_RANGE_FROM + CAUTION_RANGE_SIZE;
 /** Where the mirrors come in (the spotter's, after the radio on a team's radio: spotter.ts MIRROR), after its own damage. */
 export const MIRROR_FROM = DAMAGE_FROM + DAMAGE_SIZE;
-/** Driver network: own-car observations + the spotter's radio + a pit stop in progress + a caution + the road ahead + the caution calls + others' pit stops + the caution's range + its own damage + the mirrors -> acceleration request. */
-export const DRIVER_LAYERS = [MIRROR_FROM + MIRROR_SIZE, 32, 24, 2] as const;
+/**
+ * Where the driver's lane plan comes in (after the mirrors): INTENT.LOW, going by on the low side (+d), INTENT.HIGH on
+ * the high side; neither, holding its lane. Its tactics decide it (NeuralDriver.tacticsNet); its teacher's, in lessons.
+ */
+export const INTENT_FROM = MIRROR_FROM + MIRROR_SIZE;
+export const INTENT = { LOW: 0, HIGH: 1 } as const;
+export const INTENT_SIZE = 2;
+/** Driver network: own-car observations + the spotter's radio + a pit stop in progress + a caution + the road ahead + the caution calls + others' pit stops + the caution's range + its own damage + the mirrors + its lane plan -> acceleration request. */
+export const DRIVER_LAYERS = [INTENT_FROM + INTENT_SIZE, 32, 24, 2] as const;
+/**
+ * The tactics network: what the driver sees (its last plan in the plan's inputs) -> a score for each plan, hold, low,
+ * high (TACTIC); the best is the plan. A choice of three, not a steer: copying a teacher that went low as often as high
+ * past a slower car, a steering network learns the average, straight on (2026-10-26: on the speedway, students closing
+ * on a car moved toward the side their teachers would pass on 24% of the time, away 30%).
+ */
+export const TACTICS_LAYERS = [DRIVER_LAYERS[0], 24, 16, 3] as const;
+export const TACTIC = { HOLD: 0, LOW: 1, HIGH: 2 } as const;
+/** Before the lane plan. */
+export const MIRROR_DRIVER_LAYERS = [MIRROR_FROM + MIRROR_SIZE, 32, 24, 2] as const;
 /** Before the mirrors. */
 export const DAMAGE_DRIVER_LAYERS = [DAMAGE_FROM + DAMAGE_SIZE, 32, 24, 2] as const;
 /** Before its own damage. */
@@ -53,7 +70,7 @@ export const LEGACY_DRIVER_LAYERS = [OBS_SIZE, 16, 12, 2] as const;
 /** Upgrade saved weights to the current driver network, preserving behaviour (new inputs start ignored). */
 export function adaptWeights(w: Float32Array): Float32Array {
   if (w.length === genomeSize(DRIVER_LAYERS)) return w;
-  for (const old of [DAMAGE_DRIVER_LAYERS, CAUTION_RANGE_DRIVER_LAYERS, PIT_CALLS_DRIVER_LAYERS, CALLS_DRIVER_LAYERS, KNOWLEDGE_DRIVER_LAYERS, PREVIEW_DRIVER_LAYERS, CAUTION_DRIVER_LAYERS, PIT_DRIVER_LAYERS, RADIO_DRIVER_LAYERS, LEGACY_DRIVER_LAYERS]) {
+  for (const old of [MIRROR_DRIVER_LAYERS, DAMAGE_DRIVER_LAYERS, CAUTION_RANGE_DRIVER_LAYERS, PIT_CALLS_DRIVER_LAYERS, CALLS_DRIVER_LAYERS, KNOWLEDGE_DRIVER_LAYERS, PREVIEW_DRIVER_LAYERS, CAUTION_DRIVER_LAYERS, PIT_DRIVER_LAYERS, RADIO_DRIVER_LAYERS, LEGACY_DRIVER_LAYERS]) {
     if (w.length === genomeSize(old)) {
       const rng = new Rng(w.length);
       return widenNetwork(old, w, DRIVER_LAYERS, () => rng.next());
@@ -206,6 +223,9 @@ export function mirrorDriverInputs(x: Float32Array): void {
   const low = x[MIRROR_FROM + MIRROR.LOW];
   x[MIRROR_FROM + MIRROR.LOW] = x[MIRROR_FROM + MIRROR.HIGH];
   x[MIRROR_FROM + MIRROR.HIGH] = low;
+  const lowPlan = x[INTENT_FROM + INTENT.LOW];
+  x[INTENT_FROM + INTENT.LOW] = x[INTENT_FROM + INTENT.HIGH];
+  x[INTENT_FROM + INTENT.HIGH] = lowPlan;
 }
 
 /**
@@ -258,6 +278,8 @@ export interface NeuralDriverExtras {
    * skill drives on (seeing its own damage, which a racing skill never learned to answer).
    */
   broken?: Float32Array;
+  /** Its tactics (TACTICS_LAYERS): its lane plan racing under green. Without them it holds its lane as it sees fit. */
+  tactics?: Float32Array;
 }
 
 /**
@@ -355,6 +377,16 @@ export class NeuralDriver implements DriverBrain {
   readonly pitNet: Network | null;
   /** The broken-car skill (see NeuralDriverExtras.broken). */
   readonly brokenNet: Network | null;
+  /** Its tactics (see NeuralDriverExtras.tactics). */
+  readonly tacticsNet: Network | null;
+  /** Its lane plan, in the world's frame: +1 going by on the +d side, -1 the -d side, 0 holding (racing under green). */
+  intent = 0;
+  /**
+   * In lessons: where its plan comes from while it has no tactics of its own (its teacher's), and, recording, the plan
+   * its inputs are shown with in place of its own.
+   */
+  intentFrom: (() => number) | null = null;
+  shownIntent: number | null = null;
   /** The last inputs were mirrored (the coming corner turns right): labels for them must be mirrored too. */
   mirrored = false;
 
@@ -368,13 +400,14 @@ export class NeuralDriver implements DriverBrain {
     /** Its human limits (latency, motor noise), and its caution skill (a network for when the field is pacing). */
     extras: NeuralDriverExtras = {},
   ) {
-    const { limits, caution: cautionWeights, roadCaution, pit, broken } = extras;
+    const { limits, caution: cautionWeights, roadCaution, pit, broken, tactics } = extras;
     this.net = new Network(DRIVER_LAYERS, weights);
     this.roadNet = roadWeights ? new Network(DRIVER_LAYERS, roadWeights) : null;
     this.cautionNet = cautionWeights ? new Network(DRIVER_LAYERS, cautionWeights) : null;
     this.roadCautionNet = roadCaution ? new Network(DRIVER_LAYERS, roadCaution) : null;
     this.pitNet = pit ? new Network(DRIVER_LAYERS, pit) : null;
     this.brokenNet = broken ? new Network(DRIVER_LAYERS, broken) : null;
+    this.tacticsNet = tactics ? new Network(TACTICS_LAYERS, tactics) : null;
     this.hands = limits && (limits.latency > 0 || limits.noise > 0) ? new Hands(limits, P.CONTROL_EVERY * P.DT) : null;
   }
 
@@ -409,6 +442,10 @@ export class NeuralDriver implements DriverBrain {
     this.input.set(observeDamage(car, this.damage), DAMAGE_FROM);
     if (radio.length >= RADIO_SIZE + MIRROR_SIZE) this.input.set(radio.subarray(RADIO_SIZE, RADIO_SIZE + MIRROR_SIZE), MIRROR_FROM);
     else this.input.fill(0, MIRROR_FROM, MIRROR_FROM + MIRROR_SIZE);
+    // Its lane plan: only racing under green, sound and off pit road (every other skill sees none).
+    const plan = racingPlan(car, world, !!broken) ? this.shownIntent ?? this.intent : 0;
+    this.input[INTENT_FROM + INTENT.LOW] = plan > 0 ? 1 : 0;
+    this.input[INTENT_FROM + INTENT.HIGH] = plan < 0 ? 1 : 0;
     const dir = nextCornerDirection(world.track, car.s);
     if (dir !== 0) this.mirrored = dir < 0; // nothing in sight: keep the last view
     if (this.mirrored) mirrorDriverInputs(this.input);
@@ -416,7 +453,18 @@ export class NeuralDriver implements DriverBrain {
   }
 
   decide(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array): void {
-    const input = this.inputs(car, world, radio, pit, caution);
+    let input = this.inputs(car, world, radio, pit, caution);
+    if (racingPlan(car, world, !!this.brokenNet && compromise(car) > 0)) {
+      // The plan first (from what it sees and its last plan), then the drive, seeing the new one.
+      const before = this.intent;
+      if (this.tacticsNet) {
+        const score = this.tacticsNet.forward(input);
+        const best = score[TACTIC.LOW] > score[TACTIC.HOLD] && score[TACTIC.LOW] >= score[TACTIC.HIGH] ? 1
+          : score[TACTIC.HIGH] > score[TACTIC.HOLD] && score[TACTIC.HIGH] > score[TACTIC.LOW] ? -1 : 0;
+        this.intent = this.mirrored ? -best : best;
+      } else if (this.intentFrom) this.intent = this.intentFrom();
+      if (this.intent !== before) input = this.inputs(car, world, radio, pit, caution);
+    } else this.intent = 0;
     const net = this.netAt(world.track, input);
     const out = net.forward(input);
     if (ROAD_CAUTION_THROTTLE && net === this.roadCautionNet && this.roadNet && world.control?.flag === 'caution') {
@@ -437,6 +485,11 @@ export class NeuralDriver implements DriverBrain {
     if (this.hands) this.hands.apply(x, wy, car);
     else { car.inputX = x; car.inputY = wy; }
   }
+}
+
+/** Whether a driver races to a lane plan at this moment: under green (or no race control), sound, off pit road. */
+function racingPlan(car: Car, world: World, broken: boolean): boolean {
+  return !broken && car.pit.phase === 'none' && (!world.control || world.control.flag === 'green');
 }
 
 export function neuralTeam(

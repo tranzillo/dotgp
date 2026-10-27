@@ -17,9 +17,9 @@
  * drivers: forty drivers, forty teachers, no shared ancestry.
  */
 import { initialWeights } from '../ai/es';
-import { CAUTION_FROM, DAMAGE_FROM, DRIVER_LAYERS, NeuralDriver, Team, type DriverLimits } from '../ai/drivers';
+import { CAUTION_FROM, DAMAGE_FROM, DRIVER_LAYERS, NeuralDriver, TACTIC, TACTICS_LAYERS, Team, type DriverLimits } from '../ai/drivers';
 import type { FormationTraits } from '../ai/formation';
-import { type Example, trainSupervised } from '../ai/network';
+import { type Example, genomeSize, trainSupervised } from '../ai/network';
 import type { TrackKnowledge } from '../ai/observe';
 import { Rng } from '../ai/rng';
 import { TowerSpotter } from '../ai/spotter';
@@ -44,6 +44,8 @@ export interface StableDriver {
   weights: Float32Array;
   /** The caution skill (a network of its own for when the field is pacing), once it has one. */
   caution: Float32Array | null;
+  /** Its tactics (its lane plan racing: NeuralDriverExtras.tactics), once it has them. */
+  tactics?: Float32Array | null;
 }
 
 /**
@@ -124,7 +126,7 @@ export interface OvalApprenticeOptions {
    */
   shake?: number;
   /** Told after each round. */
-  onRound?: (round: number, report: { track: string; losses: number[]; cautionLoss: number; examples: number; damaged: number; out: number; soloCrashes: number; seconds: number; nonFinite: string[] }) => void;
+  onRound?: (round: number, report: { track: string; losses: number[]; cautionLoss: number; tacticsLoss: number; plans: number; examples: number; damaged: number; out: number; soloCrashes: number; seconds: number; nonFinite: string[] }) => void;
 }
 
 /**
@@ -159,7 +161,7 @@ export function soloDrives(track: Track, students: StableDriver[], driving: Driv
       car.tireLife = TIRE_RANGE[0] + rng.next() * (TIRE_RANGE[1] - TIRE_RANGE[0]);
       car.fuel = FUEL_RANGE[0] + rng.next() * (FUEL_RANGE[1] - FUEL_RANGE[0]);
       const limits: DriverLimits = { ...d.limits, seed: hashSeed(seed, `solo${round}:${d.lineage}:${lane}`) };
-      const student = new NeuralDriver(d.weights, undefined, lineOf(d), { limits, caution: d.caution ?? undefined });
+      const student = new NeuralDriver(d.weights, undefined, lineOf(d), { limits, caution: d.caution ?? undefined, tactics: d.tactics ?? undefined });
       world.addCar(car, new Recorder(new Team(student, new TowerSpotter(), null), student, labellingTeacher(d), driving, examples[s], rng, { latency: d.limits.latency, extra: recordExtra ?? undefined }));
       for (let k = 0; k < SOLO_SECONDS / P.DT && !car.retired; k++) world.step();
       if (car.retired) crashed++;
@@ -179,6 +181,7 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
   const rng = new Rng(hashSeed(seed, 'apprentice'));
   const examples: Example[][] = students.map(() => []);
   const alone: Example[][] = students.map(() => []);
+  const plans: Example[][] = students.map(() => []);
   for (let round = 0; round < opts.rounds; round++) {
     const t0 = Date.now();
     const track = apprenticeTrack(round, seed);
@@ -187,12 +190,12 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
       : opts.shake > 0 ? { kind: 'shaken', sigma: opts.shake * Math.min(1, round / 3) } : { kind: 'student' };
     let soloCrashes = soloDrives(track, students, driving, alone, rng, round, seed);
     for (let k = 0; k < opts.soloTracks; k++) soloCrashes += soloDrives(generatedOval(seed, `solo${round}:${k}`), students, driving, alone, rng, round, seed);
-    const { out } = classroomRace(track, students, driving, examples, rng, { field: opts.field, laps: opts.laps, debris: opts.debris, extra: recordExtra ?? undefined }, round, seed);
-    const cautionLosses: number[] = [];
+    const { out } = classroomRace(track, students, driving, examples, rng, { field: opts.field, laps: opts.laps, debris: opts.debris, extra: recordExtra ?? undefined, tactics: plans }, round, seed);
+    const cautionLosses: number[] = [], tacticsLosses: number[] = [];
     // A moment with a non-finite input or label would turn a driver's weights to NaN in one step (stable-save, 2026-10-25:
     // one driver of forty, in the last round): such moments are dropped, and named in the report so they can be traced.
     const nonFinite = new Map<string, number>();
-    for (const set of [...examples, ...alone]) {
+    for (const set of [...examples, ...alone, ...plans]) {
       let keep = 0;
       for (const e of set) {
         const bad = e.x.findIndex((v) => !Number.isFinite(v)), badY = e.y.findIndex((v) => !Number.isFinite(v));
@@ -223,6 +226,13 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
         const keep = [...pick(alone[s], Math.floor(half / 2)), ...pick(green, Math.floor(half / 2))];
         cautionLosses.push(trainFinite(d.caution, [...pick(pacing, half), ...keep], epochs, rng));
       }
+      // Its tactics: every plan to go by its teacher made (up to half the moments), and twice as many moments it held.
+      const going = plans[s].filter((e) => e.y[TACTIC.HOLD] < 0), holding = plans[s].filter((e) => e.y[TACTIC.HOLD] > 0);
+      if (going.length) {
+        d.tactics ??= tacticsWeights(rng);
+        const go = pick(going, half);
+        tacticsLosses.push(trainFinite(d.tactics, [...go, ...pick(holding, 2 * go.length)], epochs, rng, TACTICS_LAYERS));
+      }
       return loss;
     });
     opts.onRound?.(round, {
@@ -230,17 +240,33 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
       damaged: examples.reduce((a, e) => a + e.filter((x) => x.x[DAMAGE_FROM] > 0).length, 0),
       out, soloCrashes, seconds: (Date.now() - t0) / 1000, nonFinite: [...nonFinite].map(([what, n]) => `${what} ×${n}`),
       cautionLoss: cautionLosses.length ? cautionLosses.reduce((a, b) => a + b, 0) / cautionLosses.length : NaN,
+      tacticsLoss: tacticsLosses.length ? tacticsLosses.reduce((a, b) => a + b, 0) / tacticsLosses.length : NaN,
+      plans: plans.reduce((a, e) => a + e.filter((x) => x.y[TACTIC.HOLD] < 0).length, 0),
     });
   }
 }
 
 /** Train in place, unless the step leaves any weight non-finite: then the weights are as they were. */
-function trainFinite(weights: Float32Array, data: Example[], epochs: number, rng: Rng): number {
+function trainFinite(weights: Float32Array, data: Example[], epochs: number, rng: Rng, layers: readonly number[] = DRIVER_LAYERS): number {
   const before = weights.slice();
-  const loss = trainSupervised(DRIVER_LAYERS, weights, data, epochs, 0.01, () => rng.next());
+  const loss = trainSupervised(layers, weights, data, epochs, 0.01, () => rng.next());
   if (Number.isFinite(loss) && weights.every(Number.isFinite)) return loss;
   weights.set(before);
   return NaN;
+}
+
+/** New tactics: small random weights (every plan scored about alike). */
+export function tacticsWeights(rng: Rng): Float32Array {
+  const w = new Float32Array(genomeSize(TACTICS_LAYERS));
+  let i = 0;
+  for (let l = 1; l < TACTICS_LAYERS.length; l++) {
+    const scale = 1 / Math.sqrt(TACTICS_LAYERS[l - 1]);
+    for (let o = 0; o < TACTICS_LAYERS[l]; o++) {
+      w[i++] = 0; // bias first, as Network has it
+      for (let k = 0; k < TACTICS_LAYERS[l - 1]; k++) w[i++] = scale * rng.gaussian();
+    }
+  }
+  return w;
 }
 
 /** n of the items, drawn at random without replacement. */
