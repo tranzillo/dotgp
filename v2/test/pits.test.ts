@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ScriptedDriver, Team } from '../src/ai/drivers';
-import { StrategistCrewChief, type CrewChief } from '../src/ai/pitting';
+import { followLine } from '../src/ai/lineFollower';
+import { pitLanes, StrategistCrewChief, type CrewChief } from '../src/ai/pitting';
 import { TowerSpotter } from '../src/ai/spotter';
 import { Car, type PitCall } from '../src/sim/car';
 import { PIT_SERVICE } from '../src/sim/constants';
@@ -115,6 +116,56 @@ describe('reverse', () => {
       }
       expect(serviced).toBe(true);
     }
+  });
+});
+
+describe('pit limiter', () => {
+  it('a car coming in flat out is braked to the speed limit by the line, and held to it down pit road', () => {
+    const track = ovalTrack(SPEEDWAY);
+    const world = new World(track, { collisions: false });
+    const car = new Car(0);
+    const lanes = pitLanes(track);
+    car.placeOnTrack(track, track.wrapS(track.pit.wallStart - 120), lanes.fastLane + track.pitOffset(track.pit.wallStart - 120));
+    car.vx = track.tx[car.trackIdx] * 45;
+    car.vy = track.ty[car.trackIdx] * 45;
+    // A driver holding the fast lane with its foot to the floor.
+    world.addCar(car, { decide: (c: Car, w: World) => followLine(c, w, (s) => lanes.fastLane + track.pitOffset(s), () => Infinity, 1) });
+    car.pit.phase = 'in';
+    car.pit.call = { tires: true, fuel: 0, repair: false };
+    car.pit.boxS = track.pit.stalls[track.pit.stalls.length - 1];
+    let atLine = NaN, worst = 0;
+    while (world.time < 20 && track.pitInR(car) < track.pit.wallStart + 80) {
+      world.step();
+      const r = track.pitInR(car);
+      if (Number.isNaN(atLine) && r >= track.pit.wallStart) atLine = car.speed;
+      if (r >= track.pit.wallStart) worst = Math.max(worst, car.speed);
+    }
+    expect(atLine).toBeLessThanOrEqual(PIT_SERVICE.SPEED_LIMIT);
+    expect(worst).toBeLessThanOrEqual(PIT_SERVICE.SPEED_LIMIT + 0.1);
+  });
+});
+
+describe('pit box', () => {
+  it('a car stopped beside its box, short of it, is not serviced; the crew waves it in and the maneuver pulls it into the box', () => {
+    const track = ovalTrack(FLAT_TRACK);
+    const world = new World(track, { collisions: false });
+    const car = new Car(0);
+    const lanes = pitLanes(track);
+    const box = track.pit.stalls[5];
+    car.placeOnTrack(track, track.wrapS(box), lanes.boxLane - 3 + track.pitOffset(box));
+    car.vx = 0;
+    car.vy = 0;
+    // A pit-trained driver that has stopped short and stays there.
+    const parked = { decide: (c: Car) => { c.inputX = 0; c.inputY = 0; } } as unknown as ScriptedDriver;
+    world.addCar(car, new Team(parked, new TowerSpotter(), null, true));
+    car.pit.phase = 'in';
+    car.pit.call = { tires: true, fuel: 0, repair: false };
+    car.pit.boxS = box;
+    while (world.time < 1.9) world.step();
+    expect(car.pit.phase).toBe('in');
+    while (world.time < 15 && car.pit.phase === 'in') world.step();
+    expect(car.pit.phase).toBe('service');
+    expect(Math.abs(car.d - lanes.boxLane - track.pitOffset(car.s))).toBeLessThan(1.5);
   });
 });
 

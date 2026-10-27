@@ -296,7 +296,9 @@ export function pitPath(track: Track): PitPath {
       outCap: laneCap((r) => (r > outStart ? outAt(r) : lanes.fastLane + track.pitOffset(r)), pit.wallEnd - 10, pit.exitEnd),
     };
   } else {
-    const inEnd = pit.wallStart - 50;
+    // Lined up in the fast lane well before the wall's nose: 100 m, or half the entry lane where it's short (it was
+    // 50 m, and students lagging their route arrived still crossing the wall's line: 2026-10-26).
+    const inEnd = pit.wallStart - Math.max(50, Math.min(100, (pit.wallStart - pit.entryStart) / 2));
     path = {
       laid: false,
       // (Across to the fast lane down the deceleration lane, inside its paving as it flares out.)

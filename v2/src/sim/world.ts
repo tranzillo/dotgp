@@ -6,6 +6,7 @@ import type { RaceControl } from './raceControl';
 import { pastTrackLimits } from './limits';
 import type { Track } from './track';
 import { TRUCKS_SOLID } from './wrecker';
+import { pitBoxD } from './layout';
 
 /** Whatever controls a car (usually a team: spotter + driver). Sets car.inputX / car.inputY. */
 export interface Controller {
@@ -28,6 +29,23 @@ export interface WorldOptions {
 
 /** A car stopped within this far of its box's centre is in the box (boxes are 12 m long). */
 const BOX_HALF_LENGTH = 5;
+/**
+ * How far off its box's lane a car can stop and be serviced (m, sideways): stopped short of it, half in the fast
+ * lane, the crew can't work on it, and cars down pit road and into the next boxes hit it (learned pit drivers were
+ * serviced 1.5-3 m short in 20-40% of stops: 2026-10-26).
+ */
+const BOX_HALF_WIDTH = 1.5;
+
+/** Stopped in its box (along it and in its lane), where the crew can work on it. */
+export function inBox(car: Car, track: Track): boolean {
+  return Math.abs(track.pitInR(car) - car.pit.boxS) < BOX_HALF_LENGTH
+    && Math.abs(car.d - pitBoxD(track.pit) - track.pitOffset(car.s)) < BOX_HALF_WIDTH;
+}
+
+/** Stopped alongside its box but not in it (short of its lane): the crew waves it in. */
+export function besideBox(car: Car, track: Track): boolean {
+  return Math.abs(track.pitInR(car) - car.pit.boxS) < BOX_HALF_LENGTH && car.d > track.pit.wallD + track.pitOffset(car.s) && !inBox(car, track);
+}
 
 /** Seconds a stopped wreck stays on track before the safety crew clears it. */
 export const WRECK_CLEAR_TIME = 4;
@@ -163,7 +181,7 @@ export class World {
         pit.phase = 'none';
         pit.call = null;
         this.announce(car, 'missed-pit', 'Missed the pit entry');
-      } else if (inPitLane && Math.abs(r - pit.boxS) < BOX_HALF_LENGTH && car.speed < 1.5 && pit.call?.retire) {
+      } else if (inPitLane && inBox(car, this.track) && car.speed < 1.5 && pit.call?.retire) {
         // Black-flagged: parked in its box, out of the race (off the physics: the box is its garage).
         car.vx = 0;
         car.vy = 0;
@@ -171,7 +189,7 @@ export class World {
         car.parked = true;
         car.cleared = true;
         this.announce(car, 'retired', 'Disqualified: parked');
-      } else if (inPitLane && Math.abs(r - pit.boxS) < BOX_HALF_LENGTH && car.speed < 1.5) {
+      } else if (inPitLane && inBox(car, this.track) && car.speed < 1.5) {
         pit.phase = 'service';
         pit.timer = serviceTime(car, pit.call!);
         pit.stops++;

@@ -1,6 +1,6 @@
 import type { Car } from '../sim/car';
 import { compromise } from '../sim/damage';
-import type { Controller, World } from '../sim/world';
+import { besideBox, type Controller, type World } from '../sim/world';
 import { FormationDriver, type FormationTraits } from './formation';
 import { followLine } from './lineFollower';
 import { genomeSize, Network, widenNetwork } from './network';
@@ -89,6 +89,9 @@ export interface DriverBrain {
  * race, the driver drives. During a pit cycle the scripted pit maneuver
  * takes the wheel until the car is back on the back straight.
  */
+/** Stopped beside its box, short of it, this long (s): the crew waves the car in (the maneuver pulls it into the box). */
+const WAVE_IN_AFTER = 2;
+
 export class Team implements Controller {
   /** The spotter's radio, and its mirrors after it. */
   readonly radio = new Float32Array(RADIO_SIZE + MIRROR_SIZE);
@@ -102,6 +105,8 @@ export class Team implements Controller {
   private lastS = NaN;
   /** The car was smoking at the last look (compromised, under the second damage model). */
   private smoking = false;
+  /** When the car stopped beside its box short of it, this stop (NaN: it hasn't). */
+  private shortSince = NaN;
   /** Who drove the car on the last decision: the learned driver, or a script (pit maneuver, formation). */
   mode: 'driver' | 'pit' | 'formation' = 'driver';
 
@@ -150,7 +155,11 @@ export class Team implements Controller {
     this.spotter.call(car, world, this.radio);
     this.observePit(car, world);
     observeCaution(car, world, this.cautionInputs);
-    if (!this.driverPits && (car.pit.phase !== 'none' || this.autopilot.aborting)) { this.mode = 'pit'; this.autopilot.decide(car, world, this.spotter); }
+    // A driver stopped beside its box but short of it: the crew waves it in, and the maneuver pulls it into the box.
+    if (car.pit.phase !== 'in') this.shortSince = NaN;
+    else if (Number.isNaN(this.shortSince) && car.speed < 1 && besideBox(car, track)) this.shortSince = world.time;
+    const wavedIn = world.time - this.shortSince > WAVE_IN_AFTER;
+    if ((!this.driverPits || wavedIn) && (car.pit.phase !== 'none' || this.autopilot.aborting)) { this.mode = 'pit'; this.autopilot.decide(car, world, this.spotter); }
     else if (!this.driverCautions && this.inFormation(car, world)) { this.mode = 'formation'; this.formation.decide(car, world); }
     // The driver drives (its own stops too, if it drives them): a script's share is only what a script drove.
     else { this.mode = 'driver'; this.driver.decide(car, world, this.radio, this.pitInputs, this.cautionInputs); }

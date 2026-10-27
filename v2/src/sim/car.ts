@@ -50,6 +50,26 @@ const REVERSE_SPEED = 2.5;
 const REVERSE_ACCEL = 2;
 /** A car this slow along the road is at a standstill, for shifting (m/s; sliding sideways down a banked apron counts). */
 const STANDSTILL = 0.3;
+/**
+ * The pit limiter (the user's call, 2026-10-26: learned pit drivers came in too fast and hit the pit wall's nose).
+ * A car on its way in is held, from the pit entry on, under a braking curve that reaches the speed limit at the limit
+ * line (the wall's nose, where pit road begins) at LIMITER_DECEL (m/s^2), and to the limit from there; on its way
+ * out, to the limit until the line at the wall's end. Over it the engine is cut and the brakes go on, as a driver on
+ * the limiter button brakes for the line. (LIMITER_MARGIN under the limit: the stewards allow a little over it.)
+ */
+const LIMITER_DECEL = 5;
+const LIMITER_MARGIN = 0.2;
+
+/** The fastest the pit limiter lets this car go here (Infinity where it's off). */
+export function pitLimit(car: Car, track: Track): number {
+  const phase = car.pit.phase;
+  if (phase !== 'in' && phase !== 'out') return Infinity;
+  const pit = track.pit, limit = PIT_SERVICE.SPEED_LIMIT - LIMITER_MARGIN;
+  if (phase === 'out') return track.pitOutAt(car, car.s) < pit.wallEnd ? limit : Infinity;
+  const r = track.pitInR(car);
+  if (r < pit.entryStart || r > pit.wallEnd) return Infinity;
+  return r < pit.wallStart ? Math.sqrt(limit * limit + 2 * LIMITER_DECEL * (pit.wallStart - r)) : limit;
+}
 
 /**
  * Cornering grip of a tire at a given life: a gentle fade from new to the
@@ -370,6 +390,9 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1, wheel
     aLon = forward > 0 ? Math.max(aLon, -forward / dt) : 0;
   }
 
+  // The pit limiter brakes for the line, and holds the limit past it.
+  const limiter = car.reversing ? Infinity : pitLimit(car, track);
+  if (speed > limiter) aLon = Math.min(aLon, -Math.min(capacityLon, LIMITER_DECEL + 4 * (speed - limiter)));
   if (aLon > 0 && !car.reversing) {
     const power = car.fuel > 0
       ? spec.power(track) * (car.damageModel === 2 ? powerLeft(car) : 1 - P.ENGINE_DAMAGE_POWER * car.damageEngine)
@@ -377,8 +400,8 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1, wheel
     // (Only the driven wheels push: their share of the tires' grip. A car driven by all four, the classic, can ask
     // for more than they hold and spin them.)
     let engineMax = Math.min(P.MAX_DRIVE_ACCEL, power / (car.mass * Math.max(speed, 1)), spec.driveShare < 1 ? spec.driveShare * capacityLon : Infinity);
-    // Pit limiter: no drive above the pit road speed limit.
-    if (surfaceKind === 'pit' && speed > PIT_SERVICE.SPEED_LIMIT) engineMax = 0;
+    // Pit limiter: no drive above the pit road speed limit (or the limiter's curve down to it).
+    if ((surfaceKind === 'pit' && speed > PIT_SERVICE.SPEED_LIMIT) || speed > limiter) engineMax = 0;
     // A learner's speed limit (training wheels).
     if (wheels && speed > wheels.speedCap) engineMax = 0;
     if (aLon > engineMax) aLon = engineMax;
