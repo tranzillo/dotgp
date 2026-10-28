@@ -335,7 +335,7 @@ const MOTOR_NOISE_TAU = 0.25;
 const ROAD_CAUTION_THROTTLE = Number((typeof process !== 'undefined' && process.env.ROAD_CAUTION_THROTTLE) || 0);
 
 /** The latency and noise between a driver's decision and the car's inputs. */
-class Hands {
+export class Hands {
   private readonly delay: number;
   private readonly queue: Array<[number, number]> = [];
   private readonly rng: Rng;

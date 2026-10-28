@@ -126,7 +126,7 @@ export interface OvalApprenticeOptions {
    */
   shake?: number;
   /** Told after each round. */
-  onRound?: (round: number, report: { track: string; losses: number[]; cautionLoss: number; tacticsLoss: number; plans: number; examples: number; damaged: number; out: number; soloCrashes: number; seconds: number; nonFinite: string[] }) => void;
+  onRound?: (round: number, report: { track: string; losses: number[]; cautionLoss: number; tacticsLoss: number; plans: number; examples: number; damaged: number; launches: number; out: number; soloCrashes: number; seconds: number; nonFinite: string[] }) => void;
 }
 
 /**
@@ -182,6 +182,7 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
   const examples: Example[][] = students.map(() => []);
   const alone: Example[][] = students.map(() => []);
   const plans: Example[][] = students.map(() => []);
+  const launches: Example[][] = students.map(() => []);
   for (let round = 0; round < opts.rounds; round++) {
     const t0 = Date.now();
     const track = apprenticeTrack(round, seed);
@@ -190,12 +191,12 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
       : opts.shake > 0 ? { kind: 'shaken', sigma: opts.shake * Math.min(1, round / 3) } : { kind: 'student' };
     let soloCrashes = soloDrives(track, students, driving, alone, rng, round, seed);
     for (let k = 0; k < opts.soloTracks; k++) soloCrashes += soloDrives(generatedOval(seed, `solo${round}:${k}`), students, driving, alone, rng, round, seed);
-    const { out } = classroomRace(track, students, driving, examples, rng, { field: opts.field, laps: opts.laps, debris: opts.debris, extra: recordExtra ?? undefined, tactics: plans }, round, seed);
+    const { out } = classroomRace(track, students, driving, examples, rng, { field: opts.field, laps: opts.laps, debris: opts.debris, extra: recordExtra ?? undefined, tactics: plans, launches }, round, seed);
     const cautionLosses: number[] = [], tacticsLosses: number[] = [];
     // A moment with a non-finite input or label would turn a driver's weights to NaN in one step (stable-save, 2026-10-25:
     // one driver of forty, in the last round): such moments are dropped, and named in the report so they can be traced.
     const nonFinite = new Map<string, number>();
-    for (const set of [...examples, ...alone, ...plans]) {
+    for (const set of [...examples, ...alone, ...plans, ...launches]) {
       let keep = 0;
       for (const e of set) {
         const bad = e.x.findIndex((v) => !Number.isFinite(v)), badY = e.y.findIndex((v) => !Number.isFinite(v));
@@ -215,7 +216,9 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
       // Moments in a compromised car (get it low, bring it in) are about one in a hundred: every one goes in, up to a
       // quarter of the racing ones, or a random draw all but leaves them out.
       const hurt = green.filter((e) => e.x[DAMAGE_FROM] > 0), kept = pick(hurt, Math.floor(half / 4));
-      const racing = [...kept, ...pick(hurt.length ? green.filter((e) => e.x[DAMAGE_FROM] === 0) : green, half - kept.length)];
+      // Launches (the start and restarts, a lap from the green: RecorderOptions.launches) likewise, up to a quarter.
+      const launched = pick(launches[s], Math.floor(half / 4));
+      const racing = [...kept, ...launched, ...pick(hurt.length ? green.filter((e) => e.x[DAMAGE_FROM] === 0) : green, half - kept.length - launched.length)];
       const loss = trainFinite(d.weights, [...pick(alone[s], half), ...racing], epochs, rng);
       if (pacing.length) {
         // The caution network takes the wheel the moment the flag flies, often mid-corner at racing speed, and
@@ -238,6 +241,7 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
     opts.onRound?.(round, {
       track: `${track.length.toFixed(0)} m`, losses, examples: examples.reduce((a, e) => a + e.length, 0) + alone.reduce((a, e) => a + e.length, 0),
       damaged: examples.reduce((a, e) => a + e.filter((x) => x.x[DAMAGE_FROM] > 0).length, 0),
+      launches: launches.reduce((a, e) => a + e.length, 0),
       out, soloCrashes, seconds: (Date.now() - t0) / 1000, nonFinite: [...nonFinite].map(([what, n]) => `${what} ×${n}`),
       cautionLoss: cautionLosses.length ? cautionLosses.reduce((a, b) => a + b, 0) / cautionLosses.length : NaN,
       tacticsLoss: tacticsLosses.length ? tacticsLosses.reduce((a, b) => a + b, 0) / tacticsLosses.length : NaN,

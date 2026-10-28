@@ -2,7 +2,7 @@ import { PIT_SERVICE, PHYSICS as P } from '../sim/constants';
 import type { Car } from '../sim/car';
 import { pullOffS } from '../sim/raceControl';
 import type { Controller, World } from '../sim/world';
-import { followLine } from './lineFollower';
+import { easingTo, followLine } from './lineFollower';
 import { pitPath } from './pitting';
 import { pitFastD } from '../sim/layout';
 import { Rng } from './rng';
@@ -20,6 +20,13 @@ const CATCH_UP = 18;
 const FOLLOW_GAP = 6;
 /** Braking the following rule plans around (m/s^2): firm but comfortable. */
 const COMFORT_DECEL = 4;
+/**
+ * How fast a driver slows to caution pace as the caution comes out (m/s^2): off the throttle and a touch of brake. Asked
+ * for pace speed at once, a driver that had reacted braked nearly as hard as it could from racing speed, in front of
+ * cars still racing nose to tail (2026-10-28: teachers' short-oval caution hits as the caution formed, 32 m/s into
+ * 24, about as much health as the students lost there). Following the car ahead still allows for it stopping hard.
+ */
+export const CAUTION_SLOWING = 3;
 
 /**
  * A driver's own way of driving a caution: no two drivers react to a flag at
@@ -89,7 +96,7 @@ export class FormationDriver {
     if (ctl.flag === 'caution' && !ctl.pickedUp && !ctl.wavedAround(car)) {
       const lane = Math.max(-6, Math.min(6, car.d));
       const ahead = ctl.carAheadInFile(car, lane);
-      const want = ahead ? ctl.paceSpeedAt(car.s) + tr.eagerness : ctl.paceSpeedAt(car.s);
+      const want = easingTo(car, ahead ? ctl.paceSpeedAt(car.s) + tr.eagerness : ctl.paceSpeedAt(car.s), CAUTION_SLOWING);
       let holdLane = lane;
       const wreck = ctl.wreckAhead(car);
       if (wreck && holdLane > wreck.lo - 4 && holdLane < wreck.hi + 4) holdLane = car.d < (wreck.lo + wreck.hi) / 2 ? wreck.lo - 5 : wreck.hi + 5;

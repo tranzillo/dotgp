@@ -1,6 +1,7 @@
 // Preload: how long a teacher's lane plan lasts under green, as its intent (passSide) and as the lane it's in (its
 // groove), and where and why plans end. Prints PLANS lines at exit. E.g.:
-//   DOTGP_EXPERIMENT='?spec=cup' npx tsx --import ./scripts/plans.ts scripts/incidents.ts //     teacher:public/drivers/stable-candidate-v5.json --tracks speedway --seeds 1 --field 40 --rules 1 --laps 40
+//   DOTGP_EXPERIMENT='?spec=cup' npx tsx --import ./scripts/plans.ts scripts/incidents.ts \
+//     teacher:public/drivers/stable-candidate-v5.json --tracks speedway --seeds 1 --field 40 --rules 1 --laps 40
 import { lineAt } from '../src/ai/racingLine';
 import { TrafficRacer } from '../src/ai/trafficRacer';
 const defs = ['intent', 'groove'] as const;

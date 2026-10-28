@@ -1,0 +1,50 @@
+
+=== oval:894715320:short seed 1: 171 laps, 9 cars (a car a pit box), 4x pace (50 s)
+finished 7/9  cautions 2 (5 laps)  retirements 2  biggest wreck 1 cars
+  marks lap 5: groove 1%, skids 0% mean darkness; 0% of surface >10% dark, 0% >25%
+  marks lap 20: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 1% >25%
+
+=== oval:894715320:short seed 2: 171 laps, 9 cars (a car a pit box), 4x pace (46 s)
+finished 5/9  cautions 1 (4 laps)  retirements 4  biggest wreck 2 cars
+  t=466s  2 car(s): green @6, green @40
+  t=573s  1 car(s): caution +106s @1
+  marks lap 5: groove 1%, skids 0% mean darkness; 0% of surface >10% dark, 0% >25%
+  marks lap 20: groove 4%, skids 0% mean darkness; 15% of surface >10% dark, 1% >25%
+
+=== summary by track
+
+oval:894715320:short (2 races)
+  STEWARDS 10.5 decisions/race: jumped-restart: drive-through 11, avoidable-contact: time 6, avoidable-contact: drive-through 2, avoidable-contact: warning 2
+  WRECKS  3.0 retirements/race, 1.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 5, under caution 1
+          who / what: driver hit car (driver) 4, driver hit wall 1, driver hit car (official) 1
+          contact retirements: 2 at fault, 3 hit by another
+          damage done to others (by fault): 1.87 health/race
+  PACK    3.2 passes/100 green car-laps, alongside 2%, drafting 12%, lane spread 5.19 m; lockstep same brain –, different brains 0.052
+  PASSING 2.7 clean passes/100 green car-laps; of all passes 11% with contact, 6% damaging, 48% from the draft; 4.5 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 2.47 m, 1.92 m/s, 0.118
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+          in a pit cycle: in along the wall (track side) 1, in along the wall (box lane) 1
+  TIRES   wear 0.0185/green lap -> cliff (0.3) after 38 laps; sliding >0.05 6%, >0.35 1%, >0.6 0% of car-steps
+  FUEL    burn 1.45 kg/green lap -> 41 laps per tank
+  DAMAGE  health lost on track /race: green walls 10.30 (0.35 with a car alongside), cars 1.92; caution walls 0.27, cars 2.03
+  STOPS   52.5/race (4% under caution), tires taken 80%, repairs 64%, called for fuel 13% tires 21% damage 54% caution 0% penalty 11%, tire life at stop 0.65 (min 0.30), service 16.6 s
+  PIT ROAD 72.1 s entry to track under green, 81.6 s under caution; 16.0 contacts, 0.87 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 21.66 s (674) | 0.6-0.8: 21.97 s (559) | 0.4-0.6: 22.33 s (453) | 0.3-0.4: 22.77 s (60) | 0.2-0.3: 23.13 s (10)
+CAUTION hits 71; ahead under 15 m/s 41; ahead smoking 4, behind smoking 1; side by side 21
+CAUTION by phase (hits; per car-minute; health lost):
+CAUTION   before the start          1    0.53    0.00  impact 3.0, behind 20.3 -> ahead 23.9 m/s, side by side 1
+CAUTION   caution forming           1    0.36    0.02  impact 5.0, behind 22.8 -> ahead 11.3 m/s, side by side 1
+CAUTION   caution one to go        15    4.82    0.29  impact 3.3, behind 18.0 -> ahead 13.6 m/s, side by side 1
+CAUTION   caution pacing           35    1.03    2.42  impact 3.5, behind 19.2 -> ahead 14.5 m/s, side by side 11
+CAUTION   restart green 0-10 s      1    0.34    0.01  impact 3.8, behind 33.8 -> ahead 31.7 m/s, side by side 0
+CAUTION   restart green 10-30 s     1    0.24    0.00  impact 2.5, behind 24.3 -> ahead 20.3 m/s, side by side 1
+CAUTION   restart                  11    0.83    1.05  impact 3.3, behind 16.3 -> ahead 13.5 m/s, side by side 4
+CAUTION   start green 0-10 s        1    0.36    0.00  impact 2.2, behind 21.5 -> ahead 19.5 m/s, side by side 1
+CAUTION   start green 10-30 s       5    1.07    0.46  impact 4.8, behind 10.1 -> ahead 1.1 m/s, side by side 1
+CAUTION behind -> ahead (driving): cautionNet -> cautionNet 61, cautionNet -> cautionNet* 4, pit-in -> pit-in 3, pit-out -> pit-in 1, cautionNet* -> cautionNet 1, cautionNet -> pit-in 1
+CAUTION lanes behind/ahead: track/track 64, apron/apron 6, track/apron 1
+CAUTION impact median 3.4 p90 8.6 m/s
+CAUTION bSpeed median 18.8 p90 29.7 m/s
+CAUTION aSpeed median 14.2 p90 20.9 m/s
+CAUTION retirements 1: caution one to go: smoking (car) 1

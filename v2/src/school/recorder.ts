@@ -52,6 +52,13 @@ export interface RecorderOptions {
    * the teacher passing high on the short oval, the student's plan was to hold two times in three).
    */
   tactics?: Example[];
+  /**
+   * Where its launches' driving moments go instead (racing, sound, within a lap of the green: the start or a restart,
+   * the field coming out of the pacing formation together), to be trained on as a share of their own: they're a few
+   * percent of green time, and a random draw all but leaves them out (2026-10-28: students 7-10x the teachers' contact
+   * there). Only which moments are kept for training: who drives, and how, is the same as any other moment.
+   */
+  launches?: Example[];
 }
 
 /** Share of the students' decisions recorded, by default. */
@@ -88,6 +95,9 @@ export class Recorder implements Controller {
   private readonly hands: ShakenHands | null;
   private readonly studentDrives: boolean;
   private readonly stops: boolean;
+  /** The flag at its last look, and how far the car had gone when the green last flew (m). */
+  private flagWas: string | null = null;
+  private greenFrom = -Infinity;
 
   /** `teacher`: the driving skill's teacher (unused for stops: the team's pit maneuver teaches them). */
   constructor(
@@ -112,6 +122,9 @@ export class Recorder implements Controller {
   get mode(): string { return this.team.mode; }
 
   decide(car: Car, world: World): void {
+    const flag = world.control?.flag ?? null;
+    if (flag === 'green' && this.flagWas !== null && this.flagWas !== 'green') this.greenFrom = car.dist;
+    this.flagWas = flag;
     if (this.studentDrives && this.opts.knock && this.rng.next() < this.opts.knock) {
       const keep = this.rng.next();
       car.vx *= keep;
@@ -182,6 +195,8 @@ export class Recorder implements Controller {
     // the corners on road circuits).
     if (this.student.mirrored) label[1] = -label[1];
     const clamp = (v: number) => Math.max(-0.95, Math.min(0.95, v));
-    this.examples.push({ x, y: Float32Array.of(clamp(label[0]), clamp(label[1])), mask: Float32Array.of(1, 1) });
+    const launch = this.opts.launches && flag === 'green' && car.dist - this.greenFrom < world.track.length
+      && seen[CAUTION_FROM] === 0 && seen[DAMAGE_FROM] === 0;
+    (launch ? this.opts.launches! : this.examples).push({ x, y: Float32Array.of(clamp(label[0]), clamp(label[1])), mask: Float32Array.of(1, 1) });
   }
 }

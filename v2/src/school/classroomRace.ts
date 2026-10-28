@@ -52,6 +52,8 @@ export interface ClassroomOptions {
   extra?: RecorderOptions['extra'];
   /** Where each student's tactics moments go (RecorderOptions.tactics), by student. */
   tactics?: Example[][];
+  /** Where each student's launch moments go (RecorderOptions.launches), by student. */
+  launches?: Example[][];
 }
 
 /**
@@ -127,7 +129,7 @@ export function classroomRace(
     team.autopilot.nerve = d.nerve;
     const { style, traits } = road ? roadTeacherOf(d) : teacherOf(d);
     world.addCar(car, new Recorder(team, student, new TrafficRacer(style, undefined, { ...traits, reaction: 0 }), driving, examples[s], rng,
-      { latency: d.limits.latency, extra: opts.extra, tactics: road ? undefined : opts.tactics?.[s] }));
+      { latency: d.limits.latency, extra: opts.extra, tactics: road ? undefined : opts.tactics?.[s], launches: road ? undefined : opts.launches?.[s] }));
   }
   const race = new Race(world, opts.laps, new PaceCarDriver(), road ? { rulebook: CIRCUIT_RULES, seed: hashSeed(seed, `race${round}`) } : undefined);
   const debrisPerSecond = opts.debris / lapSeconds(track);

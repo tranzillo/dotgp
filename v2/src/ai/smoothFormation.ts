@@ -2,8 +2,8 @@ import type { Car } from '../sim/car';
 import { G, PHYSICS as P } from '../sim/constants';
 import type { World } from '../sim/world';
 import { followLoss } from './trafficRacer';
-import type { FormationTraits } from './formation';
-import { followLine } from './lineFollower';
+import { CAUTION_SLOWING, type FormationTraits } from './formation';
+import { easingTo, followLine } from './lineFollower';
 
 /**
  * Formation driving a student can copy: the formation script's intent (hold
@@ -52,9 +52,10 @@ export class SmoothFormation {
     let lane: number;
     let v: number;
     if (!slot || (ctl.flag === 'caution' && !ctl.pickedUp && !ctl.wavedAround(car))) {
-      // No line yet: slow to caution pace where you are, closing up to the car ahead in your own way.
+      // No line yet: slow to caution pace where you are (easing off: CAUTION_SLOWING), closing up to the car ahead in
+      // your own way.
       lane = Math.max(-6, Math.min(6, car.d));
-      v = pace + tr.eagerness * this.closing(car, world, lane);
+      v = easingTo(car, pace + tr.eagerness * this.closing(car, world, lane), CAUTION_SLOWING);
     } else {
       // Metres the slot is ahead (+) or behind (-); a slot far behind is reached by going round (but not by a car that
       // got by the pace car: it drops back).

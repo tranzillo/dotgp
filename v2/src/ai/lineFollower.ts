@@ -11,6 +11,17 @@ import type { World } from '../sim/world';
  * to a pit road set back across grass): match its sideways slope as well as
  * close on it, or the car falls further and further behind it.
  */
+/** Over its target speed, how hard followLine brakes back to it (1/s), up to its braking limit. */
+export const BRAKE_GAIN = 6;
+
+/**
+ * The speed to ask followLine for to slow from the car's speed at about `decel` (m/s^2), down to `floor`: easing off
+ * rather than braking as hard as it can to a lower target at once.
+ */
+export function easingTo(car: Car, floor: number, decel: number): number {
+  return Math.max(floor, car.speed - decel / BRAKE_GAIN);
+}
+
 export function followLine(
   car: Car,
   world: World,
@@ -66,7 +77,7 @@ export function followLine(
   const bendWanted = sweep ? along * along * (laneAt(car.s + 5) - 2 * laneAt(car.s) + laneAt(car.s - 5)) / 25 : 0;
   const latWanted = vLon * vLon * kappaHere + bendWanted + 0.8 * (laneTarget - car.d) - 1.6 * (vLat - vLatWanted) - car.bankAcc;
   // Over target: brake hard enough to be back on the braking curve within a fraction of a second.
-  const lonWanted = vLon < target ? (driveGain === undefined ? 99 : (target - vLon) * driveGain) : -Math.min(brake * 1.3, (vLon - target) * 6);
+  const lonWanted = vLon < target ? (driveGain === undefined ? 99 : (target - vLon) * driveGain) : -Math.min(brake * 1.3, (vLon - target) * BRAKE_GAIN);
 
   // Lateral has priority inside the friction circle.
   const lat = Math.max(-capacity, Math.min(capacity, latWanted));

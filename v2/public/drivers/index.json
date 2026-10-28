@@ -47,6 +47,13 @@
       "name": "Stable candidate v5",
       "file": "stable-candidate-v5.json",
       "note": "Stable candidate v4 with the oval machine's work since (2026-10-25): the racing network retrained on drills where a car ahead breaks (going round it), and the broken-car skill (a broken car under green drives itself to the apron; 31 of 40 licensed, the rest drive on with their racing network). Pit stops, cautions, road skills as v4: circuits race exactly as v4. Ovals, 40 cars, 4 races each, against v4 (short / speedway / flat): out 6.3 / 15.5 / 5.0 (v4 15.8 / 23.5 / 9.0), cautions 2.8 / 4.8 / 3.5 (7.5 / 5.3 / 4.0); but less racing: clean passes per 100 green car-laps 3.7 / 16.8 / 7.0 (5.7 / 41.3 / 9.9), time side by side 7.5% / 6.5% / 5.7% (8.8% / 17.1% / 10.0%), laps 0.15-0.5 s slower. Cleaner and duller: the teachers it learned going round from hardly pass. Read-only."
+    },
+    {
+      "id": "stable-candidate-v6",
+      "name": "Stable candidate v6",
+      "file": "stable-candidate-v6.json",
+      "candidate": true,
+      "note": "v5 retrained in the Cup car (?spec=cup, 2026-10-28): 8 apprenticeship rounds to its teachers with passes that commit, then the broken-car drills; adds the tactics skill (lane plans). Cup car, 40 cars, 4 races each, against v5: faster and more passing on the bigger ovals (speedway laps 38.0 -> 32.0 s, green car hits 23.6 -> 10.8), less contact under caution and at restarts; but on short ovals it scrapes the wall, pits for damage about 2.7 times a car and laps 0.5-1.1 s slower. training/experiments/2026-10-28-cup-retrain-v6. Not for players yet."
     }
   ]
 }
