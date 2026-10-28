@@ -9,6 +9,8 @@ import { buildInfield, sampleInfield, type InfieldPlan } from './infield';
 import { compileRoval } from './roval';
 import { validateLayout } from './validate';
 import { validateVenue } from './geometry';
+import { balanceBanking } from './balance';
+import { EXPERIMENT } from '../sim/experiment';
 import type { Problem } from './validate';
 
 const deg = (x: number) => (x * Math.PI) / 180;
@@ -120,6 +122,8 @@ export interface ShapedOvalParams {
   infield?: InfieldPlan;
   /** Display name (otherwise generated from the seed). */
   name?: string;
+  /** True: each corner's progression is set for two lines (balance.ts); false, banked as given; default: ?lines=2. */
+  balanceLines?: boolean;
 }
 
 /** The classic oval: two straights joined by two 180-degree turns (the presets, and tests that vary one thing). */
@@ -144,6 +148,8 @@ export interface OvalParams {
   escapeRoute?: 'across' | 'around';
   /** Display name (otherwise generated from the seed). */
   name?: string;
+  /** True: each corner's progression is set for two lines (balance.ts); false, banked as given; default: ?lines=2. */
+  balanceLines?: boolean;
 }
 
 export type AnyOvalParams = OvalParams | ShapedOvalParams;
@@ -204,7 +210,7 @@ export function shapedOval(p: AnyOvalParams): ShapedOvalParams {
     corners: [corner(), corner()],
     start: p.straightLength / 2,
     width: p.width, apronWidth: p.apronWidth, bankStraight: p.bankStraight,
-    escapeLeadIn: p.escapeLeadIn, garageRoom: p.turnRadius, escapeRoute: p.escapeRoute, name: p.name,
+    escapeLeadIn: p.escapeLeadIn, garageRoom: p.turnRadius, escapeRoute: p.escapeRoute, name: p.name, balanceLines: p.balanceLines,
   };
 }
 
@@ -762,7 +768,15 @@ function turnSpans(p: ShapedOvalParams, lap: Piece[]): Array<[number, number]> {
 // ---------- layout ----------
 
 function buildOval(params: AnyOvalParams, ctx: GenContext): TrackLayout {
-  const p = shapedOval(params);
+  const shaped = shapedOval(params);
+  if (!(shaped.balanceLines ?? EXPERIMENT.lines === 2)) return layOval(shaped, ctx, params);
+  const banked = balanceBanking(shaped, (q) => layOval(q, ctx, params));
+  const layout = layOval(banked, ctx, params);
+  return { ...layout, params: { ...layout.params, bankProgression: banked.corners.map((c) => Math.round(((c.bankOuter - c.bankInner) * 1800) / Math.PI) / 10) } };
+}
+
+/** An oval laid out from its shape (`params`: what it was asked for, kept with the layout). */
+function layOval(p: ShapedOvalParams, ctx: GenContext, params: AnyOvalParams): TrackLayout {
   const lap = lapFromLine(p);
   const centerline: CenterlineSpec = { kind: 'curvature', sections: lap.map((pc) => [pc.len, pc.k0, pc.k1]) };
   const cl = new Centerline(centerline);

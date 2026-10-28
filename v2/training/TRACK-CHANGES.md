@@ -155,3 +155,23 @@ grip. That's a physics change, to be planned with both machines.
     turns), and the fit pays that back in drag.
   - The fits now lay each line fully refined, as the game does. The quicker, rougher line the fits used before lapped
     3-5% slow on circuits, so a car fitted to it came out that much too fast. The Cup car is unaffected (within 1.9% either way).
+
+## 5. Ovals banked for two lines (behind `?lines=2`, 2026-10-28)
+
+Asked for by the user: two racing lines round an oval, high and low, set by the banking and kept off the wall, made
+with the track. Off by default until drivers race them: the presets and every generated oval stay as they were.
+
+- **The lines** (`ovalLines`, racingLine.ts): the fastest line in the inside half of the road (low) and in the outside
+  half (high), the high one `WALL_BUFFER` (1.5 m) further off the wall than any line's margin.
+- **The banking** (`balanceBanking`, trackgen/balance.ts): how much steeper each corner banks at the top is set at
+  build time so the two lines lap alike in the Cup car (the ovals' car; its width and grip whatever car is racing),
+  each corner's mean banking kept as designed. A secant from 0 and 4 degrees, then once more (three pairs of unrefined
+  lines: 0.2-3 s a track). Flat out all the way round (a superspeedway's plate cars), banking can't move the lines: kept
+  as designed. Infield bullrings (flat, open) are left alone.
+- **What it does** (Cup car, `scripts/twoLines.ts`): 12 of 13 ovals lap their two lines within 0.35%, the high line at
+  least 1.6 m off the wall (the one fastest line came within 0.1-0.3 m on 9 of them). The preset speedway banks about
+  17-27 degrees bottom to top (20-24 as designed), the short 3.3 degrees of progression, the flat 1.5. In the classic car
+  the speedway's lines are 4.4% apart: `?lines=2` goes with `?spec=cup`.
+- **Before turning it on:** teachers race the two lines and students see the line of their plan (next), then the
+  stable is retrained on them.
+

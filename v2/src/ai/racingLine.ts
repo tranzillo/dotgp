@@ -1,4 +1,4 @@
-import { carSpec } from '../sim/carSpec';
+import { carSpec, type CarSpec } from '../sim/carSpec';
 import { G, PHYSICS as P, SURFACES } from '../sim/constants';
 import type { Car } from '../sim/car';
 import type { Track } from '../sim/track';
@@ -55,8 +55,19 @@ export interface LineOptions {
    * (where the road narrows, as near as it can), with its own speed profile. Unset: the fastest line.
    */
   groove?: number;
+  /**
+   * One of an oval's two lines instead of the fastest line across the whole road: the fastest line kept to the inside
+   * half of the corridor ('low') or the outside half ('high'), the high one WALL_BUFFER off the wall besides its margin.
+   */
+  half?: 'low' | 'high';
+  /** The car it's laid for (default: the car in use there), and its half width (default: the cars' in use). */
+  spec?: CarSpec;
+  radius?: number;
   seed: number;
 }
+
+/** How much further than its margin an oval's high line keeps off the wall (m): room for a following car's errors. */
+export const WALL_BUFFER = 1.5;
 
 const DEFAULTS: LineOptions = { margin: 0.6, step: 2.5, mass: P.DRY_MASS + P.FUEL_CAPACITY / 2, refine: 30, seed: 1, gripShare: 1 };
 const TOP_SPEED = 105;
@@ -68,12 +79,14 @@ interface Corridor {
   cx: Float64Array; cy: Float64Array; nx: Float64Array; ny: Float64Array;
   lo: Float64Array; hi: Float64Array;
   s: Float64Array;
+  /** The grip of the car it's laid for (default: the car in use there). */
+  grip?: number;
 }
 
 /** Ground a racing line keeps off, though the track limits may not: rough (the car slides on it), or not the circuit (pit lane, apron, garage). */
 const offLimits = (surface: string) => surface === 'grass' || surface === 'gravel' || surface === 'pit' || surface === 'apron' || surface === 'garage';
 
-function corridor(track: Track, step: number, margin: number): Corridor {
+function corridor(track: Track, step: number, margin: number, half?: 'low' | 'high', r: number = P.CAR_RADIUS): Corridor {
   const n = Math.max(16, Math.round(track.length / step));
   const st = track.length / n;
   const c: Corridor = {
@@ -86,8 +99,8 @@ function corridor(track: Track, step: number, margin: number): Corridor {
     const [x, y] = track.toWorld(s, 0);
     c.s[k] = s; c.cx[k] = x; c.cy[k] = y;
     c.nx[k] = -track.ty[i]; c.ny[k] = track.tx[i];
-    c.lo[k] = track.outerEdge(i) - P.CAR_RADIUS + margin;
-    c.hi[k] = track.innerEdge(i) + P.CAR_RADIUS - margin;
+    c.lo[k] = track.outerEdge(i) - r + margin;
+    c.hi[k] = track.innerEdge(i) + r - margin;
     // Not onto grass or gravel, though the limits allow it (rough: the car slides on it), nor off the circuit:
     // where the ground under the car's centre is like that, back onto good ground, and the margin more.
     const lo0 = c.lo[k], hi0 = c.hi[k];
@@ -100,12 +113,23 @@ function corridor(track: Track, step: number, margin: number): Corridor {
       if (wall.faces === 'both' || !track.inRange(s, wall.range)) continue;
       const mid = typeof wall.d === 'number' ? wall.d : track.edgeAt(wall.d, s);
       const half = wall.thickness / 2;
-      if (wall.faces === 'in' && mid + half > c.lo[k] - P.CAR_RADIUS - 2) c.lo[k] = Math.max(c.lo[k], mid + half + P.CAR_RADIUS + margin);
-      if (wall.faces === 'out' && mid - half < c.hi[k] + P.CAR_RADIUS + 2) c.hi[k] = Math.min(c.hi[k], mid - half - P.CAR_RADIUS - margin);
+      if (wall.faces === 'in' && mid + half > c.lo[k] - r - 2) c.lo[k] = Math.max(c.lo[k], mid + half + r + margin);
+      if (wall.faces === 'out' && mid - half < c.hi[k] + r + 2) c.hi[k] = Math.min(c.hi[k], mid - half - r - margin);
     }
     // Clear of the pit wall's nose and the wall along pit road (it isn't among the track's walls).
     c.hi[k] = Math.min(c.hi[k], track.pitWallClear(s, margin));
     if (c.lo[k] > c.hi[k]) c.lo[k] = c.hi[k] = (c.lo[k] + c.hi[k]) / 2;
+  }
+  if (half) {
+    // Which side is inside: where the curvature points, on the whole (ovals turn one way).
+    let turn = 0;
+    for (let k = 0; k < n; k++) turn += track.kappa[track.indexAt(c.s[k])];
+    for (let k = 0; k < n; k++) {
+      const mid = (c.lo[k] + c.hi[k]) / 2;
+      // The high half: the outside one, off the wall by the buffer too (as far as the road allows).
+      const highLo = turn >= 0 ? Math.min(c.lo[k] + WALL_BUFFER, mid) : mid, highHi = turn >= 0 ? mid : Math.max(c.hi[k] - WALL_BUFFER, mid);
+      if (half === 'high') { c.lo[k] = highLo; c.hi[k] = highHi; } else if (turn >= 0) c.lo[k] = mid; else c.hi[k] = mid;
+    }
   }
   return c;
 }
@@ -137,7 +161,7 @@ function groundAt(
   track: Track, c: Corridor, d: Float64Array, kappa: Float64Array, k: number, mu: Float64Array, roll: Float64Array, bank: Float64Array,
 ): void {
   const surf = SURFACES[track.surfaceAt(c.s[k], d[k])];
-  mu[k] = P.TIRE_MU * carSpec(track).grip * surf.grip;
+  mu[k] = P.TIRE_MU * (c.grip ?? carSpec(track).grip) * surf.grip;
   roll[k] = surf.rolling * G;
   bank[k] = Math.sign(kappa[k]) * track.bankAt(track.indexAt(c.s[k]), d[k]);
 }
@@ -278,16 +302,17 @@ function resample(d: Float64Array, m: number): Float64Array {
 }
 
 export function racingLine(track: Track, options: Partial<LineOptions> = {}): RacingLine {
-  const spec = carSpec(track);
+  const spec = options.spec ?? carSpec(track);
   const o = { ...DEFAULTS, mass: spec.dryMass + P.FUEL_CAPACITY / 2, ...options };
   const car: LineCar = { power: spec.power(track), cda: spec.cda(track), q: (0.5 * P.AIR_DENSITY * spec.cla(track)) / o.mass, k: spec.loadSensitivity, drive: spec.driveShare };
-  const fine = corridor(track, o.step, o.margin);
+  const fine = corridor(track, o.step, o.margin, o.half, o.radius);
+  fine.grip = spec.grip;
   if (o.groove !== undefined) return grooveLine(track, fine, o, car);
   // Smoothest path, coarse to fine: 20 m, 10 m, 5 m, then the line's own spacing.
   let d: Float64Array | null = null;
   for (const spacing of [20, 10, 5]) {
     if (spacing <= o.step) break;
-    const c = corridor(track, spacing, o.margin);
+    const c = corridor(track, spacing, o.margin, o.half, o.radius);
     d = d ? resample(d, c.n) : new Float64Array(c.n).map((_, k) => (c.lo[k] + c.hi[k]) / 2);
     for (let k = 0; k < c.n; k++) d[k] = Math.max(c.lo[k], Math.min(c.hi[k], d[k]));
     smoothest(c, d, 3000);
@@ -308,7 +333,7 @@ export function racingLine(track: Track, options: Partial<LineOptions> = {}): Ra
   // Other places to start from: grooves across the road (on a banked oval the high groove can beat the smoothest
   // path, which refinement's local bumps never reach: the speedway's top groove lapped 1.3% under the line). Each is
   // judged as it stands; the quickest is refined.
-  for (let from = 1.5; ; from += 2 * P.CAR_RADIUS) {
+  for (let from = 1.5; ; from += 2 * (o.radius ?? P.CAR_RADIUS)) {
     let any = false;
     const g = new Float64Array(n);
     let turn = 0;
@@ -478,7 +503,25 @@ const GROOVE_SPACING = 2 * P.CAR_RADIUS + 0.6;
  * 0.4-1.1% quicker on the preset ovals at the same 86% (speedway 31.67 -> 31.33 s, solo; 2026-10-26). Road layouts keep
  * the full-grip line until their students are retrained on a new one (the line is a driver input).
  */
-const DRIVEN_GRIP = 0.86;
+export const DRIVEN_GRIP = 0.86;
+
+const twoLines = new WeakMap<Track, Map<number, { low: RacingLine; high: RacingLine }>>();
+
+/**
+ * An oval's two lines, for a racer's margin: the fastest line in the inside half of the road (low) and in the outside
+ * half, off the wall (high). Ovals are banked so the two lap alike (trackgen/balance.ts): a pack races two wide on
+ * them, and neither runs against the wall.
+ */
+export function ovalLines(track: Track, margin = DEFAULTS.margin): { low: RacingLine; high: RacingLine } {
+  let byMargin = twoLines.get(track);
+  if (!byMargin) { byMargin = new Map(); twoLines.set(track, byMargin); }
+  let lines = byMargin.get(margin);
+  if (!lines) {
+    lines = { low: racingLine(track, { margin, gripShare: DRIVEN_GRIP, half: 'low' }), high: racingLine(track, { margin, gripShare: DRIVEN_GRIP, half: 'high' }) };
+    byMargin.set(margin, lines);
+  }
+  return lines;
+}
 
 /** The share of the friction ellipse a scripted racer leaves spare for its own corrections. */
 const CONTROL_SPARE = 0.05;
