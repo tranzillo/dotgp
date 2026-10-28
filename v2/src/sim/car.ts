@@ -68,6 +68,10 @@ export function pitLimit(car: Car, track: Track): number {
   if (phase === 'out') return track.pitOutAt(car, car.s) < pit.wallEnd ? limit : Infinity;
   const r = track.pitInR(car);
   if (r < pit.entryStart || r > pit.wallEnd) return Infinity;
+  // Before the line, only once it's off the racing surface for pit road: a car called in but still out on the racing
+  // line (missing the entry, or about to) was braked to pit speed in the pack (2026-10-27: on the speedway, 7 stops
+  // in 2 races, up to 13 m/s over the curve).
+  if (r < pit.wallStart && car.d <= track.innerEdgeAt(car.s)) return Infinity;
   return r < pit.wallStart ? Math.sqrt(limit * limit + 2 * LIMITER_DECEL * (pit.wallStart - r)) : limit;
 }
 

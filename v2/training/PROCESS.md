@@ -95,3 +95,17 @@ Both machines train onto the latest candidate bundle. Each run is a lab spec, re
 - Pull before starting a run. Push the RESULTS line and any shared-code change when it lands.
 - Bundles are exchanged only through `public/drivers/` and its `index.json`. Experiments name the candidate they started from.
 - A result is a readiness table or a named benchmark with seeds and its 95% ranges, never a single race.
+
+## Handing work between machines
+
+Added 2026-10-27. The oval retrain (v6 → v7b → v8/v9, experiments/2026-10-26-oval-retrain-new-line) was logged but its bundles stayed on the machine that trained them, so the other machine had to retrain from v5. A finding the other machine can't build on costs a retrain (hours), so the handoff is part of finishing the work:
+
+- **A bundle a RESULTS line builds on goes in the repo.** Any bundle a line calls best-so-far, or that a later line starts from (`--from`), is committed to `public/drivers/` under its name (e.g. `stable-candidate-v7b.json`), even if it isn't shipped. In `index.json` it gets a note saying what it is, and `"candidate": true` if it isn't for players yet. A bundle that only appears inside the experiment that made it can stay local; say so in the line ("not kept").
+- **Every line says what car and rules it ran with.** For example `?spec=cup` or the classic car, `--rules 1`, the field size and the seeds. A bench in the wrong car isn't comparable, and the line alone has to say which car it was.
+- **Every line gives the command that made the bundle.** Write out the exact `stable.ts` / `brokenCar.ts` / `bench.ts` command, including the `--from` input, in the experiment's README, so the other machine can rerun it or carry it on.
+- **Measuring scripts a finding rests on are committed.** If a number came from a probe (a solo probe, a wall tracer), the probe goes in `scripts/`, not the machine's scratch, so the finding can be checked again on new drivers.
+- **Bench JSON goes with the experiment.** The `--json` output of each bench goes in `experiments/<dir>/` (tens of KB), so later comparisons don't need the bench rerun.
+- **Start of a session:** pull. Then check that every bundle the latest RESULTS lines name is in `public/drivers/`. If one isn't, ask for it before retraining.
+- **End of a session:** commit and push the bundles, the RESULTS line, the experiment folder and the probes, in one commit or consecutive ones, before switching machines.
+
+Bundles are 12–14 MB of JSON each (about 6.5 MB gzipped), so keeping every candidate grows the repo fast. Proposal (not yet agreed): track `public/drivers/*.json` with Git LFS. It is installed on this machine; the other machine and the remote need it too.

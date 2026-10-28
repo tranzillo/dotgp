@@ -1,7 +1,7 @@
 import { G, PHYSICS as P } from '../sim/constants';
 import type { Car } from '../sim/car';
 import { brakingAt, carSpec, cornerSpeed } from '../sim/carSpec';
-import { compromise } from '../sim/damage';
+import { compromise, DAMAGE2 } from '../sim/damage';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
 import { FormationDriver, formationTraits, type FormationTraits } from './formation';
@@ -59,9 +59,10 @@ export interface RacerStyle {
    */
   smoothCautions?: boolean;
   /**
-   * Closing on a car it means to pass, the speed it's willing to touch it at (m/s): a bump. Unset or 0: it keeps the
-   * room it insures. Bump-and-run and bump-drafting are real oval racing; what a touch costs (damage past the
-   * damage threshold, the stewards) is the physics' and the rules'. A driver's nerve.
+   * Closing on a car it means to pass, the speed it's willing to touch it at, in multiples of the speed contact starts
+   * to cost health at under the car's damage model (bumpSpeed): a bump. Unset or 0: it keeps the room it insures.
+   * Bump-and-run and bump-drafting are real oval racing; what a touch costs (damage past the threshold, the stewards)
+   * is the physics' and the rules'. A driver's nerve.
    */
   bump?: number;
   /**
@@ -104,10 +105,17 @@ const MARGINS = [1.0, 0.8, 0.6, 0.4];
 /** The deceleration of the car ahead the boldest racer insures against (m/s^2): a lift. */
 const BOLD_INSURE = 1.5;
 /**
- * The speed the boldest racer is willing to bump a car it's passing at (m/s): a little past where contact starts to
- * do damage. From middling nerve up it rises to this; below, no bumping.
+ * The speed the boldest racer is willing to bump a car it's passing at: a little past where contact starts to do
+ * damage (a multiple of that speed). From middling nerve up it rises to this; below, no bumping. (It was 6 m/s, set
+ * when contact under 6 was free; with the damage floor at 2 m/s, the boldest teachers' bumps cost 0.04 health each
+ * and short-oval damage stops went from 0.5 to 10-20 a race: 2026-10-27.)
  */
-const BOLD_BUMP = 1.5 * P.DAMAGE_SPEED_THRESHOLD;
+const BOLD_BUMP = 1.5;
+
+/** The speed a racer's bump (RacerStyle.bump) is for this car: past where contact starts to cost it health. */
+function bumpSpeed(bump: number, car: Car): number {
+  return bump * (car.damageModel === 2 ? DAMAGE2.FREE_IMPACT : P.DAMAGE_SPEED_THRESHOLD);
+}
 
 /**
  * A racer's way of racing from who it is: nerve (0 timid, 1 fearless) and talent (0-1). Nerve sets how much of
@@ -168,6 +176,14 @@ const GO_ROUND_EDGE = 1;
 const PASS_HOLD = -1;
 /** ... looking this far ahead (s) for its side to work. */
 const PASS_HOLD_LOOK = 2;
+/**
+ * Over how long (s) a passer judges whether it's gaining on the car it went for: the closing, smoothed. A lane over and
+ * not yet alongside, a pass it isn't gaining on is given up (back into the tow), and not tried again on that car until
+ * it's catching it; taken moment to moment, the closing swings through every corner and plans lasted a decision, and
+ * judged from the closing when it pulled out (often none: it pulls out on the run its line will have), passers gave up
+ * and went again every other decision (2026-10-27).
+ */
+const PASS_GAIN_TIME = 1.5;
 /** Making a pass, the more of the tyres' grip it uses than it races on, and the most it uses. */
 const PASS_PUSH = 0.06;
 const PASS_GRIP = 0.95;
@@ -213,6 +229,13 @@ export class TrafficRacer {
   private lastTime = -Infinity;
   /** The side of a pass under way (+1: +d, -1: -d, 0: none): kept until the pass is done or given up. */
   private passSide = 0;
+  /** The car that pass is on (null: none). */
+  private passOn: Car | null = null;
+  /** The car it last went for, how fast it's been gaining on it (m/s, smoothed over PASS_GAIN_TIME), and the gap it
+   * was last at (m). */
+  private gainOn: Car | null = null;
+  private passGain = 0;
+  private passGap = 0;
   private readonly mirror = new Float32Array(MIRROR_SIZE);
   /** What it was doing at its last decision (for looking into races). */
   last = { want: 0, offset: 0, low: 0, high: 0, follow: Infinity, squeezed: false, passing: false };
@@ -370,7 +393,19 @@ export class TrafficRacer {
     let followCap = Infinity;
     let yieldTo = Infinity; // the speed of the slowest car alongside and ahead of it, to drop back behind if squeezed
     const reach = lookahead(vMe);
-    for (const other of world.cars) {
+    // The car a pass under way is on first: its side is the plan, whatever other cars ahead come to (judged in the
+    // field's order, a passer took its side from whichever car came first, and switched sides mid-pass).
+    const passOn = this.passOn;
+    const gainOn = this.gainOn;
+    if (gainOn) {
+      let ds = gainOn.s - car.s;
+      if (ds > L / 2) ds -= L;
+      else if (ds < -L / 2) ds += L;
+      if (dt > 0) this.passGain += Math.min(1, dt / PASS_GAIN_TIME) * ((this.passGap - ds) / dt - this.passGain);
+      this.passGap = ds;
+    }
+    const cars = passOn ? [passOn, ...world.cars.filter((c) => c !== passOn)] : world.cars;
+    for (const other of cars) {
       if (other === car || other.cleared || other.waiting) continue;
       let ds = other.s - car.s;
       if (ds > L / 2) ds -= L;
@@ -441,7 +476,7 @@ export class TrafficRacer {
       // touch does is the physics': the car ahead loses speed, or both get damaged, and the stewards see it.
       const pushing = this.passSide === 0 && !other.retired && other.pit.phase === 'none' && faster > pass;
       const hard = brakingAt(spec, track, mu, vMe, car.mass);
-      const bump = this.style.bump ?? 0;
+      const bump = bumpSpeed(this.style.bump ?? 0, car);
       const capPush = Math.max(Math.sqrt(vOther * vOther + 2 * hard * Math.max(0, ds - gap)),
         bump > 0 ? Math.sqrt((vOther + bump) ** 2 + 2 * hard * Math.max(0, ds - 2 * P.CAR_RADIUS)) : 0);
       const cap = pushing ? capPush : capAt(gap);
@@ -478,7 +513,9 @@ export class TrafficRacer {
         }
         return true;
       };
-      if (stopped || (faster > pass && !building) || holding) {
+      // A car it went for and gave up on, it goes for again once it's catching it (the tow builds it a run).
+      const spent = this.passSide === 0 && other === this.gainOn && this.passGain <= 0;
+      if (stopped || (faster > pass && !building && !spent) || holding) {
         // A way past: the side it's already going (a pass under way keeps its side), else the side with more road.
         const left = pitting || mergeTo < other.d || !besideWorks(other.d + width) ? -1 : there.hi - OFF_LINE_BUFFER - (other.d + width);
         const right = !besideWorks(mergeTo - width) ? -1 : (mergeTo - width) - (there.lo + OFF_LINE_BUFFER);
@@ -497,7 +534,13 @@ export class TrafficRacer {
             want = groove === this.path ? 0 : lineAt(groove, car.s).d - here.d;
             nextPath = groove;
           }
+          if (this.gainOn !== other) {
+            this.gainOn = other;
+            this.passGain = faster;
+            this.passGap = ds;
+          }
           this.passSide = side;
+          this.passOn = other;
           passing = true;
           // Beside it, it's not in the way; still behind it, it is, however the pass was meant to go. On banking at
           // speed a passer barely moves across (its grip is the turn's), and one that stopped minding the car it
@@ -514,6 +557,25 @@ export class TrafficRacer {
       followCap = Math.min(followCap, cap);
     }
 
+    // Beside the car it's passing, out of its path: the pass carries on, in its lane, until it's past that car or its
+    // lane there is more than PASS_HOLD slower than it. (Ended the moment it was out of that car's path, a pass was a
+    // plan that lasted a decision: 2026-10-27, 0.03-0.1 s median, 38-57 changes a car-minute.)
+    if (!passing && passOn && this.passSide !== 0 && !passOn.retired && !passOn.cleared && passOn.pit.phase === 'none') {
+      let ds = passOn.s - car.s;
+      if (ds > L / 2) ds -= L;
+      else if (ds < -L / 2) ds += L;
+      const beside = this.passSide * (car.d - passOn.d) > 0;
+      // Out to the look-ahead (a pass is set up a lane over well before it's alongside), while it's gaining on that
+      // car; alongside it, it's committed. (Held a lane over regardless, passers sat out of the draft, a tenth or two a
+      // lap slower and twice the short oval's damage stops: 2026-10-27.)
+      const gaining = ds < alongside() || this.passGain > 0;
+      const going = ds > -alongside() && ds < reach && gaining && Math.max(paceAt(passOn.s), vMe) - passOn.speed > PASS_HOLD;
+      if (beside && going) {
+        passing = true;
+        want = this.path ? 0 : car.d - here.d;
+      }
+    }
+    if (!passing) this.passOn = null;
     // Done passing, nobody beside it: back to the racing line.
     if (!passing && this.path && low <= here.lo && high >= here.hi) nextPath = null;
     // Where it wants to be: the wanted offset, within the room the cars alongside leave (squeezed: the middle

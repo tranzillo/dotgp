@@ -143,6 +143,27 @@ describe('pit limiter', () => {
     expect(atLine).toBeLessThanOrEqual(PIT_SERVICE.SPEED_LIMIT);
     expect(worst).toBeLessThanOrEqual(PIT_SERVICE.SPEED_LIMIT + 0.1);
   });
+
+  it('a car called in that stays out on the racing surface is not braked in the pack', () => {
+    const track = ovalTrack(SPEEDWAY);
+    const world = new World(track, { collisions: false });
+    const car = new Car(0);
+    const s0 = track.wrapS(track.pit.entryStart - 50);
+    car.placeOnTrack(track, s0, 0);
+    car.vx = track.tx[car.trackIdx] * 45;
+    car.vy = track.ty[car.trackIdx] * 45;
+    // Down the middle of the road past the entry, foot to the floor: it misses the entry.
+    world.addCar(car, { decide: (c: Car, w: World) => followLine(c, w, () => 0, () => Infinity, 1) });
+    car.pit.phase = 'in';
+    car.pit.call = { tires: true, fuel: 0, repair: false };
+    car.pit.boxS = track.pit.stalls[track.pit.stalls.length - 1];
+    let slowest = Infinity;
+    while (world.time < 10 && car.pit.phase === 'in') {
+      world.step();
+      slowest = Math.min(slowest, car.speed);
+    }
+    expect(slowest).toBeGreaterThan(40);
+  });
 });
 
 describe('pit box', () => {
