@@ -9,7 +9,7 @@ import { fastestLine, lineAt } from '../src/ai/racingLine';
 import { racerStyle, TrafficRacer } from '../src/ai/trafficRacer';
 import { applyImpact, Car, stepCar } from '../src/sim/car';
 import { PHYSICS as P } from '../src/sim/constants';
-import { compromise, damageModel, dragFactor, powerLeft } from '../src/sim/damage';
+import { compromise, DAMAGE2, damageModel, dragFactor, powerLeft } from '../src/sim/damage';
 import { EXPERIMENT } from '../src/sim/experiment';
 import { World } from '../src/sim/world';
 import { presetTrack } from '../src/trackgen';
@@ -34,10 +34,15 @@ describe('the second damage model', () => {
   afterAll(() => { EXPERIMENT.damage = 0; });
   const track = presetTrack('speedway');
 
-  it('light contact and scraping cost no health; past it, more the harder; a real hit still wrecks', () => {
+  it('light contact and rubbing cost no health; scraping a wall does; past it, more the harder; a real hit still wrecks', () => {
     const car = new Car(0);
-    applyImpact(car, 0, -1, 1.5, 200);
+    applyImpact(car, 0, -1, 1.5, 200, 1, { kind: 'car', other: 1 });
     expect(car.health).toBe(1);
+    // Scraping along a wall costs health by its friction work: a second riding the speedway's wall about 0.01.
+    const scraped = new Car(2);
+    applyImpact(scraped, 0, -1, 0.1, 230);
+    expect(1 - scraped.health).toBeCloseTo(230 * DAMAGE2.SCRAPE, 9);
+    expect(1 - scraped.health).toBeLessThan(0.02);
     // A bump costs next to nothing, a harder one more than in proportion.
     applyImpact(car, 0, -1, 3, 0);
     const bump = 1 - car.health;

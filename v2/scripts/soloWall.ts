@@ -50,7 +50,7 @@ for (const name of (args.get('tracks') ?? 'short,oval:894715320:short').split(',
       if (!handed) return t;
       // The teacher through the student's own hands (its latency and motor noise), as a NeuralDriver drives.
       const hands = new Hands({ latency: handed * d.limits.latency, noise: handed * d.limits.noise, seed: d.lineage }, P.CONTROL_EVERY * P.DT);
-      return { decide: (c, w, ...rest) => { t.decide(c, w, ...rest); hands.apply(c.inputX, c.inputY, c); } };
+      return { decide: (c, w) => { t.decide(c, w); hands.apply(c.inputX, c.inputY, c); } };
     };
     const brain = teacher
       ? racer()

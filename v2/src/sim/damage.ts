@@ -5,8 +5,8 @@ import { EXPERIMENT } from './experiment';
  * circuits the first (the second isn't measured there yet); ?damage=1 or ?damage=2 races one everywhere. Each car
  * carries the one its race runs (Car.damageModel, set as it's put on a track):
  *
- * - Light contact is free: rubbing, leaning on a car, brushing the wall (impacts under FREE_IMPACT, and scraping) cost
- *   speed and tyres, as the physics has it, but no health. Past it a hit costs more the harder it is, from next to
+ * - Light contact is free: rubbing, leaning on a car, a light knock on the wall (impacts under FREE_IMPACT) cost
+ *   speed and tyres, as the physics has it, but no health. Scraping along a wall isn't (SCRAPE). Past it a hit costs more the harder it is, from next to
  *   nothing to the first model's cost for hard hits (RAMP). Under the first model light contact wore cars down until
  *   the next real hit finished them (most cars wrecked were under 0.3 health before the hit that did it), and the
  *   clean teachers' wall scrapes made nearly half their pit stops repairs; with everything under 6 m/s free, a pack
@@ -31,6 +31,14 @@ export const DAMAGE2 = {
    * the first model's (12 m/s: 0.25 both).
    */
   RAMP: 0.00248,
+  /**
+   * Health lost per (m/s)^2 of friction work sliding along a wall (Car.wallScrape): the right side's sheet metal
+   * crushed, toe links bent, the tyre rubbing its fender. A brush costs next to nothing; riding the wall doesn't come
+   * free. Free until 2026-10-29, and students rode the speedway's wall 8% of green time, holding 78 m/s where cars off
+   * it lifted to 70-72 (the wall taking the load their tyres couldn't). Riding there scrapes 70-230 a second, up to
+   * 0.01 health: ten seconds of it costs about 0.15 s a lap until it's fixed, twenty about 0.6 (the buffer's curve).
+   */
+  SCRAPE: 5e-5,
   /** Health above which a car is sound: a little lost pace, no smoke. */
   SOUND_ABOVE: 0.5,
   /** Down at SOUND_ABOVE, the share of the engine's power left (falling slowly from full health, then faster) ... */

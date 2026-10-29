@@ -108,6 +108,8 @@ function wallImpact(
   car.vy += dvy;
 
   if (!wasInContact && -vn > P.DAMAGE_SPEED_THRESHOLD) car.wallHits++;
+  car.wallScrape += friction * vtMag;
+  car.tireLife = Math.max(0, car.tireLife - friction * vtMag * P.WALL_SCRAPE_WEAR);
   // Friction work is charged on every touch, so riding the wall on repeated
   // micro-bounces costs as much as a sustained scrape.
   if (!car.retired) applyImpact(car, dvx, dvy, -vn, friction * vtMag, damageScale);
