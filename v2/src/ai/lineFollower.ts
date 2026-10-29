@@ -35,6 +35,12 @@ export function followLine(
    * between full throttle and the brakes). Unset: flat out.
    */
   driveGain?: number,
+  /**
+   * Where the lane's own bend (its sideways curve against the track's) counts in the corners it brakes for: a lane
+   * that cuts across the track's kinks, as a racing line does, is straighter than the track there. Unset: nowhere
+   * (the track's curvature at the lane's offset).
+   */
+  bendAt?: (s: number) => boolean,
 ): void {
   const track = world.track;
   const i = car.trackIdx;
@@ -55,7 +61,8 @@ export function followLine(
     const s = car.s + ahead;
     const lane = laneAt(s);
     const k = track.curvatureAt(s);
-    const kappa = k / Math.max(0.2, 1 - k * lane);
+    const along = Math.max(0.2, 1 - k * lane);
+    const kappa = k / along + (bendAt?.(s) ? (laneAt(s + 5) - 2 * lane + laneAt(s - 5)) / (25 * along * along) : 0);
     let limit = capAt(s);
     if (Math.abs(kappa) > 1e-6) {
       // The surface only matters in a corner (and it's the costly lookup here).

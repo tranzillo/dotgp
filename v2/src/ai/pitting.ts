@@ -5,6 +5,7 @@ import { evalProfile, pitBoxD, pitFastD, type Profile } from '../sim/layout';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
 import { followLine } from './lineFollower';
+import { fastestLine, lineAt } from './racingLine';
 import type { Spotter } from './spotter';
 
 /**
@@ -273,6 +274,25 @@ function laneCap(d: (r: number) => number, r0: number, r1: number): (r: number) 
   return (r) => (r < r0 - step || r > r1 + step ? Infinity : caps[Math.max(0, Math.min(n, Math.round((r - r0) / step)))]);
 }
 
+/**
+ * On a road circuit, the way over to the pit entry: the racing line's shape, eased from the lane the car was in
+ * (fromLane) across to the entry lane as the old straight ramp was. A lane held off the centreline takes the
+ * centreline's kinks as corners the racing line straightens (on the GP circuit, a 70 m radius 70 m before the entry:
+ * the maneuver braked to 19 m/s for it on the racing line, and was hit there at 50 m/s, 2026-10-26). Across early, not
+ * late: before a tight entry (the club circuit's) the car is braking long before it, and has to be off the line by
+ * then (crossing in the last 120 m, it was hit there braking: 2026-10-28). Null elsewhere (ovals, long pit lanes).
+ */
+function roadApproach(track: Track, fromLane: number, to: number): ((r: number, s: number) => number) | null {
+  if (track.kind !== 'road' || track.pitLong) return null;
+  const line = fastestLine(track);
+  const from = pitRampFrom(track), entry = track.pit.entryStart;
+  const join = fromLane - lineAt(line, track.wrapS(from)).d, cross = to - lineAt(line, track.wrapS(entry)).d;
+  return (r, s) => {
+    const d = lineAt(line, s).d + smoothRamp(r, from, entry, join, cross);
+    return Math.max(track.outerEdgeAt(s) + 1.5, Math.min(Math.max(track.innerEdgeAt(s), to), d));
+  };
+}
+
 const paths = new WeakMap<Track, PitPath>();
 
 export function pitPath(track: Track): PitPath {
@@ -337,8 +357,10 @@ export function pitRoute(track: Track, car: Car, fromLane: number): (s: number) 
       return ramp(du, mergeFrom, mergeFrom + 90, lanes.apronLaneAt(s), track.innerEdgeAt(s) - 2.5);
     };
   }
+  const approach = roadApproach(track, fromLane, path.inAt(entryStart));
   return (s: number) => {
     const r = track.pitInAt(car, s);
+    if (r < entryStart && approach) return approach(r, s);
     if (r < entryStart) return (track.pitLong ? smoothRamp : ramp)(r, pitRampFrom(track), entryStart, fromLane, path.inAt(entryStart));
     if (r < wallStart) return r > path.inEnd ? lanes.fastLane + track.pitOffset(s) : path.inAt(r);
     return ramp(r, pit.boxS - 40, pit.boxS - 8, lanes.fastLane, lanes.boxLane) + track.pitOffset(s);
@@ -518,8 +540,10 @@ export class PitAutopilot {
         this.decide(car, world, spotter);
         return;
       }
+      const approach = roadApproach(track, this.fromLane, path.laid ? entryLaneAt : entryLane);
       const lane = (s: number) => {
         const r = track.pitInAt(car, s);
+        if (r < entryStart && approach) return approach(r, s);
         if (r < entryStart) return (track.pitLong ? smoothRamp : ramp)(r, pitRampFrom(track), entryStart, this.fromLane, path.laid ? entryLaneAt : entryLane);
         // Lined up for pit road well before the wall's nose.
         if (r < track.pit.wallStart) return r > path.inEnd ? fastLane + track.pitOffset(s) : path.inAt(r);
@@ -552,7 +576,8 @@ export class PitAutopilot {
         return;
       }
       // Well under the cornering limit, leaving grip to work down the track.
-      followLine(car, world, lane, cap, 0.75, path.laid || track.pitLong, this.driveGain);
+      followLine(car, world, lane, cap, 0.75, path.laid || track.pitLong, this.driveGain,
+        approach ? (s) => track.pitInAt(car, s) < entryStart : undefined);
     } else if (pit.phase === 'out') {
       // Merge: from the merge zone on, wait on the apron for the spotter's "clear".
       const blend = track.distanceFrom(pit.boxS, track.pit.blendEnd);
