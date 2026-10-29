@@ -5,7 +5,7 @@ import { FormationDriver, type FormationTraits } from './formation';
 import { followLine } from './lineFollower';
 import { genomeSize, Network, widenNetwork } from './network';
 import { PHYSICS as P, PIT_SERVICE } from '../sim/constants';
-import { PitAutopilot, pitDecisionS, pitRoute, WAVE_OFF_FUEL_LAPS, type CrewChief } from './pitting';
+import { mirrorPitFine, observePitFine, PIT_FINE_SIZE, PitAutopilot, pitDecisionS, pitRoute, WAVE_OFF_FUEL_LAPS, type CrewChief } from './pitting';
 import {
   brokenRoute, CALLS_SIZE, PIT_CALLS_SIZE, observePitCalls, CAUTION_RANGE_SIZE, observeCautionRange, DAMAGE_SIZE, observeDamage, CAUTION_SIZE, KNOWLEDGE_AHEAD, KNOWLEDGE_SIZE, LOOKAHEAD, OBS_SIZE, observe, observeCalls, observeCaution, observeKnowledge, observePit, observePreview,
   PIT_LOOKAHEAD, PIT_SIZE, PREVIEW_SIZE, type TrackKnowledge,
@@ -48,6 +48,11 @@ export const DRIVER_LAYERS = [INTENT_FROM + INTENT_SIZE, 32, 24, 2] as const;
  * on a car moved toward the side their teachers would pass on 24% of the time, away 30%).
  */
 export const TACTICS_LAYERS = [DRIVER_LAYERS[0], 24, 16, 3] as const;
+/**
+ * The pit skill's network: the driver's inputs, then its own fine-scale ones (pitting.ts observePitFine) -> acceleration
+ * request. A pit skill learned before them widens into it (adaptPitWeights), ignoring them until it's taught them.
+ */
+export const PIT_NET_LAYERS = [DRIVER_LAYERS[0] + PIT_FINE_SIZE, 32, 24, 2] as const;
 export const TACTIC = { HOLD: 0, LOW: 1, HIGH: 2 } as const;
 /** Before the lane plan. */
 export const MIRROR_DRIVER_LAYERS = [MIRROR_FROM + MIRROR_SIZE, 32, 24, 2] as const;
@@ -70,6 +75,8 @@ export const LEGACY_DRIVER_LAYERS = [OBS_SIZE, 16, 12, 2] as const;
 /** Upgrade saved weights to the current driver network, preserving behaviour (new inputs start ignored). */
 export function adaptWeights(w: Float32Array): Float32Array {
   if (w.length === genomeSize(DRIVER_LAYERS)) return w;
+  // A pit skill's network (PIT_NET_LAYERS) is wider: it passes as it is (adaptPitWeights is its own).
+  if (w.length === genomeSize(PIT_NET_LAYERS)) return w;
   for (const old of [MIRROR_DRIVER_LAYERS, DAMAGE_DRIVER_LAYERS, CAUTION_RANGE_DRIVER_LAYERS, PIT_CALLS_DRIVER_LAYERS, CALLS_DRIVER_LAYERS, KNOWLEDGE_DRIVER_LAYERS, PREVIEW_DRIVER_LAYERS, CAUTION_DRIVER_LAYERS, PIT_DRIVER_LAYERS, RADIO_DRIVER_LAYERS, LEGACY_DRIVER_LAYERS]) {
     if (w.length === genomeSize(old)) {
       const rng = new Rng(w.length);
@@ -79,9 +86,16 @@ export function adaptWeights(w: Float32Array): Float32Array {
   throw new Error(`unrecognised driver genome (${w.length} weights)`);
 }
 
-/** The driver's seat of a team: reads its own car, the radio, a pit stop in progress, and a caution. */
+/** A pit skill's saved weights as its network (PIT_NET_LAYERS): one learned before its own inputs widens into it. */
+export function adaptPitWeights(w: Float32Array): Float32Array {
+  if (w.length === genomeSize(PIT_NET_LAYERS)) return w;
+  const rng = new Rng(w.length);
+  return widenNetwork(DRIVER_LAYERS, adaptWeights(w), PIT_NET_LAYERS, () => rng.next());
+}
+
+/** The driver's seat of a team: reads its own car, the radio, a pit stop in progress (and its fine scale), and a caution. */
 export interface DriverBrain {
-  decide(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array): void;
+  decide(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array, pitFine?: Float32Array): void;
 }
 
 /**
@@ -96,6 +110,8 @@ export class Team implements Controller {
   /** The spotter's radio, and its mirrors after it. */
   readonly radio = new Float32Array(RADIO_SIZE + MIRROR_SIZE);
   readonly pitInputs = new Float32Array(PIT_SIZE);
+  /** The pit skill's own inputs (observePitFine), at the scale a stop is driven to. */
+  readonly pitFine = new Float32Array(PIT_FINE_SIZE);
   readonly cautionInputs = new Float32Array(CAUTION_SIZE);
   readonly autopilot = new PitAutopilot();
   private readonly formation: FormationDriver;
@@ -162,7 +178,7 @@ export class Team implements Controller {
     if ((!this.driverPits || wavedIn) && (car.pit.phase !== 'none' || this.autopilot.aborting)) { this.mode = 'pit'; this.autopilot.decide(car, world, this.spotter); }
     else if (!this.driverCautions && this.inFormation(car, world)) { this.mode = 'formation'; this.formation.decide(car, world); }
     // The driver drives (its own stops too, if it drives them): a script's share is only what a script drove.
-    else { this.mode = 'driver'; this.driver.decide(car, world, this.radio, this.pitInputs, this.cautionInputs); }
+    else { this.mode = 'driver'; this.driver.decide(car, world, this.radio, this.pitInputs, this.cautionInputs, this.pitFine); }
   }
 
   /**
@@ -186,12 +202,14 @@ export class Team implements Controller {
   observePit(car: Car, world: World): void {
     if (car.pit.phase === 'none') {
       this.pitInputs.fill(0);
+      this.pitFine.fill(0);
       return;
     }
     const route = pitRoute(world.track, car, this.autopilot.fromLane);
     // No traffic in ghost sessions: always clear to merge.
     const clear = car.pit.phase === 'out' && (!world.opts.collisions || this.spotter.clearToMerge(car, world));
     observePit(car, world.track, route, clear, PIT_SERVICE.SPEED_LIMIT, this.pitInputs);
+    observePitFine(car, world.track, route, this.pitFine);
   }
 }
 
@@ -370,6 +388,8 @@ export class NeuralDriver implements DriverBrain {
   /** The road-course skill: a second network that drives on road circuits (ovals are the main network's). */
   readonly roadNet: Network | null;
   private readonly input = new Float32Array(DRIVER_LAYERS[0]);
+  /** The pit skill's input: the driver's, then the pit skill's own (PIT_NET_LAYERS). */
+  private readonly pitInput = new Float32Array(PIT_NET_LAYERS[0]);
   private readonly obs = new Float32Array(OBS_SIZE);
   private readonly preview = new Float32Array(PREVIEW_SIZE);
   private readonly known = new Float32Array(KNOWLEDGE_SIZE);
@@ -414,7 +434,7 @@ export class NeuralDriver implements DriverBrain {
     this.roadNet = roadWeights ? new Network(DRIVER_LAYERS, roadWeights) : null;
     this.cautionNet = cautionWeights ? new Network(DRIVER_LAYERS, cautionWeights) : null;
     this.roadCautionNet = roadCaution ? new Network(DRIVER_LAYERS, roadCaution) : null;
-    this.pitNet = pit ? new Network(DRIVER_LAYERS, pit) : null;
+    this.pitNet = pit ? new Network(PIT_NET_LAYERS, adaptPitWeights(pit)) : null;
     this.brokenNet = broken ? new Network(DRIVER_LAYERS, broken) : null;
     this.tacticsNet = tactics ? new Network(TACTICS_LAYERS, tactics) : null;
     this.hands = limits && (limits.latency > 0 || limits.noise > 0) ? new Hands(limits, P.CONTROL_EVERY * P.DT) : null;
@@ -461,7 +481,7 @@ export class NeuralDriver implements DriverBrain {
     return this.input;
   }
 
-  decide(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array): void {
+  decide(car: Car, world: World, radio: Float32Array, pit: Float32Array, caution: Float32Array, pitFine?: Float32Array): void {
     let input = this.inputs(car, world, radio, pit, caution);
     if (racingPlan(car, world, !!this.brokenNet && compromise(car) > 0)) {
       // The plan first (from what it sees and its last plan), then the drive, seeing the new one.
@@ -475,7 +495,7 @@ export class NeuralDriver implements DriverBrain {
       if (this.intent !== before) input = this.inputs(car, world, radio, pit, caution);
     } else this.intent = 0;
     const net = this.netAt(world.track, input);
-    const out = net.forward(input);
+    const out = net === this.pitNet ? net.forward(this.withPitFine(input, pitFine)) : net.forward(input);
     if (ROAD_CAUTION_THROTTLE && net === this.roadCautionNet && this.roadNet && world.control?.flag === 'caution') {
       // Behind the safety car the road skill steers (formation laps, the grid and restarts are the caution skill's:
       // the road skill can't put a car in its grid box); the road caution skill's throttle (1: only where it asks
@@ -486,6 +506,15 @@ export class NeuralDriver implements DriverBrain {
       return;
     }
     this.apply(car, out[0], out[1]);
+  }
+
+  /** The pit skill's input: these inputs, then its own (none given: zeros), mirrored with the view. */
+  withPitFine(input: Float32Array, pitFine?: Float32Array): Float32Array {
+    this.pitInput.set(input);
+    if (pitFine) this.pitInput.set(pitFine, DRIVER_LAYERS[0]);
+    else this.pitInput.fill(0, DRIVER_LAYERS[0]);
+    if (this.mirrored) mirrorPitFine(this.pitInput, DRIVER_LAYERS[0]);
+    return this.pitInput;
   }
 
   /** Give the car a request made in the driver's own frame (mirrored back if its view was), through its hands. */

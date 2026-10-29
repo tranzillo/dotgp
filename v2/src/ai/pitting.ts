@@ -293,6 +293,58 @@ function roadApproach(track: Track, fromLane: number, to: number): ((r: number, 
   };
 }
 
+/**
+ * The pit skill's own inputs, at the scale a stop is driven to (the driver's pit inputs give the route as a share of
+ * the track's half width and the speed as a share of the limit: a metre off line, or a few m/s over, barely showed;
+ * learned stops sat 1.5-2 m toward the pit wall's nose and hit it, 2026-10-26/28). Zeros off a pit cycle:
+ * - the route against the car (m, per 2 m) where it is and PIT_FINE_AHEAD m on (lateral: mirrored with the view);
+ * - its speed against what the stop allows here (m/s, per 5 m/s: pitAllowed, the maneuver's braking for its lane's bends,
+ *   the limit and its box; a learned driver came into the club circuit's entry lane, swinging across the grass, at 39 m/s
+ *   where the maneuver takes 10-22, ran wide and came back across the track onto the wall's nose: 2026-10-28);
+ * - its side's clearance to the pit wall's face (m, per 3 m; negative on the track's side of it), there too;
+ * - how near the wall's nose it is on the way in (1 at it, 0 PIT_FINE_NEAR m or more before it, and past it).
+ */
+export const PIT_FINE_AHEAD = [0, 10, 25] as const;
+export const PIT_FINE_SIZE = PIT_FINE_AHEAD.length + 3;
+const PIT_FINE_NEAR = 100;
+export function observePitFine(car: Car, track: Track, route: ((s: number) => number) | null, out: Float32Array): Float32Array {
+  out.fill(0);
+  if (!route || car.pit.phase === 'none') return out;
+  const clamp = (v: number) => Math.max(-1, Math.min(1, v));
+  const pit = track.pit;
+  let k = 0;
+  for (const ahead of PIT_FINE_AHEAD) out[k++] = clamp((route(car.s + ahead) - car.d) / 2);
+  const r = car.pit.phase === 'out' ? track.pitOutAt(car, car.s) : track.pitInR(car);
+  const near = r > pit.wallStart - PIT_FINE_NEAR && r < pit.wallEnd;
+  out[k++] = clamp((car.speed - pitAllowed(car, track, r)) / 5);
+  out[k++] = near ? clamp((car.d - pit.wallD - track.pitOffset(car.s) - pit.wallThickness / 2 - P.CAR_RADIUS) / 3) : 0;
+  out[k++] = car.pit.phase === 'in' && near && r < pit.wallStart ? 1 - (pit.wallStart - r) / PIT_FINE_NEAR : 0;
+  return out;
+}
+
+/**
+ * The fastest a stop allows here, braking at PIT_DECEL for what's within PIT_ALLOWED_LOOK m: on the way in, the lane's
+ * bends (a laid lane's), the limit from the line to the wall's end and a stop at its box; on the way out, the limit to
+ * the wall's end and the lane's bends after. (As the maneuver plans it, short of the traffic it follows.)
+ */
+const PIT_ALLOWED_LOOK = 150;
+export function pitAllowed(car: Car, track: Track, r: number): number {
+  const pit = track.pit, path = pitPath(track), limit = PIT_SERVICE.SPEED_LIMIT;
+  if (car.pit.phase === 'service') return 0;
+  const inLap = car.pit.phase === 'in';
+  const capAt = (x: number) => (inLap
+    ? (x >= car.pit.boxS ? 0 : Math.min(path.inCap(x), x >= pit.wallStart ? limit : Infinity))
+    : x < pit.wallEnd ? limit : path.outCap(x));
+  let allowed = Infinity;
+  for (let a = 0; a <= PIT_ALLOWED_LOOK; a += 5) allowed = Math.min(allowed, Math.sqrt(capAt(r + a) ** 2 + 2 * PIT_DECEL * a));
+  return allowed;
+}
+
+/** The fine pit inputs (at `from` in x) in mirror image: the route's offsets change sign. */
+export function mirrorPitFine(x: Float32Array, from = 0): void {
+  for (let j = 0; j < PIT_FINE_AHEAD.length; j++) x[from + j] = -x[from + j];
+}
+
 const paths = new WeakMap<Track, PitPath>();
 
 export function pitPath(track: Track): PitPath {
