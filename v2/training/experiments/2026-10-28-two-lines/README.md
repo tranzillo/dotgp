@@ -56,7 +56,33 @@ within 6 m across, and the two lines are 6-7 m apart. `scripts/lineSplit.ts` (on
 Side by side about as often on the short and flat ovals, less on the speedway; much of today's was rubbing in one lane.
 Laps 0.1-0.66 s slower: each line has half the road, and the high one a wall buffer.
 
-## Next
+## The stable on two lines: v7
 
-Retrain the stable on two lines (`DOTGP_EXPERIMENT='?spec=cup&lines=2'`, `stable.ts --from` v6), its tactics' low and
-high now the track's lines; then bench against v6 on today's tracks and against its teachers.
+```sh
+export DOTGP_EXPERIMENT='?spec=cup&lines=2'
+npx tsx scripts/stable.ts --from public/drivers/stable-candidate-v6.json --rounds 8 --group 4 --solo-tracks 4 --out stable.json
+npx tsx scripts/brokenCar.ts --in stable.json --out v7.json --ahead 4 --rounds 6 --tracks 3 --drills 3 --group 4
+```
+
+About 21 hours here (the other machine's Cup retrain took 4); 22 of 40 broken-car licences. Logs: `stable-log.txt`,
+`broken-log.txt`; tactics loss 0.62-0.74 at the end, as high as before. Kept as `public/drivers/stable-candidate-v7-lines.json`.
+Trained at fdf28e5, before wall scraping cost health (c07cbfd).
+
+Bench, `?spec=cup&lines=2`, rules, 40 cars, 4 seeds (`v6-v7.json`: v6 untrained on two lines -> v7), beside v6 on today's
+ovals (`../2026-10-28-cup-retrain-v6/v6.json`) and the teachers on two lines (`teachers.json`):
+
+| | v6 today | v6 two lines | v7 two lines | teachers two lines |
+|---|---|---|---|---|
+| short: out / green wall damage / damage stops | 12.8 / 25.6 / 108 | 8.0 / 6.4 / - | 5.2 / 1.8 / 11.5 | 0.8 / 0 / 1.0 |
+| gen. short | 4.5 / 32.7 / 107 | 0.2 / 3.3 / - | 0.5 / 10.3 / 27.5 | 0 / 0 / 0 |
+| speedway: out | 23.8 | 21.5 | 25.0 | 0 |
+| gen. speedway: out | 31.8 | 30.5 | 35.2 | 0 |
+| gen. superspeedway: out | 28.8 | 26.8 | 30.2 | 0 |
+
+- **Short ovals:** the wall problem mostly gone (green wall damage 25.6 -> 1.8, damage stops 108 -> 11.5, laps 0.4 s
+  quicker), but v6 on two lines untrained scraped the gen. short less than v7 (3.3 vs 10.3).
+- **Clean passes** v6 -> v7 on two lines: speedway 93.5 -> 33.9, flat 34.8 -> 9.6 (the teachers' 25.7 and 17.7): the
+  students race as their teachers do.
+- **Speedways: still 25-35 out a race, nearly all under caution** (`scripts/cautionHits.ts`, speedway, 2 races): 40 of
+  52 retirements under caution; 212 of 337 caution hits while pacing in line (behind 24 m/s into a car at 10, 39.8
+  health a race), 59 as the caution forms; starts and restarts 56 hits, under 1 health. The caution skill (v6b's work).

@@ -60,6 +60,13 @@
       "name": "Stable candidate v5p",
       "file": "stable-candidate-v5p.json",
       "note": "Stable candidate v5 with its pit skill retrained 36 rounds (2026-10-29): under the pit limiter and the stop-only-in-the-box rule, on the racing-line approach to circuit pit entries, then with the pit skill's own fine-scale inputs (metres off its route, speed against what the stop allows, its clearance to the pit wall). Racing, cautions, road skills and the broken-car skill exactly as v5. Classic car, 40 cars, against v5: retirements short 16.5 -> 13.0, speedway 18.8 -> 27.0 (wide ranges), flat 6.0 -> 0.0, club 37.7 -> 36.3, GP 36.3 -> 27.3; hits on the pit wall's nose a race (pit-zone tracer) flat 8.8 -> 0.5, speedway 8.5 -> 1.8, club 22 -> 14. Circuit races still lose most of the field, about half of it racing. Read-only."
+    },
+    {
+      "id": "stable-candidate-v7-lines",
+      "name": "Stable candidate v7 (two lines)",
+      "file": "stable-candidate-v7-lines.json",
+      "candidate": true,
+      "note": "v6 retrained on ovals raced in two lines (?spec=cup&lines=2, 2026-10-29): 8 apprenticeship rounds with solo drives on 4 more ovals a round, then the broken-car drills (22 of 40 licensed); trained before wall scraping cost health (c07cbfd). For ?spec=cup&lines=2 only. Against v6 on today's ovals (both Cup, rules, 40 cars, 4 seeds): short-oval green wall damage 25.6 -> 1.8, damage stops 108 -> 11.5 a race, out 12.8 -> 5.2; gen. short damage stops 107 -> 27.5; speedways still 25-35 out a race, nearly all under caution (pacing in line: cars run into slower ones). Read-only."
     }
   ]
 }
