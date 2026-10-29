@@ -3,7 +3,7 @@ import type { Car } from '../sim/car';
 import { compromise } from '../sim/damage';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
-import { fastestLine } from './racingLine';
+import { fastestLine, ovalLines, twoLines, whichLine } from './racingLine';
 
 /** Distances ahead (m) at which the driver samples track curvature. */
 export const LOOKAHEAD = [0, 30, 60, 100, 160, 250, 400] as const;
@@ -93,8 +93,13 @@ export function observeKnowledge(
   car: Car, track: Track, out: Float32Array, knowledge: TrackKnowledge = DEFAULT_KNOWLEDGE,
   /** Where it's driving instead of its line, if anywhere (a broken car: brokenRoute). Its line's speeds still. */
   route?: (s: number) => number,
+  /**
+   * Its lane plan (+1 the +d side, -1 the other, 0 holding): on an oval raced in two lines, the line it knows is its
+   * plan's, or the one it's on.
+   */
+  plan = 0,
 ): Float32Array {
-  const line = fastestLine(track, knowledge.margin);
+  const line = twoLines(track) ? ovalLines(track, knowledge.margin)[whichLine(track, knowledge.margin, car.s, car.d, plan)] : fastestLine(track, knowledge.margin);
   const speed = line.at(Math.round(knowledge.grip * car.grip * 50) / 50).speed;
   const n = line.d.length;
   KNOWLEDGE_AHEAD.forEach((a, j) => {

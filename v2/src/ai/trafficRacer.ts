@@ -6,7 +6,7 @@ import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
 import { FormationDriver, formationTraits, type FormationTraits } from './formation';
 import { SmoothFormation } from './smoothFormation';
-import { fastestLine, followRacingLine, lineAt, type RacingLine, grooves } from './racingLine';
+import { fastestLine, followRacingLine, lineAt, type RacingLine, grooves, ovalLines, twoLines, whichLine } from './racingLine';
 import { MIRROR, MIRROR_SIZE, MIRROR_TIME, mirrorView } from './spotter';
 
 /**
@@ -252,8 +252,11 @@ export class TrafficRacer {
   private flagPacing: boolean | null = null;
   private flagChangedAt = -Infinity;
 
+  /** On an oval raced in two lines: the one it races on (the one it was nearer at its first look; it moves to pass). */
+  private home: 'low' | 'high' | null = null;
+
   constructor(readonly style: RacerStyle = DEFAULT_STYLE, lineFor?: (track: Track) => RacingLine, traits?: FormationTraits) {
-    this.lineFor = lineFor ?? ((track) => fastestLine(track, style.margin));
+    this.lineFor = lineFor ?? ((track) => (twoLines(track) ? ovalLines(track, style.margin)[this.home ?? 'low'] : fastestLine(track, style.margin)));
     // Under caution it drives toward its speed smoothly (as it brakes above it), not flat out below it: a teacher's
     // throttle has to be one a student can copy.
     this.formation = new FormationDriver(traits, (car, world, lane) => this.cautionCap(car, world, lane), CAUTION_DRIVE_GAIN);
@@ -314,10 +317,12 @@ export class TrafficRacer {
   get intent(): number { return this.passSide; }
 
   takeOver(car: Car, world: World): void {
+    if (twoLines(world.track) && !this.home) this.home = whichLine(world.track, this.style.margin, car.s, car.d);
     this.offset = car.d - lineAt(this.path ?? this.lineFor(world.track), car.s).d;
   }
 
   decide(car: Car, world: World): void {
+    if (twoLines(world.track) && !this.home) this.home = whichLine(world.track, this.style.margin, car.s, car.d);
     const pedal = car.inputX;
     this.drive(car, world);
     const rate = this.style.pedalRate;
@@ -629,8 +634,14 @@ export class TrafficRacer {
     if (nextPath !== undefined && nextPath !== this.path) {
       // Same place on the road, measured from the new path.
       const at = here.d + this.offset;
+      // Done passing on an oval's other line: that line is now its own (two lines lap alike: no going back).
+      if (nextPath === null && this.path && twoLines(track)) {
+        const { low, high } = ovalLines(track, this.style.margin);
+        if (this.path === low) this.home = 'low';
+        else if (this.path === high) this.home = 'high';
+      }
       this.path = nextPath;
-      this.offset = at - lineAt(nextPath ?? racingLineHere, car.s).d;
+      this.offset = at - lineAt(nextPath ?? this.lineFor(track), car.s).d;
     }
   }
 }

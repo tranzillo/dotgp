@@ -1,4 +1,5 @@
 import { carSpec, type CarSpec } from '../sim/carSpec';
+import { EXPERIMENT } from '../sim/experiment';
 import { G, PHYSICS as P, SURFACES } from '../sim/constants';
 import type { Car } from '../sim/car';
 import type { Track } from '../sim/track';
@@ -477,6 +478,8 @@ const grooveCache = new WeakMap<Track, Map<number, RacingLine[]>>();
  */
 export function grooves(track: Track, margin = DEFAULTS.margin): RacingLine[] {
   if (track.kind === 'road') return [];
+  // Banked for two lines: they're its lanes.
+  if (twoLines(track)) { const { low, high } = ovalLines(track, margin); return [low, high]; }
   let byMargin = grooveCache.get(track);
   if (!byMargin) { byMargin = new Map(); grooveCache.set(track, byMargin); }
   let list = byMargin.get(margin);
@@ -505,7 +508,28 @@ const GROOVE_SPACING = 2 * P.CAR_RADIUS + 0.6;
  */
 export const DRIVEN_GRIP = 0.86;
 
-const twoLines = new WeakMap<Track, Map<number, { low: RacingLine; high: RacingLine }>>();
+const twoLineCache = new WeakMap<Track, Map<number, { low: RacingLine; high: RacingLine }>>();
+
+/** Whether a track is raced in two lines, low and high (ovals, ?lines=2: trackgen/balance.ts). */
+export function twoLines(track: Track): boolean {
+  return EXPERIMENT.lines === 2 && track.kind !== 'road';
+}
+
+/**
+ * Which of an oval's two lines a car at (s, d) is on: on its plan's side if it has one (+1: the +d side, low on an
+ * oval; -1 high), otherwise the nearer.
+ */
+export function whichLine(track: Track, margin: number, s: number, d: number, plan = 0): 'low' | 'high' {
+  if (plan !== 0) return (plan > 0) === inside(track) ? 'low' : 'high';
+  const { low, high } = ovalLines(track, margin);
+  return Math.abs(lineAt(low, s).d - d) <= Math.abs(lineAt(high, s).d - d) ? 'low' : 'high';
+}
+/** +d is the inside of an oval's turns (it turns that way on the whole). */
+function inside(track: Track): boolean {
+  let turn = 0;
+  for (let i = 0; i < track.kappa.length; i += 8) turn += track.kappa[i];
+  return turn >= 0;
+}
 
 /**
  * An oval's two lines, for a racer's margin: the fastest line in the inside half of the road (low) and in the outside
@@ -513,8 +537,8 @@ const twoLines = new WeakMap<Track, Map<number, { low: RacingLine; high: RacingL
  * them, and neither runs against the wall.
  */
 export function ovalLines(track: Track, margin = DEFAULTS.margin): { low: RacingLine; high: RacingLine } {
-  let byMargin = twoLines.get(track);
-  if (!byMargin) { byMargin = new Map(); twoLines.set(track, byMargin); }
+  let byMargin = twoLineCache.get(track);
+  if (!byMargin) { byMargin = new Map(); twoLineCache.set(track, byMargin); }
   let lines = byMargin.get(margin);
   if (!lines) {
     lines = { low: racingLine(track, { margin, gripShare: DRIVEN_GRIP, half: 'low' }), high: racingLine(track, { margin, gripShare: DRIVEN_GRIP, half: 'high' }) };

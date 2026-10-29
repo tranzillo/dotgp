@@ -444,15 +444,15 @@ export class NeuralDriver implements DriverBrain {
     this.input.set(observePreview(car, world.track, this.preview), PREVIEW_FROM);
     // A broken car on an oval: the broken-car skill knows where it's going (the apron), as its line.
     const broken = this.brokenNet && world.track.kind !== 'road' && compromise(car) > 0;
-    this.input.set(observeKnowledge(car, world.track, this.known, this.knowledge, broken ? brokenRoute(world.track) : undefined), KNOWLEDGE_FROM);
+    // Its lane plan: only racing under green, sound and off pit road (every other skill sees none).
+    const plan = racingPlan(car, world, !!broken) ? this.shownIntent ?? this.intent : 0;
+    this.input.set(observeKnowledge(car, world.track, this.known, this.knowledge, broken ? brokenRoute(world.track) : undefined, plan), KNOWLEDGE_FROM);
     this.input.set(observeCalls(car, world, this.calls), CALLS_FROM);
     this.input.set(observePitCalls(car, world, this.pitCalls), PIT_CALLS_FROM);
     this.input.set(observeCautionRange(car, world, this.cautionRange), CAUTION_RANGE_FROM);
     this.input.set(observeDamage(car, this.damage), DAMAGE_FROM);
     if (radio.length >= RADIO_SIZE + MIRROR_SIZE) this.input.set(radio.subarray(RADIO_SIZE, RADIO_SIZE + MIRROR_SIZE), MIRROR_FROM);
     else this.input.fill(0, MIRROR_FROM, MIRROR_FROM + MIRROR_SIZE);
-    // Its lane plan: only racing under green, sound and off pit road (every other skill sees none).
-    const plan = racingPlan(car, world, !!broken) ? this.shownIntent ?? this.intent : 0;
     this.input[INTENT_FROM + INTENT.LOW] = plan > 0 ? 1 : 0;
     this.input[INTENT_FROM + INTENT.HIGH] = plan < 0 ? 1 : 0;
     const dir = nextCornerDirection(world.track, car.s);
