@@ -1,0 +1,46 @@
+
+=== short seed 1: 143 laps, 26 cars (a car a pit box), 4x pace (426 s)
+finished 26/26  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 9% of surface >10% dark, 1% >25%
+  marks lap 20: groove 7%, skids 0% mean darkness; 24% of surface >10% dark, 9% >25%
+
+=== summary by track
+
+short (1 races)
+  STEWARDS 4.0 decisions/race: avoidable-contact: time 3, avoidable-contact: warning 1
+  WRECKS  0.0 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 0)
+          by context: 
+          who / what: 
+          damage done to others (by fault): 6.35 health/race
+  PACK    9.1 passes/100 green car-laps, alongside 7%, drafting 46%, lane spread 5.17 m; lockstep same brain –, different brains -0.024
+  PASSING 5.8 clean passes/100 green car-laps; of all passes 36% with contact, 16% damaging, 77% from the draft; 11.9 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 1.72 m, 1.53 m/s, 0.099
+  SCRIPTS 9% of car-time on track driven by a script (formation 0%, pit maneuver 9%); 0.0 retirements/race while a script drove
+  TIRES   wear 0.0202/green lap -> cliff (0.3) after 35 laps; sliding >0.05 0%, >0.35 0%, >0.6 0% of car-steps
+  FUEL    burn 1.69 kg/green lap -> 36 laps per tank
+  DAMAGE  health lost on track /race: green walls 9.53 (1.27 with a car alongside), cars 14.84; caution walls 0.00, cars 0.00
+  STOPS   112.0/race (0% under caution), tires taken 95%, repairs 50%, called for fuel 33% tires 48% damage 19% caution 0% penalty 0%, tire life at stop 0.42 (min 0.28), service 17.4 s
+  PIT ROAD 76.5 s entry to track under green, – s under caution; 7.0 contacts, 0.44 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 23.29 s (989) | 0.6-0.8: 23.50 s (1173) | 0.4-0.6: 23.99 s (1067) | 0.3-0.4: 24.39 s (186) | 0.2-0.3: 24.54 s (3)
+WALL by tyres (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   40-60%            418   0.170    0.32
+WALL   60-80%            460   0.189    0.34
+WALL   over 80%          455   0.281    0.55
+WALL   under 40%          66   0.197    0.46
+WALL by car ahead in lane (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   10-25 m           287   0.212    0.39
+WALL   25-60 m           245   0.383    0.79
+WALL   none in 60 m      571   0.200    0.38
+WALL   under 10 m        295   0.102    0.17
+WALL by alongside (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   car inside        128   0.376    0.60
+WALL   car outside       119   0.000    0.00
+WALL   clear            1153   0.218    0.43
+WALL by tow (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   clean air         570   0.377    0.74
+WALL   in a tow          829   0.101    0.18
+WALL by outside wall (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   0.3-1 m            36   0.000    0.00
+WALL   1-2 m             153   0.000    0.00
+WALL   over 2 m         1204   0.021    0.06
+WALL   under 0.3 m         6  45.198   82.29

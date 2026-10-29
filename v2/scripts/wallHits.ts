@@ -1,7 +1,7 @@
 // Preload: green-flag wall hits in races, in context. For each car on track under green, each step: its tyres, how
 // close the car ahead in its lane is, whether a car is alongside (and on which side), whether it's in a tow; the time
-// spent in each state and the wall hits (a run of steps touching) and health lost there, so a state's rate is per
-// car-minute in it. Tells line drift (hits alone, on old tyres) from traffic (hits behind or beside another car).
+// spent in each state (and how far it is from the outside wall, and where it rides it) and the wall hits (a run of
+// steps touching) and health lost there, so a state's rate is per car-minute in it. Tells line drift (hits alone, on old tyres) from traffic (hits behind or beside another car).
 //   DOTGP_EXPERIMENT='?spec=cup' npx tsx --import ./scripts/wallHits.ts scripts/incidents.ts \
 //     lab/cup-retrain/v6.json --tracks oval:894715320:short --seeds 2 --field 40 --rules 1
 import { PHYSICS as P } from '../src/sim/constants';
@@ -24,6 +24,7 @@ World.prototype.step = function (this: World) {
   step.call(this);
   if (!ctl || ctl.flag !== 'green') return;
   const L = this.track.length, cars = this.cars;
+  const outer = this.track.walls.find((w) => w.faces === 'in' && w.range === null);
   cars.forEach((c, k) => {
     if (c.retired || c.pit.phase !== 'none') return;
     let ahead = Infinity, side = 'clear';
@@ -42,6 +43,13 @@ World.prototype.step = function (this: World) {
       alongside: side,
       tow: c.draftFactor < 0.97 ? 'in a tow' : 'clean air',
     };
+    if (outer) {
+      // How far its side is from the outside wall's face (m): riding it, near it, or off it.
+      const gap = c.d - P.CAR_RADIUS - (this.track.edgeAt(outer.d as never, c.s) + outer.thickness / 2);
+      states['outside wall'] = gap < 0.3 ? 'under 0.3 m' : gap < 1 ? '0.3-1 m' : gap < 2 ? '1-2 m' : 'over 2 m';
+      // And where the riding is: in a corner (turning), or on a straight (the line wide into a corner or out of one).
+      states['riding the wall'] = gap >= 0.3 ? 'off it' : Math.abs(this.track.kappa[this.track.indexAt(c.s)]) > 1e-4 ? 'in a corner' : 'on a straight';
+    }
     const lost = before[k] - c.health;
     const wall = lost > 1e-4 && c.lastImpact?.kind === 'wall';
     const fresh = wall && !touching.get(c);

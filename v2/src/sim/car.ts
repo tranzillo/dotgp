@@ -205,6 +205,8 @@ export class Car {
 
   // Stats
   wallHits = 0;
+  /** Friction work sliding along walls so far ((m/s)^2: energy per unit mass): how much it has scraped them. */
+  wallScrape = 0;
   readonly signature = new Float64Array(SIGNATURE_BINS);
 
   constructor(id: number, color = '#ffffff') {
@@ -499,11 +501,12 @@ export function applyImpact(
   car: Car, dvx: number, dvy: number, impactSpeed: number, scrapeWork: number, damageScale = 1,
   source: { kind: 'wall' | 'car'; other: number | null } = { kind: 'wall', other: null },
 ): void {
-  // (The second damage model: light contact and scraping are free.)
+  // (The second damage model: light contact is free, and so is rubbing another car; scraping a wall isn't.)
   const thr = car.damageModel === 2 ? DAMAGE2.FREE_IMPACT : P.DAMAGE_SPEED_THRESHOLD;
   let severity = car.damageModel === 2 ? DAMAGE2.RAMP * Math.max(0, impactSpeed - thr) ** 2
     : Math.max(0, impactSpeed * impactSpeed - thr * thr) * P.DAMAGE_PER_ENERGY;
   if (car.damageModel !== 2) severity += scrapeWork * P.SCRAPE_DAMAGE;
+  else if (source.kind === 'wall') severity += scrapeWork * DAMAGE2.SCRAPE;
   severity *= damageScale;
   if (severity <= 0) return;
 

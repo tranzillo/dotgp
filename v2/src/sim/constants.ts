@@ -62,6 +62,11 @@ export const PHYSICS = {
   WALL_RESTITUTION: 0.3,
   /** Coulomb friction against the wall: tangential loss capped at mu x normal impulse. */
   WALL_FRICTION: 0.5,
+  /**
+   * Tyre life worn per (m/s)^2 of friction work sliding along a wall: the tyre rubbing the wall and its fender. A second
+   * riding the wall wears up to half a lap's worth on the speedway (0.021 a lap), a lap's on the short oval (0.005).
+   */
+  WALL_SCRAPE_WEAR: 4e-5,
 
   // Car-to-car
   CAR_RESTITUTION: 0.5,
