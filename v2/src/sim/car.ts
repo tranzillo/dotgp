@@ -1,4 +1,6 @@
-import { BUMP_SCALE, G, PHYSICS as P, PIT_SERVICE, SURFACES } from './constants';
+import { carSpec, type CarSpec } from './carSpec';
+import { BUMP_SCALE, G, PHYSICS as P, PIT_SERVICE, PLOUGH_SPEED, SURFACES } from './constants';
+import { DAMAGE2, type DamageModel, damageModel, dragFactor, powerLeft } from './damage';
 import { valueNoise } from './noise';
 import type { Surface, Track } from './track';
 
@@ -10,6 +12,13 @@ export interface PitCall {
   /** kg of fuel to add. */
   fuel: number;
   repair: boolean;
+  /** Serving a penalty instead: through pit road (a drive-through) or a stop in the box for some seconds. */
+  penalty?: 'drive-through' | 'stop-go';
+  penaltySeconds?: number;
+  /** Shown the black flag: in to its box, and parked there (out of the race). */
+  retire?: boolean;
+  /** Why the crew called it (whatever else is due is done at the same stop): fuel, tires, damage, or a caution's cheap stop. */
+  reason?: 'fuel' | 'tires' | 'damage' | 'caution';
 }
 
 /**
@@ -25,8 +34,58 @@ export interface PitState {
   stops: number;
   /** Laps completed when tires were last changed. */
   tiresFittedLap: number;
+  /** On a long pit lane, where the car was on its way in when called (Track.pitInR): its dist, and pit lane s. */
+  inFrom?: { call: PitCall | null; dist: number; r: number };
 }
 const RETIRED_DECEL = 8;
+/**
+ * Reverse: on pit road a car held on the brakes at a standstill for REVERSE_ENGAGE (s) shifts into reverse, and then
+ * the brakes drive it backwards along the road, up to REVERSE_SPEED (m/s) at REVERSE_ACCEL (m/s^2). Easing off at a
+ * standstill puts it back in drive, as does stopping off pit road (backed off it, it stays in reverse until it has
+ * stopped: in drive its brakes don't hold a car rolling backwards). Only on pit road for now: everywhere else a
+ * stopped car on its brakes (on the grid, queued under caution, in its box) stays put.
+ */
+const REVERSE_ENGAGE = 0.5;
+const REVERSE_SPEED = 2.5;
+const REVERSE_ACCEL = 2;
+/** A car this slow along the road is at a standstill, for shifting (m/s; sliding sideways down a banked apron counts). */
+const STANDSTILL = 0.3;
+/**
+ * The pit limiter (the user's call, 2026-10-26: learned pit drivers came in too fast and hit the pit wall's nose).
+ * A car on its way in is held, from the pit entry on, under a braking curve that reaches the speed limit at the limit
+ * line (the wall's nose, where pit road begins) at LIMITER_DECEL (m/s^2), and to the limit from there; on its way
+ * out, to the limit until the line at the wall's end. Over it the engine is cut and the brakes go on, as a driver on
+ * the limiter button brakes for the line. (LIMITER_MARGIN under the limit: the stewards allow a little over it.)
+ */
+const LIMITER_DECEL = 5;
+const LIMITER_MARGIN = 0.2;
+
+/** The fastest the pit limiter lets this car go here (Infinity where it's off). */
+export function pitLimit(car: Car, track: Track): number {
+  const phase = car.pit.phase;
+  if (phase !== 'in' && phase !== 'out') return Infinity;
+  const pit = track.pit, limit = PIT_SERVICE.SPEED_LIMIT - LIMITER_MARGIN;
+  if (phase === 'out') return track.pitOutAt(car, car.s) < pit.wallEnd ? limit : Infinity;
+  const r = track.pitInR(car);
+  if (r < pit.entryStart || r > pit.wallEnd) return Infinity;
+  // Before the line, only once it's off the racing surface for pit road: a car called in but still out on the racing
+  // line (missing the entry, or about to) was braked to pit speed in the pack (2026-10-27: on the speedway, 7 stops
+  // in 2 races, up to 13 m/s over the curve).
+  if (r < pit.wallStart && car.d <= track.innerEdgeAt(car.s)) return Infinity;
+  return r < pit.wallStart ? Math.sqrt(limit * limit + 2 * LIMITER_DECEL * (pit.wallStart - r)) : limit;
+}
+
+/**
+ * Cornering grip of a tire at a given life: a gentle fade from new to the
+ * cliff, then a fast fall to the cords.
+ */
+export function tireGrip(life: number): number {
+  if (life >= P.TIRE_CLIFF) {
+    return P.GRIP_AT_CLIFF + (1 - P.GRIP_AT_CLIFF) * (life - P.TIRE_CLIFF) / (1 - P.TIRE_CLIFF);
+  }
+  const x = 1 - Math.max(0, life) / P.TIRE_CLIFF; // 0 at the cliff, 1 corded
+  return P.GRIP_AT_CLIFF - (P.GRIP_AT_CLIFF - P.GRIP_CORDED) * x * x;
+}
 
 /**
  * A car is a featureless dot. It has no heading: the driver requests an
@@ -35,7 +94,12 @@ const RETIRED_DECEL = 8;
  */
 export class Car {
   readonly id: number;
+  /** The number on the car, which announcements call it by (the id unless a session gives it a team's number). */
+  number: number;
   color: string;
+
+  /** How big it is (m): every car the same; a service vehicle bigger. */
+  radius: number = P.CAR_RADIUS;
 
   // World state
   x = 0;
@@ -50,7 +114,7 @@ export class Car {
   /** Signed distance travelled along the track since the start line (negative before it). */
   dist = 0;
 
-  // Driver input, travel frame, magnitude <= 1 (1 = demand OVERDRIVE_MAX x capacity)
+  // Driver input, travel frame, magnitude <= 1 (1 = demand OVERDRIVE_MAX x capacity on each axis)
   inputX = 0;
   inputY = 0;
 
@@ -58,6 +122,8 @@ export class Car {
   fuel: number = P.FUEL_CAPACITY;
   tireLife = 1;
   health = 1;
+  /** The damage model its race runs (damage.ts): set as it's put on a track. */
+  damageModel: DamageModel = damageModel('oval');
   damageAero = 0;
   damageHandling = 0;
   damageEngine = 0;
@@ -72,16 +138,56 @@ export class Car {
   parked = false;
   /** Took the checkered flag. */
   finished = false;
+  /**
+   * Out of the session for now, standing still where it was put (qualifying:
+   * waiting in its pit box for its turn, or done with its run). Nobody drives
+   * it and the physics leaves it alone.
+   */
+  waiting = false;
+  /**
+   * The last thing that hurt the car: a wall or another car (by id), how
+   * hard (health lost), the impact speed, and (car contact) this car's share
+   * of the fault. For incident analysis now, stewards' blame later.
+   */
+  lastImpact: { kind: 'wall' | 'car'; other: number | null; severity: number; speed: number; fault?: number } | null = null;
+  /** Damage this car has done to others: health they lost in contact, times its share of the fault. */
+  harmDone = 0;
+  /** Damage it did to itself: walls, and its own share of the fault in contact. */
+  selfInflicted = 0;
+  /** The same impacts weighed as the driver feels them (trauma: big hits far worse than their size). */
+  selfTrauma = 0;
+  /** A penalty to serve on pit road (stewards), and the green-flag laps left to serve it before the black flag. */
+  pendingPenalty: { kind: 'drive-through' | 'stop-go'; seconds: number; greenLapsLeft: number } | null = null;
+  /** Seconds the stewards added to its race time; shown the black flag. */
+  timePenalty = 0;
+  disqualified = false;
+  /** The hardest single hit the car took (health lost, impact speed): what injures a driver. */
+  worstHit: { severity: number; speed: number; kind: 'wall' | 'car' } | null = null;
 
   // Per-step telemetry
   frameX = 1;
   frameY = 0;
+  /** In reverse (pit road: see REVERSE_ENGAGE), and how long it has been held on the brakes at a standstill (s). */
+  reversing = false;
+  reverseHold = 0;
+  /** Tire capacity (m/s^2) across the direction of travel, and along it (braking/drive). */
   capacity = 0;
+  capacityLon = 0;
+  /** Banking under the car (rad), the normal load (m/s^2), and the push toward the infield it gives. */
+  bank = 0;
+  normalAcc = 0;
   bankAcc = 0;
+  /** Horizontal tire force across the track (toward the infield) last step: how hard the car is really cornering. */
+  tireNormal = 0;
+  /** How hard the tires are worked relative to their grip (0..1+), as wear sees it. */
+  tireUse = 0;
   tireLon = 0;
   tireLat = 0;
   sliding = 0;
-  markIntensity = 0;
+  /** Rubber laid down by tire work this step (0..1): builds the groove slowly. */
+  groove = 0;
+  /** Skid mark strength this step (0..1): sliding, spinning, tearing up turf. */
+  skid = 0;
   draftFactor = 1;
   wallContact = false;
   surface: Surface = 'track';
@@ -92,22 +198,47 @@ export class Car {
   nextLineDist = 0;
   lapStartTime = -1;
   lapTimes: number[] = [];
+  /** Per lap in lapTimes: run within the track limits (an excursion invalidates the lap's time, not the car's place). */
+  lapValid: boolean[] = [];
+  /** The lap in progress has stayed within the track limits so far. */
+  lapClean = true;
 
   // Stats
   wallHits = 0;
+  /** Friction work sliding along walls so far ((m/s)^2: energy per unit mass): how much it has scraped them. */
+  wallScrape = 0;
   readonly signature = new Float64Array(SIGNATURE_BINS);
 
   constructor(id: number, color = '#ffffff') {
     this.id = id;
+    this.number = id;
     this.color = color;
   }
 
+  /** What kind of car it is (carSpec.ts), set where it's put on a track (the series races there). */
+  spec: CarSpec | null = null;
+
   get mass(): number {
-    return P.DRY_MASS + this.fuel;
+    return (this.spec ?? carSpec()).dryMass + this.fuel;
   }
 
+  /** Cornering grip of the current tires (1 = new). */
   get grip(): number {
-    return P.MIN_GRIP + (1 - P.MIN_GRIP) * this.tireLife;
+    return tireGrip(this.tireLife) * this.condition;
+  }
+
+  /** Braking and drive grip: worn tires lose less of it than cornering grip. */
+  get gripLon(): number {
+    return (1 - P.LON_WEAR_SHARE * (1 - tireGrip(this.tireLife))) * this.condition;
+  }
+
+  /**
+   * The share of the tyres' grip the car's damage leaves it: all of it. The second damage model's damage is the
+   * engine's power and the drag (damage.ts); the first's handling damage is applied where the tyres' forces are.
+   * (Kept for whatever scales a car's grip by it.)
+   */
+  get condition(): number {
+    return 1;
   }
 
   get speed(): number {
@@ -118,7 +249,13 @@ export class Car {
     return this.lapTimes.length;
   }
 
-  placeOnTrack(track: Track, s: number, d: number): void {
+  /**
+   * Put the car at (s, d), stopped. Its race distance is where it sits relative
+   * to the line, the shorter way round, unless the caller knows better: a grid
+   * reaching back more than half a lap passes `dist` (negative, behind the line).
+   */
+  placeOnTrack(track: Track, s: number, d: number, dist?: number): void {
+    this.damageModel = damageModel(track.kind);
     const [x, y] = track.toWorld(s, d);
     this.x = x;
     this.y = y;
@@ -129,8 +266,9 @@ export class Car {
     this.d = p.d;
     this.trackIdx = p.idx;
     // Starting behind the line means dist is negative until the first crossing.
-    this.dist = p.s > track.length / 2 ? p.s - track.length : p.s;
+    this.dist = dist ?? (p.s > track.length / 2 ? p.s - track.length : p.s);
     this.nextLineDist = this.dist < 0 ? 0 : track.length;
+    this.spec = carSpec(track);
   }
 }
 
@@ -138,7 +276,26 @@ export class Car {
  * Integrate one physics step for a single car (no collisions).
  * wearScale speeds up tire wear and fuel burn (race pace).
  */
-export function stepCar(car: Car, track: Track, dt: number, wearScale = 1): void {
+/**
+ * Training wheels, for learners only (a curriculum's early stages): ground off
+ * the track as forgiving as asphalt run-off (forgiving 1) or as it really is
+ * (0), so a mistake costs time rather than ending the drive in a gravel trap;
+ * and no drive above a speed, so corners come at speeds a learner can take.
+ */
+export interface TrainingWheels { forgiving: number; speedCap: number }
+
+/** Ground a learner goes off onto, made forgiving: gravel and grass blended toward asphalt run-off. */
+function forgivingSurface(kind: Surface, forgiving: number): (typeof SURFACES)[Surface] {
+  const real = SURFACES[kind];
+  if (forgiving <= 0 || (kind !== 'gravel' && kind !== 'grass')) return real;
+  const soft = SURFACES.runoff, f = Math.min(1, forgiving);
+  return {
+    grip: real.grip + (soft.grip - real.grip) * f, rolling: real.rolling + (soft.rolling - real.rolling) * f,
+    bump: real.bump + (soft.bump - real.bump) * f, plough: real.plough + (soft.plough - real.plough) * f,
+  } as (typeof SURFACES)[Surface];
+}
+
+export function stepCar(car: Car, track: Track, dt: number, wearScale = 1, wheels?: TrainingWheels): void {
   if (car.retired) {
     // Wrecked: slide to a stop and stay on track as an obstacle.
     const sp = car.speed;
@@ -147,7 +304,8 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1): void
     car.vy *= k;
     car.x += car.vx * dt;
     car.y += car.vy * dt;
-    car.markIntensity = sp > 1 ? 0.6 : 0;
+    car.groove = 0;
+    car.skid = sp > 1 ? 0.8 : 0;
     return;
   }
   const i = car.trackIdx;
@@ -157,9 +315,10 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1): void
   const vx = car.vx, vy = car.vy;
   const speed = Math.hypot(vx, vy);
 
-  // Travel frame. At very low speed, lean on the track direction so the frame is defined.
+  // Travel frame. At very low speed, lean on the track direction so the frame is defined. In reverse the car still
+  // faces the way the road runs (backing up, the frame would flip as it got going).
   const blend = Math.max(0, P.FRAME_BLEND_SPEED - speed);
-  let fx = vx + tx * blend, fy = vy + ty * blend;
+  let fx = car.reversing ? tx : vx + tx * blend, fy = car.reversing ? ty : vy + ty * blend;
   const fm = Math.hypot(fx, fy);
   if (fm > 1e-9) { fx /= fm; fy /= fm; } else { fx = tx; fy = ty; }
   const lx = -fy, ly = fx;
@@ -167,60 +326,112 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1): void
   car.frameY = fy;
 
   // --- Banking ---
-  // Normal load per unit mass on a banked surface rises with cornering speed.
-  // Its horizontal component pushes toward the infield regardless of input,
-  // so at the "neutral speed" v^2 = g tan(bank) / kappa the banking alone carries
-  // the car around the turn without any tire work.
+  // The sim is the top-down projection of a car on a banked surface. The
+  // surface pushes back along its normal, and the horizontal part of that push,
+  // N sin(bank), points toward the infield regardless of input. The load N
+  // comes from how hard the car is actually cornering: with a_h its horizontal
+  // acceleration across the track, N = g cos(bank) + a_h sin(bank), and
+  // a_h = N sin(bank) + (tire force across the track), so
+  //   N = (g cos(bank) + tires sin(bank)) / cos^2(bank)
+  // using last step's tire force (1/120 s ago). Holding a lane round the turn
+  // that is g cos(bank) + v^2 kappa sin(bank); a car diving down the banking
+  // loads its tires more, one drifting up the track less. At the "neutral
+  // speed" v^2 = g tan(bank) / kappa the banking alone carries the car round the
+  // turn; faster, the tires make up the rest; slower, they hold it up the slope.
   const bank = track.bankAt(i, car.d);
   const cosB = Math.cos(bank), sinB = Math.sin(bank);
-  const kappa = track.kappa[i];
-  const kappaLane = kappa / Math.max(0.2, 1 - kappa * car.d);
-  const vt = vx * tx + vy * ty;
-  const normalAcc = Math.min(4 * G, Math.max(0.3 * G, G * cosB + vt * vt * kappaLane * sinB));
+  const normalAcc = Math.min(4 * G, Math.max(0.3 * G, (G * cosB + car.tireNormal * sinB) / (cosB * cosB)));
   const bankAcc = normalAcc * sinB;
+  // Downforce presses the tires into the surface; across the slope it pushes the car out as hard as the extra load
+  // the surface pushes back with pushes it in, so it only adds to the load (none on the classic car).
+  const spec = car.spec ?? carSpec(track);
+  const loadAcc = normalAcc + (0.5 * P.AIR_DENSITY * spec.cla(track) * speed * speed) / car.mass;
+  car.bank = bank;
+  car.normalAcc = normalAcc;
   car.bankAcc = bankAcc;
 
   // --- Friction circle ---
   const surfaceKind = track.surfaceAt(car.s, car.d, car.x, car.y);
   car.surface = surfaceKind;
-  const surface = SURFACES[surfaceKind];
-  const capacity = P.TIRE_MU * car.grip * surface.grip
-    * (1 - P.HANDLING_DAMAGE_GRIP * car.damageHandling) * normalAcc;
+  const surface = wheels ? forgivingSurface(surfaceKind, wheels.forgiving) : SURFACES[surfaceKind];
+  // Tires grip in the plane of the surface: up to mu N there. Braking and drive
+  // run along the track, which is level, so all of it counts; cornering force
+  // lies across the slope, and only cos(bank) of it is horizontal. An ellipse,
+  // then, narrower across the track the steeper the banking (and narrower still
+  // as the tires wear: cornering grip goes first).
+  // (Tires that grip less as the load grows: grip x (load / g)^-k; none on the classic car.)
+  const loadGrip = spec.loadSensitivity > 0 ? Math.pow(Math.max(0.3, loadAcc / G), -spec.loadSensitivity) : 1;
+  // (Handling damage, under the first damage model: the second's is its health, in the car's condition.)
+  const handling = car.damageModel === 2 ? 1 : 1 - P.HANDLING_DAMAGE_GRIP * car.damageHandling;
+  const base = P.TIRE_MU * spec.grip * loadGrip * surface.grip * handling * loadAcc;
+  const capacity = base * car.grip * cosB;
+  const capacityLon = base * car.gripLon;
   car.capacity = capacity;
+  car.capacityLon = capacityLon;
 
   let ix = car.inputX, iy = car.inputY;
   const im = Math.hypot(ix, iy);
   if (im > 1) { ix /= im; iy /= im; }
-  const demandScale = P.OVERDRIVE_MAX * capacity;
-  let aLon = ix * demandScale;
-  let aLat = iy * demandScale;
+  let aLon = ix * P.OVERDRIVE_MAX * capacityLon;
+  let aLat = iy * P.OVERDRIVE_MAX * capacity;
+  // Shifting: into reverse held on the brakes at a standstill on pit road, back into drive off them at a standstill.
+  const still = Math.abs(vx * fx + vy * fy) < STANDSTILL;
+  if (!car.reversing) {
+    car.reverseHold = surfaceKind === 'pit' && still && ix < -0.3 ? car.reverseHold + dt : 0;
+    if (car.reverseHold >= REVERSE_ENGAGE) car.reversing = true;
+  } else if (still && (ix >= 0 || surfaceKind !== 'pit')) {
+    car.reversing = false;
+    car.reverseHold = 0;
+  }
+  const back = car.reversing ? -(vx * fx + vy * fy) : 0;
+  // Brakes stop a car; they can't drive it backwards. At a crawl the frame leans on the track's direction,
+  // so braking there pushed a stopped car backwards, and a car rolling backwards at half the blend speed
+  // had its frame flip every step and the brakes hold it there (learners braking to a crawl were stuck
+  // for good: lab, 2026-10-18).
+  if (car.reversing) {
+    // The brakes drive it backwards (to its reverse speed); the throttle stops it rolling back, no further.
+    aLon = aLon < 0 ? (back < REVERSE_SPEED ? Math.max(aLon, -REVERSE_ACCEL) : 0) : Math.min(aLon, Math.max(0, back) / dt);
+  } else if (aLon < 0) {
+    const forward = vx * fx + vy * fy;
+    aLon = forward > 0 ? Math.max(aLon, -forward / dt) : 0;
+  }
 
-  if (aLon > 0) {
+  // The pit limiter brakes for the line, and holds the limit past it.
+  const limiter = car.reversing ? Infinity : pitLimit(car, track);
+  if (speed > limiter) aLon = Math.min(aLon, -Math.min(capacityLon, LIMITER_DECEL + 4 * (speed - limiter)));
+  if (aLon > 0 && !car.reversing) {
     const power = car.fuel > 0
-      ? P.ENGINE_POWER * (1 - P.ENGINE_DAMAGE_POWER * car.damageEngine)
+      ? spec.power(track) * (car.damageModel === 2 ? powerLeft(car) : 1 - P.ENGINE_DAMAGE_POWER * car.damageEngine)
       : 0;
-    let engineMax = Math.min(P.MAX_DRIVE_ACCEL, power / (car.mass * Math.max(speed, 1)));
-    // Pit limiter: no drive above the pit road speed limit.
-    if (surfaceKind === 'pit' && speed > PIT_SERVICE.SPEED_LIMIT) engineMax = 0;
+    // (Only the driven wheels push: their share of the tires' grip. A car driven by all four, the classic, can ask
+    // for more than they hold and spin them.)
+    let engineMax = Math.min(P.MAX_DRIVE_ACCEL, power / (car.mass * Math.max(speed, 1)), spec.driveShare < 1 ? spec.driveShare * capacityLon : Infinity);
+    // Pit limiter: no drive above the pit road speed limit (or the limiter's curve down to it).
+    if ((surfaceKind === 'pit' && speed > PIT_SERVICE.SPEED_LIMIT) || speed > limiter) engineMax = 0;
+    // A learner's speed limit (training wheels).
+    if (wheels && speed > wheels.speedCap) engineMax = 0;
     if (aLon > engineMax) aLon = engineMax;
   }
 
+  // Demand as a fraction of the ellipse: above 1 the tires slide.
   let over = 0;
-  const req = Math.hypot(aLon, aLat);
-  if (req > capacity && req > 1e-9) {
-    over = Math.min(1, (req - capacity) / (capacity * (P.OVERDRIVE_MAX - 1)));
-    const delivered = capacity * (1 - P.SLIDE_GRIP_LOSS * over);
-    aLon *= delivered / req;
-    aLat *= delivered / req;
+  const req = Math.hypot(aLon / Math.max(capacityLon, 1e-9), aLat / Math.max(capacity, 1e-9));
+  if (req > 1) {
+    over = Math.min(1, (req - 1) / (P.OVERDRIVE_MAX - 1));
+    const delivered = (1 - P.SLIDE_GRIP_LOSS * over) / req;
+    aLon *= delivered;
+    aLat *= delivered;
   }
   car.sliding = over;
   car.tireLon = aLon;
   car.tireLat = aLat;
+  car.tireNormal = (aLon * fx + aLat * lx) * nx + (aLon * fy + aLat * ly) * ny;
 
   // --- Resistance ---
-  const cda = P.CDA * (1 + P.AERO_DAMAGE_DRAG * car.damageAero) * car.draftFactor;
+  const cda = spec.cda(track) * (car.damageModel === 2 ? dragFactor(car) : 1 + P.AERO_DAMAGE_DRAG * car.damageAero) * car.draftFactor;
   const dragAcc = (0.5 * P.AIR_DENSITY * cda * speed * speed) / car.mass;
-  const rolling = surface.rolling * G;
+  // Rolling resistance, plus ploughing on loose ground (it grows with speed: a car can still crawl out).
+  const rolling = (surface.rolling + surface.plough * Math.min(1, speed / PLOUGH_SPEED)) * G;
   const resist = Math.min(speed / dt, dragAcc + rolling);
 
   // --- Integrate (semi-implicit Euler) ---
@@ -243,15 +454,27 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1): void
   car.x += car.vx * dt;
   car.y += car.vy * dt;
 
-  // --- Tire wear & marks ---
-  const muG = P.TIRE_MU * G;
+  // --- Tire wear & rubber ---
+  // Wear is the energy lost to tire slip: force x slip, where the slip needed
+  // for a force shrinks as the load on the tire grows. Per unit of load,
+  // that is utilisation^2 x load, utilisation = force / (mu N), with the
+  // cornering force taken in the banked plane. On a flat track at normal load
+  // this is just (force / mu g)^2; banking that loads the tires up lets them
+  // make the same force with less slip, so the right line saves tires.
   const lonWeight = aLon > 0 ? P.WEAR_DRIVE : P.WEAR_BRAKE;
-  const load2 = (P.WEAR_LATERAL * aLat * aLat + lonWeight * aLon * aLon) / (muG * muG);
+  const latPlane = aLat / cosB;
+  const muN = P.TIRE_MU * spec.grip * loadGrip * loadAcc;
+  const use2 = (P.WEAR_LATERAL * latPlane * latPlane + lonWeight * aLon * aLon) / (muN * muN);
+  car.tireUse = Math.sqrt(use2);
+  const load2 = use2 * (loadAcc / G);
   const slideMult = 1 + P.SLIDE_WEAR * over;
   car.tireLife = Math.max(0, car.tireLife - P.WEAR_RATE * wearScale * (speed + P.WEAR_SLIP_FLOOR) * load2 * slideMult * dt);
-  car.markIntensity = surfaceKind === 'grass'
-    ? Math.min(1, speed / 40) // torn turf
-    : Math.min(1, (Math.sqrt(load2) * (speed + P.WEAR_SLIP_FLOOR) * slideMult) / P.MARK_NORM);
+  // Every car working its tires adds a little to the groove; only a real slide leaves a skid.
+  const loose = surfaceKind === 'grass' || surfaceKind === 'gravel';
+  car.groove = loose ? 0 : Math.min(1, (Math.sqrt(load2) * (speed + P.WEAR_SLIP_FLOOR) * slideMult) / P.MARK_NORM);
+  car.skid = loose
+    ? Math.min(1, speed / 40) // torn turf, scattered stones
+    : speed > 3 && over > P.SKID_THRESHOLD ? (over - P.SKID_THRESHOLD) / (1 - P.SKID_THRESHOLD) : 0;
 
   // --- Fuel ---
   const powerUsed = Math.max(0, aLon) * car.mass * speed;
@@ -276,10 +499,14 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1): void
  */
 export function applyImpact(
   car: Car, dvx: number, dvy: number, impactSpeed: number, scrapeWork: number, damageScale = 1,
+  source: { kind: 'wall' | 'car'; other: number | null } = { kind: 'wall', other: null },
 ): void {
-  const thr = P.DAMAGE_SPEED_THRESHOLD;
-  let severity = Math.max(0, impactSpeed * impactSpeed - thr * thr) * P.DAMAGE_PER_ENERGY;
-  severity += scrapeWork * P.SCRAPE_DAMAGE;
+  // (The second damage model: light contact is free, and so is rubbing another car; scraping a wall isn't.)
+  const thr = car.damageModel === 2 ? DAMAGE2.FREE_IMPACT : P.DAMAGE_SPEED_THRESHOLD;
+  let severity = car.damageModel === 2 ? DAMAGE2.RAMP * Math.max(0, impactSpeed - thr) ** 2
+    : Math.max(0, impactSpeed * impactSpeed - thr * thr) * P.DAMAGE_PER_ENERGY;
+  if (car.damageModel !== 2) severity += scrapeWork * P.SCRAPE_DAMAGE;
+  else if (source.kind === 'wall') severity += scrapeWork * DAMAGE2.SCRAPE;
   severity *= damageScale;
   if (severity <= 0) return;
 
@@ -297,14 +524,32 @@ export function applyImpact(
     car.damageEngine = Math.min(1, car.damageEngine + (effective - P.ENGINE_DAMAGE_THRESHOLD) * 2);
   }
   car.health -= effective;
+  car.lastImpact = { kind: source.kind, other: source.other, severity: effective, speed: impactSpeed };
+  if (!car.worstHit || effective > car.worstHit.severity) car.worstHit = { severity: effective, speed: impactSpeed, kind: source.kind };
+  if (source.kind === 'wall') {
+    car.selfInflicted += effective;
+    car.selfTrauma += trauma(effective);
+  }
   if (car.health <= 0) {
     car.health = 0;
     car.retired = true;
   }
 }
 
+/**
+ * Trauma: how bad one impact was for the person in the car, not just the car.
+ * Small knocks are nothing; big hits are far worse than their size, as a
+ * real driver feels them (a hard enough one ends a career, or a life).
+ */
+export const TRAUMA_CURVE = 6;
+export function trauma(damage: number): number {
+  return damage + TRAUMA_CURVE * damage * damage;
+}
+
 /** Seconds the crew needs for a pit call. Tires and fuel happen in parallel. */
 export function serviceTime(car: Car, call: PitCall): number {
+  // A penalty is served, not a stop: no service, only the time in the box (a drive-through barely stops).
+  if (call.penalty) return call.penalty === 'stop-go' ? call.penaltySeconds ?? 10 : 0.5;
   const fuelTime = Math.min(call.fuel, P.FUEL_CAPACITY - car.fuel) / PIT_SERVICE.FUEL_RATE;
   return Math.max(call.tires ? PIT_SERVICE.TIRE_TIME : 0, fuelTime, 2) + (call.repair ? PIT_SERVICE.REPAIR_TIME : 0);
 }

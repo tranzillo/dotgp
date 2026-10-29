@@ -1,44 +1,88 @@
 import { PHYSICS as P } from './constants';
-import { applyImpact, type Car } from './car';
-import { PIT, type Track } from './track';
+import { applyImpact, trauma, type Car } from './car';
+import type { Track } from './track';
 
 /**
- * Walls are analytic lines in track space (constant d), so there are no
- * segment seams. The response keeps tangential speed apart from Coulomb
- * friction proportional to the normal impulse: a shallow hit becomes a
- * scrape along the wall, a steep one bounces off and hurts.
+ * Walls are analytic lines in track space (constant d over an s range), so
+ * there are no segment seams. The response keeps tangential speed apart from
+ * Coulomb friction proportional to the normal impulse: a shallow hit becomes
+ * a scrape along the wall, a steep one bounces off and hurts.
  *
- * Two barriers exist: the outer wall all the way round, and the pit wall
- * along the front straight (two-sided, with solid ends that can be hit
- * nose-first). The infield has no wall; it is grass.
+ * The track's layout says where the walls are (on ovals: the outer wall all
+ * the way round, and the pit wall along the front straight, two-sided with
+ * solid ends that can be hit nose-first).
  */
 export function resolveWalls(car: Car, track: Track, damageScale = 1): void {
-  const r = P.CAR_RADIUS;
   const i = car.trackIdx;
   const nx = -track.ty[i], ny = track.tx[i];
   const wasInContact = car.wallContact;
   car.wallContact = false;
-
-  const outerPen = track.outerWallD - (car.d - r);
-  if (outerPen > 0) wallImpact(car, nx, ny, outerPen, 1, wasInContact, damageScale);
-
-  const half = PIT.WALL_THICKNESS / 2;
-  if (track.inPitWallZone(car.s)) {
-    const gap = car.d - track.pitWallD;
-    const pen = r + half - Math.abs(gap);
-    if (pen > 0) {
-      const side = gap >= 0 ? 1 : -1; // push back to whichever side the car is on
-      wallImpact(car, nx * side, ny * side, pen, side, wasInContact, damageScale);
+  hitWalls(car, track, car.s, car.d, nx, ny, nx, ny, wasInContact, damageScale, false);
+  // Barriers laid in the world (a road layout's closures): solid from both sides.
+  for (const b of track.barriers) {
+    for (let k = 0; k + 1 < b.points.length; k++) {
+      const [ax, ay] = b.points[k], [bx, by] = b.points[k + 1];
+      const vx = bx - ax, vy = by - ay;
+      const t = Math.max(0, Math.min(1, ((car.x - ax) * vx + (car.y - ay) * vy) / (vx * vx + vy * vy || 1)));
+      const dx = car.x - (ax + vx * t), dy = car.y - (ay + vy * t);
+      const dist = Math.hypot(dx, dy);
+      const pen = car.radius + b.thickness / 2 - dist;
+      if (pen > 0 && dist > 1e-9) {
+        const Nx = dx / dist, Ny = dy / dist;
+        wallImpact(car, Nx, Ny, pen, Nx * nx + Ny * ny, wasInContact, damageScale);
+      }
     }
   }
-  // The wall ends: a car arriving head-on hits the end, not the face.
-  for (const [ex, ey] of track.pitWallEnds) {
-    const dx = car.x - ex, dy = car.y - ey;
+  // The venue's other tracks' walls are solid too (measured from their own centerlines), from either side:
+  // a car can come at one from outside the track it bounds.
+  for (const nb of track.neighbours) {
+    const b = nb.bounds;
+    if (car.x < b.minX || car.x > b.maxX || car.y < b.minY || car.y > b.maxY) continue;
+    const q = nb.near(car.x, car.y, nb.reach);
+    if (q) hitWalls(car, nb, q.s, q.d, -nb.ty[q.idx], nb.tx[q.idx], nx, ny, wasInContact, damageScale, true);
+  }
+}
+
+/**
+ * One track's walls against a car at (s, d) on it, its lateral axis (wnx,
+ * wny) there; (onx, ony) is the lateral axis of the track the car races on,
+ * where its d is kept. twoSided: every wall is solid from both sides (another
+ * track's walls), not only the side it faces.
+ */
+function hitWalls(
+  car: Car, track: Track, s: number, d: number, wnx: number, wny: number, onx: number, ony: number,
+  wasInContact: boolean, damageScale: number, twoSided: boolean,
+): void {
+  const r = car.radius;
+  const axis = wnx * onx + wny * ony;
+  for (const wall of track.walls) {
+    if (!track.inRange(s, wall.range)) continue;
+    const mid = typeof wall.d === 'number' ? wall.d : track.edgeAt(wall.d, s);
+    const half = wall.thickness / 2;
+    if (wall.faces === 'in' && !twoSided) {
+      // Keeps cars on its +d side.
+      const pen = mid + half - (d - r);
+      if (pen > 0) wallImpact(car, wnx, wny, pen, axis, wasInContact, damageScale);
+    } else if (wall.faces === 'out' && !twoSided) {
+      const pen = d + r - (mid - half);
+      if (pen > 0) wallImpact(car, -wnx, -wny, pen, -axis, wasInContact, damageScale);
+    } else {
+      const gap = d - mid;
+      const pen = r + half - Math.abs(gap);
+      if (pen > 0) {
+        const side = gap >= 0 ? 1 : -1; // push back to whichever side the car is on
+        wallImpact(car, wnx * side, wny * side, pen, side * axis, wasInContact, damageScale);
+      }
+    }
+  }
+  // Wall ends: a car arriving head-on hits the end, not the face.
+  for (const cap of track.wallCaps) {
+    const dx = car.x - cap.x, dy = car.y - cap.y;
     const dist = Math.hypot(dx, dy);
-    const pen = r + half - dist;
+    const pen = r + cap.radius - dist;
     if (pen > 0 && dist > 1e-9) {
       const Nx = dx / dist, Ny = dy / dist;
-      wallImpact(car, Nx, Ny, pen, Nx * nx + Ny * ny, wasInContact, damageScale);
+      wallImpact(car, Nx, Ny, pen, Nx * onx + Ny * ony, wasInContact, damageScale);
     }
   }
 }
@@ -64,20 +108,45 @@ function wallImpact(
   car.vy += dvy;
 
   if (!wasInContact && -vn > P.DAMAGE_SPEED_THRESHOLD) car.wallHits++;
+  car.wallScrape += friction * vtMag;
+  car.tireLife = Math.max(0, car.tireLife - friction * vtMag * P.WALL_SCRAPE_WEAR);
   // Friction work is charged on every touch, so riding the wall on repeated
   // micro-bounces costs as much as a sustained scrape.
   if (!car.retired) applyImpact(car, dvx, dvy, -vn, friction * vtMag, damageScale);
 }
 
-/** Circle-circle impulses between every overlapping pair. */
-export function resolveCarCollisions(cars: Car[]): void {
-  const r2 = 2 * P.CAR_RADIUS;
+/**
+ * Each car's share of the fault for contact between A and B (A's share; B's
+ * is the rest), in the track frame: closing along the track is the car
+ * behind's fault, moving across into the other car is the mover's. Neither
+ * (touching at the same speed, side by side): shared.
+ */
+export function faultShare(A: Car, B: Car, track: Track): number {
+  const i = A.trackIdx;
+  const tx = track.tx[i], ty = track.ty[i];
+  const lx = -ty, ly = tx;
+  const dx = B.x - A.x, dy = B.y - A.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  const along = (dx * tx + dy * ty) / dist; // > 0: B is ahead of A
+  const across = (dx * lx + dy * ly) / dist;
+  const closing = Math.max(0, ((A.vx - B.vx) * tx + (A.vy - B.vy) * ty) * Math.sign(along)) * Math.abs(along);
+  const side = Math.sign(across);
+  const latA = Math.max(0, (A.vx * lx + A.vy * ly) * side) * Math.abs(across);
+  const latB = Math.max(0, -(B.vx * lx + B.vy * ly) * side) * Math.abs(across);
+  const wA = (along > 0 ? closing : 0) + latA;
+  const wB = (along < 0 ? closing : 0) + latB;
+  return wA + wB < 0.05 ? 0.5 : wA / (wA + wB);
+}
+
+/** Circle-circle impulses between every overlapping pair; damage done is charged by fault (with a track). */
+export function resolveCarCollisions(cars: Car[], track?: Track): void {
   for (let a = 0; a < cars.length; a++) {
     const A = cars[a];
     if (A.cleared) continue;
     for (let b = a + 1; b < cars.length; b++) {
       const B = cars[b];
       if (B.cleared) continue;
+      const r2 = A.radius + B.radius;
       const dx = B.x - A.x, dy = B.y - A.y;
       if (Math.abs(dx) > r2 || Math.abs(dy) > r2) continue;
       const dist2 = dx * dx + dy * dy;
@@ -97,6 +166,8 @@ export function resolveCarCollisions(cars: Car[]): void {
       const rvx = B.vx - A.vx, rvy = B.vy - A.vy;
       const vrel = rvx * nx + rvy * ny;
       if (vrel >= 0) continue;
+      // Who caused it, judged on the velocities going in.
+      const fault = track ? faultShare(A, B, track) : 0.5;
       const j = (-(1 + P.CAR_RESTITUTION) * vrel) / invSum;
 
       // Tangential friction (rubbing), capped by Coulomb.
@@ -110,26 +181,45 @@ export function resolveCarCollisions(cars: Car[]): void {
       B.vx += ix * invB; B.vy += iy * invB;
 
       const closing = -vrel;
-      if (!A.retired) applyImpact(A, -ix * invA, -iy * invA, closing, jt * invA * tvm);
-      if (!B.retired) applyImpact(B, ix * invB, iy * invB, closing, jt * invB * tvm);
+      const hA = A.health, hB = B.health;
+      if (!A.retired) applyImpact(A, -ix * invA, -iy * invA, closing, jt * invA * tvm, 1, { kind: 'car', other: B.id });
+      if (!B.retired) applyImpact(B, ix * invB, iy * invB, closing, jt * invB * tvm, 1, { kind: 'car', other: A.id });
+      A.harmDone += (hB - B.health) * fault;
+      B.harmDone += (hA - A.health) * (1 - fault);
+      A.selfInflicted += (hA - A.health) * fault;
+      B.selfInflicted += (hB - B.health) * (1 - fault);
+      A.selfTrauma += trauma(hA - A.health) * fault;
+      B.selfTrauma += trauma(hB - B.health) * (1 - fault);
+      if (A.lastImpact?.other === B.id && hA !== A.health) A.lastImpact.fault = fault;
+      if (B.lastImpact?.other === A.id && hB !== B.health) B.lastImpact.fault = 1 - fault;
     }
   }
+}
+
+/**
+ * How much of a car's slipstream another gets, `gap` m behind it along the
+ * track and `lateral` m across: 1 tucked right in, falling off linearly to 0
+ * at DRAFT_LENGTH back or DRAFT_WIDTH aside (and 0 ahead of it). The draft's
+ * one rule: the sim's drag and the viewer's wind wall (render/draft.ts).
+ */
+export function draftStrength(gap: number, lateral: number): number {
+  if (lateral > P.DRAFT_WIDTH || gap <= 0 || gap > P.DRAFT_LENGTH) return 0;
+  return (1 - gap / P.DRAFT_LENGTH) * (1 - lateral / P.DRAFT_WIDTH);
 }
 
 /** Slipstream: a car tucked behind another in the same lane sees less drag. */
 export function computeDraft(cars: Car[], track: Track): void {
   for (const c of cars) c.draftFactor = 1;
-  const L = track.length;
   for (const A of cars) {
-    if (A.retired) continue;
+    if (A.retired || A.cleared) continue;
     let best = 0;
     for (const B of cars) {
-      if (B === A || B.retired) continue;
-      const gap = (((B.s - A.s) % L) + L) % L;
-      if (gap <= 0 || gap > P.DRAFT_LENGTH) continue;
+      if (B === A || B.retired || B.cleared) continue; // cleared: not on track for anyone (parked in the pits, too)
+      // Every pair, every step: the cheap test first.
       const lateral = Math.abs(B.d - A.d);
       if (lateral > P.DRAFT_WIDTH) continue;
-      const strength = (1 - gap / P.DRAFT_LENGTH) * (1 - lateral / P.DRAFT_WIDTH);
+      const strength = draftStrength(track.wrapS(B.s - A.s), lateral);
+      if (strength <= 0) continue;
       if (strength > best) best = strength;
       // The leader gets a small push from the car behind.
       B.draftFactor = Math.min(B.draftFactor, 1 - P.DRAFT_PUSH * strength);

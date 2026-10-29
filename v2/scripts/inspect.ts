@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { adaptWeights, neuralTeam, ScriptedDriver } from '../src/ai/drivers';
 import { Car, SIGNATURE_BINS } from '../src/sim/car';
-import { FLAT_TRACK, SHORT_TRACK, SPEEDWAY, Track } from '../src/sim/track';
+import { FLAT_TRACK, ovalTrack, SHORT_TRACK, SPEEDWAY } from '../src/trackgen';
 import { World, type Controller } from '../src/sim/world';
 
 const file = process.argv[2];
@@ -15,7 +15,7 @@ const trackArg = process.argv.indexOf('--track');
 const run = JSON.parse(readFileSync(file, 'utf8'));
 const specs = { speedway: SPEEDWAY, short: SHORT_TRACK, flat: FLAT_TRACK };
 const trackName: keyof typeof specs = trackArg > 0 ? process.argv[trackArg + 1] as keyof typeof specs : run.track;
-const track = new Track(specs[trackName]);
+const track = ovalTrack(specs[trackName]);
 
 const entrants: Array<[string, Controller]> = [
   ['scripted', new ScriptedDriver(0)],

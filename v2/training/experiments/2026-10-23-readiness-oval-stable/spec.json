@@ -1,0 +1,6 @@
+{
+  "note": "first milestone baseline: the oval stable v10 against its own teachers on every oval (presets + one generated per size class), 20 and 40 cars, 150 km",
+  "steps": [
+    { "kind": "readiness", "drivers": "public/drivers/oval-stable.json", "seeds": 4, "only": "ovals" }
+  ]
+}

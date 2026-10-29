@@ -1,5 +1,7 @@
-import { PHYSICS as P } from '../sim/constants';
+import { G, PHYSICS as P } from '../sim/constants';
 import type { Car } from '../sim/car';
+import { compromise } from '../sim/damage';
+import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
 
 /**
@@ -29,14 +31,75 @@ export const RADIO = {
 } as const;
 export const RADIO_SIZE = 16;
 
-const ALONGSIDE_DS = 4 * P.CAR_RADIUS + 1.5; // longitudinal overlap window (m)
+/**
+ * The mirrors, after the radio (a team's radio carries both: RADIO_SIZE + MIRROR_SIZE): what's coming up from behind
+ * fast, below us, in our lane and above us. Each is how soon the soonest car closing on us there arrives (bumper to
+ * bumper at the speed it's closing): 1 = on us now, falling to 0 at MIRROR_TIME, 0 = nothing coming. A car that has
+ * broken is the one most in need of them: 40 m/s slower than the field, moving down across it (2026-10-25: nearly
+ * all the house drivers' wrecks under the second damage model were a field arriving 30 m/s faster). Cars alongside
+ * are the radio's.
+ */
+export const MIRROR = { LOW: 0, LANE: 1, HIGH: 2 } as const;
+export const MIRROR_SIZE = 3;
+/** Seconds ahead the mirrors look: a car arriving later than this isn't coming fast. */
+export const MIRROR_TIME = 4;
+/** How far back the tower watches for them (m): a spotter's skill sees a share of it (as it does behind). */
+const MIRROR_RANGE = 300;
+/** Lateral offset (m) past which a car behind is below or above us, not in our lane. */
+const MIRROR_LANE = 2.5;
+
+/** Longitudinal overlap window (m). (Asked each time: the car's size can be an experiment's.) */
+const alongsideDs = () => 4 * P.CAR_RADIUS + 1.5;
 const ALONGSIDE_DD = 6; // lateral window (m)
 const SAME_LANE_DD = 3.5;
 const AHEAD_RANGE = 120;
 const BEHIND_RANGE = 80;
 const HAZARD_RANGE = 800;
-const HAZARD_SPEED = 25; // m/s: anything slower than this on track is a hazard
+const HAZARD_SPEED = 25; // m/s: anything slower than this on track is a hazard...
+/**
+ * ...or slower than this share of what a car could carry at its spot (the slowest of the two). On a circuit a car in
+ * a slow corner is under 25 m/s: the green hazard was ordinary traffic 97% of the time, called half the time.
+ */
+const HAZARD_SHARE = 0.5;
+/**
+ * While the field is pacing it all runs slower than HAZARD_SPEED (a safety car takes corners well under it), so the
+ * hazard was the next car in line and the wreck behind it never called: then only a car stopped (or out) is (m/s).
+ */
+const PACING_HAZARD_SPEED = 5;
 const CLOSING_SCALE = 20; // m/s
+
+const normals = new WeakMap<Track, Float32Array>();
+
+/**
+ * What a car could carry at each centreline sample (m/s): the corner there on mechanical grip alone (no banking, no
+ * downforce: low, as a hazard's yardstick should be), braked for from what comes and gently accelerated out of (a car
+ * powering out of a slow corner is below what full grip would allow). Once per track.
+ */
+function normalSpeeds(track: Track): Float32Array {
+  const known = normals.get(track);
+  if (known) return known;
+  const n = track.n, ds = track.ds;
+  const w = Math.max(1, Math.round(10 / ds));
+  const v = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    let k = 0;
+    for (let j = -w; j <= w; j++) k += Math.abs(track.kappa[(i + j + n) % n]);
+    k /= 2 * w + 1;
+    v[i] = Math.min(100, Math.sqrt((P.TIRE_MU * G) / Math.max(1e-6, k)));
+  }
+  // Round the lap twice each way: braking into corners (0.8 g), accelerating out (4 m/s^2).
+  const brake = 0.8 * P.TIRE_MU * G, accel = 4;
+  for (let pass = 0; pass < 2 * n; pass++) {
+    const i = (2 * n - 1 - pass) % n;
+    v[i] = Math.min(v[i], Math.sqrt(v[(i + 1) % n] ** 2 + 2 * brake * ds));
+  }
+  for (let pass = 0; pass < 2 * n; pass++) {
+    const i = pass % n;
+    v[i] = Math.min(v[i], Math.sqrt(v[(i - 1 + n) % n] ** 2 + 2 * accel * ds));
+  }
+  normals.set(track, v);
+  return v;
+}
 
 /** A spotter watches the race and fills the radio for its driver. */
 export interface Spotter {
@@ -90,8 +153,15 @@ export class TowerSpotter implements Spotter {
     let ahead2: Car | null = null, ahead2Gap = Infinity;
     let behind: Car | null = null, behindGap = Infinity;
     let hazardGap = Infinity, hazardD = 0;
+    // The pace car (safety car) and wreckers out on track are traffic too: unnamed, the pace car was the car a quarter
+    // of the damaging contacts under caution came from.
+    const trucks = world.solidVehicles;
+    const traffic = world.officials.length || trucks.length
+      ? [...world.cars, ...world.officials.map((o) => o.car), ...trucks] : world.cars;
+    const pacing = !!world.control?.pacing;
+    const normal = pacing ? null : normalSpeeds(track);
 
-    for (const other of world.cars) {
+    for (const other of traffic) {
       if (other === car || other.cleared) continue;
       // Cars behind the pit wall aren't traffic.
       if (other.surface === 'pit' && car.surface !== 'pit') continue;
@@ -101,7 +171,7 @@ export class TowerSpotter implements Spotter {
       const dd = other.d - car.d;
 
       // Alongside: overlapping longitudinally, in an adjacent lane.
-      if (Math.abs(ds) < ALONGSIDE_DS && Math.abs(dd) < ALONGSIDE_DD) {
+      if (Math.abs(ds) < alongsideDs() && Math.abs(dd) < ALONGSIDE_DD) {
         const prox = 1 - clamp01((Math.abs(dd) - r2) / (ALONGSIDE_DD - r2));
         const rel = clamp(ds / (2 * r2), -1, 1);
         if (dd >= 0 && prox > radio[RADIO.LOW_PROX]) {
@@ -114,10 +184,12 @@ export class TowerSpotter implements Spotter {
       }
 
       // The tower sees the whole lap: wrecks and crawling cars anywhere ahead.
-      const gapAhead = ((other.s - car.s) % L + L) % L;
-      // Slow because they're pitting isn't a hazard; slow on the racing surface is.
+      const gapAhead = track.wrapS(other.s - car.s);
+      // Slow because they're pitting isn't a hazard; slow on the racing surface is. (Speed last: it's a square root.)
       const pitting = other.pit.phase !== 'none' && !other.retired;
-      if (!pitting && (other.retired || other.speed < HAZARD_SPEED) && gapAhead > ALONGSIDE_DS && gapAhead < hazardGap) {
+      const hazardSpeed = normal ? Math.min(HAZARD_SPEED, HAZARD_SHARE * normal[other.trackIdx]) : PACING_HAZARD_SPEED;
+      // A car smoking (compromised, under the second damage model) is one too, whatever its speed: it's heading low and in.
+      if (gapAhead > alongsideDs() && gapAhead < hazardGap && !pitting && (other.retired || other.speed < hazardSpeed || compromise(other) > 0)) {
         hazardGap = gapAhead;
         hazardD = other.d;
       }
@@ -140,7 +212,7 @@ export class TowerSpotter implements Spotter {
     if (ahead2 === ahead) {
       ahead2 = null;
       ahead2Gap = Infinity;
-      for (const other of world.cars) {
+      for (const other of traffic) {
         if (other === car || other === ahead || other.cleared) continue;
         if (other.surface === 'pit' && car.surface !== 'pit') continue;
         let ds = other.s - car.s;
@@ -164,6 +236,9 @@ export class TowerSpotter implements Spotter {
       radio[RADIO.HAZARD_LANE] = clamp(hazardD / track.halfWidth, -1.5, 1.5);
     }
     radio[RADIO.DRAFT] = clamp01((1 - car.draftFactor) / P.DRAFT_MAX);
+    if (radio.length >= RADIO_SIZE + MIRROR_SIZE) {
+      mirrorView(car, world, radio.subarray(RADIO_SIZE, RADIO_SIZE + MIRROR_SIZE), MIRROR_RANGE * behindRange / BEHIND_RANGE);
+    }
   }
 
   /**
@@ -178,11 +253,11 @@ export class TowerSpotter implements Spotter {
     const myAlong = alongSpeed(car, world);
     for (const other of world.cars) {
       if (other === car || other.retired || other.cleared || other.pit.phase !== 'none') continue;
-      if (other.d < track.halfWidth - 8) continue; // up high, well clear of the merge
+      if (other.d < track.innerEdge(other.trackIdx) - 8) continue; // up high, well clear of the merge
       let ds = other.s - car.s;
       if (ds > L / 2) ds -= L;
       else if (ds < -L / 2) ds += L;
-      if (Math.abs(ds) < ALONGSIDE_DS + 2) return false;
+      if (Math.abs(ds) < alongsideDs() + 2) return false;
       if (ds < 0 && -ds < this.skill.behindRange) {
         const closing = alongSpeed(other, world) - myAlong;
         if (closing > 0 && -ds / closing < MERGE_TIME_GAP) return false;
@@ -190,6 +265,29 @@ export class TowerSpotter implements Spotter {
     }
     return true;
   }
+}
+
+/** The mirrors (see MIRROR) for a car, seeing `range` m back: what the spotter calls and a teacher reads. */
+export function mirrorView(car: Car, world: World, out: Float32Array, range = MIRROR_RANGE): Float32Array {
+  out.fill(0);
+  if (!world.opts.collisions) return out; // ghosts: nothing to hit
+  const L = world.track.length;
+  const myAlong = alongSpeed(car, world);
+  for (const other of world.cars) {
+    if (other === car || other.cleared) continue;
+    if (other.surface === 'pit' && car.surface !== 'pit') continue;
+    let ds = other.s - car.s;
+    if (ds > L / 2) ds -= L;
+    else if (ds < -L / 2) ds += L;
+    const gap = -ds - 2 * P.CAR_RADIUS;
+    if (ds >= 0 || gap <= 0 || -ds > range) continue;
+    const closing = alongSpeed(other, world) - myAlong;
+    if (closing <= 0 || gap >= closing * MIRROR_TIME) continue;
+    const dd = other.d - car.d;
+    const k = dd >= MIRROR_LANE ? MIRROR.LOW : dd <= -MIRROR_LANE ? MIRROR.HIGH : MIRROR.LANE;
+    out[k] = Math.max(out[k], 1 - gap / closing / MIRROR_TIME);
+  }
+  return out;
 }
 
 /** Translate the radio into words for the broadcast feed. */
@@ -211,6 +309,10 @@ export function describeRadio(radio: Float32Array, prev: Float32Array): string[]
     calls.push('Closing fast behind');
   }
   if (on(RADIO.DRAFT, 0.5)) calls.push('In the draft');
+  // The mirrors (when the radio carries them): something arriving within two seconds.
+  for (const [k, where] of [[MIRROR.LOW, 'low'], [MIRROR.LANE, 'behind'], [MIRROR.HIGH, 'high']] as const) {
+    if ((radio[RADIO_SIZE + k] ?? 0) > 0.5 && !((prev[RADIO_SIZE + k] ?? 0) > 0.5)) calls.push(`Coming fast, ${where}`);
+  }
   return calls;
 }
 

@@ -1,0 +1,60 @@
+
+=== speedway seed 1: 59 laps, 30 cars (a car a pit box), 4x pace (118 s)
+finished 3/30  cautions 1 (11 laps)  retirements 27  biggest wreck 6 cars
+  t=202s  3 car(s): green @49, caution +5s @35, caution +7s @34
+  t=262s  6 car(s): caution +60s @35, caution +61s @39, caution +63s @34, caution +63s @45, caution +68s @32, caution +72s @26
+  t=278s  3 car(s): caution +76s @26, caution +76s @41, caution +80s @4
+  t=297s  2 car(s): caution +95s @37, caution +98s @33
+  t=321s  2 car(s): caution +118s @46, caution +130s @25
+  t=348s  1 car(s): caution +146s @38
+  t=380s  1 car(s): caution +177s @1
+  t=400s  2 car(s): caution +198s @24, caution +205s @32
+  t=412s  2 car(s): near a merging car @12, merging @41
+  t=473s  1 car(s): caution +271s @34
+  t=485s  2 car(s): near a merging car @30, caution +285s @10
+  t=558s  2 car(s): near a merging car @54, caution +364s @50
+  marks lap 5: groove 7%, skids 0% mean darkness; 36% of surface >10% dark, 0% >25%
+  marks lap 20: groove 9%, skids 1% mean darkness; 46% of surface >10% dark, 3% >25%
+
+=== summary by track
+
+speedway (1 races)
+  STEWARDS 7.0 decisions/race: avoidable-contact: time 4, avoidable-contact: drive-through 2, avoidable-contact: warning 1
+  WRECKS  27.0 retirements/race, 1.0 cautions/race, 9 multi-car wrecks (mean 2.7 cars, max 6)
+          by context: under caution 22, near a merging car 3, green 1, merging 1
+          who / what: driver hit car (driver) 26, driver hit wall 1
+          contact retirements: 22 at fault, 4 hit by another
+          damage done to others (by fault): 2.84 health/race
+  PACK    112.3 passes/100 green car-laps, alongside 8%, drafting 24%, lane spread 5.60 m; lockstep same brain –, different brains 0.016
+  PASSING 100.9 clean passes/100 green car-laps; of all passes 10% with contact, 2% damaging, 45% from the draft; 10.4 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 5.30 m, 1.61 m/s, 0.064
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+          in a pit cycle: in entry 1, out blend 1
+  TIRES   wear 0.0830/green lap -> cliff (0.3) after 8 laps; sliding >0.05 1%, >0.35 0%, >0.6 0% of car-steps
+  FUEL    burn 4.81 kg/green lap -> 12 laps per tank
+  DAMAGE  health lost on track /race: green walls 0.30 (0.14 with a car alongside), cars 1.52; caution walls 1.00, cars 25.89
+  STOPS   28.0/race (43% under caution), tires taken 86%, repairs 36%, called for fuel 14% tires 50% damage 32% caution 0% penalty 4%, tire life at stop 0.49 (min 0.27), service 15.3 s
+  PIT ROAD 47.4 s entry to track under green, 60.7 s under caution; 9.0 contacts, 0.98 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 31.37 s (46) | 0.6-0.8: 31.49 s (101) | 0.4-0.6: 32.02 s (50) | 0.3-0.4: 31.81 s (6) | 0.2-0.3: 32.18 s (4) | 0.0-0.2: 34.34 s (5)
+WALL by tyres (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   40-60%             32   0.156    0.42
+WALL   60-80%             56   0.195    0.07
+WALL   over 80%           60   0.017    0.00
+WALL   under 40%          10   0.405    0.02
+WALL by car ahead in lane (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   10-25 m            27   0.111    0.06
+WALL   25-60 m            28   0.143    0.53
+WALL   none in 60 m       92   0.142    0.01
+WALL   under 10 m         12   0.082    0.05
+WALL by alongside (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   car inside         13   0.158    0.64
+WALL   car outside        11   0.000    0.00
+WALL   clear             135   0.141    0.07
+WALL by tow (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   clean air         110   0.136    0.14
+WALL   in a tow           49   0.123    0.04
+WALL by outside wall (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   0.3-1 m             8   0.000    0.00
+WALL   1-2 m               9   0.000    0.00
+WALL   over 2 m          129   0.000    0.00
+WALL   under 0.3 m        13   1.672    1.41

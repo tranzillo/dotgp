@@ -11,7 +11,7 @@ import { Rng } from '../src/ai/rng';
 import { Car } from '../src/sim/car';
 import { placeOnGrid } from '../src/sim/grid';
 import { Race } from '../src/sim/race';
-import { FLAT_TRACK, SHORT_TRACK, SPEEDWAY, Track } from '../src/sim/track';
+import { FLAT_TRACK, ovalTrack, SHORT_TRACK, SPEEDWAY } from '../src/trackgen';
 import { World } from '../src/sim/world';
 
 const args = new Map<string, string>();
@@ -19,7 +19,7 @@ for (let i = 3; i < process.argv.length; i += 2) args.set(process.argv[i].replac
 const run = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const list: Array<{ lineage: number; weights: number[] }> = run.drivers ?? run.champions;
 const specs = { speedway: SPEEDWAY, short: SHORT_TRACK, flat: FLAT_TRACK } as const;
-const track = new Track(specs[(args.get('track') ?? 'speedway') as keyof typeof specs]);
+const track = ovalTrack(specs[(args.get('track') ?? 'speedway') as keyof typeof specs]);
 const laps = Number(args.get('laps') ?? 20);
 const copies = Number(args.get('copies') ?? 2);
 const pace = Number(args.get('pace') ?? 1);

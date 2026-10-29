@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DotGP Practice</title>
+    <title>DotGP</title>
     <style>
       :root {
         --bg: #0d0d0f;
@@ -16,12 +16,102 @@
       }
       * { box-sizing: border-box; }
       html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, sans-serif; }
-      #app { display: grid; grid-template-columns: 1fr 360px; height: 100vh; }
-      #stage { position: relative; min-width: 0; }
-      #track { width: 100%; height: 100%; display: block; }
-      #hud { position: absolute; left: 16px; top: 12px; font-family: var(--mono); color: var(--muted); font-size: 12px; pointer-events: none; }
+      /* The app is exactly the viewport; the sidebar scrolls inside it. */
+      #app { display: grid; grid-template-columns: minmax(0, 1fr) 360px; grid-template-rows: minmax(0, 1fr); height: 100vh; height: 100dvh; overflow: hidden; }
+      /* The track view over the control bar. */
+      #stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+      /* A size container: the HUD's type scales with the track view's width (cqi), not the window's. */
+      #view { position: relative; min-height: 0; container-type: inline-size; }
+      /* Out of the flow: the canvas's pixel size (set to match the stage) must never size the stage back. */
+      #track { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+      /* One line per row of the HUD (ellipsis rather than wrapping), so its height, which the track is fitted under, holds steady. */
+      /* Never smaller than 12px; grows with a wider view, up to 18px. */
+      #hud { position: absolute; left: 16px; right: 16px; top: 12px; font-family: var(--mono); color: var(--muted); font-size: clamp(12px, 0.95cqi, 18px); pointer-events: none;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; contain: layout paint; will-change: transform; }
       #hud b { color: var(--text); font-weight: 600; }
-      aside { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 14px 14px 24px; }
+      /* Performance readout (P): two lines over the top right of the view, beside the HUD (which makes room for it). */
+      #perf { position: absolute; right: 16px; top: 12px; font-family: var(--mono); color: var(--muted); font-size: clamp(12px, 0.95cqi, 18px);
+        font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; pointer-events: none; contain: layout paint; will-change: transform; }
+      #perf[hidden] { display: none; }
+      /* Where the track can't be drawn (no WebGL2): why, in the middle of the view. */
+      .no-view { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); font-family: var(--mono); pointer-events: none; }
+      #perf .warn { color: #f5c518; }
+      #perf .bad { color: #ff5a5a; }
+      #perf button { pointer-events: auto; margin-left: 4px; padding: 1px 6px; font: 11px/1 var(--mono); vertical-align: 1px; }
+      #view.perf-on #hud { right: calc(16px + 62ch); }
+      /* Control bar: transport, timeline, speed, camera, display options */
+      /* The timeline runs the full width on top; transport left, view options right, below it. */
+      #controls { contain: layout paint; display: flex; align-items: center; gap: 6px 14px; padding: 4px 16px 8px; border-top: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+      #controls .push { margin-left: auto; }
+      #controls .group { display: flex; align-items: center; gap: 6px; }
+      #controls .ctl-label { color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+      .seg { display: inline-flex; }
+      .seg button { border-radius: 0; margin-left: -1px; padding: 4px 8px; font-variant-numeric: tabular-nums; }
+      .seg button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+      .seg button:last-child { border-radius: 0 4px 4px 0; }
+      .seg button.on { position: relative; z-index: 1; }
+      .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 28px; padding: 0; }
+      .icon-btn svg { width: 14px; height: 14px; fill: currentColor; }
+      #timeline { order: -1; flex: 1 1 100%; display: flex; align-items: center; gap: 12px; }
+      /* The fill and playhead move by transform (set from script, the playhead in cqw of the bar), each on its own layer: no layout or repaint as they go. */
+      #tlBar { position: relative; flex: 1; height: 18px; cursor: pointer; touch-action: none; container-type: inline-size; }
+      /* Rewound: how far the race has got (the playhead can go back to it). */
+      #tlLive { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; transform: translateX(-100%); will-change: transform; background: #4a4a55; border-radius: 3px; }
+      #tlHead { position: absolute; left: 0; top: 3px; will-change: transform; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 2px var(--panel); pointer-events: none; opacity: 0; transition: opacity .15s; }
+      #tlBar:hover #tlHead, #tlBar.replay #tlHead { opacity: 1; }
+      .live-btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--muted); }
+      .live-btn i { width: 7px; height: 7px; border-radius: 50%; background: #55555e; }
+      .live-btn.live { color: var(--text); cursor: default; }
+      .live-btn.live i { background: #ff3b3b; }
+      .live-btn[hidden] { display: none; }
+      button.icon-btn.on { background: var(--text); color: var(--bg); }
+      .tl-line { position: absolute; left: 0; right: 0; top: 6px; height: 6px; border-radius: 3px; background: #22222a; overflow: hidden; }
+      #tlFill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; transform: translateX(-100%); will-change: transform; background: var(--text); border-radius: 3px; }
+      #tlCautions, #tlTicks, #tlMarks { position: absolute; inset: 0; }
+      #tlCautions span { position: absolute; top: 0; bottom: 0; background: #f5c518; }
+      #tlTicks i { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(13,13,15,0.7); }
+      /* Event markers: a thin line in the event's colour, with a wider hover target. */
+      #tlMarks i { position: absolute; top: 0; bottom: 0; width: 9px; margin-left: -4.5px; }
+      #tlMarks i::after { content: ''; position: absolute; left: 3.5px; top: 1px; bottom: 1px; width: 2px; border-radius: 1px; background: var(--c); }
+      #tlMarks i.minor::after { top: 3px; bottom: 3px; }
+      #tlMarks i:hover::after { left: 2.5px; width: 4px; }
+      #tlLabel { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+      #tlLabel b { color: var(--text); font-weight: 600; }
+      .popwrap { position: relative; }
+      .vsep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
+      /* A slider and a number box for one value: either one moves the other. */
+      .slider-num { display: inline-flex; align-items: center; gap: 6px; }
+      .slider-num input[type=range] { width: 96px; margin: 0; accent-color: var(--text); cursor: pointer; }
+      .slider-num input[type=number] { width: 58px; height: 28px; background: #1d1d21; color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px 0 6px;
+        font: 12px var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+      .slider-num input[type=number]:focus { outline: none; border-color: #6a6a72; }
+      .slider-num .unit { color: var(--muted); font: 12px var(--mono); margin-left: -3px; }
+      .pop { position: absolute; bottom: calc(100% + 8px); z-index: 4; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+      .pop[hidden] { display: none; }
+      #displayPop { right: 0; width: 300px; padding: 10px 12px 6px; }
+      /* The camera: whose car it's on (and a list of the field to pick from), and the cars in a moment picked off the timeline. */
+      #camPick { display: inline-flex; align-items: center; gap: 2px; width: 190px; height: 28px; padding: 0 8px; white-space: nowrap; overflow: hidden; }
+      #camPick .who { overflow: hidden; text-overflow: ellipsis; }
+      #camPick .muted { margin-left: auto; padding-left: 6px; }
+      #camPop { left: 50%; transform: translateX(-50%); width: 300px; max-height: 380px; overflow-y: auto; padding: 4px 0; }
+      #camPop .pick { display: flex; align-items: center; gap: 2px; width: 100%; padding: 4px 10px; border: 0; border-radius: 0; background: transparent; text-align: left; font: 12px var(--mono); white-space: nowrap; }
+      #camPop .pick:hover { background: #1d1d22; }
+      #camPop .pick.on { background: #26262c; color: var(--text); border-color: transparent; }
+      #camPop .pick .pos { width: 26px; color: var(--muted); }
+      #camPop .pick .name { flex: 1; overflow: hidden; text-overflow: ellipsis; font-family: system-ui, sans-serif; }
+      #camPop .pick.out { color: #6a6a72; }
+      #camPop .head { padding: 6px 10px 3px; color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+      #camIncident { display: inline-flex; align-items: center; gap: 3px; padding-left: 4px; }
+      #camIncident[hidden] { display: none; }
+      #camIncident button { height: 26px; padding: 0 7px; font-size: 12px; }
+      #camIncident .tag { color: #ff9f1a; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin-right: 2px; }
+      /* The car the camera's on, in the tower and the paddock. */
+      .cam { display: inline-block; width: 10px; height: 8px; margin-left: 5px; vertical-align: 0; background: currentColor; color: #ff9f1a;
+        clip-path: polygon(0 15%, 65% 15%, 65% 40%, 100% 15%, 100% 85%, 65% 60%, 65% 85%, 0 85%); }
+      #displayPop h2 { margin: 4px 0 8px; }
+      #displayPop h2 + .row { margin-top: 0; }
+      /* The panels refresh several times a second: contained, so that redoes their own layout and paint, not the page's. */
+      aside { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 14px 14px 24px; contain: layout paint style; }
       h2 { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; font-weight: 600; }
       h2:first-child { margin-top: 0; }
       .row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
@@ -31,7 +121,14 @@
       }
       button:hover, label.btn:hover { border-color: #44444c; }
       button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+      button:disabled { opacity: .4; cursor: default; }
       input[type=file] { display: none; }
+      /* A venue's seed, or its code (kind:seed:size[:shape]) to recreate it. */
+      #genSeed { width: 190px; height: 28px; background: #1d1d21; color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; font: 12px var(--mono); }
+      #genSeed:focus { outline: none; border-color: #6a6a72; }
+      #genSeed.bad { border-color: #c0504d; }
+      #genCode code { font: 12px var(--mono); color: var(--text); user-select: all; }
+      #genCode button { margin-left: 6px; padding: 2px 7px; font-size: 12px; }
       table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
       th { color: var(--muted); font-weight: 500; text-align: right; padding: 3px 4px; border-bottom: 1px solid var(--line); }
       td { text-align: right; padding: 4px 3px; border-bottom: 1px solid #1c1c20; white-space: nowrap; }
@@ -43,6 +140,10 @@
       tr { cursor: pointer; }
       .chip { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
       .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 3px solid; box-sizing: border-box; margin-right: 6px; vertical-align: -1px; }
+      .views { position: sticky; top: -14px; z-index: 2; display: flex; gap: 2px; margin: -14px -14px 4px; padding: 8px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
+      .views button { flex: 1; padding: 5px 4px; border-color: transparent; background: transparent; color: var(--muted); }
+      .views button.on { background: #1d1d21; color: var(--text); border-color: var(--line); }
+      section[hidden] { display: none; }
       .label { color: var(--muted); font-size: 11px; width: 52px; align-self: center; }
       .row.inline { margin: 0; }
       #towerWrap { max-height: 360px; overflow-y: auto; }
@@ -57,6 +158,50 @@
       .tech div { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 4px; }
       .note { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
       #radio { font-family: var(--mono); font-size: 12px; min-height: 13em; }
+      #rosterWrap { max-height: 260px; overflow-y: auto; }
+      #eventsWrap { max-height: 180px; overflow-y: auto; margin-bottom: 6px; }
+      #replayWrap { max-height: 260px; overflow-y: auto; margin-top: 6px; }
+      #replayList .muted { font-size: 11px; margin-top: 1px; }
+      .usage { height: 4px; border-radius: 2px; background: #22222a; overflow: hidden; margin-top: 4px; }
+      #replayUsageBar { height: 100%; width: 0; background: var(--muted); }
+      #studentPicker { max-height: 160px; overflow-y: auto; margin: 6px 0; }
+      #studentPicker label.pick { display: block; padding: 2px 0; cursor: pointer; }
+      #lessonNote { margin: 0 0 4px; }
+      table.events td { text-align: left; white-space: normal; font-family: system-ui, sans-serif; }
+      table.events td.act { text-align: right; white-space: nowrap; }
+      table.events td.act button { padding: 2px 7px; margin-left: 3px; }
+      table.roster td { text-align: left; }
+      a[data-agent] { color: var(--text); text-decoration: underline; text-decoration-color: #4a4a52; text-underline-offset: 2px; cursor: pointer; }
+      a[data-agent]:hover { text-decoration-color: var(--text); }
+      a.ap-watch { color: var(--muted); cursor: pointer; margin-left: 6px; white-space: nowrap; font-family: system-ui, sans-serif; font-size: 11px; }
+      a.ap-watch:hover { color: var(--text); }
+      /* Agent history page, over the track view */
+      #agentPage { position: absolute; inset: 0; background: rgba(13,13,15,0.97); overflow-y: auto; padding: 22px 28px 40px; z-index: 5; }
+      #agentPage[hidden] { display: none; }
+      #agentPage h1 { font-size: 22px; margin: 2px 0 6px; font-weight: 600; }
+      #agentPage h2 { margin-top: 22px; }
+      .ap-head { position: relative; }
+      .ap-head [data-close] { position: absolute; right: 0; top: 0; }
+      .ap-head .role { color: var(--muted); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
+      .facts { color: var(--muted); }
+      .facts b { color: var(--text); font-weight: 500; }
+      .ap-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-top: 16px; }
+      .ap-tile { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; }
+      .ap-tile .v { font: 600 20px var(--mono); }
+      .ap-tile .l { color: var(--muted); font-size: 11px; }
+      .ap-charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+      .ap-chart { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px 4px; }
+      .ap-chart figcaption { font-size: 12px; margin-bottom: 2px; }
+      .ap-chart svg { width: 100%; display: block; touch-action: none; }
+      .ap-chart .axis { stroke: #2c2c32; stroke-width: 1; }
+      .ap-chart .tick { fill: var(--muted); font: 9px var(--mono); }
+      .ap-chart .hair { stroke: #8a8a93; stroke-width: 1; }
+      table.ap-races { max-width: 760px; }
+      .ap-timeline { font-family: var(--mono); font-size: 12px; max-width: 900px; }
+      .ap-timeline div { padding: 3px 0; border-bottom: 1px solid #1c1c20; }
+      .ap-timeline .when { display: inline-block; width: 92px; color: var(--muted); }
+      .ap-tip { position: absolute; pointer-events: none; background: #1d1d22; border: 1px solid var(--line); border-radius: 4px;
+        padding: 6px 8px; font: 11px var(--mono); color: var(--text); z-index: 6; }
       #radio div { padding: 1px 0; }
       .flagtag { display: inline-block; padding: 0 6px; border-radius: 3px; font-weight: 700; color: #111; margin-right: 4px; }
       .flagtag.green { background: #3fdc8a; }
@@ -66,7 +211,7 @@
       table.standings td.name, table.standings th:nth-child(3) { text-align: left; }
       table.standings td:nth-child(2) { text-align: left; }
       @media (max-width: 860px) {
-        #app { grid-template-columns: 1fr; grid-template-rows: 55vh auto; height: auto; }
+        #app { grid-template-columns: minmax(0, 1fr); grid-template-rows: 55vh auto; grid-template-rows: 55svh auto; height: auto; overflow: visible; }
         aside { border-left: 0; border-top: 1px solid var(--line); }
       }
     </style>
@@ -74,54 +219,149 @@
   <body>
     <div id="app">
       <div id="stage">
-        <canvas id="track"></canvas>
-        <div id="hud"></div>
+        <div id="view">
+          <canvas id="track"></canvas>
+          <div id="hud"></div>
+        </div>
+        <div id="controls">
+          <div id="timeline"><div id="tlBar"><div class="tl-line"><div id="tlLive"></div><div id="tlFill"></div><div id="tlCautions"></div><div id="tlTicks"></div></div><div id="tlMarks"></div><div id="tlHead"></div></div><span id="tlLabel"></span></div>
+          <div class="group">
+            <button id="stepBack" class="icon-btn" title="Step 0.1 s back (,)"><svg viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="2" height="11"/><path d="M13 2.5v11L5.5 8z"/></svg></button>
+            <button id="reverse" class="icon-btn" title="Play backwards (R)"><svg viewBox="0 0 16 16"><path d="M8 3v10L1.5 8zM15 3v10L8.5 8z"/></svg></button>
+            <button id="playPause" class="icon-btn" title="Pause (Space or K)"></button>
+            <button id="stepAhead" class="icon-btn" title="Step 0.1 s ahead (.)"><svg viewBox="0 0 16 16"><path d="M3 2.5v11l7.5-5.5z"/><rect x="11.5" y="2.5" width="2" height="11"/></svg></button>
+            <button id="goLive" class="live-btn" title="Back to live (End)"><i></i>LIVE</button>
+            <span class="vsep"></span>
+            <span class="slider-num"><label class="ctl-label" for="speedNum" title="Slower (J), faster (L)">Sim speed</label><input type="range" id="speedRange" min="0" max="1000" step="1" aria-label="Sim speed" title="Slower (J), faster (L)"><input type="number" id="speedNum" min="0.1" max="64" step="0.25" inputmode="decimal"><span class="unit">×</span></span>
+          </div>
+          <div id="camera" class="group push">
+            <span class="ctl-label">Camera</span>
+            <button id="camPrev" class="icon-btn" title="Previous car ([)" aria-label="Previous car"><svg viewBox="0 0 16 16"><path d="M10.5 2.5v11L3.5 8z"/></svg></button>
+            <div class="popwrap">
+              <button id="camPick" title="The driver in focus: the camera follows them and the tower, paddock and radio pick them out" aria-expanded="false" aria-controls="camPop"></button>
+              <div id="camPop" class="pop" hidden></div>
+            </div>
+            <button id="camNext" class="icon-btn" title="Next car (])" aria-label="Next car"><svg viewBox="0 0 16 16"><path d="M5.5 2.5v11l7-5.5z"/></svg></button>
+            <span id="camIncident" hidden></span>
+            <span class="vsep"></span>
+            <span class="slider-num"><label class="ctl-label" for="zoomNum" title="Cycle with Z (1 = the whole track)">Zoom</label><input type="range" id="zoomRange" min="0" max="1000" step="1" aria-label="Zoom" title="Cycle with Z (1 = the whole track)"><input type="number" id="zoomNum" min="1" max="16" step="0.1" inputmode="decimal"><span class="unit">×</span></span>
+          </div>
+          <div class="popwrap">
+            <button id="displayToggle" title="Display options" aria-expanded="false" aria-controls="displayPop">Display</button>
+            <div id="displayPop" class="pop" hidden>
+              <h2>Display</h2>
+              <div class="row"><span class="label">Cars</span><span id="dotButtons" class="row inline"></span></div>
+              <div class="row"><span class="label" title="Speed trails, and exhaust puffs while the engine is pulling">Trails</span><span id="effectButtons" class="row inline"></span></div>
+              <div class="row"><span class="label" title="Driving school: each student's practice variations, drawn faint">Variants</span><span id="variationButtons" class="row inline"></span></div>
+              <div class="row"><span class="label">Marks</span><button id="clearMarks" title="Clear the skid marks">Clear</button></div>
+              <h2>Debug</h2>
+              <div class="row"><span class="label">Layers</span><span id="debugButtons" class="row inline"></span></div>
+              <div class="row"><span class="label" title="Frame rate, frame times, sim speed achieved and the worker's load, with a report to copy or save (P)">Perf</span><span id="perfButtons" class="row inline"></span></div>
+            </div>
+          </div>
+        </div>
+        <div id="agentPage" hidden></div>
       </div>
       <aside>
-        <h2>Session</h2>
-        <div class="row" id="trackButtons"></div>
-        <div class="row"><span class="label">Session</span><span id="modeButtons" class="row inline"></span></div>
-        <div class="row"><span class="label">Laps</span><span id="lapButtons" class="row inline"></span></div>
-        <div class="row"><span class="label">Pace</span><span id="paceButtons" class="row inline"></span></div>
-        <div class="row"><span class="label"></span><span id="autoButtons" class="row inline"></span></div>
-        <div class="row"><span class="label">Field</span><span id="fieldButtons" class="row inline"></span></div>
-        <div class="row"><span class="label">Speed</span><span id="speedButtons" class="row inline"></span></div>
-        <div class="row"><span class="label">Camera</span><span id="zoomButtons" class="row inline"></span></div>
-        <div class="row"><span class="label">Cars</span><span id="dotButtons" class="row inline"></span></div>
-        <div class="row">
-          <button id="toggleInputs" class="on">Input vectors</button>
-          <button id="clearMarks">Clear marks</button>
-          <button id="restart">Restart</button>
-        </div>
+        <nav id="views" class="views">
+          <button data-view="watch">Watch</button><button data-view="series">Series</button><button data-view="paddock">Paddock</button><button data-view="academy">Academy</button><button data-view="settings">Settings</button>
+        </nav>
 
-        <h2>Timing</h2>
-        <div id="towerWrap"><table>
-          <thead><tr><th>P</th><th>Driver</th><th>Gap</th><th>Best</th><th>Tire</th><th>Fuel</th><th>Pit</th><th>Hlth</th></tr></thead>
-          <tbody id="tower"></tbody>
-        </table></div>
+        <section data-view="watch">
+          <h2>Timing</h2>
+          <div id="towerWrap"><table>
+            <thead id="towerHead"><tr><th>P</th><th>Driver</th><th>Gap</th><th>Best</th><th>Tire</th><th>Fuel</th><th>Pit</th><th>Hlth</th></tr></thead>
+            <tbody id="tower"></tbody>
+          </table></div>
+          <p class="note">Click a car to put it in focus (the camera follows it, the radio is only its team; [ and ] go through the field, and the camera bar lists it); double-click for the driver's history.</p>
 
-        <h2>Championship</h2>
-        <div id="season"></div>
+          <h2>Team radio</h2>
+          <div id="radio"></div>
 
-        <h2>Teams <span class="muted">(driver · spotter · crew chief)</span></h2>
-        <div id="teamsWrap"><table class="teams"><tbody id="teams"></tbody></table></div>
-        <div id="teamsNote" class="note"></div>
+          <h2>Events <span class="muted">(one on screen, the rest run in the background)</span></h2>
+          <div id="eventsWrap"><table class="events"><tbody id="events"></tbody></table></div>
+          <div class="row"><button id="clearEvents">Clear finished</button><span id="tapeNote" class="muted" style="align-self:center"></span></div>
+        </section>
 
-        <h2>Team radio <span class="muted">(click a driver to filter)</span></h2>
-        <div id="radio"></div>
+        <section data-view="series" hidden>
+          <h2>Championship</h2>
+          <div id="season"></div>
+          <div class="row"><button id="nextRound" title="Race the next round of the championship now">Race the next round</button></div>
+          <div class="row"><span class="label" title="What the field does when a race ends (a race weekend: practice, qualifying, then the race)">Then</span><span id="autoButtons" class="row inline"></span></div>
 
-        <h2>Practice (live learning)</h2>
-        <div class="row">
-          <button id="practice">Start practice</button>
-          <label class="btn">Load drivers<input type="file" id="loadFile" accept=".json" /></label>
-          <button id="saveFile">Download</button>
-          <button id="newDrivers">New rookies</button>
-        </div>
-        <div id="practiceStatus"></div>
-        <p class="note">Practice runs offscreen in a worker: 8-car race heats with contact on all three ovals. Each round, the cars on track get the improved weights.</p>
+          <h2>Race settings <span class="muted">(championship and exhibitions)</span></h2>
+          <div class="row"><span class="label">Field</span><span id="fieldButtons" class="row inline"></span></div>
+          <div class="row"><span class="label">Laps</span><span id="lapButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="How qualifying runs (from the next qualifying). By series: its rulebook's format (ovals one car at a time, road racing in rounds with the field together)">Qualifying</span><span id="qualiFormatButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="Solo qualifying: timed laps each car runs, one car at a time; its best one counts">Solo laps</span><span id="qualiLapButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="Group qualifying: rounds with the field on track together; after each but the last the slowest go out (the field over the rounds each time)">Rounds</span><span id="qualiRoundButtons" class="row inline"></span><span id="qualiMinuteButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="Tire wear and fuel burn multiplier">Pace</span><span id="paceButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="Drivers learn as they race, comparing laps (from the next race)">Learn</span><span id="learnButtons" class="row inline"></span></div>
+          <div class="row"><button id="restart" title="Start the field's current session again with these settings">Restart</button></div>
 
-        <h2>Technique <span class="muted">(where tire force points vs. travel)</span></h2>
-        <div id="techniques"></div>
+          <h2>Exhibition <span class="muted">(doesn't count for the championship)</span></h2>
+          <div class="row"><span class="label" title="Where to race: the presets, and any venue generated below">Venue</span><span id="venueButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="Who races, to their rulebook. Only series that race on one of the venue's layouts can be picked">Series</span><span id="seriesButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="Which of the venue's layouts the series races on">Layout</span><span id="layoutButtons" class="row inline"></span></div>
+          <div class="row"><span class="label">Session</span><span id="modeButtons" class="row inline"></span></div>
+          <div class="row"><button id="startExhibition" title="Start this session for the field (its current session ends)">Start</button></div>
+
+          <h2>Generate a venue</h2>
+          <div class="row"><span class="label">Kind</span><span id="genKindButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="Size class (any: the seed picks)">Size</span><span id="genSizeButtons" class="row inline"></span></div>
+          <div class="row" id="genShapeRow"><span class="label" title="Oval shape (any: the size class's mix). Drivers practise on all of them in the Track variety lesson">Shape</span><span id="genShapeButtons" class="row inline"></span></div>
+          <div class="row"><span class="label" title="Empty: a new random venue. A seed: that venue, with the kind and size above. A venue's code (oval:123:speedway) or link: that venue exactly">Seed</span><input type="text" id="genSeed" placeholder="random, a seed, or a code" spellcheck="false" autocomplete="off"></div>
+          <div class="row"><button id="generate" title="Add a venue to the Exhibition list (starts nothing)">Generate</button></div>
+          <p class="note" id="genCode" hidden></p>
+          <div class="row"><span class="label" title="A real track's line, from survey data (public/tracks), laid out as DotGP lays out its own: its pits, run-off and banking are DotGP's. Clockwise tracks are raced as their mirror image and drawn the right way round">Real track</span><select id="realTrack"></select><button id="addReal" title="Add it to the Exhibition list (starts nothing)">Add</button></div>
+          <p class="note">Generating adds a venue to the list without starting anything. Pick a venue, series, layout and session, then Start. The same seed and settings always make the same venue.</p>
+        </section>
+
+        <section data-view="paddock" hidden>
+          <h2>Drivers on track</h2>
+          <div class="row" id="rosterSource"></div>
+          <div id="rosterSourceNote" class="note"></div>
+
+          <h2>Teams <span class="muted">(driver · spotter · crew chief)</span></h2>
+          <div id="teamsWrap"><table class="teams"><tbody id="teams"></tbody></table></div>
+          <div id="teamsNote" class="note"></div>
+
+          <h2>Roster <span class="muted">(click a name for their history)</span></h2>
+          <div class="row"><span id="rosterTabs" class="row inline"></span><button id="recruit" title="Sign a new agent to the academy (no seat): drivers descend from a licensed driver">Recruit</button><button id="recruitRookie" title="Sign a raw rookie driver (no license: driving school first)">Raw rookie</button></div>
+          <div id="rosterWrap"><table class="roster"><tbody id="roster"></tbody></table></div>
+        </section>
+
+        <section data-view="academy" hidden>
+          <h2>Driving school</h2>
+          <div class="row" id="lessonButtons"></div>
+          <div id="lessonNote" class="note"></div>
+          <div id="studentPicker"></div>
+          <div class="row"><button id="startClass">Start class</button></div>
+
+          <h2>Practice (live learning)</h2>
+          <div class="row"><button id="practice">Start practice</button></div>
+          <div id="practiceStatus"></div>
+          <p class="note">The field practises offscreen in a worker: 6-car heats with contact on the preset ovals, and crew chiefs learn strategy. Each round the cars on track get the improved driving. Unlicensed drivers in the field do rookie school here.</p>
+        </section>
+
+        <section data-view="settings" hidden>
+          <h2>Technique <span class="muted">(where tire force points vs. travel)</span></h2>
+          <div id="techniques"></div>
+
+          <h2>Replays</h2>
+          <div class="row"><span class="label" title="Past this, the oldest replays go (pinned ones stay)">Keep</span><span id="replayCapButtons" class="row inline"></span></div>
+          <div class="usage"><div id="replayUsageBar"></div></div>
+          <p id="replayUsage" class="note" style="margin-top:4px"></p>
+          <div id="replayWrap"><table class="events"><tbody id="replayList"></tbody></table></div>
+
+          <h2>Data</h2>
+          <div class="row">
+            <label class="btn" title="Load a roster saved with Download">Load roster<input type="file" id="loadFile" accept=".json" /></label>
+            <button id="saveFile" title="Save the roster and the championship to a file">Download</button>
+            <button id="newDrivers" title="Replace every driver in the field with a raw rookie (the old drivers are deleted)">New rookies</button>
+          </div>
+          <div id="dataNote" class="note"></div>
+        </section>
       </aside>
     </div>
     <script type="module" src="/src/ui/main.ts"></script>

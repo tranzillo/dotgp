@@ -1,0 +1,646 @@
+import { carSpec, type CarSpec } from '../sim/carSpec';
+import { EXPERIMENT } from '../sim/experiment';
+import { G, PHYSICS as P, SURFACES } from '../sim/constants';
+import type { Car } from '../sim/car';
+import type { Track } from '../sim/track';
+import type { World } from '../sim/world';
+
+/**
+ * The fastest line round a road circuit, and the speed it can be driven at:
+ * a yardstick for drivers' lines, and a teacher that drives like a racer
+ * (wide entry, apex, wide exit) rather than holding a lane.
+ *
+ * The line may use the whole width the track limits allow (the car's centre
+ * up to its half width past the white line, less a margin). It starts as
+ * the smoothest path in that corridor (least curvature: the classic racing
+ * line) and is then refined for lap time, which settles what geometry alone
+ * can't: late apexes (straightening the exit onto a long straight), and
+ * whether a kerb or the run-off is worth its lost grip.
+ *
+ * Lap time comes from the line's speed profile: at each point the fastest
+ * the tyres allow round the line's own curvature (on the surface there),
+ * reached by full braking before it and the engine after it, sharing the
+ * friction ellipse with cornering, drag and rolling resistance included.
+ */
+export interface RacingLine {
+  /** Spacing of the line's points along the centreline (m). */
+  readonly step: number;
+  /** Lateral offset (track d) at each point, s = k * step. */
+  readonly d: Float32Array;
+  /** The line's own curvature at each point (signed as the track's: + turning toward +d). */
+  readonly kappa: Float32Array;
+  /** Speed (m/s) the line can be driven at, at each point. */
+  readonly speed: Float32Array;
+  /** Lap time (s) of the speed profile. */
+  readonly lapTime: number;
+  /** The corridor the line was laid in, at each point: the least and greatest d (inside the track limits, off rough ground, clear of walls). */
+  readonly lo: Float32Array;
+  readonly hi: Float32Array;
+  /** The profile using only a share of the tyres' grip (a driver's margin): speed at each point, and its lap time. */
+  readonly at: (gripShare: number) => LineProfile;
+}
+
+export interface LineOptions {
+  /** Kept inside the track limits (m): room for a driver's small errors. */
+  margin: number;
+  /** Point spacing (m). */
+  step: number;
+  /** Car mass (kg) the profile is worked out for (default: half a tank). */
+  mass: number;
+  /** Refinement for lap time: tries per point. */
+  refine: number;
+  /** The share of the tyres' grip lap time is judged at while refining (drivers drive at 0.82-0.90 of it). */
+  gripShare: number;
+  /**
+   * A groove instead of the fastest line: this far across from the inside limit of the corridor (m), all the way round
+   * (where the road narrows, as near as it can), with its own speed profile. Unset: the fastest line.
+   */
+  groove?: number;
+  /**
+   * One of an oval's two lines instead of the fastest line across the whole road: the fastest line kept to the inside
+   * half of the corridor ('low') or the outside half ('high'), the high one WALL_BUFFER off the wall besides its margin.
+   */
+  half?: 'low' | 'high';
+  /** The car it's laid for (default: the car in use there), and its half width (default: the cars' in use). */
+  spec?: CarSpec;
+  radius?: number;
+  seed: number;
+}
+
+/** How much further than its margin an oval's high line keeps off the wall (m): room for a following car's errors. */
+export const WALL_BUFFER = 1.5;
+
+const DEFAULTS: LineOptions = { margin: 0.6, step: 2.5, mass: P.DRY_MASS + P.FUEL_CAPACITY / 2, refine: 30, seed: 1, gripShare: 1 };
+const TOP_SPEED = 105;
+
+/** Geometry of the corridor: centreline points, normals (+d), and the bounds of d. */
+interface Corridor {
+  n: number;
+  step: number;
+  cx: Float64Array; cy: Float64Array; nx: Float64Array; ny: Float64Array;
+  lo: Float64Array; hi: Float64Array;
+  s: Float64Array;
+  /** The grip of the car it's laid for (default: the car in use there). */
+  grip?: number;
+}
+
+/** Ground a racing line keeps off, though the track limits may not: rough (the car slides on it), or not the circuit (pit lane, apron, garage). */
+const offLimits = (surface: string) => surface === 'grass' || surface === 'gravel' || surface === 'pit' || surface === 'apron' || surface === 'garage';
+
+function corridor(track: Track, step: number, margin: number, half?: 'low' | 'high', r: number = P.CAR_RADIUS): Corridor {
+  const n = Math.max(16, Math.round(track.length / step));
+  const st = track.length / n;
+  const c: Corridor = {
+    n, step: st, cx: new Float64Array(n), cy: new Float64Array(n), nx: new Float64Array(n), ny: new Float64Array(n),
+    lo: new Float64Array(n), hi: new Float64Array(n), s: new Float64Array(n),
+  };
+  for (let k = 0; k < n; k++) {
+    const s = k * st;
+    const i = track.indexAt(s);
+    const [x, y] = track.toWorld(s, 0);
+    c.s[k] = s; c.cx[k] = x; c.cy[k] = y;
+    c.nx[k] = -track.ty[i]; c.ny[k] = track.tx[i];
+    c.lo[k] = track.outerEdge(i) - r + margin;
+    c.hi[k] = track.innerEdge(i) + r - margin;
+    // Not onto grass or gravel, though the limits allow it (rough: the car slides on it), nor off the circuit:
+    // where the ground under the car's centre is like that, back onto good ground, and the margin more.
+    const lo0 = c.lo[k], hi0 = c.hi[k];
+    while (c.lo[k] < 0 && offLimits(track.surfaceAt(s, c.lo[k]))) c.lo[k] += 0.25;
+    if (c.lo[k] !== lo0) c.lo[k] += margin;
+    while (c.hi[k] > 0 && offLimits(track.surfaceAt(s, c.hi[k]))) c.hi[k] -= 0.25;
+    if (c.hi[k] !== hi0) c.hi[k] -= margin;
+    // Clear of walls (a pit wall beside the road): the car's half width and the margin off its face.
+    for (const wall of track.walls) {
+      if (wall.faces === 'both' || !track.inRange(s, wall.range)) continue;
+      const mid = typeof wall.d === 'number' ? wall.d : track.edgeAt(wall.d, s);
+      const half = wall.thickness / 2;
+      if (wall.faces === 'in' && mid + half > c.lo[k] - r - 2) c.lo[k] = Math.max(c.lo[k], mid + half + r + margin);
+      if (wall.faces === 'out' && mid - half < c.hi[k] + r + 2) c.hi[k] = Math.min(c.hi[k], mid - half - r - margin);
+    }
+    // Clear of the pit wall's nose and the wall along pit road (it isn't among the track's walls).
+    c.hi[k] = Math.min(c.hi[k], track.pitWallClear(s, margin));
+    if (c.lo[k] > c.hi[k]) c.lo[k] = c.hi[k] = (c.lo[k] + c.hi[k]) / 2;
+  }
+  if (half) {
+    // Which side is inside: where the curvature points, on the whole (ovals turn one way).
+    let turn = 0;
+    for (let k = 0; k < n; k++) turn += track.kappa[track.indexAt(c.s[k])];
+    for (let k = 0; k < n; k++) {
+      const mid = (c.lo[k] + c.hi[k]) / 2;
+      // The high half: the outside one, off the wall by the buffer too (as far as the road allows).
+      const highLo = turn >= 0 ? Math.min(c.lo[k] + WALL_BUFFER, mid) : mid, highHi = turn >= 0 ? mid : Math.max(c.hi[k] - WALL_BUFFER, mid);
+      if (half === 'high') { c.lo[k] = highLo; c.hi[k] = highHi; } else if (turn >= 0) c.lo[k] = mid; else c.hi[k] = mid;
+    }
+  }
+  return c;
+}
+
+/** Signed curvature of the path through each point (Menger: + turning toward +d, as the track's). */
+function pathCurvature(c: Corridor, d: Float64Array, out: Float64Array, ds: Float64Array): void {
+  for (let k = 0; k < c.n; k++) curvatureAt(c, d, k, out, ds);
+}
+
+/** The path's curvature through point k, and the distance to the next point. */
+function curvatureAt(c: Corridor, d: Float64Array, k: number, out: Float64Array, ds: Float64Array): void {
+  const n = c.n;
+  const a = (k - 1 + n) % n, b = (k + 1) % n;
+  const ax = c.cx[a] + d[a] * c.nx[a], ay = c.cy[a] + d[a] * c.ny[a];
+  const px = c.cx[k] + d[k] * c.nx[k], py = c.cy[k] + d[k] * c.ny[k];
+  const bx = c.cx[b] + d[b] * c.nx[b], by = c.cy[b] + d[b] * c.ny[b];
+  const ux = px - ax, uy = py - ay, vx = bx - px, vy = by - py;
+  const la = Math.hypot(ux, uy), lb = Math.hypot(vx, vy), lc = Math.hypot(bx - ax, by - ay);
+  out[k] = (2 * (ux * vy - uy * vx)) / Math.max(1e-9, la * lb * lc);
+  ds[k] = lb; // to the next point
+}
+
+/** Per-point grip (mu) and rolling resistance of the ground under the line, and the banking leaning into its turn. */
+function ground(track: Track, c: Corridor, d: Float64Array, kappa: Float64Array, mu: Float64Array, roll: Float64Array, bank: Float64Array): void {
+  for (let k = 0; k < c.n; k++) groundAt(track, c, d, kappa, k, mu, roll, bank);
+}
+
+function groundAt(
+  track: Track, c: Corridor, d: Float64Array, kappa: Float64Array, k: number, mu: Float64Array, roll: Float64Array, bank: Float64Array,
+): void {
+  const surf = SURFACES[track.surfaceAt(c.s[k], d[k])];
+  mu[k] = P.TIRE_MU * (c.grip ?? carSpec(track).grip) * surf.grip;
+  roll[k] = surf.rolling * G;
+  bank[k] = Math.sign(kappa[k]) * track.bankAt(track.indexAt(c.s[k]), d[k]);
+}
+
+interface Profile { speed: Float64Array; lapTime: number }
+/**
+ * A line's speed at a share of the grip: the profile (as fast as the engine takes it out of each corner, braking for
+ * the next), and the grip limit alone (each corner's speed, and braking for it; no engine). On a straight the profile
+ * is what the engine does against the air; a car carried faster than that (in a tow) is still well under the limit.
+ */
+export interface LineProfile { speed: Float32Array; lapTime: number; limit: Float32Array }
+
+/** The grip limit round a closed line: the corners' speeds (vmax), and no faster than full braking to what comes next. */
+function gripLimit(n: number, vmax: Float64Array, ds: Float64Array, brakeAt: (k: number, v: number) => number): Float32Array {
+  const l = Float64Array.from(vmax);
+  for (let j = 1; j < 2 * n; j++) { // twice round: the slowest point isn't known, and braking carries across the line
+    const k = (2 * n - j) % n, nxt = (k + 1) % n;
+    l[k] = Math.min(l[k], Math.sqrt(l[nxt] * l[nxt] + 2 * brakeAt(nxt, l[nxt]) * ds[k]));
+  }
+  return Float32Array.from(l);
+}
+
+/**
+ * The car the line is for, at this track: engine power (W), drag area (m^2), downforce per unit mass and speed^2
+ * (1/m), its tyres' load sensitivity (grip falls as (load / g)^-k), and the share of their grip that drives it.
+ */
+interface LineCar { power: number; cda: number; q: number; k: number; drive: number }
+
+/** The speed profile round a closed line, and its lap time (at a share of the tyres' grip: a driver's margin). */
+function profile(
+  n: number, kappa: Float64Array, ds: Float64Array, muFull: Float64Array, roll: Float64Array, bank: Float64Array, mass: number, car: LineCar, gripShare = 1,
+  /** Buffers to work in (refinement evaluates thousands of profiles); fresh ones otherwise. */
+  work?: { vmax: Float64Array; latCap: Float64Array; v: Float64Array },
+  /** Work out the grip limit too (profiles kept for driving; not the thousands refinement evaluates). */
+  withLimit = false,
+): Profile & { limit?: Float32Array } {
+  const mu = gripShare === 1 ? muFull : muFull.map((m) => m * gripShare);
+  /**
+   * Load-sensitive tyres: the horizontal cornering at point k at speed v, at the limit. The load the tyres carry
+   * there (downforce and banking: the constant-grip formula's), the grip that load leaves them, and the cornering it
+   * gives: (g + q v^2 cos)(sin + mu cos) / (cos - mu sin) - q v^2 sin.
+   */
+  const latAt = (k: number, v: number) => {
+    const c = Math.cos(bank[k]), sn = Math.sin(bank[k]), down = car.q * v * v;
+    const load = (G + down * c) / Math.max(0.05, c - mu[k] * sn);
+    const m = mu[k] * Math.pow(Math.max(0.3, load / G), -car.k);
+    return ((G + down * c) * (sn + m * c)) / Math.max(0.05, c - m * sn) - down * sn;
+  };
+  const vmax = work?.vmax ?? new Float64Array(n);
+  const latCap = work?.latCap ?? new Float64Array(n);
+  let slowest = 0;
+  for (let k = 0; k < n; k++) {
+    const c = Math.cos(bank[k]), sn = Math.sin(bank[k]);
+    // Horizontal cornering the tyres and banking give at the limit (per unit of speed^2 * curvature).
+    const cap = (G * (sn + mu[k] * c)) / Math.max(0.05, c - mu[k] * sn);
+    latCap[k] = cap;
+    const ak = Math.abs(kappa[k]);
+    if (car.k > 0) {
+      // (Tyres that grip less as the load grows: no closed form; the fastest speed the cornering allows, by bisection.)
+      let lo = 0, hi = TOP_SPEED;
+      if (ak * hi * hi <= latAt(k, hi)) lo = hi;
+      else for (let it = 0; it < 18; it++) { const m = (lo + hi) / 2; if (ak * m * m <= latAt(k, m)) lo = m; else hi = m; }
+      vmax[k] = lo;
+    } else {
+      // (With downforce q v^2 pressing the tyres down the limit grows with speed: v^2 = cap / (kappa - q mu / (cos - mu sin)).)
+      const aero = (car.q * mu[k]) / Math.max(0.05, c - mu[k] * sn);
+      vmax[k] = ak > 1e-6 && ak > aero ? Math.min(TOP_SPEED, Math.sqrt(cap / (ak - aero))) : TOP_SPEED;
+    }
+    if (vmax[k] < vmax[slowest]) slowest = k;
+  }
+  const drag = (v: number) => (0.5 * P.AIR_DENSITY * car.cda * v * v) / mass;
+  // What's left of the ellipse for braking or drive at a speed, with the cornering it needs there (downforce adds
+  // load: the ellipse grows with q v^2).
+  const lonRoom = (k: number, v: number) => {
+    const load = 1 + (car.q * v * v) / G;
+    if (car.k > 0) {
+      const use = (v * v * Math.abs(kappa[k])) / Math.max(1e-6, latAt(k, v));
+      return mu[k] * Math.pow(load, -car.k) * G * load * Math.sqrt(Math.max(0, 1 - use * use));
+    }
+    const use = (v * v * Math.abs(kappa[k])) / (latCap[k] * load);
+    return mu[k] * G * load * Math.sqrt(Math.max(0, 1 - use * use));
+  };
+  const v = work?.v ?? new Float64Array(n);
+  // Forward from the slowest point: as fast as the engine (and grip) can take it.
+  v[slowest] = vmax[slowest];
+  for (let j = 1; j <= n; j++) {
+    const k = (slowest + j - 1) % n, nxt = (slowest + j) % n;
+    const engine = Math.min(P.MAX_DRIVE_ACCEL, car.power / (mass * Math.max(v[k], 1)));
+    const a = Math.min(engine, car.drive * lonRoom(k, v[k])) - drag(v[k]) - roll[k];
+    const reach = Math.sqrt(Math.max(0, v[k] * v[k] + 2 * a * ds[k]));
+    if (j < n) v[nxt] = Math.min(vmax[nxt], reach);
+  }
+  // Backward from it: no faster than full braking can bring down to what comes next.
+  for (let j = 1; j < n; j++) {
+    const k = (slowest - j + n) % n, nxt = (k + 1) % n;
+    const b = lonRoom(nxt, v[nxt]) + drag(v[nxt]) + roll[nxt];
+    v[k] = Math.min(v[k], Math.sqrt(v[nxt] * v[nxt] + 2 * b * ds[k]));
+  }
+  let t = 0;
+  for (let k = 0; k < n; k++) t += (2 * ds[k]) / Math.max(0.5, v[k] + v[(k + 1) % n]);
+  const limit = withLimit ? gripLimit(n, vmax, ds, (k, vk) => lonRoom(k, vk) + drag(vk) + roll[k]) : undefined;
+  return { speed: v, lapTime: t, limit };
+}
+
+/**
+ * The smoothest path in the corridor: least squared curvature (second
+ * differences of the points), by gradient steps projected back into it,
+ * coarse to fine (curvature smoothing is slow over long distances).
+ */
+function smoothest(c: Corridor, d: Float64Array, iterations: number): void {
+  const n = c.n;
+  const px = new Float64Array(n), py = new Float64Array(n);
+  const sx = new Float64Array(n), sy = new Float64Array(n);
+  for (let it = 0; it < iterations; it++) {
+    for (let k = 0; k < n; k++) { px[k] = c.cx[k] + d[k] * c.nx[k]; py[k] = c.cy[k] + d[k] * c.ny[k]; }
+    // Second differences, then their second differences (the gradient of the summed squares).
+    for (let k = 0; k < n; k++) {
+      const a = (k - 1 + n) % n, b = (k + 1) % n;
+      sx[k] = px[a] - 2 * px[k] + px[b]; sy[k] = py[a] - 2 * py[k] + py[b];
+    }
+    for (let k = 0; k < n; k++) {
+      const a = (k - 1 + n) % n, b = (k + 1) % n;
+      const gx = sx[a] - 2 * sx[k] + sx[b], gy = sy[a] - 2 * sy[k] + sy[b];
+      const step = -(gx * c.nx[k] + gy * c.ny[k]) / 16;
+      d[k] = Math.max(c.lo[k], Math.min(c.hi[k], d[k] + step));
+    }
+  }
+}
+
+/** Resample offsets onto a corridor with m points (linear, closed). */
+function resample(d: Float64Array, m: number): Float64Array {
+  const n = d.length, out = new Float64Array(m);
+  for (let k = 0; k < m; k++) {
+    const f = (k * n) / m, i = Math.floor(f) % n, t = f - Math.floor(f);
+    out[k] = d[i] + (d[(i + 1) % n] - d[i]) * t;
+  }
+  return out;
+}
+
+export function racingLine(track: Track, options: Partial<LineOptions> = {}): RacingLine {
+  const spec = options.spec ?? carSpec(track);
+  const o = { ...DEFAULTS, mass: spec.dryMass + P.FUEL_CAPACITY / 2, ...options };
+  const car: LineCar = { power: spec.power(track), cda: spec.cda(track), q: (0.5 * P.AIR_DENSITY * spec.cla(track)) / o.mass, k: spec.loadSensitivity, drive: spec.driveShare };
+  const fine = corridor(track, o.step, o.margin, o.half, o.radius);
+  fine.grip = spec.grip;
+  if (o.groove !== undefined) return grooveLine(track, fine, o, car);
+  // Smoothest path, coarse to fine: 20 m, 10 m, 5 m, then the line's own spacing.
+  let d: Float64Array | null = null;
+  for (const spacing of [20, 10, 5]) {
+    if (spacing <= o.step) break;
+    const c = corridor(track, spacing, o.margin, o.half, o.radius);
+    d = d ? resample(d, c.n) : new Float64Array(c.n).map((_, k) => (c.lo[k] + c.hi[k]) / 2);
+    for (let k = 0; k < c.n; k++) d[k] = Math.max(c.lo[k], Math.min(c.hi[k], d[k]));
+    smoothest(c, d, 3000);
+  }
+  const line = d ? resample(d, fine.n) : new Float64Array(fine.n).map((_, k) => (fine.lo[k] + fine.hi[k]) / 2);
+  for (let k = 0; k < fine.n; k++) line[k] = Math.max(fine.lo[k], Math.min(fine.hi[k], line[k]));
+  smoothest(fine, line, 2000);
+
+  const n = fine.n;
+  const kappa = new Float64Array(n), ds = new Float64Array(n);
+  const mu = new Float64Array(n), roll = new Float64Array(n), bank = new Float64Array(n);
+  const evaluate = (dd: Float64Array): Profile => {
+    pathCurvature(fine, dd, kappa, ds);
+    ground(track, fine, dd, kappa, mu, roll, bank);
+    return profile(n, kappa, ds, mu, roll, bank, o.mass, car, o.gripShare);
+  };
+  let best = evaluate(line);
+  // Other places to start from: grooves across the road (on a banked oval the high groove can beat the smoothest
+  // path, which refinement's local bumps never reach: the speedway's top groove lapped 1.3% under the line). Each is
+  // judged as it stands; the quickest is refined.
+  for (let from = 1.5; ; from += 2 * (o.radius ?? P.CAR_RADIUS)) {
+    let any = false;
+    const g = new Float64Array(n);
+    let turn = 0;
+    for (let k = 0; k < n; k++) turn += track.kappa[track.indexAt(fine.s[k])];
+    for (let k = 0; k < n; k++) {
+      const d = turn >= 0 ? fine.hi[k] - from : fine.lo[k] + from;
+      if (d > fine.lo[k] && d < fine.hi[k]) any = true;
+      g[k] = Math.max(fine.lo[k], Math.min(fine.hi[k], d));
+    }
+    if (!any) break;
+    smoothest(fine, g, 200);
+    const p = evaluate(g);
+    if (p.lapTime < best.lapTime) { best = p; line.set(g); }
+  }
+  pathCurvature(fine, line, kappa, ds);
+  ground(track, fine, line, kappa, mu, roll, bank);
+
+  // Refinement for lap time: smooth bumps of the line (about a corner's length), kept if the lap gets faster.
+  // A bump only moves its stretch, so only that stretch's curvature and ground are worked out again (and put
+  // back if the lap isn't faster).
+  let state = o.seed >>> 0 || 1;
+  const rand = () => { state ^= state << 13; state ^= state >>> 17; state ^= state << 5; return (state >>> 0) / 4294967296; };
+  const tries = o.refine * n / 8;
+  const work = { vmax: new Float64Array(n), latCap: new Float64Array(n), v: new Float64Array(n) };
+  const keep = { d: new Float64Array(n), kappa: new Float64Array(n), ds: new Float64Array(n), mu: new Float64Array(n), roll: new Float64Array(n), bank: new Float64Array(n) };
+  for (let t = 0; t < tries; t++) {
+    const centre = Math.floor(rand() * n);
+    const width = 4 + Math.floor(rand() * 16); // 10-50 m at 2.5 m
+    const room = fine.hi[centre] - fine.lo[centre];
+    const amp = (rand() * 2 - 1) * room * (0.3 * (1 - t / tries) + 0.03);
+    // The stretch a bump moves, and the points either side whose curvature (and distance on) it changes.
+    const from = -2 * width - 1, to = 2 * width + 1;
+    for (let j = from; j <= to; j++) {
+      const k = (centre + j + n) % n;
+      keep.d[k] = line[k]; keep.kappa[k] = kappa[k]; keep.ds[k] = ds[k]; keep.mu[k] = mu[k]; keep.roll[k] = roll[k]; keep.bank[k] = bank[k];
+    }
+    for (let j = -2 * width; j <= 2 * width; j++) {
+      const k = (centre + j + n) % n;
+      line[k] = Math.max(fine.lo[k], Math.min(fine.hi[k], line[k] + amp * Math.exp(-(j * j) / (2 * width * width / 4))));
+    }
+    for (let j = from; j <= to; j++) curvatureAt(fine, line, (centre + j + n) % n, kappa, ds);
+    for (let j = from; j <= to; j++) groundAt(track, fine, line, kappa, (centre + j + n) % n, mu, roll, bank);
+    const lapTime = profile(n, kappa, ds, mu, roll, bank, o.mass, car, o.gripShare, work).lapTime;
+    if (lapTime < best.lapTime) { best = { speed: best.speed, lapTime }; continue; }
+    for (let j = from; j <= to; j++) {
+      const k = (centre + j + n) % n;
+      line[k] = keep.d[k]; kappa[k] = keep.kappa[k]; ds[k] = keep.ds[k]; mu[k] = keep.mu[k]; roll[k] = keep.roll[k]; bank[k] = keep.bank[k];
+    }
+  }
+  best = profile(n, kappa, ds, mu, roll, bank, o.mass, car);
+  pathCurvature(fine, line, kappa, ds);
+  ground(track, fine, line, kappa, mu, roll, bank);
+  const shares = new Map<number, LineProfile>();
+  const at = (gripShare: number) => {
+    let p = shares.get(gripShare);
+    if (!p) {
+      const q = profile(n, kappa, ds, mu, roll, bank, o.mass, car, gripShare, undefined, true);
+      p = { speed: Float32Array.from(q.speed), lapTime: q.lapTime, limit: q.limit! };
+      shares.set(gripShare, p);
+    }
+    return p;
+  };
+  return {
+    step: fine.step, d: Float32Array.from(line), kappa: Float32Array.from(kappa), speed: Float32Array.from(best.speed), lapTime: best.lapTime, at,
+    lo: Float32Array.from(fine.lo), hi: Float32Array.from(fine.hi),
+  };
+}
+
+/**
+ * A groove: a lane held at the same distance from the inside limit all the way round (inside: the side the corners
+ * turn toward, +d on ovals), smoothed only where the corridor's edge jumps, with its own speeds from the same physics
+ * as the line (its curvature, banking, length). Oval packs race in grooves; the fastest line swings from the wall to
+ * the apex and back, so a car beside a car on it has nowhere to be.
+ */
+function grooveLine(track: Track, fine: Corridor, o: LineOptions, car: LineCar): RacingLine {
+  const n = fine.n, from = o.groove!;
+  // Which side is inside: where the curvature points, on the whole.
+  let turn = 0;
+  for (let k = 0; k < n; k++) turn += track.kappa[track.indexAt(fine.s[k])];
+  const line = new Float64Array(n);
+  for (let k = 0; k < n; k++) {
+    const d = turn >= 0 ? fine.hi[k] - from : fine.lo[k] + from;
+    line[k] = Math.max(fine.lo[k], Math.min(fine.hi[k], d));
+  }
+  smoothest(fine, line, 200);
+  const kappa = new Float64Array(n), ds = new Float64Array(n);
+  const mu = new Float64Array(n), roll = new Float64Array(n), bank = new Float64Array(n);
+  pathCurvature(fine, line, kappa, ds);
+  ground(track, fine, line, kappa, mu, roll, bank);
+  const full = profile(n, kappa, ds, mu, roll, bank, o.mass, car, 1);
+  const shares = new Map<number, LineProfile>();
+  const at = (gripShare: number) => {
+    let p = shares.get(gripShare);
+    if (!p) {
+      const q = profile(n, kappa, ds, mu, roll, bank, o.mass, car, gripShare, undefined, true);
+      p = { speed: Float32Array.from(q.speed), lapTime: q.lapTime, limit: q.limit! };
+      shares.set(gripShare, p);
+    }
+    return p;
+  };
+  return {
+    step: fine.step, d: Float32Array.from(line), kappa: Float32Array.from(kappa), speed: Float32Array.from(full.speed), lapTime: full.lapTime, at,
+    lo: Float32Array.from(fine.lo), hi: Float32Array.from(fine.hi),
+  };
+}
+
+/** The line's offset, curvature, speed and corridor at a distance round the track (linear between points). */
+export function lineAt(line: RacingLine, s: number): { d: number; kappa: number; speed: number; slope: number; lo: number; hi: number } {
+  const n = line.d.length;
+  const f = (((s / line.step) % n) + n) % n;
+  const i = Math.floor(f), j = (i + 1) % n, t = f - i;
+  return {
+    d: line.d[i] + (line.d[j] - line.d[i]) * t,
+    kappa: line.kappa[i] + (line.kappa[j] - line.kappa[i]) * t,
+    speed: line.speed[i] + (line.speed[j] - line.speed[i]) * t,
+    slope: (line.d[j] - line.d[i]) / line.step,
+    lo: line.lo[i] + (line.lo[j] - line.lo[i]) * t,
+    hi: line.hi[i] + (line.hi[j] - line.hi[i]) * t,
+  };
+}
+
+const lines = new WeakMap<Track, Map<number, RacingLine>>();
+
+/** A track's fastest line, kept `margin` inside the track limits (default the usual), worked out once per track and margin. */
+export function fastestLine(track: Track, margin = DEFAULTS.margin): RacingLine {
+  let byMargin = lines.get(track);
+  if (!byMargin) { byMargin = new Map(); lines.set(track, byMargin); }
+  let line = byMargin.get(margin);
+  if (!line) {
+    line = racingLine(track, { margin, gripShare: track.kind === 'road' ? 1 : DRIVEN_GRIP });
+    byMargin.set(margin, line);
+  }
+  return line;
+}
+
+const grooveCache = new WeakMap<Track, Map<number, RacingLine[]>>();
+
+/**
+ * A track's grooves (see grooveLine), for a racer's margin: lanes a car's width and a little apart, from the inside
+ * limit out, as many as the road has room for (inside first). Ovals only: none on road layouts.
+ */
+export function grooves(track: Track, margin = DEFAULTS.margin): RacingLine[] {
+  if (track.kind === 'road') return [];
+  // Banked for two lines: they're its lanes.
+  if (twoLines(track)) { const { low, high } = ovalLines(track, margin); return [low, high]; }
+  let byMargin = grooveCache.get(track);
+  if (!byMargin) { byMargin = new Map(); grooveCache.set(track, byMargin); }
+  let list = byMargin.get(margin);
+  if (!list) {
+    list = [];
+    const best = fastestLine(track, margin);
+    let width = 0;
+    for (let k = 0; k < best.lo.length; k++) width += best.hi[k] - best.lo[k];
+    width /= best.lo.length;
+    for (let from = P.CAR_RADIUS; from <= width - P.CAR_RADIUS; from += GROOVE_SPACING) {
+      list.push(racingLine(track, { margin, groove: from }));
+    }
+    byMargin.set(margin, list);
+  }
+  return list;
+}
+
+/** Grooves are this far apart (m): a car's width and room for its line to wander. */
+const GROOVE_SPACING = 2 * P.CAR_RADIUS + 0.6;
+
+/**
+ * The share of the tyres' grip ovals' lines are laid for: the middle of the field's (racers drive at 0.82-0.90).
+ * The fastest line at full grip isn't the fastest at the grip drivers use: laid for theirs, the Cup car's teachers lap
+ * 0.4-1.1% quicker on the preset ovals at the same 86% (speedway 31.67 -> 31.33 s, solo; 2026-10-26). Road layouts keep
+ * the full-grip line until their students are retrained on a new one (the line is a driver input).
+ */
+export const DRIVEN_GRIP = 0.86;
+
+const twoLineCache = new WeakMap<Track, Map<number, { low: RacingLine; high: RacingLine }>>();
+
+/** Whether a track is raced in two lines, low and high (ovals, ?lines=2: trackgen/balance.ts). */
+export function twoLines(track: Track): boolean {
+  return EXPERIMENT.lines === 2 && track.kind !== 'road';
+}
+
+/**
+ * Which of an oval's two lines a car at (s, d) is on: on its plan's side if it has one (+1: the +d side, low on an
+ * oval; -1 high), otherwise the nearer.
+ */
+export function whichLine(track: Track, margin: number, s: number, d: number, plan = 0): 'low' | 'high' {
+  if (plan !== 0) return (plan > 0) === inside(track) ? 'low' : 'high';
+  const { low, high } = ovalLines(track, margin);
+  return Math.abs(lineAt(low, s).d - d) <= Math.abs(lineAt(high, s).d - d) ? 'low' : 'high';
+}
+/** +d is the inside of an oval's turns (it turns that way on the whole). */
+function inside(track: Track): boolean {
+  let turn = 0;
+  for (let i = 0; i < track.kappa.length; i += 8) turn += track.kappa[i];
+  return turn >= 0;
+}
+
+/**
+ * An oval's two lines, for a racer's margin: the fastest line in the inside half of the road (low) and in the outside
+ * half, off the wall (high). Ovals are banked so the two lap alike (trackgen/balance.ts): a pack races two wide on
+ * them, and neither runs against the wall.
+ */
+export function ovalLines(track: Track, margin = DEFAULTS.margin): { low: RacingLine; high: RacingLine } {
+  let byMargin = twoLineCache.get(track);
+  if (!byMargin) { byMargin = new Map(); twoLineCache.set(track, byMargin); }
+  let lines = byMargin.get(margin);
+  if (!lines) {
+    lines = { low: racingLine(track, { margin, gripShare: DRIVEN_GRIP, half: 'low' }), high: racingLine(track, { margin, gripShare: DRIVEN_GRIP, half: 'high' }) };
+    byMargin.set(margin, lines);
+  }
+  return lines;
+}
+
+/** The share of the friction ellipse a scripted racer leaves spare for its own corrections. */
+const CONTROL_SPARE = 0.05;
+
+/**
+ * Drive a racing line: hold its offset across the track (steering for the
+ * line's own curvature, its sideways slope, and feedback), at the speed
+ * profile for `grip` of the tyres' grip (as worn as they are), braking as the profile does (its
+ * slowing ahead, planned, plus feedback). Lateral has priority in the
+ * friction circle.
+ */
+/** Metres a second below the line's speed over which a limit ahead takes over the throttle (followRacingLine's capGain). */
+const CAP_BLEND = 3;
+
+export function followRacingLine(
+  car: Car, world: World, line: RacingLine, grip: number,
+  /** Drive this far across from the line (+d), e.g. alongside another car. */
+  offset = 0,
+  /** A lower speed limit at a distance ahead (e.g. the car in front, a tighter arc), if any. */
+  capAt?: (ahead: number) => number,
+  /**
+   * Below the profile's speed: close on it in proportion to how far below it is (1/s), as above it, rather than
+   * flat out. A teacher's throttle has to be one a student can copy. Unset: flat out.
+   */
+  driveGain?: number,
+  /**
+   * Where the speed limit ahead (capAt: a car ahead) is below the line's own: close on it in proportion (1/s), both
+   * ways, rather than flat out below it and braking above. Following a car, flat out until the limit then braking
+   * flicks between the two on the smallest change in the car ahead, which no student can copy. Unset: as the line.
+   */
+  capGain?: number,
+): void {
+  const track = world.track;
+  const i = car.trackIdx;
+  const tx = track.tx[i], ty = track.ty[i];
+  const nx = -ty, ny = tx;
+  const vLon = car.vx * tx + car.vy * ty;
+  const vLat = car.vx * nx + car.vy * ny;
+  const capacity = Math.max(1, car.capacity);
+  const capacityLon = Math.max(1, car.capacityLon);
+  // Its share of the grip the tyres have now: worn tyres, slower (in steps of 2%, so profiles are shared).
+  const { speed: speeds, limit } = line.at(Math.round(grip * car.grip * 50) / 50);
+  const n = speeds.length;
+  const along = (arr: Float32Array, ahead: number) => {
+    const f = ((((car.s + ahead) / line.step) % n) + n) % n, a = Math.floor(f), t = f - a;
+    return arr[a] + (arr[(a + 1) % n] - arr[a]) * t;
+  };
+  // Carried faster than the profile (a tow, a run off the corner): it keeps what it carries, up to the grip limit
+  // (braking where the limit says), rather than lifting back to what the engine alone would have done. Without
+  // this the draft was worth nothing: a car in the tow was held to the speed it would have had out of it.
+  const carried = Math.max(0, car.vx * tx + car.vy * ty - along(speeds, 0));
+  const speedAt = (ahead: number) => {
+    const v = Math.min(along(limit, ahead), along(speeds, ahead) + carried);
+    return capAt ? Math.min(v, capAt(ahead)) : v;
+  };
+
+  // Along: the profile's speed change over the next stretch (planned), and the error now (feedback).
+  const here = lineAt(line, car.s);
+  const reach = Math.max(3, vLon * 0.25);
+  const vNow = speedAt(0), vNext = speedAt(reach);
+  const planned = (vNext * vNext - vNow * vNow) / (2 * reach);
+  let lonWanted = vLon < vNow && planned >= 0 && driveGain === undefined ? 99 : planned + (driveGain ?? 4) * (vNow - vLon);
+  if (capGain !== undefined && capAt) {
+    // How far the limit ahead is below the line's own speed here: proportional once it's a few m/s below, blending in.
+    const own = speeds[((Math.round(car.s / line.step) % n) + n) % n];
+    const w = Math.max(0, Math.min(1, (own - vNow) / CAP_BLEND));
+    if (w > 0) lonWanted = (1 - w) * lonWanted + w * (planned + capGain * (vNow - vLon));
+  }
+
+  // Across: following d = D(s) along a curved road. With s' = vLon / (1 - k d), the acceleration across the
+  // track it takes is vLon^2 (D'' / (1 - k d)^2 + k / (1 - k d)) (the road's curve, and the line's bend
+  // across it); its sideways speed is D' s'. Plus feedback on the error where the car is.
+  const k = track.kappa[i];
+  const stretch = Math.max(0.2, 1 - k * car.d);
+  const back = lineAt(line, car.s - 2), fwd = lineAt(line, car.s + 2);
+  const bend = (fwd.d - 2 * here.d + back.d) / 4;
+  const vLatWanted = (vLon * (fwd.d - back.d) / 4) / stretch;
+  const feedforward = vLon * vLon * (bend / (stretch * stretch) + k / stretch);
+  const latWanted = feedforward + 2 * (here.d + offset - car.d) - 3 * (vLat - vLatWanted) - car.bankAcc;
+
+  const latMax = capacity * (1 - CONTROL_SPARE);
+  const lat = Math.max(-latMax, Math.min(latMax, latWanted));
+  const lonRoom = capacityLon * Math.sqrt(Math.max(0, 1 - (lat / capacity) ** 2));
+  const lon = Math.max(-lonRoom, Math.min(lonRoom, lonWanted));
+  const wx = lon * tx + lat * nx, wy = lon * ty + lat * ny;
+  const fx = car.frameX, fy = car.frameY;
+  car.inputX = (wx * fx + wy * fy) / (P.OVERDRIVE_MAX * capacityLon);
+  car.inputY = (wx * -fy + wy * fx) / (P.OVERDRIVE_MAX * capacity);
+}
+
+/** A scripted racer: the track's fastest line, driven at a share of the tyres' grip. */
+export class RacingLineDriver {
+  constructor(private readonly grip = 0.95, private readonly lineFor: (track: Track) => RacingLine = fastestLine) {}
+
+  decide(car: Car, world: World): void {
+    followRacingLine(car, world, this.lineFor(world.track), this.grip);
+  }
+}

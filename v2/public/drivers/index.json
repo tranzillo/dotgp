@@ -1,0 +1,65 @@
+{
+  "bundles": [
+    {
+      "id": "house",
+      "name": "House",
+      "file": "default.json",
+      "note": "The house drivers: what the benchmarks and Claude's tests race (cars cycle through them). Read-only: they don't learn, take classes or score championship points. They have no road-course skill: on circuits they crash in the first tight corner."
+    },
+    {
+      "id": "road",
+      "name": "Road apprentice",
+      "file": "road-apprentice.json",
+      "note": "The house drivers plus a road-course skill learned by copying the scripted line follower round circuits (12 rounds, no practice, no license yet). Ovals: exactly the house drivers. Circuits: solo they get round (13% of club runs and 8% of GP runs end off the track); in races they run wide often (about 10 track-limits calls each per race) and contact is common: nobody has taught them circuit racecraft or the white line yet. Read-only."
+    },
+    {
+      "id": "oval-stable",
+      "name": "Oval stable",
+      "file": "oval-stable.json",
+      "note": "The oval stable (v10, 2026-10-23): 40 individuals, each with its own nerve, talent, human limits and line, apprenticed to its own teacher (a traffic racer its personality makes). Oval racing and oval caution skills; no road skill, no pit skill yet (the pit maneuver drives its stops). Ovals: laps 10-20% faster than the house drivers, drives its own cautions; not clean in full fields (40 cars, 150 km: ~30 out a race on most tracks, its teachers ~1). Circuits: can't race them. Read-only. Shared for the first milestone (training/ROADMAP.md): the circuit machine adds road and pit skills to these same individuals."
+    },
+    {
+      "id": "stable-candidate",
+      "name": "Stable candidate",
+      "file": "stable-candidate.json",
+      "note": "The milestone's candidate (v2, 2026-10-23): the 40 stable individuals with every skill, no scripted driving. Oval racing and oval cautions: the oval stable v10 (oval machine). Road racing (24-round apprenticeship to each personality's road teacher with knocks, packs and wear, through its human limits; PPO 300; ES racecraft 150), road cautions (classroom races on circuits with start drills) and the pit skill (12 rounds of drills on ovals and circuits, half in traffic): circuit machine. Readiness 0 of 17 cells (training/experiments/2026-10-23-readiness-bundle-v2). Build on this one: replace a skill by lineage."
+    },
+    {
+      "id": "stable-candidate-v3",
+      "name": "Stable candidate v3",
+      "file": "stable-candidate-v3.json",
+      "note": "The candidate (v2) with the circuit machine's skills since (2026-10-25): a pit skill retrained with crowded drills (a column of cars all stopping the same lap, a car broken down in the lane) that backs up into its box when it overshoots (pit road's reverse gear), and road cautions retrained (off the track while catching the safety car 27% -> 8%). Racing and oval cautions unchanged (the oval stable v10). Ovals, 40 cars, 4 races each (short / speedway / flat): out 21.5 / 25.0 / 15.5 (v2: 23.5 / 28.8 / 20.0); clean passes per 100 green car-laps 12.4 / 51.2 / 13.7. Its own pit stops are still most of its wrecks: see the scripted-stops version. Circuits (40 cars, 3 races each, club / GP): out 38.7 / 37.0. Read-only."
+    },
+    {
+      "id": "stable-candidate-v3-scripted-pits",
+      "name": "Stable candidate v3, scripted stops",
+      "file": "stable-candidate-v3-scripted-pits.json",
+      "note": "Stable candidate v3 with the pit maneuver driving its stops (no pit-traffic license) until the learned pit skill handles a crowded pit road. Ovals: the oval stable's races exactly, out 20.3 / 24.3 / 0.5 (short / speedway / flat, 40 cars) against v3's 21.5 / 25.0 / 15.5; clean passes per 100 green car-laps 7.7 / 47.5 / 6.9. Circuits (40 cars, 3 races each, club / GP): out 26.3 / 4.7 against v3's 38.7 / 37.0; on the GP circuit 322 clean passes per 100 green car-laps, 4 per damaging contact (teachers 227, 7). Read-only."
+    },
+    {
+      "id": "stable-candidate-v4",
+      "name": "Stable candidate v4",
+      "file": "stable-candidate-v4.json",
+      "note": "Stable candidate v3 with its pit skill trained 24 rounds more (2026-10-25): its box anywhere down pit road (the drills had always used the first box, so in races it sped down the lane to a far one) and a teacher at pit speed 30 m before the line. Racing, cautions and road cautions as v3. 40 cars, out: ovals 15.8 / 23.5 / 9.0 (short / speedway / flat; v3 21.5 / 25.0 / 15.5, scripted stops 20.3 / 24.3 / 0.5); circuits 36.0 / 33.3 (club / GP; scripted stops 26.3 / 4.7): its stops on circuit pit roads are still its wrecks there. Read-only."
+    },
+    {
+      "id": "stable-candidate-v5",
+      "name": "Stable candidate v5",
+      "file": "stable-candidate-v5.json",
+      "note": "Stable candidate v4 with the oval machine's work since (2026-10-25): the racing network retrained on drills where a car ahead breaks (going round it), and the broken-car skill (a broken car under green drives itself to the apron; 31 of 40 licensed, the rest drive on with their racing network). Pit stops, cautions, road skills as v4: circuits race exactly as v4. Ovals, 40 cars, 4 races each, against v4 (short / speedway / flat): out 6.3 / 15.5 / 5.0 (v4 15.8 / 23.5 / 9.0), cautions 2.8 / 4.8 / 3.5 (7.5 / 5.3 / 4.0); but less racing: clean passes per 100 green car-laps 3.7 / 16.8 / 7.0 (5.7 / 41.3 / 9.9), time side by side 7.5% / 6.5% / 5.7% (8.8% / 17.1% / 10.0%), laps 0.15-0.5 s slower. Cleaner and duller: the teachers it learned going round from hardly pass. Read-only."
+    },
+    {
+      "id": "stable-candidate-v6",
+      "name": "Stable candidate v6",
+      "file": "stable-candidate-v6.json",
+      "candidate": true,
+      "note": "v5 retrained in the Cup car (?spec=cup, 2026-10-28): 8 apprenticeship rounds to its teachers with passes that commit, then the broken-car drills; adds the tactics skill (lane plans). Cup car, 40 cars, 4 races each, against v5: faster and more passing on the bigger ovals (speedway laps 38.0 -> 32.0 s, green car hits 23.6 -> 10.8), less contact under caution and at restarts; but on short ovals it scrapes the wall, pits for damage about 2.7 times a car and laps 0.5-1.1 s slower. training/experiments/2026-10-28-cup-retrain-v6. Not for players yet."
+    },
+    {
+      "id": "stable-candidate-v5p",
+      "name": "Stable candidate v5p",
+      "file": "stable-candidate-v5p.json",
+      "note": "Stable candidate v5 with its pit skill retrained 36 rounds (2026-10-29): under the pit limiter and the stop-only-in-the-box rule, on the racing-line approach to circuit pit entries, then with the pit skill's own fine-scale inputs (metres off its route, speed against what the stop allows, its clearance to the pit wall). Racing, cautions, road skills and the broken-car skill exactly as v5. Classic car, 40 cars, against v5: retirements short 16.5 -> 13.0, speedway 18.8 -> 27.0 (wide ranges), flat 6.0 -> 0.0, club 37.7 -> 36.3, GP 36.3 -> 27.3; hits on the pit wall's nose a race (pit-zone tracer) flat 8.8 -> 0.5, speedway 8.5 -> 1.8, club 22 -> 14. Circuit races still lose most of the field, about half of it racing. Read-only."
+    }
+  ]
+}
