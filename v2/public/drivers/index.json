@@ -54,6 +54,20 @@
       "file": "stable-candidate-v6.json",
       "candidate": true,
       "note": "v5 retrained in the Cup car (?spec=cup, 2026-10-28): 8 apprenticeship rounds to its teachers with passes that commit, then the broken-car drills; adds the tactics skill (lane plans). Cup car, 40 cars, 4 races each, against v5: faster and more passing on the bigger ovals (speedway laps 38.0 -> 32.0 s, green car hits 23.6 -> 10.8), less contact under caution and at restarts; but on short ovals it scrapes the wall, pits for damage about 2.7 times a car and laps 0.5-1.1 s slower. training/experiments/2026-10-28-cup-retrain-v6. Not for players yet."
+    },
+    {
+      "id": "stable-candidate-v6b",
+      "name": "Stable candidate v6b",
+      "file": "stable-candidate-v6b.json",
+      "candidate": true,
+      "note": "v5 retrained in the Cup car (?spec=cup, 2026-10-29) with eased caution teachers, launch moments and more restarts (--debris 0.15); trained before the wall-scrape costs. Against v6 (Cup, 40 cars, 4 races each): less contact under caution and fewer jumped restarts, less wall damage on short ovals; slower on the bigger ovals. training/experiments/2026-10-30-cup-retrain-v7. Not for players yet."
+    },
+    {
+      "id": "stable-candidate-v7",
+      "name": "Stable candidate v7",
+      "file": "stable-candidate-v7.json",
+      "candidate": true,
+      "note": "v6b retrained in the Cup car (?spec=cup, 2026-10-30) under the wall-scrape costs, with teachers that move across at their crossing rate. Rides the wall far less (green wall damage down on 6 of 7 ovals, short 23.6 -> 12.8) but has 2-3x v6b's green car contact (students cross into each other) and half the clean passes. training/experiments/2026-10-30-cup-retrain-v7. Not for players yet."
     }
   ]
 }

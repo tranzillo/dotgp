@@ -553,6 +553,11 @@ export function followRacingLine(
    * flicks between the two on the smallest change in the car ahead, which no student can copy. Unset: as the line.
    */
   capGain?: number,
+  /**
+   * How fast the offset is moving across the road (m/s, +d): a car heading for a new lane wants to be moving across
+   * at that rate, not just to be where the offset is now. Unset: the offset holds.
+   */
+  offsetRate = 0,
 ): void {
   const track = world.track;
   const i = car.trackIdx;
@@ -598,7 +603,7 @@ export function followRacingLine(
   const stretch = Math.max(0.2, 1 - k * car.d);
   const back = lineAt(line, car.s - 2), fwd = lineAt(line, car.s + 2);
   const bend = (fwd.d - 2 * here.d + back.d) / 4;
-  const vLatWanted = (vLon * (fwd.d - back.d) / 4) / stretch;
+  const vLatWanted = (vLon * (fwd.d - back.d) / 4) / stretch + offsetRate;
   const feedforward = vLon * vLon * (bend / (stretch * stretch) + k / stretch);
   const latWanted = feedforward + 2 * (here.d + offset - car.d) - 3 * (vLat - vLatWanted) - car.bankAcc;
 

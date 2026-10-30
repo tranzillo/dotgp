@@ -1,0 +1,53 @@
+diff --git a/v2/src/ai/racingLine.ts b/v2/src/ai/racingLine.ts
+index 5da9eaa..3f7040d 100644
+--- a/v2/src/ai/racingLine.ts
++++ b/v2/src/ai/racingLine.ts
+@@ -553,6 +553,11 @@ export function followRacingLine(
+    * flicks between the two on the smallest change in the car ahead, which no student can copy. Unset: as the line.
+    */
+   capGain?: number,
++  /**
++   * How fast the offset is moving across the road (m/s, +d): a car heading for a new lane wants to be moving across
++   * at that rate, not just to be where the offset is now. Unset: the offset holds.
++   */
++  offsetRate = 0,
+ ): void {
+   const track = world.track;
+   const i = car.trackIdx;
+@@ -598,7 +603,7 @@ export function followRacingLine(
+   const stretch = Math.max(0.2, 1 - k * car.d);
+   const back = lineAt(line, car.s - 2), fwd = lineAt(line, car.s + 2);
+   const bend = (fwd.d - 2 * here.d + back.d) / 4;
+-  const vLatWanted = (vLon * (fwd.d - back.d) / 4) / stretch;
++  const vLatWanted = (vLon * (fwd.d - back.d) / 4) / stretch + offsetRate;
+   const feedforward = vLon * vLon * (bend / (stretch * stretch) + k / stretch);
+   const latWanted = feedforward + 2 * (here.d + offset - car.d) - 3 * (vLat - vLatWanted) - car.bankAcc;
+ 
+diff --git a/v2/src/ai/trafficRacer.ts b/v2/src/ai/trafficRacer.ts
+index 169cf31..d4f5cdc 100644
+--- a/v2/src/ai/trafficRacer.ts
++++ b/v2/src/ai/trafficRacer.ts
+@@ -603,8 +603,13 @@ export class TrafficRacer {
+       target = here.d + Math.max(-Math.max(0, loRoom), Math.min(Math.max(0, hiRoom), target - here.d));
+     }
+     const step = CROSS_RATE * dt;
+-    this.offset += Math.max(-step, Math.min(step, target - here.d - this.offset));
++    const move = Math.max(-step, Math.min(step, target - here.d - this.offset));
++    this.offset += move;
+     const offset = Math.max(here.lo, Math.min(hiEdge, here.d + this.offset)) - here.d;
++    // Moving across to it at the crossing rate, not only aiming at where the offset has got to: taking over a car
++    // (a student at the wheel) the offset starts where the car is and is a step ahead of it, and its labels asked for
++    // a fraction of a m/s^2 to get down off the wall (2026-10-29: the same throttle as the student riding it, 7% lift).
++    const offsetRate = dt > 0 ? move / dt : 0;
+ 
+     // Speed: off the line, no faster than its tighter arc allows (and braking for that ahead);
+     // behind a car, the follow cap; squeezed, a little slower than the car beside.
+@@ -625,7 +630,7 @@ export class TrafficRacer {
+       return cap;
+     };
+     this.last = { want, offset, low, high, follow: followCap, squeezed: low > high, passing };
+-    followRacingLine(car, world, line, grip, offset, capAt, this.style.driveGain, this.style.followGain);
++    followRacingLine(car, world, line, grip, offset, capAt, this.style.driveGain, this.style.followGain, offsetRate);
+     if (nextPath !== undefined && nextPath !== this.path) {
+       // Same place on the road, measured from the new path.
+       const at = here.d + this.offset;
