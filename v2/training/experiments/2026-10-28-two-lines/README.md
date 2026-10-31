@@ -86,3 +86,62 @@ ovals (`../2026-10-28-cup-retrain-v6/v6.json`) and the teachers on two lines (`t
 - **Speedways: still 25-35 out a race, nearly all under caution** (`scripts/cautionHits.ts`, speedway, 2 races): 40 of
   52 retirements under caution; 212 of 337 caution hits while pacing in line (behind 24 m/s into a car at 10, 39.8
   health a race), 59 as the caution forms; starts and restarts 56 hits, under 1 health. The caution skill (v6b's work).
+
+## v8: v7 retrained under wall scraping's cost, teachers holding the car's line
+
+```sh
+export DOTGP_EXPERIMENT='?spec=cup&lines=2'
+npx tsx scripts/stable.ts --from public/drivers/stable-candidate-v7-lines.json --rounds 8 --group 4 --solo-tracks 4 --jobs 10 --out stable.json
+npx tsx scripts/brokenCar.ts --in stable.json --out v8.json --ahead 4 --rounds 6 --tracks 3 --drills 3 --group 4
+T=short,speedway,flat,oval:894715320:short,oval:3850048323:intermediate,oval:3148308672:speedway,oval:774865359:superspeedway
+npx tsx scripts/bench.ts public/drivers/stable-candidate-v7-lines.json v8.json --tracks $T --seeds 4 --field 40 --rules 1 --json v7-v8.json
+```
+
+Trained at b477b56 (after c07cbfd: scraping costs health and tyres; and b477b56: a two-line teacher labelling a student
+holds the line the car is on). 2.2 hours here (92 min apprenticeship, 41 min broken-car drills; v7's 21 hours were
+mostly waiting on other jobs). 28 of 40 broken-car licences (v7 22). Tactics loss 0.61-0.82 at the end: no better, as
+expected (`scripts/tacticsFit.ts`: the teacher's side rests on memory the student doesn't see). Kept as
+`public/drivers/stable-candidate-v8-lines.json`. Logs `v8-stable-log.txt`, `v8-broken-log.txt`.
+
+Bench (`v7-v8.json`; Cup, two lines, rules, 40 cars, 4 seeds, both at b477b56; * past noise):
+
+| | out | cautions | green wall damage | damage stops | green car hits | clean passes | lap (s) |
+|---|---|---|---|---|---|---|---|
+| short | 9.8 -> 4.2 | 4.0 -> 1.2 | 1.8 -> 1.4 | 17.0 -> 6.8 | 10.8 -> 4.7 * | 6.2 -> 6.6 | 23.67 -> 23.47 * |
+| speedway | 26.5 -> 24.2 * | 2.0 -> 2.8 | 0.3 -> 0.4 | 5.5 -> 7.0 | 12.3 -> 5.2 | 30.0 -> 48.3 | 33.85 -> 32.43 |
+| flat | 8.2 -> 17.2 * | 3.5 -> 1.5 * | 0.4 -> 0.3 | 3.5 -> 6.0 | 7.5 -> 3.2 * | 9.5 -> 16.1 * | 36.82 -> 36.39 * |
+| gen. short | 2.8 -> 1.0 | 2.0 -> 0.5 | 11.0 -> 1.7 * | 32.2 -> 3.0 * | 5.6 -> 2.7 | 2.1 -> 2.1 | 22.56 -> 22.30 |
+| gen. intermediate | 12.5 -> 17.2 | 1.0 -> 2.2 * | 1.1 -> 0.7 | 4.2 -> 7.2 | 8.3 -> 6.9 | 7.1 -> 22.2 * | 40.90 -> 40.47 |
+| gen. speedway | 35.5 -> 33.5 | 2.8 -> 3.0 | 0.8 -> 1.1 | 8.2 -> 7.8 | 16.0 -> 14.1 | 46.7 -> 57.3 | 36.59 -> 36.59 |
+| gen. superspeedway | 33.0 -> 27.2 * | 2.0 -> 2.0 | 0.3 -> 1.6 * | 4.0 -> 8.5 * | 9.9 -> 4.8 * | 47.8 -> 56.8 | 44.44 -> 44.90 |
+
+Racing under green is better nearly everywhere (contact down, passing up, the gen. short's wall scraping gone), and
+the lane spread wider (1.5-1.7 m more on flat and superspeedway: the field uses both lines). Retirements are still
+mostly under caution, and on the flat oval worse.
+
+## Under caution: what the probes show (for the caution work)
+
+Notes from probing caution incidents with v7 and v8, for whoever takes cautions on next.
+
+- **Most retirements on the big ovals are under caution, not racing.** v7, preset speedway, 2 races: 40 of 52
+  retirements under caution; 212 of 337 damaging caution hits while pacing in line (car behind at a median 24 m/s into
+  one at 10), 59 as the caution forms, 56 at starts and restarts but under 1 health between them.
+- **v8 brings sound cars to a stop in the pacing line, and the car behind runs into them.** Flat oval, 4 races
+  (`caution-flat-v7.txt`, `caution-flat-v8.txt`): retirements under caution v7 14, v8 57 (of 69). v8's caution hits are
+  into cars at a median 0.0 m/s ahead (v7 18-26), at impacts up to 26 m/s (p90; v7 7.5); caution forming costs 22
+  health a race (v7 6), pacing 37 (v7 11). `scripts/cautionStalls.ts` (2 races): v8 stopped 2.3% of its running car-time
+  under caution (59 stops, median 0.5 s, p90 5.2 s, a median 4 m behind the car ahead: it closes up and stops dead);
+  v7 0.3%, two stops, both smoking cars stopped about 50 s. Sound cars stopping is new in v8.
+- **Not from the caution network's own fit, by its loss:** caution loss at the end of training v8 0.032-0.043, v7
+  0.048-0.058. It copies its teachers' caution driving at least as well; the stops show up only in races (its own
+  states, the student driving the line). Between v7's training and v8's: more rounds, c07cbfd (scrape costs), e89e7e8
+  (pit network inputs only), b477b56 (racing line choice only: under caution the teacher drives the formation, which
+  that doesn't touch). Which of these, or the extra rounds, I haven't pinned down.
+- **Teachers don't do this.** In the same probes teachers pace with almost no contact (10-28: 0.00 hits a car-minute
+  pacing in line, against students' 0.7); the gap is the student's, so a DAgger look at the caution line (teacher's
+  label against the student's command when it brakes to a stop 4 m behind) is where I'd look first.
+- **Probes:** `scripts/cautionHits.ts` (contact by phase, who into whom, smoking or not, what was driving each) and
+  `scripts/cautionStalls.ts` (cars stopped in line) both preload into `scripts/incidents.ts`
+  (`npx tsx --import ./scripts/<probe>.ts scripts/incidents.ts <bundle> --tracks flat --seeds 2 --field 40 --rules 1`);
+  set `DOTGP_EXPERIMENT` to the bundle's experiment (`?spec=cup&lines=2` for v7 and v8). Bench numbers swing widely at
+  4 seeds (the speedway's out 26 +- 5); the flat oval is the cheapest place to see the stops.

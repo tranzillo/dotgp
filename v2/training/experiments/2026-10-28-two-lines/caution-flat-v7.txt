@@ -1,0 +1,79 @@
+
+=== flat seed 1: 70 laps, 24 cars (a car a pit box), 4x pace (152 s)
+finished 17/24  cautions 3 (10 laps)  retirements 7  biggest wreck 2 cars
+  t=1928s  1 car(s): caution +50s @8
+  t=2347s  1 car(s): caution +1s @0
+  t=2361s  2 car(s): near a merging car @8, near a merging car @32
+  t=2377s  1 car(s): caution +31s @49
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 0% >25%
+  marks lap 20: groove 8%, skids 0% mean darkness; 32% of surface >10% dark, 12% >25%
+
+=== flat seed 2: 70 laps, 24 cars (a car a pit box), 4x pace (140 s)
+finished 17/24  cautions 3 (11 laps)  retirements 7  biggest wreck 2 cars
+  t=870s  1 car(s): caution +81s @0
+  t=944s  1 car(s): caution +155s @27
+  t=970s  1 car(s): caution +181s @2
+  t=2293s  2 car(s): green @19, caution +7s @26
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 0% >25%
+  marks lap 20: groove 8%, skids 0% mean darkness; 31% of surface >10% dark, 13% >25%
+
+=== flat seed 3: 70 laps, 24 cars (a car a pit box), 4x pace (144 s)
+finished 16/24  cautions 5 (18 laps)  retirements 8  biggest wreck 2 cars
+  t=964s  1 car(s): caution +142s @9
+  t=1150s  2 car(s): merging @39, near a merging car @1
+  t=1190s  1 car(s): merging @23
+  t=1218s  1 car(s): caution +69s @22
+  marks lap 5: groove 1%, skids 0% mean darkness; 0% of surface >10% dark, 0% >25%
+  marks lap 20: groove 7%, skids 0% mean darkness; 27% of surface >10% dark, 8% >25%
+
+=== flat seed 4: 70 laps, 24 cars (a car a pit box), 4x pace (126 s)
+finished 13/24  cautions 3 (12 laps)  retirements 11  biggest wreck 2 cars
+  t=1477s  1 car(s): caution +58s @50
+  t=1490s  1 car(s): caution +70s @43
+  t=1516s  1 car(s): caution +96s @39
+  t=1557s  2 car(s): caution +137s @14, caution +137s @39
+  t=2185s  1 car(s): caution +165s @0
+  t=2296s  1 car(s): caution +276s @0
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 0% >25%
+  marks lap 20: groove 8%, skids 0% mean darkness; 31% of surface >10% dark, 12% >25%
+
+=== summary by track
+
+flat (4 races)
+  STEWARDS 6.0 decisions/race: avoidable-contact: time 7, avoidable-contact: warning 6, blend-line: drive-through 5, blend-line: warning 3, avoidable-contact: drive-through 1, jumped-restart: drive-through 1, avoidable-contact: black-flag 1
+  WRECKS  8.3 retirements/race, 3.5 cautions/race, 4 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: under caution 16, green 12, near a merging car 3, merging 2
+          who / what: driver hit car (driver) 17, driver hit wall 16
+          contact retirements: 9 at fault, 8 hit by another
+          damage done to others (by fault): 1.72 health/race
+  PACK    15.4 passes/100 green car-laps, alongside 4%, drafting 33%, lane spread 2.86 m; lockstep same brain ΓÇô, different brains 0.010
+  PASSING 9.4 clean passes/100 green car-laps; of all passes 38% with contact, 8% damaging, 55% from the draft; 7.5 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane ΓÇô m, speed ΓÇô m/s, steer ΓÇô; different brains 2.04 m, 1.24 m/s, 0.070
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+          in a pit cycle: in entry 13, in along the wall (fast lane) 2, out blend 2
+  TIRES   wear 0.0412/green lap -> cliff (0.3) after 17 laps; sliding >0.05 0%, >0.35 0%, >0.6 0% of car-steps
+  FUEL    burn 3.37 kg/green lap -> 18 laps per tank
+  DAMAGE  health lost on track /race: green walls 0.35 (0.01 with a car alongside), cars 1.17; caution walls 1.57, cars 4.08
+  STOPS   79.0/race (16% under caution), tires taken 84%, repairs 15%, called for fuel 66% tires 28% damage 4% caution 0% penalty 2%, tire life at stop 0.47 (min 0.29), service 13.3 s
+  PIT ROAD 52.9 s entry to track under green, 65.2 s under caution; 64.3 contacts, 4.71 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 36.50 s (863) | 0.6-0.8: 37.00 s (1441) | 0.4-0.6: 37.48 s (1129) | 0.3-0.4: 37.90 s (93) | 0.2-0.3: 37.96 s (37) | 0.0-0.2: 39.14 s (6)
+CAUTION hits 346; ahead under 15 m/s 78; ahead smoking 26, behind smoking 7; side by side 105
+CAUTION by phase (hits; per car-minute; health lost):
+CAUTION   before the start         28    4.05    0.18  impact 2.7, behind 21.5 -> ahead 21.8 m/s, side by side 23
+CAUTION   caution forming          48    0.21    6.06  impact 4.6, behind 30.3 -> ahead 26.1 m/s, side by side 14
+CAUTION   caution one to go        55    0.14    0.52  impact 2.4, behind 25.9 -> ahead 23.9 m/s, side by side 14
+CAUTION   caution pacing          128    0.19   11.19  impact 3.1, behind 24.4 -> ahead 17.9 m/s, side by side 25
+CAUTION   restart green 0-10 s     52    1.21    1.43  impact 3.1, behind 24.4 -> ahead 21.3 m/s, side by side 18
+CAUTION   restart green 10-30 s     4    0.05    0.01  impact 2.3, behind 62.4 -> ahead 59.4 m/s, side by side 0
+CAUTION   restart                   6    0.13    0.39  impact 2.5, behind 24.3 -> ahead 20.6 m/s, side by side 1
+CAUTION   start green 0-10 s       21    1.31    0.63  impact 3.4, behind 19.9 -> ahead 16.3 m/s, side by side 10
+CAUTION   start green 10-30 s       4    0.16    0.02  impact 2.5, behind 60.3 -> ahead 56.5 m/s, side by side 0
+CAUTION behind -> ahead (driving): cautionNet -> cautionNet 295, cautionNet -> cautionNet* 20, pit-in -> pit-in 7, 
+cautionNet* -> cautionNet 5, cautionNet -> pit-in 4, pit-in -> pit-in* 4, pit-in -> cautionNet 3, pit-in* -> pit-in 2, 
+pit-out -> pit-service 2, pit-out -> pit-out 2, pit-out -> pit-out* 1, pit-out -> pit-in* 1
+CAUTION lanes behind/ahead: track/track 326, apron/apron 20
+CAUTION impact median 3.0 p90 7.5 m/s
+CAUTION bSpeed median 24.7 p90 42.3 m/s
+CAUTION aSpeed median 21.8 p90 33.8 m/s
+CAUTION retirements 14: caution pacing: smoking (car) 3, caution pacing: sound (car) 6, caution forming: sound 1, 
+caution one to go: smoking 1, caution pacing: smoking 1, caution forming: sound (car) 2
