@@ -31,6 +31,12 @@ export interface CautionPracticeOptions {
   learningRate?: number;
   /** Share of drills that begin mid-race with the field strung out round the lap (the rest: a bunched field). */
   spread?: number;
+  /**
+   * Share of drills with wrecks on track once the field is in line (CautionDrill's wreck), the same wrecks for every
+   * variation of a student. Copying a teacher that goes round them didn't teach the stable to (2026-10-31: it followed
+   * the lane round them loosely, metres off, and caught up at 45 m/s); a drill's score counts the damage.
+   */
+  wrecks?: number;
   onRound?: (round: number, report: { mean: number; clean: number; harm: number; seconds: number }) => void;
 }
 
@@ -55,6 +61,8 @@ export function practiseCautions(students: StableDriver[], stable: StableDriver[
     students.forEach((d, s) => {
       const slot = rng.int(DRILL_FIELD);
       const spreadSeed = rng.next() < spread ? hashSeed(seed, `spread${round}:${s}`) : undefined;
+      // (Drawn only when asked for, so practice without them runs as it did.)
+      const wreckSeed = options.wrecks && rng.next() < options.wrecks ? hashSeed(seed, `wreck${round}:${s}`) : undefined;
       // The same classmates for every variation (drawn from the rest of the stable).
       const others = stable.filter((o) => o.lineage !== d.lineage);
       const pack = Array.from({ length: DRILL_FIELD }, () => others[rng.int(others.length)]);
@@ -67,7 +75,7 @@ export function practiseCautions(students: StableDriver[], stable: StableDriver[
           const candidate = base.map((w, i) => w + sign * sigma * e[i]);
           const drill = new CautionDrill(track, slot, (k) => (k === slot
             ? stableTeam(d, handsSeed, candidate)
-            : stableTeam(pack[k], hashSeed(handsSeed, `pack${k}`))), spreadSeed);
+            : stableTeam(pack[k], hashSeed(handsSeed, `pack${k}`))), spreadSeed, wreckSeed);
           while (!drill.done) drill.step();
           results.push(drill.result());
         }

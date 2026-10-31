@@ -53,6 +53,8 @@ lane straight through them.
 npx tsx --import ./scripts/cautionWrecks.ts scripts/incidents.ts public/drivers/stable-candidate-v5p.json --tracks speedway --seeds 2 --field 40 --rules 1
 # the caution skill retrained with wrecks (v5w: 8 rounds, 28 min on 5 jobs)
 npx tsx scripts/stable.ts --from public/drivers/stable-candidate-v5p.json --out v5w.json --rounds 8 --laps 20 --debris 0.2 --wrecks 0.8 --caution-only 1 --group 8 --jobs 5 --seed 11
+# the caution skill practised by score, wrecks in 3 drills of 4 (v5es: 74 min on 10 jobs; run 7)
+npx tsx scripts/stableCautions.ts --in public/drivers/stable-candidate-v5p.json --out v5es.json --rounds 40 --wrecks 0.75 --group 4 --jobs 10 --seed 21
 ```
 
 ## Results
@@ -65,6 +67,12 @@ Speedway / short oval, two races (`wreck-probes.txt`):
 | v5p, the lane round the wreck | 98 / 33 | 22 / 3 | 23.5 / 17.0 |
 | v5p, everything (red flag etc.) | 99 / 41 | 24 / 8 | 21.5 / 15.5 |
 | v5w (caution skill retrained) | 94 / 25 | 25 / 1 | 26.5 / 15.0 |
+| v5es (caution skill practised by score, wreck drills) | 71 / 29 | 23 / 1 | 25.5 / 14.0 |
+
+v5es's practice score went -95 -> -81 (first and last 8 rounds), its harm to others flat at 0.025. It hit wrecks less
+often on the speedway but no fewer cars went out by them, at a median 21 m/s (v5p 12); on the short oval its car-to-car
+contact under caution cost 28 health to v5p's 18. The drill scores its own car's damage and harm, but a drill's wrecks
+are one or two cars in a field already in line; the speedway's are pileups cars catch up to at speed.
 
 No red flag in any of these races (at a car's width and half a metre, with the apron, nothing was that blocked); two on
 the club circuit, 49 s in all.
@@ -82,7 +90,7 @@ climbs as students drive: 0.007 -> 0.05).
 
 ## Open
 
-- Ghosting wrecks for cars that are pacing (the user's fallback), or practice by outcome (`stableCautions.ts` ES with
-  `CautionDrill` wrecks; not run), or holding catching-up speed near a wreck.
-- v5w isn't bundled (no better on the speedway).
+- Ghosting wrecks for cars that are pacing (the user's fallback), or holding catching-up speed near a wreck. Copying
+  (v5w) and practice by score (v5es) both left the speedway's cars put out by wrecks at 23-25 in two races.
+- v5w and v5es aren't bundled (no better on the speedway).
 - The club circuit: 11 cautions a race under the circuit rulebook; the GP: pit-cycle wall hits are its biggest cause.
