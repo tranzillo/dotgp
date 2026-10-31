@@ -1,0 +1,181 @@
+== 1. labels probe, speedway, 2 races each (scripts/cautionLabels.ts; v5p classic car, v8 ?spec=cup&lines=2), code at 6f4bc8d
+== v5p classic speedway
+finished 10/30  cautions 4 (19 laps)  retirements 20  biggest wreck 3 cars
+finished 8/30  cautions 4 (16 laps)  retirements 22  biggest wreck 4 cars
+LABELS all pacing: 4923028 moments, mean |pedal gap| 0.462, |steer gap| 0.137, teacher braking while student not 24.3%
+LABELS into wreck         65 hits; first braked (s before) student 3.53 teacher 3.23; 2 s out speed 27.6 gap 43 m closing 7.5
+LABELS   3-2s pedal -0.13/+0.07 miss 14% steer gap 0.27 | 2-1s pedal -0.13/-0.13 miss 17% steer gap 0.28 | 1-0.5s pedal -0.16/-0.33 miss 23% steer gap 0.30 | 0.5-0s pedal -0.23/-0.55 miss 27% steer gap 0.28
+LABELS into slower car    71 hits; first braked (s before) student 0.63 teacher 3.99; 2 s out speed 35.8 gap 23 m closing 2.5
+LABELS   3-2s pedal +0.06/-0.36 miss 55% steer gap 0.14 | 2-1s pedal +0.12/-0.39 miss 54% steer gap 0.17 | 1-0.5s pedal +0.07/-0.50 miss 55% steer gap 0.18 | 0.5-0s pedal -0.08/-0.61 miss 54% steer gap 0.19
+LABELS into other car    448 hits; first braked (s before) student 1.40 teacher 3.47; 2 s out speed 36.5 gap 10 m closing 0.2
+LABELS   3-2s pedal +0.07/-0.13 miss 35% steer gap 0.17 | 2-1s pedal +0.03/-0.14 miss 33% steer gap 0.17 | 1-0.5s pedal -0.00/-0.19 miss 32% steer gap 0.18 | 0.5-0s pedal -0.01/-0.18 miss 30% steer gap 0.18
+== v8 cup lines speedway
+finished 3/30  cautions 3 (15 laps)  retirements 27  biggest wreck 8 cars
+finished 13/30  cautions 6 (21 laps)  retirements 17  biggest wreck 3 cars
+LABELS all pacing: 5726613 moments, mean |pedal gap| 0.349, |steer gap| 0.075, teacher braking while student not 13.0%
+LABELS into wreck         43 hits; first braked (s before) student 2.93 teacher 3.99; 2 s out speed 32.4 gap 42 m closing 9.6
+LABELS   3-2s pedal -0.09/-0.26 miss 30% steer gap 0.16 | 2-1s pedal -0.02/-0.22 miss 31% steer gap 0.19 | 1-0.5s pedal -0.07/-0.37 miss 39% steer gap 0.19 | 0.5-0s pedal -0.12/-0.64 miss 44% steer gap 0.20
+LABELS into slower car    38 hits; first braked (s before) student 1.52 teacher 3.99; 2 s out speed 46.8 gap 27 m closing 4.4
+LABELS   3-2s pedal +0.05/-0.37 miss 55% steer gap 0.09 | 2-1s pedal +0.02/-0.44 miss 55% steer gap 0.08 | 1-0.5s pedal -0.03/-0.50 miss 49% steer gap 0.08 | 0.5-0s pedal -0.16/-0.65 miss 49% steer gap 0.11
+LABELS into other car    242 hits; first braked (s before) student 1.88 teacher 2.89; 2 s out speed 34.6 gap 8 m closing 0.0
+LABELS   3-2s pedal +0.05/-0.12 miss 25% steer gap 0.10 | 2-1s pedal +0.03/-0.10 miss 23% steer gap 0.11 | 1-0.5s pedal +0.02/-0.15 miss 26% steer gap 0.11 | 0.5-0s pedal -0.01/-0.23 miss 29% steer gap 0.11
+
+== 2. labels probe with the network's own command (before its hands) and by speed, v8 speedway seed 1 (also the dump for the fit tests)
+LABELS dumped 24013 moments of 91 floats to C:/Users/kappa/AppData/Local/Temp/claude/c--Users-kappa-Documents-Projects-dotgp/6f28a891-a5b6-41ed-89a0-96d2f2415de7/scratchpad/fit/speedway1.bin
+LABELS all pacing: 2420858 moments, mean |pedal gap| 0.346, |steer gap| 0.073, teacher braking while student not 13.0%; the network's own command (before its hands): |pedal gap| 0.303, teacher braking while it not 10.7%
+LABELS by speed: 0+ m/s 0% pedal +0.55/+0.59 miss 4% | 15+ m/s 3% pedal +0.58/+0.54 miss 6% | 25+ m/s 34% pedal +0.05/+0.14 miss 8% | 35+ m/s 37% pedal +0.06/-0.02 miss 15% | 45+ m/s 26% pedal +0.08/+0.01 miss 17%
+LABELS into wreck         18 hits; first braked (s before) student 3.85 teacher 4.00; 2 s out speed 33.9 gap 28 m closing 8.6
+LABELS   3-2s pedal -0.03/-0.07 miss 31% (net 31%) steer gap 0.17 | 2-1s pedal -0.06/-0.23 miss 23% (net 20%) steer gap 0.18 | 1-0.5s pedal -0.15/-0.35 miss 21% (net 19%) steer gap 0.24 | 0.5-0s pedal -0.11/-0.49 miss 33% (net 26%) steer gap 0.24
+LABELS into slower car    16 hits; first braked (s before) student 2.77 teacher 4.00; 2 s out speed 44.3 gap 16 m closing 9.1
+LABELS   3-2s pedal +0.00/-0.42 miss 58% (net 53%) steer gap 0.13 | 2-1s pedal -0.00/-0.37 miss 49% (net 47%) steer gap 0.13 | 1-0.5s pedal +0.02/-0.35 miss 43% (net 44%) steer gap 0.14 | 0.5-0s pedal -0.01/-0.61 miss 49% (net 43%) steer gap 0.11
+LABELS into other car    112 hits; first braked (s before) student 2.37 teacher 3.44; 2 s out speed 34.6 gap 8 m closing 0.0
+LABELS   3-2s pedal +0.04/-0.19 miss 28% (net 22%) steer gap 0.11 | 2-1s pedal +0.00/-0.13 miss 19% (net 15%) steer gap 0.13 | 1-0.5s pedal +0.04/-0.10 miss 21% (net 17%) steer gap 0.11 | 0.5-0s pedal +0.03/-0.20 miss 30% (net 19%) steer gap 0.11
+LABELS all pacing: 1845636 moments, mean |pedal gap| 0.364, |steer gap| 0.080, teacher braking while student not 13.5%
+LABELS by speed: 0+ m/s 2% pedal +0.64/+0.62 miss 2% | 15+ m/s 5% pedal +0.59/+0.65 miss 3% | 25+ m/s 26% pedal +0.10/+0.18 miss 10% | 35+ m/s 33% pedal +0.06/-0.01 miss 16% | 45+ m/s 33% pedal +0.07/+0.01 miss 16%
+
+== 3. fit tests (scripts/cautionFit.ts), v8, moments from speedway seeds 1-2 (train) and 3 (held out)
+-- dumps at 4% (speedway1-3.bin): each driver's copy on its own moments
+drivers 31, train moments 44404, held out 18091
+FIT bundle's network, held out:     pedal err 0.310, teacher braking 17.1% of which net not 57%, steer err 0.065
+FIT trained copy, its training data: pedal err 0.169, teacher braking 19.3% of which net not 11%, steer err 0.044
+FIT trained copy, held out:          pedal err 0.287, teacher braking 17.1% of which net not 32%, steer err 0.070
+-- one race to train on
+FIT trained copy, held out:          pedal err 0.312, teacher braking 17.3% of which net not 34%, steer err 0.075
+-- braking moments 3x
+FIT trained copy, held out:          pedal err 0.293, teacher braking 17.1% of which net not 27%, steer err 0.065
+-- 24 epochs; a [in, 64, 48, 2] network from scratch
+FIT trained copy, its training data: pedal err 0.139, teacher braking 19.3% of which net not 10%, steer err 0.039
+FIT trained copy, held out:          pedal err 0.303, teacher braking 17.1% of which net not 33%, steer err 0.064
+FIT wide network, held out:          pedal err 0.322, teacher braking 17.1% of which net not 41%, steer err 0.071
+-- dumps at 8% with the teacher's follow cap (LABELS_EXTRA=1, x-speedway1-3.bin): one network for the field, from scratch
+FIT field network without the extra inputs: held out pedal err 0.230, teacher braking 17.3% of which net not 24%, steer err 0.035 | training pedal err 0.217, teacher braking 19.3% of which net not 18%, steer err 0.035
+FIT field network with    the extra inputs: held out pedal err 0.212, teacher braking 17.3% of which net not 23%, steer err 0.059 | training pedal err 0.204, teacher braking 19.3% of which net not 23%, steer err 0.057
+-- each driver's copy on the whole field's moments (--pooled 1 --epochs 4 --skip 2): v8f
+drivers 31, train moments 89390, held out 35857
+FIT bundle's network, held out:     pedal err 0.305, teacher braking 17.1% of which net not 56%, steer err 0.065
+FIT trained copy, its training data: pedal err 0.232, teacher braking 19.2% of which net not 22%, steer err 0.043
+FIT trained copy, held out:          pedal err 0.235, teacher braking 17.1% of which net not 25%, steer err 0.044
+
+== 4. v8 against v8f, cautionWrecks.ts, seeds 4-5 (not recorded from)
+== v8 speedway
+finished 11/30  cautions 2 (13 laps)  retirements 19  biggest wreck 6 cars
+finished 7/30  cautions 6 (26 laps)  retirements 23  biggest wreck 4 cars
+  WRECKS  21.0 retirements/race, 4.0 cautions/race, 10 multi-car wrecks (mean 2.8 cars, max 6)
+WRECK caution 2925 s, a wreck on the racing surface 1202 s, blocked (<3 car widths) 26 s, red flags 0 (0 s)
+WRECK wreck (retired)      cautionNet    hits   68  health  19.71  out 15  speed med 11.3
+WRECK slower car (5+ m/s)  cautionNet    hits   56  health   7.59  out 3  speed med 24.8
+WRECK other car            cautionNet    hits  309  health   4.23  out 7  speed med 29.8
+WRECK wall/wall            cautionNet    hits 19532  health   3.17  out 3  speed med 16.8
+WRECK wreck (stopped)      cautionNet    hits    8  health   1.60  out 1  speed med 14.0
+WRECK slower car (5+ m/s)  pit           hits   10  health   0.74  out 0  speed med 37.6
+WRECK wreck (retired)      pit           hits    3  health   0.61  out 0  speed med 12.3
+WRECK other car            pit           hits   16  health   0.21  out 0  speed med 21.7
+== v8 flat
+finished 6/24  cautions 2 (11 laps)  retirements 18  biggest wreck 3 cars
+finished 21/24  cautions 2 (7 laps)  retirements 3  biggest wreck 1 cars
+  WRECKS  10.5 retirements/race, 2.0 cautions/race, 6 multi-car wrecks (mean 2.3 cars, max 3)
+WRECK caution 1635 s, a wreck on the racing surface 557 s, blocked (<3 car widths) 36 s, red flags 0 (0 s)
+WRECK wreck (retired)      cautionNet    hits   26  health  12.24  out 9  speed med 19.2
+WRECK slower car (5+ m/s)  cautionNet    hits   12  health   2.10  out 0  speed med 22.4
+WRECK wall/wall            cautionNet    hits 25325  health   1.56  out 0  speed med 38.3
+WRECK other car            cautionNet    hits  122  health   1.44  out 2  speed med 23.4
+WRECK wreck (stopped)      cautionNet    hits    1  health   0.64  out 1  speed med 25.8
+WRECK slower car (5+ m/s)  pit           hits    2  health   0.51  out 0  speed med 32.9
+WRECK wreck (retired)      pit           hits    1  health   0.28  out 0  speed med 13.4
+WRECK other car            pit           hits    8  health   0.22  out 0  speed med 26.1
+== v8f speedway
+finished 19/30  cautions 5 (14 laps)  retirements 10  biggest wreck 2 cars
+finished 14/30  cautions 6 (21 laps)  retirements 16  biggest wreck 4 cars
+  WRECKS  13.0 retirements/race, 5.5 cautions/race, 4 multi-car wrecks (mean 2.5 cars, max 4)
+WRECK caution 2772 s, a wreck on the racing surface 500 s, blocked (<3 car widths) 0 s, red flags 0 (0 s)
+WRECK slower car (5+ m/s)  cautionNet    hits   17  health   3.57  out 1  speed med 34.4
+WRECK wreck (retired)      pit           hits    7  health   3.11  out 2  speed med 19.4
+WRECK other car            cautionNet    hits  105  health   1.61  out 4  speed med 29.7
+WRECK slower car (5+ m/s)  pit           hits   15  health   1.38  out 0  speed med 13.8
+WRECK wreck (retired)      cautionNet    hits    2  health   1.04  out 0  speed med 46.5
+WRECK other car            pit           hits   57  health   0.89  out 1  speed med 16.2
+WRECK wall/wall            cautionNet    hits  996  health   0.85  out 0  speed med 52.7
+== v8f flat
+finished 16/24  cautions 4 (12 laps)  retirements 8  biggest wreck 2 cars
+finished 18/24  cautions 3 (9 laps)  retirements 5  biggest wreck 2 cars
+  WRECKS  6.5 retirements/race, 3.5 cautions/race, 2 multi-car wrecks (mean 2.0 cars, max 2)
+WRECK caution 2064 s, a wreck on the racing surface 337 s, blocked (<3 car widths) 0 s, red flags 0 (0 s)
+WRECK wall/wall            cautionNet    hits 35532  health   3.28  out 1  speed med 33.6
+WRECK slower car (5+ m/s)  cautionNet    hits   16  health   0.89  out 0  speed med 30.4
+WRECK other car            cautionNet    hits  173  health   0.87  out 0  speed med 18.8
+WRECK wreck (retired)      pit           hits    1  health   0.76  out 0  speed med 26.6
+WRECK wreck (retired)      cautionNet    hits    8  health   0.70  out 0  speed med 7.5
+WRECK slower car (5+ m/s)  pit           hits    5  health   0.34  out 0  speed med 23.9
+WRECK other car            pit           hits   13  health   0.20  out 0  speed med 18.8
+
+== 5. v8 with this commit's way by a wreck (9658a92) and both preloads (cautionWrecks, cautionStalls), seeds 1-2
+== speedway
+finished 3/30  cautions 3 (15 laps)  retirements 27  biggest wreck 8 cars
+finished 13/30  cautions 6 (21 laps)  retirements 17  biggest wreck 3 cars
+  STEWARDS 12.5 decisions/race: avoidable-contact: time 9, avoidable-contact: black-flag 5, avoidable-contact: warning 5, avoidable-contact: drive-through 3, pit-speeding: stop-go 2, blend-line: warning 1
+  WRECKS  22.0 retirements/race, 4.5 cautions/race, 9 multi-car wrecks (mean 3.2 cars, max 8)
+          contact retirements: 24 at fault, 8 hit by another
+  PASSING 57.6 clean passes/100 green car-laps; of all passes 14% with contact, 3% damaging, 39% from the draft; 12.5 damaging contacts/100 green car-laps
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+  PIT ROAD 57.2 s entry to track under green, 62.3 s under caution; 118.5 contacts, 6.33 health lost /race in pit cycles
+WRECK caution 2916 s, a wreck on the racing surface 1004 s, blocked (<3 car widths) 2 s, red flags 0 (0 s)
+WRECK wreck (retired)      cautionNet    hits   43  health  18.61  out 15  speed med 27.4
+WRECK slower car (5+ m/s)  cautionNet    hits   38  health   7.07  out 3  speed med 38.7
+WRECK other car            cautionNet    hits  242  health   3.97  out 6  speed med 32.1
+WRECK wall/wall            cautionNet    hits 30912  health   3.31  out 2  speed med 51.2
+WRECK official/truck       cautionNet    hits   33  health   2.89  out 2  speed med 27.3
+WRECK wall/wall            pit           hits 3704  health   1.70  out 5  speed med 16.8
+WRECK slower car (5+ m/s)  pit           hits   17  health   1.49  out 0  speed med 11.2
+WRECK other car            pit           hits   49  health   0.89  out 0  speed med 5.4
+WRECK wreck (retired)      pit           hits    3  health   0.39  out 0  speed med 20.2
+STALLS under caution (picked up): 9 car-s stopped of 35354 running (0.0%), smoking 9 s, on the apron 0 s; 2 stops, median 9.1 s, p90 9.1 s; gap to the car ahead at the stop median 17 m; ended retired 1
+== flat
+finished 10/24  cautions 1 (5 laps)  retirements 14  biggest wreck 3 cars
+finished 21/24  cautions 2 (3 laps)  retirements 3  biggest wreck 1 cars
+  STEWARDS 4.0 decisions/race: avoidable-contact: drive-through 3, avoidable-contact: time 2, blend-line: warning 1, jumped-restart: drive-through 1, blend-line: drive-through 1
+  WRECKS  8.5 retirements/race, 1.5 cautions/race, 5 multi-car wrecks (mean 2.4 cars, max 3)
+          contact retirements: 9 at fault, 5 hit by another
+  PASSING 14.1 clean passes/100 green car-laps; of all passes 17% with contact, 4% damaging, 36% from the draft; 3.8 damaging contacts/100 green car-laps
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+  PIT ROAD 52.6 s entry to track under green, 60.7 s under caution; 68.5 contacts, 3.76 health lost /race in pit cycles
+WRECK caution 840 s, a wreck on the racing surface 383 s, blocked (<3 car widths) 0 s, red flags 0 (0 s)
+WRECK wreck (retired)      cautionNet    hits   23  health  10.39  out 8  speed med 19.0
+WRECK slower car (5+ m/s)  cautionNet    hits   14  health   1.84  out 1  speed med 35.7
+WRECK wall/wall            cautionNet    hits 8683  health   1.18  out 0  speed med 40.6
+WRECK other car            cautionNet    hits   92  health   1.15  out 1  speed med 23.1
+WRECK wall/wall            pit           hits  560  health   0.55  out 1  speed med 18.4
+WRECK official/truck       cautionNet    hits    1  health   0.12  out 0  speed med 10.5
+WRECK wreck (retired)      pit           hits    2  health   0.06  out 0  speed med 7.7
+STALLS under caution (picked up): 24 car-s stopped of 9419 running (0.3%), smoking 2 s, on the apron 0 s; 12 stops, median 1.3 s, p90 6.3 s; gap to the car ahead at the stop median 41 m; ended retired 0
+
+== 6. the speed past a wreck capped at pace for everyone (a preload, no retraining), speedway seeds 1-2
+== v5p classic speedway, wreck pace
+finished 9/30  cautions 3 (17 laps)  retirements 21  biggest wreck 6 cars
+finished 10/30  cautions 4 (17 laps)  retirements 20  biggest wreck 4 cars
+  WRECKS  20.5 retirements/race, 3.5 cautions/race, 9 multi-car wrecks (mean 3.2 cars, max 6)
+WRECK caution 2658 s, a wreck on the racing surface 1087 s, blocked (<3 car widths) 37 s, red flags 0 (0 s)
+WRECK wreck (retired)      cautionNet    hits   52  health  18.27  out 21  speed med 25.3
+WRECK slower car (5+ m/s)  cautionNet    hits   59  health   5.53  out 1  speed med 28.6
+WRECK other car            cautionNet    hits  311  health   3.38  out 5  speed med 31.1
+WRECK wall/wall            cautionNet    hits 17000  health   2.69  out 0  speed med 49.7
+WRECK slower car (5+ m/s)  pit           hits    6  health   0.85  out 0  speed med 11.9
+WRECK official/truck       cautionNet    hits    6  health   0.53  out 0  speed med 28.6
+WRECK other car            pit           hits   16  health   0.52  out 2  speed med 12.5
+WRECK wall/wall            pit           hits    5  health   0.11  out 1  speed med 15.3
+WRECK wreck (retired)      pit           hits    1  health   0.06  out 1  speed med 8.2
+WRECK wreck (stopped)      cautionNet    hits    1  health   0.00  out 0  speed med 2.3
+== v8 cup lines speedway, wreck pace
+finished 1/30  cautions 4 (19 laps)  retirements 28  biggest wreck 4 cars
+finished 15/30  cautions 5 (19 laps)  retirements 15  biggest wreck 2 cars
+  WRECKS  21.5 retirements/race, 4.5 cautions/race, 11 multi-car wrecks (mean 2.5 cars, max 4)
+WRECK caution 3047 s, a wreck on the racing surface 1154 s, blocked (<3 car widths) 1 s, red flags 0 (0 s)
+WRECK wreck (retired)      cautionNet    hits   48  health  18.14  out 18  speed med 21.4
+WRECK slower car (5+ m/s)  cautionNet    hits   51  health   5.64  out 1  speed med 33.4
+WRECK other car            cautionNet    hits  252  health   4.00  out 5  speed med 31.3
+WRECK wall/wall            cautionNet    hits 19752  health   3.03  out 1  speed med 50.6
+WRECK official/truck       cautionNet    hits   24  health   2.45  out 1  speed med 31.3
+WRECK slower car (5+ m/s)  pit           hits   15  health   2.18  out 1  speed med 19.3
+WRECK wreck (retired)      pit           hits    9  health   1.24  out 1  speed med 8.7
+WRECK wall/wall            pit           hits 2351  health   1.12  out 1  speed med 20.0
+WRECK wreck (stopped)      cautionNet    hits    1  health   0.70  out 1  speed med 31.2
+WRECK other car            pit           hits   31  health   0.66  out 1  speed med 11.8
