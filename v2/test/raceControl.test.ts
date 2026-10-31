@@ -45,9 +45,11 @@ describe('race control', () => {
     expect(greenAt).toBeLessThan(30);
     expect(race.state).toBe('finished');
     expect(ctl.cautions).toBe(1);
-    // The wreck was towed to the garage and parked there.
-    expect(ctl.wreckers.length).toBe(1);
-    expect(ctl.wreckers[0].phase).toBe('done');
+    // The wreck was towed to the garage and parked there, and no truck is still out for a car or towing one (the
+    // fleet: trucks posted round the infield, every one listed whether it went out or not; the one that towed it may
+    // still be on its way back to its post at the flag).
+    expect(ctl.wreckers.length).toBeGreaterThan(0);
+    expect(ctl.wreckers.every((w) => w.wreck === null)).toBe(true);
     expect(wrecked!.parked).toBe(true);
     expect(track.surfaceAt(wrecked!.s, wrecked!.d, wrecked!.x, wrecked!.y)).toBe('garage');
     // Only the forced wreck retired: formation driving didn't cause any more.
