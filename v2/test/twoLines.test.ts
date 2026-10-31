@@ -1,6 +1,10 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { applyExperiment } from '../src/sim/experiment';
+import { applyExperiment, EXPERIMENT } from '../src/sim/experiment';
 import { lineAt, ovalLines } from '../src/ai/racingLine';
+import { racerStyle, TrafficRacer } from '../src/ai/trafficRacer';
+import { Car } from '../src/sim/car';
+import { PHYSICS as P } from '../src/sim/constants';
+import { World } from '../src/sim/world';
 import { ovalTrack, SHORT_TRACK, SPEEDWAY } from '../src/trackgen';
 
 /** How close a line comes to the outside wall's face (m, from the car's side). */
@@ -28,5 +32,29 @@ describe('ovals banked for two lines (?lines=2)', () => {
     }
     const plain = ovalTrack(SPEEDWAY);
     expect(plain.layout.params.bankProgression).toBeUndefined();
+  });
+
+  it('a teacher taking over a car on its other line, not passing, holds the line the car is on', () => {
+    EXPERIMENT.lines = 2;
+    try {
+      const track = ovalTrack({ ...SHORT_TRACK, balanceLines: true });
+      const style = racerStyle(0.5, 0.5, () => 0.5).style;
+      const { low, high } = ovalLines(track, style.margin);
+      const world = new World(track, { collisions: false, drafting: false });
+      const car = new Car(0);
+      car.placeOnTrack(track, 0, lineAt(low, 0).d);
+      const teacher = new TrafficRacer(style);
+      world.addCar(car, teacher);
+      for (let k = 0; k < 2 / P.DT; k++) world.step();
+      const home = () => (teacher as unknown as { home: string }).home;
+      expect(home()).toBe('low');
+      // A student at the wheel has put it on the high line.
+      car.placeOnTrack(track, car.s, lineAt(high, car.s).d);
+      teacher.takeOver(car, world);
+      expect(teacher.intent).toBe(0);
+      expect(home()).toBe('high');
+    } finally {
+      EXPERIMENT.lines = 0;
+    }
   });
 });

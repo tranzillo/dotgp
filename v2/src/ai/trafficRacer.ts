@@ -307,17 +307,20 @@ export class TrafficRacer {
     return cap;
   }
 
+  /** Its lane plan: +1 passing on the +d side, -1 on the -d side, 0 holding its lane (a student's tactics copy it). */
+  get intent(): number { return this.passSide; }
+
   /**
    * Plan from where the car really is: its offset from the line now, not the one it was heading for. A teacher
    * labelling someone else's driving (a student at the wheel, or its own hands shaken) must answer "what to do from
    * here"; left to itself its offset follows its own plan wherever the car goes, and its labels answer a car that
-   * isn't there, which no student can learn from what it sees.
+   * isn't there, which no student can learn from what it sees. So too its line, on two: not passing, it holds the
+   * line the car is on, as the student is shown it does (2026-10-31: kept from its last pass, the teacher's line
+   * wasn't the car's in 46% of a short oval's green decisions, and its labels steered across the track while the
+   * student was shown its plan was to hold).
    */
-  /** Its lane plan: +1 passing on the +d side, -1 on the -d side, 0 holding its lane (a student's tactics copy it). */
-  get intent(): number { return this.passSide; }
-
   takeOver(car: Car, world: World): void {
-    if (twoLines(world.track) && !this.home) this.home = whichLine(world.track, this.style.margin, car.s, car.d);
+    if (twoLines(world.track) && (!this.home || (!this.path && this.passSide === 0))) this.home = whichLine(world.track, this.style.margin, car.s, car.d);
     this.offset = car.d - lineAt(this.path ?? this.lineFor(world.track), car.s).d;
   }
 
