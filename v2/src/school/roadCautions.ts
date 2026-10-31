@@ -54,6 +54,8 @@ export interface RoadCautionOptions {
   laps?: number;
   /** Debris safety cars per lap (so every race has a few). */
   debris?: number;
+  /** The share of them that leave wrecks on track for the field to go by (classroomRace's wrecks). */
+  wrecks?: number;
   /**
    * Start drills per round: the end of the formation lap, the grid and the lights, then a few seconds of racing.
    * A race has one formation lap, and stopping in the grid box takes precision (overshoot it and the car can't
@@ -133,7 +135,7 @@ export function apprenticeRoadCautions(students: RoadCautionStudent[], seed: num
     const driving: Driving = round === 0 ? { kind: 'teacher' } : { kind: 'student' };
     const soloCrashes = opts.racing ? soloDrives(track, students, driving, alone, rng, round, seed, opts.knocks) : undefined;
     // At most a car a pit box, as races are run.
-    const race = { field: Math.min(opts.field, track.maxField), laps: opts.laps, debris: opts.debris };
+    const race = { field: Math.min(opts.field, track.maxField), laps: opts.laps, debris: opts.debris, wrecks: opts.wrecks };
     const { out, cautions: safetyCars } = classroomRace(track, students, driving, examples, rng, race, round, seed);
     for (let k = 0; k < opts.starts; k++) {
       const where = circuitTrack(hashSeed(seed, `start${round}:${k}`), k % 2 ? 'gp' : 'club');

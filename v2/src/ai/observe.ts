@@ -270,9 +270,11 @@ export function observeCaution(car: Car, world: World, out: Float32Array): Float
   // not by a car that got by the pace car: it drops back).
   const err = ctl.slotGap(car)!;
   out[2] = Math.max(-3, Math.min(3, err / 40));
-  out[3] = Math.max(-2, Math.min(2, (slot.d - car.d) / track.halfWidth));
-  out[4] = Math.max(-2, Math.min(2, (slot.speed - car.speed) / 20));
-  const ahead = ctl.carAheadInFile(car, slot.d);
+  // Its place's lane and speed, round a wreck ahead (the place's own lane ran through it: 2026-10-31).
+  const lane = ctl.aroundWreck(car, slot.d);
+  out[3] = Math.max(-2, Math.min(2, (lane - car.d) / track.halfWidth));
+  out[4] = Math.max(-2, Math.min(2, (Math.min(slot.speed, ctl.wreckSpeed(car, lane)) - car.speed) / 20));
+  const ahead = ctl.carAheadInFile(car, lane);
   if (ahead) {
     const gap = track.distanceFrom(car.s, ahead.s) - 2 * P.CAR_RADIUS;
     out[5] = Math.max(0, Math.min(1, gap / 50));
@@ -299,7 +301,7 @@ export function observeCautionRange(car: Car, world: World, out: Float32Array): 
   const slot = ctl.slotFor(car);
   if (!slot) return out;
   out[0] = Math.asinh(ctl.slotGap(car)! / 40);
-  const ahead = ctl.carAheadInFile(car, slot.d);
+  const ahead = ctl.carAheadInFile(car, ctl.aroundWreck(car, slot.d));
   out[1] = ahead ? Math.sqrt(Math.max(0, Math.min(1, (track.distanceFrom(car.s, ahead.s) - 2 * P.CAR_RADIUS) / 200))) : 1;
   return out;
 }

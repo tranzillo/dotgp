@@ -20,7 +20,7 @@ import type { StartProcedure } from '../rules/rulebook';
  *
  * The green flag flies when the leader crosses the start/finish line.
  */
-export type Flag = 'pace' | 'restart' | 'green' | 'caution' | 'formation' | 'grid';
+export type Flag = 'pace' | 'restart' | 'green' | 'caution' | 'formation' | 'grid' | 'red';
 /** A standing start's settings (the rulebook's). */
 export type StandingStart = Extract<StartProcedure, { kind: 'standing' }>;
 /** How hard the formation lap slows to a stop on the grid (m/s^2): gently. */
@@ -153,7 +153,31 @@ export interface Wrecker {
 interface Callout { wreck: Car; waited: number; reachable?: boolean }
 
 /** A wreck (and what's with it) on the racing surface to go round: where it is along the lap, and across it (d). */
-export interface WorkZone { s: number; lo: number; hi: number }
+export interface WorkZone { s: number; lo: number; hi: number; parts: Array<[number, number]> }
+/**
+ * The red flag: under caution, stopped wrecks leaving less than RED_FREE (m) of the racing surface to get by (a car's
+ * width and half a metre either side: one car in the middle of a narrow circuit leaves more) for RED_AFTER (s) stop
+ * the race. The field stops in line behind the pace car RED_SHORT (m) short of them, at RED_DECEL (m/s^2), and every
+ * car on track stops short of them too; once nowhere has been blocked for RED_CLEAR (s) the field rolls again under
+ * caution, for a lap at least.
+ */
+const RED_FREE = 2 * P.CAR_RADIUS + 1;
+const RED_AFTER = 2;
+const RED_SHORT = 40;
+const RED_DECEL = 2.5;
+const RED_CLEAR = 2;
+/** A wreck waiting for a truck this far off the racing surface (m; past an oval's apron) doesn't hold up a restart. */
+const CLEAR_OFF = 5;
+/** Air a car going by a wreck keeps to it (m), where there's room. */
+const WRECK_AIR = 2;
+/** Through a gap by a wreck with less air than that: no faster than this (m/s) with none, braked for at WRECK_DECEL. */
+const WRECK_SLOW = 8;
+const WRECK_DECEL = 3;
+/** Smooth step from 0 (x <= a) to 1 (x >= b). */
+const smoothRamp = (x: number, a: number, b: number) => {
+  const u = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return u * u * (3 - 2 * u);
+};
 
 /** Wrecks and trucks within this far along the track of one another are one thing to go round (m). */
 const ZONE_LENGTH = 30;
@@ -212,6 +236,12 @@ export class RaceControl {
   /** Laps this caution runs at least. */
   private cautionMinLaps = MIN_CAUTION_LAPS;
   private readonly handled = new Set<Car>();
+  /** Under caution, how long the track has been blocked; under the red flag, how long it has been clear (s). */
+  private blockedFor = 0;
+  /** Under the red flag, where the track is blocked (s of each place). */
+  redZones: number[] = [];
+  /** Red flags this race. */
+  reds = 0;
   private readonly cautioned = new Set<Car>();
   private readonly stoppedSince = new Map<Car, number>();
   /** The lap a car stopped on track brought a caution out on (it can bring out another once it has made it round). */
@@ -260,8 +290,8 @@ export class RaceControl {
    * up for the restart (the start's pace laps are double file throughout).
    */
   get singleFile(): boolean {
-    if (this.safetyCar) return this.flag === 'caution' || this.flag === 'restart';
-    return this.flag === 'caution' && !this.oneToGo;
+    if (this.safetyCar) return this.flag === 'caution' || this.flag === 'red' || this.flag === 'restart';
+    return (this.flag === 'caution' || this.flag === 'red') && !this.oneToGo;
   }
 
   /** Row of a place in the official order: the field doubles up for a pace-car restart, not behind the safety car. */
@@ -539,6 +569,8 @@ export class RaceControl {
       this.oneToGo = true;
       this.world.announce(leader, 'flag', 'One lap to go to the green');
     }
+    this.watchBlocked(dt);
+    if (this.flag === 'red') this.releasePaceCar(this.order[0] ?? null);
     if (this.flag === 'caution') {
       const laps = leader ? leader.lapsCompleted - this.cautionLap : 0;
       const clear = this.trackClear();
@@ -592,6 +624,64 @@ export class RaceControl {
     this.lineup();
   }
 
+  /**
+   * Where wrecks on the racing surface (and an oval's apron) leave less than RED_FREE to get by: each such place (its s). Wrecks within
+   * ZONE_LENGTH of each other are one place; trucks don't count (they move on).
+   */
+  blockedPlaces(): number[] {
+    const t = this.track;
+    const near = (a: number, b: number) => { const ds = t.distanceFrom(a, b); return Math.min(ds, t.length - ds) <= ZONE_LENGTH; };
+    const wrecks = this.world.cars.filter((c) => c.retired && !c.cleared && c.speed < 1 && c.d < t.innerEdge(c.trackIdx) + t.apronWidth);
+    const places: number[] = [];
+    for (const w of wrecks) {
+      if (places.some((s) => near(s, w.s))) continue;
+      const ds = wrecks.filter((o) => near(w.s, o.s)).map((o) => o.d).sort((a, b) => a - b);
+      const lo = t.outerEdge(w.trackIdx), hi = t.innerEdge(w.trackIdx) + t.apronWidth; // (an oval's apron is a way by)
+      let free = Math.max(ds[0] - P.CAR_RADIUS - lo, hi - ds[ds.length - 1] - P.CAR_RADIUS);
+      for (let k = 1; k < ds.length; k++) free = Math.max(free, ds[k] - ds[k - 1] - 2 * P.CAR_RADIUS);
+      if (free < RED_FREE) places.push(w.s);
+    }
+    return places;
+  }
+
+  /** Under caution, a track blocked long enough is a red flag; under the red flag, a track clear long enough isn't. */
+  private watchBlocked(dt: number): void {
+    if (this.flag !== 'caution' && this.flag !== 'red') { this.blockedFor = 0; return; }
+    const places = this.blockedPlaces();
+    if (this.flag === 'caution') {
+      this.blockedFor = places.length ? this.blockedFor + dt : 0;
+      if (this.blockedFor < RED_AFTER) return;
+      this.flag = 'red';
+      this.reds++;
+      this.oneToGo = false;
+      this.blockedFor = 0;
+      this.redZones = places;
+      this.world.announce(this.order[0] ?? this.paceCar, 'flag', 'Red flag! Track blocked: the field stops in line');
+      return;
+    }
+    // (While it's still blocked somewhere, its places follow the wrecks as they're moved.)
+    if (places.length) { this.redZones = places; this.blockedFor = 0; return; }
+    this.blockedFor += dt;
+    if (this.blockedFor < RED_CLEAR) return;
+    this.flag = 'caution';
+    this.blockedFor = 0;
+    this.redZones = [];
+    const head = this.order[0];
+    if (head) this.cautionMinLaps = Math.max(this.cautionMinLaps, head.lapsCompleted - this.cautionLap + 1);
+    this.world.announce(head ?? this.paceCar, 'flag', 'Track clear: the field rolls again under caution');
+  }
+
+  /**
+   * Under the red flag, the fastest a car at s may go: able to stop RED_SHORT short of the next place the track is
+   * blocked (one RED_SHORT or less ahead: stopped). Otherwise no limit.
+   */
+  redSpeedAt(s: number): number {
+    if (this.flag !== 'red') return Infinity;
+    let v = Infinity;
+    for (const z of this.redZones) v = Math.min(v, Math.sqrt(2 * RED_DECEL * Math.max(0, this.track.distanceFrom(s, z) - RED_SHORT)));
+    return v;
+  }
+
   /** The starter's moment for the green: a random share of the leader's time to the line at pace speed. */
   private drawGreen(): number {
     const head = this.order[0];
@@ -625,7 +715,7 @@ export class RaceControl {
   private watchPaceCar(): void {
     const t = this.track, pc = this.paceCar;
     for (const car of [...this.gotByPaceCar.keys()]) if (!this.order.includes(car)) this.gotByPaceCar.delete(car); // pitted, out
-    const leads = (this.flag === 'caution' || this.flag === 'pace') && this.paceCarOut && this.pickedUp && !this.paceCarHeadingInAndOff();
+    const leads = (this.flag === 'caution' || this.flag === 'red' || this.flag === 'pace') && this.paceCarOut && this.pickedUp && !this.paceCarHeadingInAndOff();
     if (!leads) {
       this.paceCarGap.clear();
       return;
@@ -701,7 +791,7 @@ export class RaceControl {
       return;
     }
     // Before the pace car has the leader there's no line yet: the field is still slowing, each in its own way.
-    if (this.flag === 'caution' && !this.pickedUp) return;
+    if ((this.flag === 'caution' || this.flag === 'red') && !this.pickedUp) return;
     // The formation lap and the grid: no calls (the field drives round in grid order and stops in its boxes).
     if (this.flag === 'formation' || this.flag === 'grid') return;
     const inLine = this.order.filter((c) => Math.abs(this.slotError(c)) < this.lineSpacing());
@@ -767,7 +857,8 @@ export class RaceControl {
       // the flag is done: one that runs dry on its slowing-down lap (crews fuel to the flag) isn't a wreck to bring the
       // safety car out for.
       const onTrack = car.pit.phase === 'none' || (car.pit.phase === 'in' && car.surface !== 'pit');
-      if (!car.retired && !car.finished && this.flag !== 'grid' && onTrack && car.speed < 3 && car.d < t.innerEdge(car.trackIdx) + 1) {
+      // (Nor under the red flag: stopped by the book, the field sat long enough to be counted stuck.)
+      if (!car.retired && !car.finished && this.flag !== 'grid' && this.flag !== 'red' && onTrack && car.speed < 3 && car.d < t.innerEdge(car.trackIdx) + 1) {
         const since = (this.stoppedSince.get(car) ?? 0) + dt;
         this.stoppedSince.set(car, since);
         // A stopped car is a hazard: a caution under green. It's a wreck only if it can't go on (out of fuel), or
@@ -977,7 +1068,7 @@ export class RaceControl {
       // the pace car pulling off, 10% over pace 330-760 m before the line, their place always where they were.)
       const runOff = this.flag === 'restart' && !this.safetyCar && !Number.isNaN(ahead) && ahead > t.length / 2;
       if (!runOff && (Number.isNaN(ahead) || ahead > VIRTUAL_LEAD_MAX)) this.virtualS = head.s; // new, behind the leader, or the leader lost it
-      else this.virtualS = t.wrapS(this.virtualS + this.paceSpeedAt(this.virtualS) * (this.flag === 'caution' ? 1.15 : 1) * dt);
+      else this.virtualS = t.wrapS(this.virtualS + Math.min(this.paceSpeedAt(this.virtualS) * (this.flag === 'caution' ? 1.15 : 1), this.redSpeedAt(this.virtualS)) * dt);
       // The real pace car out on track ahead, waiting to pick up the leader: the line can't run past it.
       if (this.paceCarOut && pc.d < t.innerEdge(pc.trackIdx) + 1 && t.distanceFrom(head.s, pc.s) < t.length / 2) {
         const limit = t.wrapS(pc.s - FIRST_ROW_GAP);
@@ -985,7 +1076,9 @@ export class RaceControl {
       }
       refS = this.virtualS;
     }
-    const refSpeed = paceCarLeads ? Math.max(pc.speed, this.paceSpeedAt(pc.s) * 0.6) : this.paceSpeedAt(refS) * (this.flag === 'caution' ? 1.15 : 1);
+    // (Under the red flag the line stops with the pace car, or where the virtual one stops.)
+    const refSpeed = this.flag === 'red' ? (paceCarLeads ? pc.speed : Math.min(this.paceSpeedAt(refS), this.redSpeedAt(refS)))
+      : paceCarLeads ? Math.max(pc.speed, this.paceSpeedAt(pc.s) * 0.6) : this.paceSpeedAt(refS) * (this.flag === 'caution' ? 1.15 : 1);
     const single = this.singleFile;
     this.order.forEach((car, index) => {
       const back = (paceCarLeads ? FIRST_ROW_GAP : 0) + (single ? index * SINGLE_FILE_GAP : Math.floor(index / 2) * ROW_GAP);
@@ -1003,13 +1096,15 @@ export class RaceControl {
    * The nearest wreck still on the racing surface within range ahead of this
    * car, as the stretch of track to go round: the wreck, and with it whatever
    * else is there (other wrecks, a wrecker at work on it), across from lo to
-   * hi (d, widened for anything bigger than a car). Going round only the one
-   * nearest, cars drove into the truck pulling up beside it.
+   * hi (d, widened for anything bigger than a car), and each of them across
+   * the track (parts: from its one side to its other). Going round only the
+   * one nearest, cars drove into the truck pulling up beside it. On an oval's
+   * apron too: it's a way round.
    */
   wreckAhead(car: Car, range = 250): WorkZone | null {
     const t = this.track;
     const there = [...this.world.cars.filter((c) => c.retired), ...this.world.solidVehicles]
-      .filter((o) => !o.cleared && o.d <= t.innerEdge(o.trackIdx) + 1 + o.radius - P.CAR_RADIUS);
+      .filter((o) => !o.cleared && o.d <= t.innerEdge(o.trackIdx) + Math.max(1, t.apronWidth) + o.radius - P.CAR_RADIUS);
     let near: Car | null = null;
     let bestGap = range;
     for (const other of there) {
@@ -1017,15 +1112,70 @@ export class RaceControl {
       if (gap > 0 && gap < bestGap) { bestGap = gap; near = other; }
     }
     if (!near) return null;
-    const zone: WorkZone = { s: near.s, lo: Infinity, hi: -Infinity };
+    const zone: WorkZone = { s: near.s, lo: Infinity, hi: -Infinity, parts: [] };
     for (const o of there) {
       const ds = t.distanceFrom(near.s, o.s);
       if (Math.min(ds, t.length - ds) > ZONE_LENGTH) continue;
       const wide = o.radius - P.CAR_RADIUS;
       zone.lo = Math.min(zone.lo, o.d - wide);
       zone.hi = Math.max(zone.hi, o.d + wide);
+      zone.parts.push([o.d - o.radius, o.d + o.radius]);
     }
+    zone.parts.sort((a, b) => a[0] - b[0]);
     return zone;
+  }
+
+  /**
+   * Where to drive on the way to `lane`, round a wreck ahead (wreckAhead): through the gap past it (between it and the
+   * track's edge, or between wrecks) nearest where the car is, so never across in front of it, a car's width plus
+   * WRECK_AIR (m) clear of what's either side where there's room (half a metre at the least: a gap narrower than
+   * RED_FREE is no way by), on the racing surface or an oval's apron. As much of the way there as the wreck is near
+   * (all of it from 60 m, none from 200 m); a lane already through the gap is kept. Going round a wreck and the cars
+   * beside it as one, a field coming to the gap a wrecker left in a line of wrecks went round the end into the wall.
+   * The formation drives it, and a driver's caution inputs show its place's lane through it: they showed the place's
+   * lane straight through a wreck, and nearly every speedway retirement under caution was a pacing car into one
+   * (2026-10-31: 36 of 54 in two races).
+   */
+  aroundWreck(car: Car, lane: number): number {
+    return this.wayBy(car, lane).lane;
+  }
+
+  /**
+   * The fastest a car may go by a wreck ahead: through a gap with less than WRECK_AIR either side, slower the less there
+   * is (WRECK_SLOW at none, WRECK_SLOW + 3 m/s for each metre more), braked for at WRECK_DECEL. Catching up to its place
+   * through the gap a wrecker left at the end of a line of wrecks, a car at 20 m/s with a metre either side went into
+   * one. Otherwise no limit.
+   */
+  wreckSpeed(car: Car, lane: number): number {
+    return this.wayBy(car, lane).speed;
+  }
+
+  private wayBy(car: Car, lane: number): { lane: number; speed: number } {
+    const wreck = this.wreckAhead(car);
+    if (!wreck) return { lane, speed: Infinity };
+    const t = this.track;
+    const i = car.trackIdx;
+    const R = P.CAR_RADIUS;
+    // The ways by: the gaps between the track's edges and the wrecks, each as where a car's middle can be in it.
+    const edges: Array<[number, number, number]> = [];
+    let from = t.outerEdge(i);
+    for (const [a, b] of [...wreck.parts, [t.innerEdge(i) + t.apronWidth, Infinity] as [number, number]]) {
+      const width = a - from;
+      if (width >= RED_FREE) {
+        const air = Math.min(WRECK_AIR, (width - 2 * R) / 2);
+        edges.push([from + R + air, a - R - air, air]);
+      }
+      from = Math.max(from, b);
+    }
+    if (!edges.length) return { lane, speed: Infinity };
+    // The one nearest the car (none across in front of the wreck), and in it as near the lane as it allows.
+    const off = ([a, b]: [number, number, number]) => Math.max(0, a - car.d, car.d - b);
+    const [a, b, air] = edges.reduce((best, e) => (off(e) < off(best) ? e : best));
+    const through = Math.max(a, Math.min(b, lane));
+    const gap = t.distanceFrom(car.s, wreck.s);
+    const w = 1 - smoothRamp(gap, 60, 200);
+    const pass = air < WRECK_AIR ? WRECK_SLOW + 3 * air : Infinity;
+    return { lane: (1 - w) * lane + w * through, speed: Math.sqrt(pass * pass + 2 * WRECK_DECEL * Math.max(0, gap - 10)) };
   }
 
   private paceCarHeadingInAndOff(): boolean {
@@ -1476,12 +1626,17 @@ export class RaceControl {
     w.stalled = 0;
   }
 
-  /** The track is clear of wrecks: none waiting for a truck, none still on the racing surface. */
+  /**
+   * The track is clear of wrecks: none waiting for a truck near the racing surface (an oval's apron counts) and none
+   * still on it, on either side (a circuit's wrecks go off and are towed away on both sides). A tow only counted once
+   * it was inside the track: on the GP circuit a truck towing a wreck from the outside run-off took 13 minutes to the
+   * garage, the safety car out all that while, the field wrecking behind it (2026-10-31).
+   */
   private trackClear(): boolean {
     const t = this.track;
-    if (this.callouts.length) return false;
-    return this.wreckers.every((w) => !w.wreck || w.phase === 'done'
-      || ((w.phase === 'tow' || w.phase === 'drop') && w.wreck.d > t.innerEdge(w.wreck.trackIdx) + 3));
+    const off = (c: Car, by: number) => c.d > t.innerEdge(c.trackIdx) + by || c.d < t.outerEdge(c.trackIdx) - by;
+    if (this.callouts.some((c) => !off(c.wreck, t.apronWidth + CLEAR_OFF))) return false;
+    return this.wreckers.every((w) => !w.wreck || w.phase === 'done' || ((w.phase === 'tow' || w.phase === 'drop') && off(w.wreck, 3)));
   }
 
   private parkWreck(w: Wrecker): void {

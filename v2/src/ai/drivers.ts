@@ -176,7 +176,8 @@ export class Team implements Controller {
     else if (Number.isNaN(this.shortSince) && car.speed < 1 && besideBox(car, track)) this.shortSince = world.time;
     const wavedIn = world.time - this.shortSince > WAVE_IN_AFTER;
     if ((!this.driverPits || wavedIn) && (car.pit.phase !== 'none' || this.autopilot.aborting)) { this.mode = 'pit'; this.autopilot.decide(car, world, this.spotter); }
-    else if (!this.driverCautions && this.inFormation(car, world)) { this.mode = 'formation'; this.formation.decide(car, world); }
+    // (A red flag is a procedure, not a skill: everyone stops in line by the book.)
+    else if ((!this.driverCautions || world.control?.flag === 'red') && this.inFormation(car, world)) { this.mode = 'formation'; this.formation.decide(car, world); }
     // The driver drives (its own stops too, if it drives them): a script's share is only what a script drove.
     else { this.mode = 'driver'; this.driver.decide(car, world, this.radio, this.pitInputs, this.cautionInputs, this.pitFine); }
   }

@@ -109,6 +109,13 @@ export interface OvalApprenticeOptions {
   laps?: number;
   /** Debris cautions per lap (so every race has a few). */
   debris?: number;
+  /** The share of debris cautions that leave wrecks on track for the field to go by (classroomRace's wrecks). */
+  wrecks?: number;
+  /**
+   * Train the caution skill alone: no solo drives, racing and tactics as they were (wrecks under caution taught to a
+   * stable whose racing another apprenticeship is working on).
+   */
+  cautionOnly?: boolean;
   /** Passes over the recorded moments each round (the first: more). */
   epochs?: number;
   /** Moments trained on per student per round: a fresh sample of everything recorded so far. */
@@ -189,9 +196,12 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
     // Round 0 the students watch; then, noise injection (the teacher shaken, harder as the rounds go on) or DAgger.
     const driving: Driving = round === 0 ? { kind: 'teacher' }
       : opts.shake > 0 ? { kind: 'shaken', sigma: opts.shake * Math.min(1, round / 3) } : { kind: 'student' };
-    let soloCrashes = soloDrives(track, students, driving, alone, rng, round, seed);
-    for (let k = 0; k < opts.soloTracks; k++) soloCrashes += soloDrives(generatedOval(seed, `solo${round}:${k}`), students, driving, alone, rng, round, seed);
-    const { out } = classroomRace(track, students, driving, examples, rng, { field: opts.field, laps: opts.laps, debris: opts.debris, extra: recordExtra ?? undefined, tactics: plans, launches }, round, seed);
+    let soloCrashes = 0;
+    if (!opts.cautionOnly) {
+      soloCrashes += soloDrives(track, students, driving, alone, rng, round, seed);
+      for (let k = 0; k < opts.soloTracks; k++) soloCrashes += soloDrives(generatedOval(seed, `solo${round}:${k}`), students, driving, alone, rng, round, seed);
+    }
+    const { out } = classroomRace(track, students, driving, examples, rng, { field: opts.field, laps: opts.laps, debris: opts.debris, wrecks: opts.wrecks, extra: recordExtra ?? undefined, tactics: plans, launches }, round, seed);
     const cautionLosses: number[] = [], tacticsLosses: number[] = [];
     // A moment with a non-finite input or label would turn a driver's weights to NaN in one step (stable-save, 2026-10-25:
     // one driver of forty, in the last round): such moments are dropped, and named in the report so they can be traced.
@@ -219,7 +229,7 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
       // Launches (the start and restarts, a lap from the green: RecorderOptions.launches) likewise, up to a quarter.
       const launched = pick(launches[s], Math.floor(half / 4));
       const racing = [...kept, ...launched, ...pick(hurt.length ? green.filter((e) => e.x[DAMAGE_FROM] === 0) : green, half - kept.length - launched.length)];
-      const loss = trainFinite(d.weights, [...pick(alone[s], half), ...racing], epochs, rng);
+      const loss = opts.cautionOnly ? NaN : trainFinite(d.weights, [...pick(alone[s], half), ...racing], epochs, rng);
       if (pacing.length) {
         // The caution network takes the wheel the moment the flag flies, often mid-corner at racing speed, and
         // caution moments are nearly all at caution pace: trained on those alone it forgot how to corner fast
@@ -231,7 +241,7 @@ export function apprenticeStable(students: StableDriver[], seed: number, options
       }
       // Its tactics: every plan to go by its teacher made (up to half the moments), and twice as many moments it held.
       const going = plans[s].filter((e) => e.y[TACTIC.HOLD] < 0), holding = plans[s].filter((e) => e.y[TACTIC.HOLD] > 0);
-      if (going.length) {
+      if (going.length && !opts.cautionOnly) {
         d.tactics ??= tacticsWeights(rng);
         const go = pick(going, half);
         tacticsLosses.push(trainFinite(d.tactics, [...go, ...pick(holding, 2 * go.length)], epochs, rng, TACTICS_LAYERS));

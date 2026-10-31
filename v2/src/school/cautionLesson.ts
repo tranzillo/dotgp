@@ -15,6 +15,7 @@ import type { RaceControl } from '../sim/raceControl';
 import type { Track } from '../sim/track';
 import { World, type Controller } from '../sim/world';
 import { DrillTrial, type Drill } from './drill';
+import { wreckInLine } from './wreckDrill';
 
 /**
  * The caution lesson. A drill is a short race in a small field: form up
@@ -86,14 +87,20 @@ export class CautionDrill implements Drill<CautionResult> {
   private greenDist = 0;
   private lastDist = 0;
   private finishedFlag = false;
+  /** Wrecks to put on track once the field is in line (a seed for where), and whether they have been. */
+  private readonly wreckRng: Rng | null;
+  private wrecked = false;
 
   private readonly greenBefore: number;
 
   /**
    * controllerFor(slot): the controller for each grid slot (the student's slot gets the student's).
    * spread: begin mid-race instead, the field strung out round the lap (a seed for where).
+   * wreck: once the field is in line under the caution, wreck one or two pack cars across the track for it to go by
+   * (wreckDrill.ts; a seed for where).
    */
-  constructor(track: Track, studentSlot: number, controllerFor: (slot: number) => Controller, spread?: number) {
+  constructor(track: Track, studentSlot: number, controllerFor: (slot: number) => Controller, spread?: number, wreck?: number) {
+    this.wreckRng = wreck === undefined ? null : new Rng(wreck);
     this.world = new World(track, { collisions: true, drafting: true });
     for (let k = 0; k < DRILL_FIELD; k++) {
       const car = new Car(k);
@@ -138,6 +145,10 @@ export class CautionDrill implements Drill<CautionResult> {
       if (this.phase === 'restarted' && this.time - this.greenAt > GREEN_AFTER) this.finishedFlag = true;
     } else if (!car.retired) {
       const slot = ctl.slotFor(car);
+      if (this.wreckRng && !this.wrecked && this.phase === 'caution' && ctl.pickedUp) {
+        this.wrecked = true;
+        wreckInLine(this.world, this.wreckRng, (c) => c !== car);
+      }
       if (slot) {
         const t = this.world.track;
         let err = t.distanceFrom(car.s, slot.s);
@@ -149,7 +160,8 @@ export class CautionDrill implements Drill<CautionResult> {
         // slow and hold position.
         if (ctl.pickedUp) {
           this.placeSum += Math.min(Math.abs(err), PLACE_CAP);
-          this.laneSum += Math.abs(slot.d - car.d);
+          // (Its place's lane, round a wreck ahead: as its caution inputs show it.)
+          this.laneSum += Math.abs(ctl.aroundWreck(car, slot.d) - car.d);
           this.samples++;
         }
         // Passing under caution: moving up the order while pacing.

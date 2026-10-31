@@ -47,7 +47,7 @@ import { Race } from '../src/sim/race';
 import { Track } from '../src/sim/track';
 import { FLAT_TRACK, generateLayout, type OvalShape, ovalTrack, SHORT_TRACK, SPEEDWAY } from '../src/trackgen';
 import { World } from '../src/sim/world';
-import { OVAL_RULES } from '../src/rules/rulebook';
+import { CIRCUIT_RULES, OVAL_RULES } from '../src/rules/rulebook';
 import { applyExperiment } from '../src/sim/experiment';
 
 const positional = process.argv.slice(2).filter((a, i, all) => !a.startsWith('--') && !(all[i - 1] ?? '').startsWith('--'));
@@ -67,7 +67,12 @@ const fieldSize = Number(args.get('field') ?? 24);
 const pace = Number(args.get('pace') ?? 4);
 const lapsArg = args.get('laps');
 const measureMarks = args.get('marks') !== '0';
-/** Run the races to the oval rulebook, with stewards. */
+/**
+ * Run the races to the rulebook, with stewards: a circuit's (a safety car at formation pace, a standing start) on road
+ * courses, as the app's road series races them. (Until 2026-10-31 it was the oval rulebook everywhere: circuits paced
+ * behind a pace car at the speed of their tightest hairpin all the way round, 7.8 m/s on the GP circuit, 12 minutes a
+ * caution lap.)
+ */
 const withRules = args.get('rules') === '1';
 
 /** Retirements this close together (s) count as one incident. */
@@ -349,7 +354,7 @@ function runRace(trackName: string, seed: number): RaceStats {
         tactics: d.tactics && Float32Array.from(d.tactics.weights),
       }));
   }
-  const race = new Race(world, laps, new PaceCarDriver(), withRules ? { rulebook: OVAL_RULES, seed } : undefined);
+  const race = new Race(world, laps, new PaceCarDriver(), withRules ? { rulebook: track.kind === 'road' ? CIRCUIT_RULES : OVAL_RULES, seed } : undefined);
   const ctl = race.control!;
   const cars = world.cars;
   const marks = measureMarks ? new MarkGrid(track) : null;

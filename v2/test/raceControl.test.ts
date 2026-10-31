@@ -59,6 +59,54 @@ describe('race control', () => {
   });
 });
 
+describe('red flag', () => {
+  it('a track blocked by wrecks stops the field in line short of them, and once cleared it rolls again under caution', () => {
+    const track = ovalTrack(SPEEDWAY);
+    const world = new World(track, { wearScale: 4 });
+    for (let k = 0; k < 12; k++) world.addCar(new Car(k), neuralTeam(drivers[k % drivers.length]));
+    const race = new Race(world, 5, new PaceCarDriver());
+    const ctl = race.control!;
+    const flags: string[] = [];
+    let wrecks: Car[] = [];
+    let allStopped = false, healthAtRed: number[] | null = null, closest = Infinity;
+    while (race.state !== 'finished' && world.time < 1500) {
+      race.step();
+      if (flags[flags.length - 1] !== ctl.flag) flags.push(ctl.flag);
+      const leader = race.leader();
+      if (!wrecks.length && race.started && leader && leader.lapsCompleted === 2) {
+        // Five cars wrecked across the track and its apron, far enough ahead of the field for it to stop.
+        const running = world.cars.filter((c) => c !== leader);
+        const at = track.wrapS(leader.s + 600);
+        wrecks = running.slice(-5);
+        wrecks.forEach((w, k) => {
+          w.placeOnTrack(track, at, -7.5 + 4.9 * k);
+          w.vx = 0;
+          w.vy = 0;
+          w.health = 0;
+          w.retired = true;
+        });
+      }
+      if (ctl.flag === 'red') {
+        const running = world.cars.filter((c) => !c.retired && c.pit.phase === 'none');
+        healthAtRed ??= running.map((c) => c.health);
+        if (running.every((c) => c.speed < 0.5)) allStopped = true;
+        for (const c of running) for (const z of ctl.redZones) closest = Math.min(closest, track.distanceFrom(c.s, z));
+      }
+    }
+    expect(flags).toEqual(['pace', 'restart', 'green', 'caution', 'red', 'caution', 'restart', 'green']);
+    expect(ctl.reds).toBe(1);
+    // Everyone stopped, short of the wrecks, and nobody ran into anything on the way.
+    expect(allStopped).toBe(true);
+    expect(closest).toBeGreaterThan(20);
+    expect(world.cars.filter((c) => !wrecks.includes(c)).every((c) => !c.retired)).toBe(true);
+    expect(healthAtRed!.length).toBe(7);
+    expect(world.cars.filter((c) => !wrecks.includes(c)).map((c) => c.health)).toEqual(healthAtRed);
+    // The wreckers cleared them, and the race finished.
+    expect(wrecks.every((w) => w.cleared || w.parked)).toBe(true);
+    expect(race.state).toBe('finished');
+  });
+});
+
 describe('standing start', () => {
   it('the end of the formation lap, the field stopped in its grid boxes, five lights, and the race starts as they go out', async () => {
     const { OVAL_RULES } = await import('../src/rules/rulebook');

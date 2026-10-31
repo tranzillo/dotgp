@@ -98,17 +98,9 @@ export class SmoothFormation {
     // a car off it is brought back on.
     const inside = P.CAR_RADIUS + 0.5;
     lane = Math.max(t.outerEdge(car.trackIdx) + inside, Math.min(t.innerEdge(car.trackIdx) - inside, lane));
-    // Round a wreck ahead, on the side you're already on, pushed out more the nearer it is.
-    const wreck = ctl.wreckAhead(car);
-    if (wreck) {
-      const gap = t.distanceFrom(car.s, wreck.s);
-      const side = car.d < (wreck.lo + wreck.hi) / 2 ? -1 : 1;
-      const clear = side < 0 ? wreck.lo - 5 : wreck.hi + 5;
-      const off = Math.max(0, wreck.lo - lane, lane - wreck.hi);
-      const w = (1 - ramp(gap, 60, 200)) * (1 - ramp(off, 3, 6));
-      lane = (1 - w) * lane + w * clear;
-    }
-    v = Math.min(v, this.followCap(car, world, lane, tr));
+    // Round a wreck ahead, on the side you're already on (or the one with room), pushed out more the nearer it is.
+    lane = ctl.aroundWreck(car, lane);
+    v = Math.min(v, this.followCap(car, world, lane, tr), ctl.redSpeedAt(car.s), ctl.wreckSpeed(car, lane));
     followLine(car, world, () => lane, () => v, this.grip, false, this.gain);
   }
 

@@ -52,7 +52,8 @@ const SURFACES: Surface[] = ['track', 'apron', 'pit', 'garage', 'road', 'grass',
 const PIT_PHASES: Array<CarView['pitPhase']> = ['none', 'in', 'service', 'out'];
 const PENALTIES: Array<CarView['penalty']> = [null, 'drive-through', 'stop-go'];
 const STATUSES: Array<StandingView['status']> = ['running', 'finished', 'out', 'pit'];
-const FLAGS: Flag[] = ['pace', 'restart', 'green', 'caution', 'formation', 'grid'];
+// (Flags added at the end: tapes from before keep theirs.)
+const FLAGS: Flag[] = ['pace', 'restart', 'green', 'caution', 'formation', 'grid', 'red'];
 const STATES: Array<RaceView['state']> = ['green', 'checkered', 'finished'];
 // (Phases added at the end: tapes from before keep theirs.)
 const WRECKER_PHASES = ['drive', 'hook', 'tow', 'done', 'idle', 'drop', 'return'];
