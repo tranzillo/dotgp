@@ -226,3 +226,47 @@ race 34 (2525 m): 22 out, 4 cautions, 15162 caution moments, 7095 racing (387 s)
 race 35 (3665 m): 5 out, 2 cautions, 7476 caution moments, 18046 racing (400 s)
 round 3: 205168 caution moments pooled, 277516 racing; held-out race before pedal err 0.230, braking missed 65% (1793 moments); after pedal err 0.265, braking missed 46% (1793 moments) (9.2 min)
 40 drivers -> C:/Users/kappa/AppData/Local/Temp/claude/c--Users-kappa-Documents-Projects-dotgp/6f28a891-a5b6-41ed-89a0-96d2f2415de7/scratchpad/rl/v8r.json (38.9 min)
+
+== 8. pit-cycle damage on the gen. speedway by section, flag and who hit (scripts/pitCycleHits.ts), v8 and v8r, 4 seeds
+== v8
+finished 7/40  cautions 5 (19 laps)  retirements 30  biggest wreck 6 cars
+finished 7/40  cautions 6 (23 laps)  retirements 33  biggest wreck 3 cars
+finished 19/40  cautions 6 (24 laps)  retirements 21  biggest wreck 4 cars
+finished 4/40  cautions 2 (15 laps)  retirements 35  biggest wreck 4 cars
+  PIT ROAD 73.9 s entry to track under green, 75.0 s under caution; 110.5 contacts, 8.75 health lost /race in pit cycles
+PITHITS pit-cycle damage 53.90 in all
+PITHITS green         in entry               wall/wall                              33 steps  health 14.41
+PITHITS under caution in entry               wall/wall                              29 steps  health 11.78
+PITHITS under caution in entry               wreck                                  16 steps  health 5.95
+PITHITS under caution in entry               a car in its pit cycle                 37 steps  health 5.51
+PITHITS green         in before entry        a car its racing skill drove           69 steps  health 2.91
+PITHITS under caution out along the wall     a car in its pit cycle                 37 steps  health 2.29
+PITHITS green         in entry               wreck                                   5 steps  health 2.17
+PITHITS under caution in along the wall      a car in its pit cycle                 67 steps  health 1.64
+PITHITS green         out exit               wreck                                   2 steps  health 0.95
+PITHITS green         in along the wall      a car in its pit cycle                 44 steps  health 0.95
+PITHITS under caution out along the wall     wreck                                   4 steps  health 0.85
+PITHITS green         out along the wall     a car in its pit cycle                 11 steps  health 0.77
+PITHITS under caution out exit               wreck                                   1 steps  health 0.73
+PITHITS green         in entry               a car in its pit cycle                 14 steps  health 0.70
+== v8r
+finished 19/40  cautions 7 (22 laps)  retirements 20  biggest wreck 3 cars
+finished 16/40  cautions 7 (21 laps)  retirements 23  biggest wreck 4 cars
+finished 16/40  cautions 7 (25 laps)  retirements 24  biggest wreck 9 cars
+finished 22/40  cautions 6 (20 laps)  retirements 18  biggest wreck 3 cars
+  PIT ROAD 73.5 s entry to track under green, 73.4 s under caution; 170.8 contacts, 12.13 health lost /race in pit cycles
+PITHITS pit-cycle damage 69.20 in all
+PITHITS green         in entry               wall/wall                              35 steps  health 17.71
+PITHITS under caution in entry               wall/wall                              36 steps  health 12.22
+PITHITS under caution in entry               wreck                                  28 steps  health 9.94
+PITHITS under caution in entry               a car in its pit cycle                 55 steps  health 3.93
+PITHITS green         in entry               wreck                                   6 steps  health 3.64
+PITHITS under caution in along the wall      a car in its pit cycle                111 steps  health 3.41
+PITHITS under caution out along the wall     a car in its pit cycle                 37 steps  health 2.06
+PITHITS green         in before entry        a car its racing skill drove           71 steps  health 1.93
+PITHITS under caution in along the wall      wreck                                  16 steps  health 1.89
+PITHITS green         in along the wall      a car in its pit cycle                 43 steps  health 1.67
+PITHITS green         out along the wall     a car in its pit cycle                 28 steps  health 1.62
+PITHITS under caution out blend              wreck                                   3 steps  health 1.05
+PITHITS under caution out along the wall     wreck                                   5 steps  health 0.88
+PITHITS green         in before entry        wreck                                   3 steps  health 0.83

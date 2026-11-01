@@ -135,4 +135,7 @@ stops 78 -> 99, gen. intermediate 53 -> 79): damage a stop about the same except
 - Why a round's learning doesn't carry to the next oval (every network the field's average of 40 teachers on every
   kind of oval; a wider one didn't help on one speedway, not tried across ovals).
 - The wreck lesson: the teacher still doesn't slow for a wreck it's steering round (its follow cap leaves it out).
-- Pit cycles on the gen. speedway: damage a stop up by half.
+- Pit cycles on the gen. speedway (`scripts/pitCycleHits.ts`, `probes.txt` 8): not the caution skill. Most of it is the
+  pitting car itself into the wall at pit entry (pit skill driving: v8 26.2, v8r 29.9 health in 4 races, green and
+  caution), then pitting cars into cars wrecked in that entry (8.1 -> 13.6: more cars still running to pit under
+  caution). The pit skill's entry on this oval, for the pit work.
