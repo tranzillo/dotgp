@@ -1144,7 +1144,8 @@ export class RaceControl {
    * The fastest a car may go by a wreck ahead: through a gap with less than WRECK_AIR either side, slower the less there
    * is (WRECK_SLOW at none, WRECK_SLOW + 3 m/s for each metre more), braked for at WRECK_DECEL. Catching up to its place
    * through the gap a wrecker left at the end of a line of wrecks, a car at 20 m/s with a metre either side went into
-   * one. Otherwise no limit.
+   * one. Otherwise no faster than pace: catching up past a wreck at 45 m/s with room to spare, a car a few metres off
+   * the lane it was shown went into it, and its teacher, sure of its way round, taught it to (2026-10-31).
    */
   wreckSpeed(car: Car, lane: number): number {
     return this.wayBy(car, lane).speed;
@@ -1174,7 +1175,7 @@ export class RaceControl {
     const through = Math.max(a, Math.min(b, lane));
     const gap = t.distanceFrom(car.s, wreck.s);
     const w = 1 - smoothRamp(gap, 60, 200);
-    const pass = air < WRECK_AIR ? WRECK_SLOW + 3 * air : Infinity;
+    const pass = air < WRECK_AIR ? WRECK_SLOW + 3 * air : this.paceSpeedAt(wreck.s);
     return { lane: (1 - w) * lane + w * through, speed: Math.sqrt(pass * pass + 2 * WRECK_DECEL * Math.max(0, gap - 10)) };
   }
 
