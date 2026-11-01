@@ -95,6 +95,13 @@
       "file": "stable-candidate-v8ra-lines.json",
       "candidate": true,
       "note": "v8 with every driver's oval caution network retrained by race labelling (scripts/raceLabels.ts, circuit machine, 2026-11-01): the whole stable races itself on the apprenticeship's ovals with debris cautions and wrecks, each car's own teacher labelling from where it is, and every caution network trains on the field's caution moments from all 8 rounds plus as many racing ones. Every other skill is v8's. For ?spec=cup&lines=2 only. Against v8 (both Cup, two lines, rules, 40 cars, 4 seeds, at 17b1bc4): out over seven ovals 116.7 -> 68.7 (speedway 23.5 -> 14.8, flat 11.0 -> 5.0, gen. intermediate 18.3 -> 7.0, gen. speedway 32.3 -> 20.8, gen. superspeedway 25.3 -> 18.8); under caution the networks still miss about half their teachers' braking in states the field hasn't raced before; pit-cycle damage no better than v8's (the pit skill's entry on the gen. speedway). training/experiments/2026-10-31-caution-race-labels. Read-only."
+    },
+    {
+      "id": "stable-candidate-v8rf-lines",
+      "name": "Stable candidate v8rf (two lines)",
+      "file": "stable-candidate-v8rf-lines.json",
+      "candidate": true,
+      "note": "v8ra with every driver's oval racing network fine-tuned once on race-labelled moments (scripts/racingFit.ts, oval machine, 2026-11-01): the stable raced itself on six of the apprenticeship's ovals (scripts/raceLabels.ts --race-only 2000-2005, --sample 0.1), each car's own teacher labelling from where it is, with the takeover crossing-rate fix (labels no longer ask for 3 m/s across for any gap over 0.1 m); each network trained 4 epochs on its own racing moments and as many of the field's. Caution, pit, broken-car and tactics networks are v8ra's. For ?spec=cup&lines=2 only. Against v8ra (Cup, two lines, rules, 40 cars, 4 seeds): green wall damage down on all seven ovals (short 1.45 -> 0.16, gen. superspeedway 1.87 -> 0.00), green car damage down (short 6.4 -> 4.0, gen. short 1.0 -> 0.3), gen. superspeedway out 14.8 -> 10.0; but speedway laps 0.56 s slower and less side by side (clean passes speedway 37 -> 27, gen. speedway 50 -> 16). experiments/2026-11-01-takeover-crossing-rate. Read-only."
     }
   ]
 }

@@ -166,6 +166,11 @@ const CATCH_STEP = 10;
 const REACTION = 0.4;
 /** How fast it moves across the road to a new offset (m/s). */
 const CROSS_RATE = 3;
+/**
+ * How fast it closes the last of a gap to where it wants to be across the road (m/s per m): its steering's own
+ * (2 m/s^2 per m off, 3 per m/s across) settles at two thirds of the gap a second.
+ */
+const SETTLE_RATE = 2 / 3;
 /** A car slower than this (m/s) is stopped (a wreck, a spun or stranded car): gone round, not raced. */
 const STOPPED = 5;
 /** Off the line it tracks less precisely: this much more room kept from the corridor's edges (m). */
@@ -227,6 +232,8 @@ export class TrafficRacer {
    */
   private path: RacingLine | null = null;
   private lastTime = -Infinity;
+  /** Its offset was just set to where the car is (takeOver), not where its own driving had it. */
+  private tookOver = false;
   /** The side of a pass under way (+1: +d, -1: -d, 0: none): kept until the pass is done or given up. */
   private passSide = 0;
   /** The car that pass is on (null: none). */
@@ -322,6 +329,7 @@ export class TrafficRacer {
   takeOver(car: Car, world: World): void {
     if (twoLines(world.track) && (!this.home || (!this.path && this.passSide === 0))) this.home = whichLine(world.track, this.style.margin, car.s, car.d);
     this.offset = car.d - lineAt(this.path ?? this.lineFor(world.track), car.s).d;
+    this.tookOver = true;
   }
 
   decide(car: Car, world: World): void {
@@ -617,7 +625,12 @@ export class TrafficRacer {
     // Moving across to it at the crossing rate, not only aiming at where the offset has got to: taking over a car
     // (a student at the wheel) the offset starts where the car is and is a step ahead of it, and its labels asked for
     // a fraction of a m/s^2 to get down off the wall (2026-10-29: the same throttle as the student riding it, 7% lift).
-    const offsetRate = dt > 0 ? move / dt : 0;
+    // Taken over, no faster than its steering would close that gap (SETTLE_RATE): the offset reset to the car every
+    // decision, any gap over a step (0.1 m) asked for the whole crossing rate, 91% of a short oval's green labels, and
+    // students learned to swing across at it (2026-11-01). Driving itself, its offset leads the car as before.
+    const fresh = this.tookOver;
+    this.tookOver = false;
+    const offsetRate = dt <= 0 ? 0 : fresh ? Math.sign(move) * Math.min(Math.abs(move) / dt, SETTLE_RATE * Math.abs(target - car.d)) : move / dt;
 
     // Speed: off the line, no faster than its tighter arc allows (and braking for that ahead);
     // behind a car, the follow cap; squeezed, a little slower than the car beside.
