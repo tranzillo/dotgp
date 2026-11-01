@@ -23,6 +23,7 @@ import { World } from '../sim/world';
 import { hashSeed } from '../trackgen';
 import { lineOf, teacherOf } from './ovalApprentice';
 import { Recorder, type Driving, type RecorderOptions } from './recorder';
+import { wreckInLine } from './wreckDrill';
 
 /** A stable driver in a classroom race: who it is (its teacher), its human limits, and the skills it races with. */
 export interface ClassroomStudent {
@@ -46,6 +47,8 @@ export interface ClassroomOptions {
   laps: number;
   /** Debris cautions (safety cars) per lap. */
   debris: number;
+  /** The share of those that leave wrecks on track for the field to go by (wreckDrill.ts): racers' cars, never students'. */
+  wrecks?: number;
   /** Only the start: until this many seconds after the lights (circuits' start drills). */
   startOnly?: number;
   /** More to record with what the students saw (experiments). */
@@ -134,6 +137,7 @@ export function classroomRace(
   const race = new Race(world, opts.laps, new PaceCarDriver(), road ? { rulebook: CIRCUIT_RULES, seed: hashSeed(seed, `race${round}`) } : undefined);
   const debrisPerSecond = opts.debris / lapSeconds(track);
   let lightsAt = -1;
+  let wreckDue = false;
   while (race.state !== 'finished' && world.time < opts.laps * lapLimit(track)) {
     race.step();
     const ctl = race.control!;
@@ -143,7 +147,15 @@ export function classroomRace(
       if (world.time > 300) break; // a start that never comes
       continue;
     }
-    if (ctl.flag === 'green' && race.started && rng.next() < debrisPerSecond * P.DT) ctl.debrisCaution();
+    if (ctl.flag === 'green' && race.started && rng.next() < debrisPerSecond * P.DT) {
+      ctl.debrisCaution();
+      // (Drawn only when asked for, so races without them run as they did.)
+      wreckDue = !!opts.wrecks && rng.next() < opts.wrecks;
+    }
+    if (wreckDue && ctl.flag === 'caution' && ctl.pickedUp) {
+      wreckDue = false;
+      wreckInLine(world, rng, (c) => !(world.controllers[world.cars.indexOf(c)] instanceof Recorder));
+    }
   }
   return { out: world.cars.filter((c) => c.retired && !race.isFinished(c)).length, cautions: race.control!.cautions };
 }

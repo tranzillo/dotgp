@@ -120,7 +120,14 @@ export interface Infield {
 
 const SERVICE_WIDTH = 8;
 const ESCAPE_WIDTH = 9;
+/** The most apron a crossover leaves without a way to the infield: a fifth of a lap, within these (m). */
+const CROSSOVER_GAP_MIN = 300;
+const CROSSOVER_GAP_MAX = 600;
 const LANE_WIDTH = 7;
+/** Roads out to an inner oval: at most this many, none longer than this (m), through gates this wide (m) in its wall. */
+const INNER_LINKS = 4;
+const INNER_LINK_MAX = 400;
+const INNER_GATE = 16;
 /** Grass kept between the service road and the infield's middle (the far side's ground). */
 const ROOM_MARGIN = 14;
 const STEP = 10;
@@ -391,6 +398,40 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
     escapeLanes.push({ points, width: ESCAPE_WIDTH });
   });
 
+  // ---- crossovers: service roads straight from the apron to the service road, wherever the apron goes too far without
+  // a way on or off it (the wreckers' ways out to a wreck: from the infield to every part of the lap) ----
+  {
+    const ways = [...chosen, pit.entryStart, pit.exitEnd, ...courseZones.flat()].map((s) => cl.wrapS(s));
+    const maxGap = Math.max(CROSSOVER_GAP_MIN, Math.min(CROSSOVER_GAP_MAX, L / 5));
+    const fits = (s: number) => {
+      const r = signed(s);
+      if (r > pitZone[0] && r < pitZone[1]) return false;
+      if (courseZones.some(([a, b]) => cl.inRange(s, [a, b])) || !onRing(s)) return false;
+      if (junctions.some((j) => Math.abs(cl.distanceFrom(ringFrom, s) - j.u) < 30)) return false;
+      return !densify([cl.toWorld(s, site.apronD - 2), ringPoint(s)], 5).some((p) => nearCourse(p, 20));
+    };
+    // (Stretches with no room for one, pit road's above all, are left as they are.)
+    const full = new Set<number>();
+    for (let k = 0; k < 12;) {
+      // The longest stretch without one.
+      const sorted = [...ways].sort((a, b) => a - b);
+      let gap = 0, at = 0;
+      sorted.forEach((a, i) => {
+        const g = cl.distanceFrom(a, sorted[(i + 1) % sorted.length]) || L;
+        if (g > gap && !full.has(a)) { gap = g; at = a; }
+      });
+      if (gap <= maxGap) break;
+      // Its middle, or as near it as there's room for one.
+      const s = [0, 0.1, -0.1, 0.2, -0.2, 0.3, -0.3].map((f) => cl.wrapS(at + gap * (0.5 + f))).find(fits);
+      if (s === undefined) { full.add(at); continue; }
+      const id = `crossover${k++}`;
+      const points: Array<[number, number]> = [cl.toWorld(s, site.apronD - 2), ringPoint(s)];
+      nodes.push({ id, kind: 'apron', at: points[0], s: signed(s) });
+      roads.push({ id, from: id, to: junction(s, `ring-${id}`), points, width: SERVICE_WIDTH, grade: 'service' });
+      ways.push(s);
+    }
+  }
+
   // ---- the inner oval, inside the service road ----
   const ringPts: Array<[number, number]> = [];
   for (let u = 0; u <= ringLength; u += STEP) ringPts.push(ringPoint(ringFrom + u));
@@ -401,6 +442,41 @@ export function buildInfield(plan: InfieldPlan, site: InfieldSite): Infield {
 
   // ---- roads across the infield (not through an inner oval, nor the garage) ----
   const links: Array<Array<[number, number]>> = [];
+  /** Clear of the garage lot, and of the roads laid so far (beyond the first `skip` m of it, where it leaves the ring). */
+  const clearOfAll = (pts: Array<[number, number]>, skip: number) => densify(pts, 5).slice(Math.ceil(skip / 5)).every(([x, y]) => {
+    const q = cl.near(x, y, lot.d1 + 40);
+    return !(q && cl.inRange(q.s, [lot.s0 - 20, lot.s1 + 20]) && q.d < lot.d1 + 15);
+  }) && roads.every((r) => !crosses(densify(r.points, 5), densify(pts, 5).slice(Math.ceil(skip / 5))));
+  if (inner && innerTrack && !course) {
+    // Roads out to a walled inner oval from the service road, through crash gates in its outer wall onto its track: the
+    // wreckers' ways across the infield, by the inner oval's lap (from the service road to either side of it).
+    const it = innerTrack, IL = it.length;
+    const gates: Array<[number, number]> = [];
+    const order = [0, 0.5, 0.25, 0.75, 0.125, 0.625, 0.375, 0.875];
+    for (const f of order) {
+      if (gates.length >= INNER_LINKS) break;
+      const si = f * IL;
+      if (gates.some(([g0, g1]) => Math.abs(it.signedS((g0 + g1) / 2 - si)) < IL / 6)) continue;
+      // Straight out from its centerline across its outer wall to where that line meets the service road.
+      const out = (dd: number) => it.toWorld(si, it.outerEdgeAt(si) - dd);
+      const inside = (dd: number) => { const [x, y] = out(dd); const q = cl.project(x, y); return q.d > d(q.s); };
+      if (!inside(0)) continue;
+      let lo = 0, hi = 50;
+      while (inside(hi) && hi < INNER_LINK_MAX) { lo = hi; hi *= 1.6; }
+      if (inside(hi)) continue;
+      for (let i = 0; i < 20; i++) { const mid = (lo + hi) / 2; if (inside(mid)) lo = mid; else hi = mid; }
+      const sRing = cl.project(...out(hi)).s;
+      if (!onRing(sRing) || junctions.some((j) => Math.abs(cl.distanceFrom(ringFrom, sRing) - j.u) < 30)) continue;
+      const pts: Array<[number, number]> = [ringPoint(sRing), out(3), it.toWorld(si, 0)];
+      if (!clearOfAll(pts, 15)) continue;
+      const k = gates.length;
+      nodes.push({ id: `inner-link${k}`, kind: 'junction', at: pts[pts.length - 1] });
+      roads.push({ id: `inner-link${k}`, from: junction(sRing, `ring-inner${k}`), to: `inner-link${k}`, points: pts, width: SERVICE_WIDTH, grade: 'service' });
+      links.push(pts);
+      gates.push([it.signedS(si) - INNER_GATE / 2, it.signedS(si) + INNER_GATE / 2]);
+    }
+    if (gates.length) inner = { ...inner, walls: inner.walls.map((w) => (w.id === 'outer' ? { ...w, gates } : w)) };
+  }
   if (!inner && !course) {
     for (let k = 0, tries = 0; k < plan.crossLinks && tries < 30; tries++) {
       const a = rng.next() * L;

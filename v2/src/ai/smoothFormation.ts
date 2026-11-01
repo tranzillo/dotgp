@@ -98,17 +98,9 @@ export class SmoothFormation {
     // a car off it is brought back on.
     const inside = P.CAR_RADIUS + 0.5;
     lane = Math.max(t.outerEdge(car.trackIdx) + inside, Math.min(t.innerEdge(car.trackIdx) - inside, lane));
-    // Round a wreck ahead, on the side you're already on, pushed out more the nearer it is.
-    const wreck = ctl.wreckAhead(car);
-    if (wreck) {
-      const gap = t.distanceFrom(car.s, wreck.s);
-      const side = car.d < (wreck.lo + wreck.hi) / 2 ? -1 : 1;
-      const clear = side < 0 ? wreck.lo - 5 : wreck.hi + 5;
-      const off = Math.max(0, wreck.lo - lane, lane - wreck.hi);
-      const w = (1 - ramp(gap, 60, 200)) * (1 - ramp(off, 3, 6));
-      lane = (1 - w) * lane + w * clear;
-    }
-    v = Math.min(v, this.followCap(car, world, lane, tr));
+    // Round a wreck ahead, on the side you're already on (or the one with room), pushed out more the nearer it is.
+    lane = ctl.aroundWreck(car, lane);
+    v = Math.min(v, this.followCap(car, world, lane, tr), ctl.redSpeedAt(car.s), ctl.wreckSpeed(car, lane));
     followLine(car, world, () => lane, () => v, this.grip, false, this.gain);
   }
 
@@ -122,7 +114,10 @@ export class SmoothFormation {
   /**
    * The fastest it may go: able to stop behind every car ahead in its way, even one that stops as hard as it can.
    * A car counts by how much of its width is in the path (heading for `lane`), not in or out of a file: one barely
-   * overlapping costs a little speed, one dead ahead all of it. A wreck being steered round isn't in the path.
+   * overlapping costs a little speed, one dead ahead all of it. A wreck being steered round isn't in the path, once
+   * the car can get round it: for a wreck it counts on moving across half as fast (sure of its way round at 3 m/s
+   * across, it passed wrecks at catching-up speed, and students a few metres off its line went into them; wanting more
+   * room than race control's way by leaves in a narrow gap, it stopped short of it for good: 2026-10-31).
    */
   private followCap(car: Car, world: World, lane: number, tr: FormationTraits): number {
     const ctl = world.control!;
@@ -136,7 +131,10 @@ export class SmoothFormation {
       if (ds <= 0 || ds > LOOK) continue;
       // Where this car will be across the road when it gets there: heading for the lane, a few metres a second.
       const reach = ds / Math.max(1, car.speed);
-      const there = car.d + Math.max(-3 * reach, Math.min(3 * reach, lane - car.d));
+      // (Out of the race: a car stopped in the line isn't a wreck, or the line behind it stops for it, and so on back.)
+      const wreck = other.retired;
+      const across = wreck ? 1.5 : 3;
+      const there = car.d + Math.max(-across * reach, Math.min(across * reach, lane - car.d));
       const touch = P.CAR_RADIUS + other.radius;
       const overlap = 1 - ramp(Math.abs(other.d - there), touch, touch + 1.5);
       if (overlap <= 0) continue;

@@ -255,6 +255,8 @@ export function pitComplex(cl: Centerline, o: PitComplexOptions): {
   pit: PitLane; pavedInner: Profile; garage: Garage; buildings: Decoration[]; surfaces: SurfaceRegion[]; network: RoadNetwork;
   /** Where along pit road the garage is reached from it (signed s): gaps in an inside pit wall. */
   access: number[];
+  /** Crash gates in the pit wall (signed s ranges): the wreckers' ways from pit road straight out onto the apron. */
+  gates: Array<[number, number]>;
 } {
   const base = pitLane(o);
   const L = cl.length;
@@ -348,6 +350,48 @@ export function pitComplex(cl: Centerline, o: PitComplexOptions): {
     ...garageS.map((s, k) => ({ s, id: node(o.garageSetBack > 0 ? `pit-lane${k}` : 'garage-pit', o.garageSetBack > 0 ? 'junction' : 'garage', cl.toWorld(s, service(s))) })),
     { s: wallEnd + 10, id: node('pit-road-end', 'junction', cl.toWorld(wallEnd + 10, service(wallEnd + 10))) },
   ];
+  // Crash gates along the pit wall, every PIT_GATE_SPACING m or so between its ends (clear of where the garage is reached
+  // from pit road): a wrecker from the garage goes along pit road to the one nearest a wreck and out through it, across
+  // the grass to the apron where pit road is set back, rather than round to pit road's far end and back along the apron.
+  // Two roads from pit road down through each, slanting either way along the lap (a truck can't turn square off pit
+  // road into it): in from either way, out whichever way the wreck is. In front of a wall that stands on the apron they
+  // run on slanting onto it (no room on the strip in front of the wall to turn square onto it); across a grass island
+  // each bends down across it, steeper (at that slant, they'd come down to the apron far from the gate). (Closed to the
+  // cars: solid as the wall is.)
+  const gates: Array<[number, number]> = [];
+  const face = (u: number) => pit.wallD - pit.wallThickness / 2 + off(u);
+  // (On the apron: in front of the wall where pit road stands on it, at the apron's inner edge where it's set back.)
+  const outD = (u: number) => Math.min(apronD, face(u)) - 2;
+  const slope = Math.tan(PIT_GATE_ANGLE);
+  const nGates = Math.max(0, Math.ceil((wallEnd - wallStart) / PIT_GATE_SPACING) - 1);
+  for (let k = 0; k < nGates; k++) {
+    const even = wallStart + ((k + 1) * (wallEnd - wallStart)) / (nGates + 1);
+    // Clear of the garage's lanes off pit road: neither on one, nor its roads off pit road just by one (two turns
+    // too close together to make).
+    const rise = (u: number) => (service(u) - pit.wallD - off(u)) / slope;
+    const clear = (u: number) => garageS.every((g) => Math.abs(g - u) >= PIT_GATE_WIDTH && Math.abs(Math.abs(g - u) - rise(u)) >= PIT_GATE_CLEAR);
+    const s = [0, 10, -10, 20, -20, 30, -30, 40, -40].map((v) => even + v).find((u) => clear(u) && u - rise(u) > wallStart && u + rise(u) < wallEnd);
+    if (s === undefined) continue;
+    const k2 = gates.length;
+    const wall = pit.wallD + off(s);
+    const island = face(s) - apronD > 1;
+    for (const [side, way] of [['a', 1], ['b', -1]] as const) {
+      const id = `gate${k2}${side}`;
+      const sTop = s - way * rise(s);
+      const top = cl.toWorld(sTop, service(sTop)), through = cl.toWorld(s, wall);
+      // (Across an island: from just past the wall down at 45 degrees, steeper where it's wider than PIT_GATE_ISLAND_RUN.)
+      const bendD = face(s) - pit.wallThickness - 2, sBend = s + (way * (wall - bendD)) / slope;
+      const sOut = island ? sBend + way * Math.min(PIT_GATE_ISLAND_RUN, bendD - outD(sBend)) : s + (way * (wall - outD(s))) / slope;
+      const out = cl.toWorld(sOut, outD(sOut));
+      const points = island ? [top, through, cl.toWorld(sBend, bendD), out] : [top, through, out];
+      stations.push({ s: sTop, id: node(`pit-${id}`, 'junction', top) });
+      node(id, 'apron', out, cl.signedS(sOut));
+      roads.push({ id, from: `pit-${id}`, to: id, points, width: PIT_GATE_ROAD, grade: 'pit' });
+      if (island) surfaces.push({ id: `gate-lane${k2}${side}`, surface: 'road', shape: { kind: 'path', points: [cl.toWorld(s, face(s)), ...points.slice(2)], width: PIT_GATE_ROAD } });
+    }
+    gates.push([s - PIT_GATE_WIDTH / 2, s + PIT_GATE_WIDTH / 2]);
+  }
+  stations.sort((a, b) => a.s - b.s);
   const entryPts = setBack ? along(entryStart, wallStart - 10, laneAt, 15) : [cl.toWorld(entryStart, apronD - 2)];
   roads.push({ id: 'pit-entry', from: 'pit-entry', to: 'pit-road-start', points: [entryAt, ...entryPts.slice(1), cl.toWorld(wallStart - 10, service(wallStart - 10))], width: 2 * PIT_LANE_HALF, grade: 'pit', oneWay: true });
   for (let k = 0; k + 1 < stations.length; k++) {
@@ -360,8 +404,18 @@ export function pitComplex(cl: Centerline, o: PitComplexOptions): {
     const end = node(`garage${k}`, 'garage', cl.toWorld(s, d0 + 2));
     roads.push({ id: `garage-lane${k}`, from: `pit-lane${k}`, to: end, points: [cl.toWorld(s, service(s)), cl.toWorld(s, d0 + 2)], width: 8, grade: 'garage' });
   });
-  return { pit, pavedInner, garage, buildings, surfaces, network: { nodes, roads }, access: garageS };
+  return { pit, pavedInner, garage, buildings, surfaces, network: { nodes, roads }, access: garageS, gates };
 }
+
+/** Crash gates in the pit wall: about this far apart (m), this wide (m), and the road through each this wide (m). */
+const PIT_GATE_SPACING = 200;
+export const PIT_GATE_WIDTH = 16;
+const PIT_GATE_ROAD = 8;
+/** The roads through a gate slant off pit road at this angle to the lap (rad), at least this far from a garage lane's end (m). */
+const PIT_GATE_ANGLE = (30 * Math.PI) / 180;
+const PIT_GATE_CLEAR = 20;
+/** Across a grass island, a gate's roads come down to the apron within this far along the lap of where they leave the wall (m). */
+const PIT_GATE_ISLAND_RUN = 25;
 
 // ---------- infield ----------
 

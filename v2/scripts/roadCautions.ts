@@ -6,7 +6,7 @@
  * roadCourse.caution.
  *
  *   npx tsx scripts/roadCautions.ts --in bundle.json --out out.json [--group 8] [--rounds 8] [--field 20] [--laps 6] [--seed 1] [--jobs N]
- *     [--racing 1] [--knocks 2]
+ *     [--racing 1] [--knocks 2] [--wrecks share]   (--wrecks: the share of safety cars leaving wrecks to go by, src/school/wreckDrill.ts)
  *
  * --racing 1: road racing too (solo drives each round; the road skill learns from them and the races' green moments).
  * --ppo 1 [--worlds 2] [--warmup 5]: practise the road caution skill by PPO in safety car drills instead
@@ -26,7 +26,7 @@ for (let i = 2; i < process.argv.length; i++) if (process.argv[i].startsWith('--
 const inFile = args.get('in'), out = args.get('out');
 if (!inFile || !out) throw new Error('--in bundle.json --out out.json');
 const seed = Number(args.get('seed') ?? 1);
-const pass = ['rounds', 'field', 'laps', 'seed', 'debris', 'starts', 'racing', 'knocks', 'ppo', 'worlds', 'warmup'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
+const pass = ['rounds', 'field', 'laps', 'seed', 'debris', 'wrecks', 'starts', 'racing', 'knocks', 'ppo', 'worlds', 'warmup'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
 
 interface Entry {
   lineage: number; nerve: number; talent: number; limits: { latency: number; noise: number }; weights: number[];
@@ -55,6 +55,7 @@ if (args.has('group-only')) {
     ...(args.has('field') ? { field: Number(args.get('field')) } : {}),
     ...(args.has('laps') ? { laps: Number(args.get('laps')) } : {}),
     ...(args.has('debris') ? { debris: Number(args.get('debris')) } : {}),
+    ...(args.has('wrecks') ? { wrecks: Number(args.get('wrecks')) } : {}),
     ...(args.has('starts') ? { starts: Number(args.get('starts')) } : {}),
     ...(args.has('racing') ? { racing: args.get('racing') !== '0' } : {}),
     ...(args.has('knocks') ? { knocks: Number(args.get('knocks')) } : {}),

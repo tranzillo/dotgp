@@ -55,14 +55,22 @@ describe('drivers doing their own pit stops', () => {
 
   it('a team with a pit-trained driver hands it the whole stop', () => {
     const track = presetTrack('short');
-    const world = new World(track, { collisions: false });
-    const car = new Car(0);
-    const team = new Team(new NeuralDriver(adaptWeights(new Float32Array(genomeSize(RADIO_DRIVER_LAYERS)))), new TowerSpotter(), null, true);
-    world.addCar(car, team);
-    car.placeOnTrack(track, track.pit.entryStart - 100, 0);
-    car.pit.phase = 'in';
-    team.decide(car, world);
-    expect(team.mode).toBe('pit');
-    expect(team.pitInputs[0]).toBe(1);
+    const onTheWayIn = (driverPits: boolean) => {
+      const world = new World(track, { collisions: false });
+      const car = new Car(0);
+      const team = new Team(new NeuralDriver(adaptWeights(new Float32Array(genomeSize(RADIO_DRIVER_LAYERS)))), new TowerSpotter(), null, driverPits);
+      world.addCar(car, team);
+      car.placeOnTrack(track, track.pit.entryStart - 100, 0);
+      car.pit.phase = 'in';
+      team.decide(car, world);
+      return team;
+    };
+    // The driver drives it, seeing the stop under way (the team's mode is who drove: a stop the driver drives isn't
+    // the script's, 5f2e2e7).
+    const trained = onTheWayIn(true);
+    expect(trained.mode).toBe('driver');
+    expect(trained.pitInputs[0]).toBe(1);
+    // Not trained for stops, the pit maneuver drives them.
+    expect(onTheWayIn(false).mode).toBe('pit');
   });
 });

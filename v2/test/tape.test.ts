@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { adaptWeights } from '../src/ai/drivers';
 import { PERFECT_SPOTTER } from '../src/ai/spotter';
 import { Session, type EntrantSpec, type SessionSnapshot, type SessionSpec } from '../src/events/session';
-import { CAR_BYTES, CHUNK_FRAMES, Tape, TAPE_HZ } from '../src/events/tape';
+import { CAR_BYTES, CHUNK_FRAMES, frameBytes, Tape, TAPE_HZ } from '../src/events/tape';
 import { PHYSICS as P } from '../src/sim/constants';
 import { presetLayout } from '../src/trackgen';
 
@@ -23,6 +23,18 @@ function entrants(n: number): EntrantSpec[] {
 const spec = (kind: SessionSpec['kind'], laps = 10, field = 8): SessionSpec => ({
   kind, layout: presetLayout('short'), entrants: entrants(field), laps, pace: 4, seed: 5,
 });
+
+/** A whole race's tape (15 laps, 12 cars, to the flag or 600 s): raced once, for the tests that measure one. */
+let raced: Session | null = null;
+function wholeRace(): Session {
+  if (!raced) {
+    raced = new Session(spec('race', 15, 12));
+    for (let k = 0; k < 600 / P.DT && !raced.finished; k++) raced.step();
+  }
+  return raced;
+}
+/** Racing it takes several seconds, longer than a test's default allowance. */
+const RACE_TIMEOUT = 60_000;
 
 /** Run until just after a tape frame was recorded, so the live snapshot and the last frame are the same moment. */
 function runToFrame(s: Session, seconds: number): void {
@@ -110,15 +122,17 @@ describe('tape', () => {
   });
 
   it('is small: bytes per car per sim second, raw and gzipped', () => {
-    const s = new Session(spec('race', 15, 12));
-    for (let k = 0; k < 600 / P.DT && !s.finished; k++) s.step();
+    const s = wholeRace();
     const seg = s.tape.segment();
     const perCarSecond = seg.bytes.byteLength / 12 / s.time;
     const gz = gzipSync(new Uint8Array(seg.bytes)).byteLength / 12 / s.time;
     console.log(`tape: ${(seg.bytes.byteLength / 1e6).toFixed(2)} MB for ${s.time.toFixed(0)} s x 12 cars: `
       + `${perCarSecond.toFixed(0)} B/car/s raw, ${gz.toFixed(0)} gzipped (${CAR_BYTES} B/car/frame)`);
-    expect(perCarSecond).toBeLessThan(CAR_BYTES * TAPE_HZ * 1.1);
-  });
+    // Its frames and nothing more: each car's bytes, and the race's own (flags, the pace car, the wrecker fleet's
+    // slots) shared between the cars. (Against the cars' bytes alone plus a tenth, it failed once the fleet grew to
+    // WRECKER_SLOTS trucks a frame: a 12-car frame's race part is 93 bytes.)
+    expect(perCarSecond).toBeLessThan((frameBytes(12) / 12) * TAPE_HZ * 1.02);
+  }, RACE_TIMEOUT);
 });
 
 describe('driving school tapes', () => {
@@ -150,8 +164,7 @@ describe('driving school tapes', () => {
 describe('stored tapes', () => {
   it('pack small and read back within a centimetre and a millisecond', async () => {
     const { packTape, unpackTape } = await import('../src/events/tapeCodec');
-    const s = new Session(spec('race', 15, 12));
-    for (let k = 0; k < 600 / P.DT && !s.finished; k++) s.step();
+    const s = wholeRace();
     const seg = s.tape.segment();
     const packed = await packTape(seg);
     const perCarSecond = packed.byteLength / 12 / s.time;
@@ -179,7 +192,7 @@ describe('stored tapes', () => {
       }
     }
     expect(perCarSecond).toBeLessThan(200);
-  });
+  }, RACE_TIMEOUT);
 });
 
 describe('saved replays', () => {

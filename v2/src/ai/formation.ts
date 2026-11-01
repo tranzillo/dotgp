@@ -97,9 +97,7 @@ export class FormationDriver {
       const lane = Math.max(-6, Math.min(6, car.d));
       const ahead = ctl.carAheadInFile(car, lane);
       const want = easingTo(car, ahead ? ctl.paceSpeedAt(car.s) + tr.eagerness : ctl.paceSpeedAt(car.s), CAUTION_SLOWING);
-      let holdLane = lane;
-      const wreck = ctl.wreckAhead(car);
-      if (wreck && holdLane > wreck.lo - 4 && holdLane < wreck.hi + 4) holdLane = car.d < (wreck.lo + wreck.hi) / 2 ? wreck.lo - 5 : wreck.hi + 5;
+      const holdLane = ctl.aroundWreck(car, lane);
       this.drive(car, world, holdLane, follow(holdLane, want));
       return;
     }
@@ -110,7 +108,9 @@ export class FormationDriver {
     // a driver may go the pace for where it is (behind a safety car: quick on a straight while the safety car is in
     // a hairpin) plus its own eagerness; the car ahead still sets the limit.
     const base = Math.max(slot.speed, ctl.paceSpeedAt(car.s));
-    let v = Math.max(slot.speed > 0 ? 3 : 0, Math.min(base + tr.eagerness, slot.speed + 0.3 * err));
+    // (A line coming to a stop, under the red flag, is stopped in like a grid box: crawling, cars crept up to the
+    // pace car.)
+    let v = Math.max(slot.speed > 3 ? 3 : 0, Math.min(base + tr.eagerness, slot.speed + 0.3 * err));
     // Giving way (ahead of our place by more than the line's spacing): low, in the yield lane, so the cars we
     // must let by go past in the line. Catching up: hold your lane (above the yield lane, which stays free);
     // slide into your place once you're nearly there.
@@ -149,10 +149,9 @@ export class FormationDriver {
       lane = -(2 * P.CAR_RADIUS + 0.5);
       v = slot.speed + tr.eagerness;
     }
-    // A wreck in our lane ahead: go around it on the side we're already on, never across in front of it
-    // (choosing by where the wreck is flipped sides as a sliding wreck crossed the middle).
-    const wreck = ctl.wreckAhead(car);
-    if (wreck && lane > wreck.lo - 4 && lane < wreck.hi + 4) lane = car.d < (wreck.lo + wreck.hi) / 2 ? wreck.lo - 5 : wreck.hi + 5;
+    // A wreck ahead: through the gap by it nearest where we are, never across in front of it (race control's
+    // aroundWreck; going round a line of wrecks as one, cars went round its end into the wall).
+    lane = ctl.aroundWreck(car, lane);
     // Never faster than lets us stop comfortably behind whatever is ahead in our lane (at our own gap).
     v = follow(lane, v);
     this.drive(car, world, lane, v);
@@ -160,7 +159,9 @@ export class FormationDriver {
 
   /** Toward a lane at a speed, no faster than the driver's own discipline allows (if it brings one). */
   private drive(car: Car, world: World, lane: number, v: number): void {
-    const want = this.discipline ? Math.min(v, this.discipline(car, world, lane)) : v;
+    // (Under the red flag, stopping short of where the track is blocked; slowly through a narrow gap by a wreck.)
+    const ctl = world.control!;
+    const want = Math.min(this.discipline ? Math.min(v, this.discipline(car, world, lane)) : v, ctl.redSpeedAt(car.s), ctl.wreckSpeed(car, lane));
     // Never at the pit wall's nose unless pitting (it stands closer to the edge than a car's width).
     const t = world.track;
     const laneAt = car.pit.phase === 'none' ? (s: number) => Math.min(lane, t.pitWallClear(s)) : () => lane;
@@ -234,7 +235,10 @@ export class PaceCarDriver implements Controller {
       followLine(car, world, lane, (s) => Math.min(ctl.paceSpeedAt(s) * 1.2, path.outCap(t.pitOutS(s))), 0.8, path.laid);
       return;
     }
-    // Out on track: slowly until it has picked up the leader (the leader catches it), then at pace speed.
-    followLine(car, world, () => 0, (s) => (ctl.pickedUp ? ctl.paceSpeedAt(s) : PICKUP_SPEED * ctl.paceSpeedAt(s)), 0.9);
+    // Out on track: slowly until it has picked up the leader (the leader catches it), then at pace speed; round a wreck
+    // as the field goes round it; under the red flag, stopping short of where the track is blocked.
+    const lane = ctl.aroundWreck(car, 0);
+    const by = ctl.wreckSpeed(car, lane);
+    followLine(car, world, () => lane, (s) => Math.min(ctl.redSpeedAt(s), by, ctl.pickedUp ? ctl.paceSpeedAt(s) : PICKUP_SPEED * ctl.paceSpeedAt(s)), 0.9);
   }
 }

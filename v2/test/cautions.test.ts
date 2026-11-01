@@ -34,6 +34,26 @@ describe('drivers doing their own cautions', () => {
     expect(r.placeError).toBeLessThan(15);
   });
 
+  it('a drill with wrecks on track: the formation script goes by them through the gap beside them, untouched', () => {
+    for (const [name, seed] of [['short', 1], ['speedway', 2], ['speedway', 3]] as const) {
+      const track = presetTrack(name);
+      const slot = 3;
+      const drill = new CautionDrill(track, slot, (k) => (k === slot
+        ? new Team(new NeuralDriver(veteran()), new TowerSpotter(), null, false, false)
+        : packCar(k)), undefined, seed);
+      let wrecks = 0;
+      while (!drill.done) {
+        drill.step();
+        wrecks = Math.max(wrecks, drill.world.cars.filter((c) => c.retired).length);
+      }
+      const r = drill.result();
+      expect(wrecks).toBeGreaterThan(0);
+      expect(r.health).toBeGreaterThan(0.95);
+      expect(r.laneError).toBeLessThan(2.5);
+      expect(r.laps).toBeGreaterThan(0.3); // restarted and raced on
+    }
+  });
+
   it('sees the caution only while pacing, and the student drives it when licensed', () => {
     const track = presetTrack('short');
     const slot = 2;

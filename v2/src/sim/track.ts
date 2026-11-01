@@ -4,6 +4,7 @@ import { gridMarkings } from './grid';
 import { PolygonIndex } from './polygon';
 import type { PitState } from './car';
 import { legacyNetwork, RoadGraph } from './roads';
+import { serviceNetwork, WRONG_WAY } from './serviceRoads';
 import {
   evalEdge, evalProfile, layoutKind, type Edge, type Infield, type LayoutKind, type PitLane, type Surface, type SurfaceRegion, type TrackLayout, type Wall,
 } from './layout';
@@ -87,6 +88,35 @@ export class Track extends Centerline {
   readonly barriers: Array<{ id: string; points: Array<[number, number]>; thickness: number }>;
   /** The infield's roads (escape roads, pit road, the garage...), as a graph. */
   readonly roads: RoadGraph;
+  private service: RoadGraph | null = null;
+  /**
+   * Everywhere a service vehicle can drive, by road (serviceRoads.ts): the
+   * layout's roads, the garage lot, the venue's other tracks, junctions where
+   * roads cross, one-way roads against the flow at a cost. Built on first use.
+   */
+  get serviceRoads(): RoadGraph {
+    return (this.service ??= new RoadGraph(serviceNetwork(this, this.layout.infield.network ?? legacyNetwork(this)), {
+      wrongWay: WRONG_WAY, blocked: (a, b) => this.throughWall(a, b),
+    }));
+  }
+
+  /** Does the straight way from a to b cross one of this track's walls (anywhere but through a crash gate in it)? */
+  throughWall(a: [number, number], b: [number, number]): boolean {
+    const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 2));
+    const sides = new Map<Wall, number>();
+    for (let k = 0; k <= n; k++) {
+      const q = this.project(a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n);
+      for (const w of this.walls) {
+        const off = q.d - this.edgeAt(w.d, q.s);
+        // (Only where it stands, near it: far off its line, the way is somewhere else round the lap.)
+        if ((w.range && !this.inRange(q.s, w.range)) || Math.abs(off) > 20) { sides.delete(w); continue; }
+        const side = Math.sign(off), was = sides.get(w);
+        if (was !== undefined && side !== was && !(w.gates ?? []).some((g) => this.inRange(q.s, g))) return true;
+        sides.set(w, side);
+      }
+    }
+    return false;
+  }
   /** At a venue with other tracks (or one of them): surfaces end where they say, nothing runs on open past the wall. */
   private readonly bounded: boolean;
 

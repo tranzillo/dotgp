@@ -838,9 +838,10 @@ function layOval(p: ShapedOvalParams, ctx: GenContext, params: AnyOvalParams): T
   let pitSurfaces: SurfaceRegion[] = [];
   let network: RoadNetwork | undefined;
   let access: number[] = [];
+  let gates: Array<[number, number]> = [];
   if (plan) {
     // A generated pit complex, with its road network (on a chord: shifted in by how far the chord is from the track).
-    ({ pit, pavedInner, garage, buildings, surfaces: pitSurfaces, network, access } = pitComplex(cl, {
+    ({ pit, pavedInner, garage, buildings, surfaces: pitSurfaces, network, access, gates } = pitComplex(cl, {
       ...pitOptions, garageSetBack: plan.garageSetBack, garageLanes: plan.garageLanes, garageDepth, garageRange: [garageFrom, wallEnd - 30],
       ...(plan.style === 'chord' ? { offset: chordOffset(cl, marks.front) } : {}),
     }));
@@ -899,8 +900,10 @@ function layOval(p: ShapedOvalParams, ctx: GenContext, params: AnyOvalParams): T
   const surfaces = standardSurfaces(edgeIn, edgeOut, pavedInner, pit, garage, p.infield && network ? [] : escapeLanes)
     .filter((r) => !(pavedGarage && r.id === 'garage'));
   const after = (rid: string) => surfaces.findIndex((r) => r.id === rid) + 1;
-  surfaces.splice(after('apron'), 0, ...pitSurfaces.filter((r) => r.id === 'pit-island'));
-  surfaces.splice(after('infield'), 0, ...pitSurfaces.filter((r) => r.id !== 'pit-island' && !(pavedGarage && r.id.startsWith('garage-lane'))), ...infieldSurfaces);
+  // (The gates' lanes across the island over it.)
+  const overApron = (r: SurfaceRegion) => r.id === 'pit-island' || r.id.startsWith('gate-lane');
+  surfaces.splice(after('apron'), 0, ...pitSurfaces.filter(overApron));
+  surfaces.splice(after('infield'), 0, ...pitSurfaces.filter((r) => !overApron(r) && !(pavedGarage && r.id.startsWith('garage-lane'))), ...infieldSurfaces);
 
   const { name, ...rest } = params;
   return {
@@ -914,7 +917,7 @@ function layOval(p: ShapedOvalParams, ctx: GenContext, params: AnyOvalParams): T
     crossSection: { edgeIn, edgeOut, apronWidth: p.apronWidth, pavedInner, ...banking },
     surfaces,
     ground: 'grass',
-    walls: [...standardWalls(edgeOut, pit), ...innerPitWalls(pit, access)],
+    walls: [...standardWalls(edgeOut, pit).map((w) => (w.id === 'pit-wall' && gates.length ? { ...w, gates } : w)), ...innerPitWalls(pit, access)],
     pit,
     infield: { garage, escapeLanes, ...(network ? { network } : {}), ...(rovals.length ? { rovals } : {}) },
     markings: standardMarkings(L, edgeIn, [-innerEdge, innerEdge], pavedInner, pit),

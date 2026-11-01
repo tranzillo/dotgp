@@ -205,21 +205,62 @@ export interface TruckDrive {
   speed: number;
   /** Curvature it's steering (1/m, + to the left). */
   kappa: number;
+  /** The leg of its route it's driving, and the legs after it (a route turns back on itself between legs). */
   path: TruckPath | null;
-  /** The path point it has got to. */
+  legs?: TruckPath[];
+  /** The path point it has got to, and how far it went on the legs before this one (m). */
   idx: number;
+  travelled?: number;
+  /** Time left turning round where one leg ends and the next goes back the way it came (s). */
+  turning?: number;
 }
 
-/** Set off along a path from rest: pointed along it (parked facing out). */
-export function setOff(t: TruckDrive, path: TruckPath): void {
-  t.path = path;
-  t.idx = 0;
-  if (t.speed < 0.5) {
-    const j = Math.min(path.x.length - 1, 4);
-    const dx = path.x[j] - t.body.x, dy = path.y[j] - t.body.y;
-    if (Math.hypot(dx, dy) > 0.5) t.heading = Math.atan2(dy, dx);
-    t.kappa = 0;
+/**
+ * A route as legs to drive: split wherever it turns back on itself (through
+ * more than CUSP), as a truck can't on its turning circle: it stops there
+ * and turns round (a three-point turn) before the next leg. (Driven round on
+ * full lock, trucks looped out across the track where a road met the apron
+ * the other way from the way they were going.)
+ */
+export function truckRoute(points: Array<[number, number]>, track: Track, top: number, brake: number): TruckPath[] {
+  const pts = simplified(points.filter((p, k) => k === 0 || Math.hypot(p[0] - points[k - 1][0], p[1] - points[k - 1][1]) > 1e-6));
+  const legs: Array<Array<[number, number]>> = [[pts[0]]];
+  for (let k = 1; k < pts.length; k++) {
+    legs[legs.length - 1].push(pts[k]);
+    if (k + 1 >= pts.length) break;
+    const [ax, ay] = pts[k - 1], [bx, by] = pts[k], [cx, cy] = pts[k + 1];
+    const l1 = Math.hypot(bx - ax, by - ay), l2 = Math.hypot(cx - bx, cy - by);
+    const cos = ((bx - ax) * (cx - bx) + (by - ay) * (cy - by)) / (l1 * l2 || 1);
+    if (cos < Math.cos(CUSP)) legs.push([pts[k]]);
   }
+  return legs.filter((leg) => leg.length > 1).map((leg) => new TruckPath(leg, track, top, brake));
+}
+const CUSP = (110 * Math.PI) / 180;
+/** A three-point turn (s). */
+const TURN_ROUND = 6;
+
+/** Set off along a route from rest: pointed along it (parked facing out). */
+export function setOff(t: TruckDrive, legs: TruckPath[]): void {
+  t.path = legs[0] ?? null;
+  t.legs = legs.slice(1);
+  t.idx = 0;
+  t.travelled = 0;
+  t.turning = 0;
+  if (t.path && t.speed < 0.5) pointAlong(t);
+}
+
+/** Pointed along its path from where it is. */
+function pointAlong(t: TruckDrive): void {
+  const path = t.path!;
+  const j = Math.min(path.x.length - 1, 4);
+  const dx = path.x[j] - t.body.x, dy = path.y[j] - t.body.y;
+  if (Math.hypot(dx, dy) > 0.5) t.heading = Math.atan2(dy, dx);
+  t.kappa = 0;
+}
+
+/** How far along its route it has got (m). */
+export function progress(t: TruckDrive): number {
+  return (t.travelled ?? 0) + (t.path ? t.path.at[t.idx] : 0);
 }
 
 /**
@@ -228,9 +269,26 @@ export function setOff(t: TruckDrive, path: TruckPath): void {
  * stopped at the end. hold: waiting (for a gap in traffic), it brakes to a stop.
  */
 export function driveTruck(t: TruckDrive, dt: number, towing: boolean, hold = false): boolean {
+  const done = driveLeg(t, dt, towing, hold);
+  if (!done || !t.legs?.length) return done;
+  // The end of a leg that turns back: turning round, then on along the next.
+  t.travelled = progress(t);
+  t.path = t.legs.shift()!;
+  t.idx = 0;
+  t.turning = TURN_ROUND;
+  return false;
+}
+
+function driveLeg(t: TruckDrive, dt: number, towing: boolean, hold: boolean): boolean {
   const path = t.path;
   const body = t.body;
   if (!path) { t.speed = 0; body.vx = 0; body.vy = 0; return true; }
+  if (t.turning && t.turning > 0) {
+    t.turning -= dt;
+    t.speed = 0; body.vx = 0; body.vy = 0;
+    if (t.turning <= 0) pointAlong(t);
+    return false;
+  }
   const n = path.x.length;
   // Where it has got to: the nearest point a little way on from the last.
   let best = t.idx, bestD = Infinity;

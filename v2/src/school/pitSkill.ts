@@ -9,9 +9,10 @@
  * from where the car is. Only the pit network learns, so stops can't cost a
  * driver its racing.
  */
-import { DRIVER_LAYERS, NeuralDriver, Team, type DriverLimits } from '../ai/drivers';
+import { adaptPitWeights, NeuralDriver, PIT_NET_LAYERS, Team, type DriverLimits } from '../ai/drivers';
 import { type Example, trainSupervised } from '../ai/network';
 import type { TrackKnowledge } from '../ai/observe';
+import { mirrorPitFine } from '../ai/pitting';
 import { fastestLine } from '../ai/racingLine';
 import { Rng } from '../ai/rng';
 import { TowerSpotter } from '../ai/spotter';
@@ -97,7 +98,9 @@ function drill(track: Track, d: PitStudent, studentDrives: boolean, lane: number
   const team = new Team(student, new TowerSpotter(), null, studentDrives);
   const car = new Car(0);
   // Every moment of the stop is recorded (a stop is short, and each part of it happens once).
-  world.addCar(car, new Recorder(team, student, null, { kind: studentDrives ? 'student' : 'teacher' }, examples, new Rng(seed), { skill: 'stops', sample: 1 }));
+  // (Each moment with the pit skill's own inputs as the recorder saw them: mirrored with the student's view.)
+  const fine = (_c: Car, _w: World, mirrored: boolean) => { const x = team.pitFine.slice(); if (mirrored) mirrorPitFine(x); return x; };
+  world.addCar(car, new Recorder(team, student, null, { kind: studentDrives ? 'student' : 'teacher' }, examples, new Rng(seed), { skill: 'stops', sample: 1, extra: fine }));
   const s = inLapStart(track);
   car.placeOnTrack(track, s, lane);
   // On ovals at the in-lap's usual speed; on circuits at what the line takes there.
@@ -213,7 +216,8 @@ export function apprenticePitSkill(students: PitStudent[], seed: number, options
   // A driver new to stops watches the maneuver's first round; one with a pit skill drives from the start (the first
   // round's teacher-only examples, trained on alone, made it forget how to get back from its own mistakes).
   const watches = students.map((d) => !d.pit);
-  for (const d of students) d.pit ??= d.weights.slice();
+  // (At the pit network's size: one learned before its own inputs widens into it, ignoring them until taught them.)
+  for (const d of students) d.pit = adaptPitWeights(d.pit ?? d.weights.slice());
   for (let round = 0; round < opts.rounds; round++) {
     const t0 = Date.now();
     const tracks = [
@@ -245,7 +249,7 @@ export function apprenticePitSkill(students: PitStudent[], seed: number, options
     let loss = 0;
     students.forEach((d, i) => {
       const set = examples[i].length <= opts.maxExamples ? examples[i] : sample(examples[i], opts.maxExamples, rng);
-      loss += trainSupervised(DRIVER_LAYERS, d.pit!, set, round === 0 && watches[i] ? 3 * opts.epochs : opts.epochs, 0.01, () => rng.next());
+      loss += trainSupervised(PIT_NET_LAYERS, d.pit!, set, round === 0 && watches[i] ? 3 * opts.epochs : opts.epochs, 0.01, () => rng.next());
     });
     opts.onRound?.(round, { loss: loss / students.length, stops, completed, overshoots, recovered, crowds, crowdsDone, caught: tally.caught / (stops + crowds), seconds: (Date.now() - t0) / 1000 });
   }

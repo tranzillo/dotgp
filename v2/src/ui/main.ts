@@ -1481,6 +1481,7 @@ function updateTower(): void {
       : r.flag === 'grid' ? (r.lights ? `<span style="color:#e5484d;letter-spacing:2px">${'●'.repeat(r.lights)}</span> lights` : '<span class="flagtag pace">GRID</span> forming up')
       : !r.started ? `<span class="flagtag pace">PACE CAR</span>${r.oneToGo ? ' coming in: green next time by' : ''}`
       : r.flag === 'caution' ? (r.safetyCar ? `<span class="flagtag caution">SAFETY CAR</span>${r.oneToGo ? ' in this lap' : ''}` : `<span class="flagtag caution">CAUTION</span>${r.oneToGo ? ' one to go' : ''}`)
+      : r.flag === 'red' ? '<span class="flagtag red">RED FLAG</span> track blocked: field stopped'
       : r.flag === 'restart' ? '<span class="flagtag caution">RESTART</span> leader to the line'
       : '<span class="flagtag green">GREEN</span>';
     const learning = (handle: EventHandle | null) => {

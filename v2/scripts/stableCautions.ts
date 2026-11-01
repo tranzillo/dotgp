@@ -5,6 +5,7 @@
  * one bundle.
  *
  *   npx tsx scripts/stableCautions.ts --in stable.json --out practised.json [--rounds 40] [--pairs 4] [--sigma 0.02] [--lr 0.01] [--group 8] [--jobs N]
+ *     [--spread 0.5] [--wrecks share]   (--wrecks: drills with wrecks on track to go by, src/school/wreckDrill.ts)
  *     [--ppo 1 [--worlds 2] [--warmup 5]]   PPO instead of ES (src/school/cautionPpo.ts): --rounds is its iterations
  *   npx tsx scripts/stableCautions.ts --in stable.json --group-only <first> --count <n> --out part.json ...   (one group)
  */
@@ -22,7 +23,7 @@ for (let i = 2; i < process.argv.length; i++) if (process.argv[i].startsWith('--
 const input = args.get('in')!;
 const out = args.get('out') ?? 'practised.json';
 const seed = Number(args.get('seed') ?? 1);
-const pass = ['rounds', 'pairs', 'sigma', 'lr', 'seed', 'ppo', 'worlds', 'warmup'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
+const pass = ['rounds', 'pairs', 'sigma', 'lr', 'seed', 'ppo', 'worlds', 'warmup', 'spread', 'wrecks'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
 
 type Json = { lineage: number; nerve: number; talent: number; limits: { latency: number; noise: number }; weights: number[]; caution?: { weights: number[] } };
 const file: Json[] = JSON.parse(readFileSync(input, 'utf8')).drivers;
@@ -45,6 +46,8 @@ if (args.has('group-only')) {
     ...(args.has('pairs') ? { pairs: Number(args.get('pairs')) } : {}),
     ...(args.has('sigma') ? { sigma: Number(args.get('sigma')) } : {}),
     ...(args.has('lr') ? { learningRate: Number(args.get('lr')) } : {}),
+    ...(args.has('spread') ? { spread: Number(args.get('spread')) } : {}),
+    ...(args.has('wrecks') ? { wrecks: Number(args.get('wrecks')) } : {}),
     onRound: (round, r) => console.log(`group ${first} round ${round}: score ${r.mean.toFixed(1)}, clean ${(100 * r.clean).toFixed(0)}%, `
       + `harm ${r.harm.toFixed(3)} (${r.seconds.toFixed(0)} s)`),
   });

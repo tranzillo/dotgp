@@ -68,6 +68,33 @@
       "file": "stable-candidate-v7.json",
       "candidate": true,
       "note": "v6b retrained in the Cup car (?spec=cup, 2026-10-30) under the wall-scrape costs, with teachers that move across at their crossing rate. Rides the wall far less (green wall damage down on 6 of 7 ovals, short 23.6 -> 12.8) but has 2-3x v6b's green car contact (students cross into each other) and half the clean passes. training/experiments/2026-10-30-cup-retrain-v7. Not for players yet."
+    },
+    {
+      "id": "stable-candidate-v5p",
+      "name": "Stable candidate v5p",
+      "file": "stable-candidate-v5p.json",
+      "note": "Stable candidate v5 with its pit skill retrained 36 rounds (2026-10-29): under the pit limiter and the stop-only-in-the-box rule, on the racing-line approach to circuit pit entries, then with the pit skill's own fine-scale inputs (metres off its route, speed against what the stop allows, its clearance to the pit wall). Racing, cautions, road skills and the broken-car skill exactly as v5. Classic car, 40 cars, against v5: retirements short 16.5 -> 13.0, speedway 18.8 -> 27.0 (wide ranges), flat 6.0 -> 0.0, club 37.7 -> 36.3, GP 36.3 -> 27.3; hits on the pit wall's nose a race (pit-zone tracer) flat 8.8 -> 0.5, speedway 8.5 -> 1.8, club 22 -> 14. Circuit races still lose most of the field, about half of it racing. Read-only."
+    },
+    {
+      "id": "stable-candidate-v7-lines",
+      "name": "Stable candidate v7 (two lines)",
+      "file": "stable-candidate-v7-lines.json",
+      "candidate": true,
+      "note": "v6 retrained on ovals raced in two lines (?spec=cup&lines=2, 2026-10-29): 8 apprenticeship rounds with solo drives on 4 more ovals a round, then the broken-car drills (22 of 40 licensed); trained before wall scraping cost health (c07cbfd). For ?spec=cup&lines=2 only. Against v6 on today's ovals (both Cup, rules, 40 cars, 4 seeds): short-oval green wall damage 25.6 -> 1.8, damage stops 108 -> 11.5 a race, out 12.8 -> 5.2; gen. short damage stops 107 -> 27.5; speedways still 25-35 out a race, nearly all under caution (pacing in line: cars run into slower ones). Read-only."
+    },
+    {
+      "id": "stable-candidate-v8-lines",
+      "name": "Stable candidate v8 (two lines)",
+      "file": "stable-candidate-v8-lines.json",
+      "candidate": true,
+      "note": "v7 retrained on ovals raced in two lines (?spec=cup&lines=2, 2026-10-31): 8 apprenticeship rounds (solo drives on 4 more ovals a round) under wall scraping's cost (c07cbfd) and with teachers that hold the car's own line (b477b56), then the broken-car drills (28 of 40 licensed). For ?spec=cup&lines=2 only. Against v7 (both Cup, two lines, rules, 40 cars, 4 seeds): gen. short green wall damage 11.0 -> 1.7, damage stops 32 -> 3 a race; short out 9.8 -> 4.2, green car hits 10.8 -> 4.7; clean passes up (flat 9.5 -> 16.1, gen. intermediate 7.1 -> 22.2); laps 0.2-0.4 s quicker on short and flat. But the flat oval loses 17.3 a race (v7 8.3), nearly all under caution: sound cars stopping in the caution line and hit from behind. Read-only."
+    },
+    {
+      "id": "stable-candidate-v8ra-lines",
+      "name": "Stable candidate v8ra (two lines)",
+      "file": "stable-candidate-v8ra-lines.json",
+      "candidate": true,
+      "note": "v8 with every driver's oval caution network retrained by race labelling (scripts/raceLabels.ts, circuit machine, 2026-11-01): the whole stable races itself on the apprenticeship's ovals with debris cautions and wrecks, each car's own teacher labelling from where it is, and every caution network trains on the field's caution moments from all 8 rounds plus as many racing ones. Every other skill is v8's. For ?spec=cup&lines=2 only. Against v8 (both Cup, two lines, rules, 40 cars, 4 seeds, at 17b1bc4): out over seven ovals 116.7 -> 68.7 (speedway 23.5 -> 14.8, flat 11.0 -> 5.0, gen. intermediate 18.3 -> 7.0, gen. speedway 32.3 -> 20.8, gen. superspeedway 25.3 -> 18.8); under caution the networks still miss about half their teachers' braking in states the field hasn't raced before; pit-cycle damage no better than v8's (the pit skill's entry on the gen. speedway). training/experiments/2026-10-31-caution-race-labels. Read-only."
     }
   ]
 }

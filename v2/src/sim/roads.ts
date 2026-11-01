@@ -13,7 +13,15 @@ export class RoadGraph {
   /** Roads out of each node, each with the node it leads to and which way it's driven. */
   private readonly out = new Map<string, Array<{ road: Road; to: string; forward: boolean; length: number }>>();
 
-  constructor(network: RoadNetwork) {
+  /** Where a vehicle can't go straight across onto a road (a wall between): from() joins the nearest road it can. */
+  private readonly blocked?: (a: [number, number], b: [number, number]) => boolean;
+
+  /**
+   * wrongWay: one-way roads can be driven against the flow too (service vehicles), counted this many times longer.
+   * blocked: no straight way from a to b (a wall between them).
+   */
+  constructor(network: RoadNetwork, opts: { wrongWay?: number; blocked?: (a: [number, number], b: [number, number]) => boolean } = {}) {
+    this.blocked = opts.blocked;
     this.nodes = new Map(network.nodes.map((n) => [n.id, n]));
     this.roads = network.roads;
     for (const n of network.nodes) this.out.set(n.id, []);
@@ -21,6 +29,7 @@ export class RoadGraph {
       const length = polylineLength(road.points);
       this.out.get(road.from)?.push({ road, to: road.to, forward: true, length });
       if (!road.oneWay) this.out.get(road.to)?.push({ road, to: road.from, forward: false, length });
+      else if (opts.wrongWay) this.out.get(road.to)?.push({ road, to: road.from, forward: false, length: length * opts.wrongWay });
     }
     // Straight across a paved area between any two of its nodes, where the line stays on it.
     for (const area of network.areas ?? []) {
@@ -97,9 +106,10 @@ export class RoadGraph {
     }
   }
 
-  /** The nearest point on any road (the paved areas' straight ways across too) to a world point. */
+  /** The nearest point on any road (the paved areas' straight ways across too) to a world point, with no wall between. */
   private nearestRoad(x: number, y: number): RoadPoint | null {
     let best: RoadPoint | null = null;
+    const all: RoadPoint[] = [];
     const seen = new Set<Road>();
     for (const edges of this.out.values()) {
       for (const { road } of edges) {
@@ -112,9 +122,15 @@ export class RoadGraph {
           const t = Math.max(0, Math.min(1, ((x - ax) * vx + (y - ay) * vy) / (vx * vx + vy * vy || 1)));
           const px = ax + vx * t, py = ay + vy * t;
           const off = Math.hypot(x - px, y - py);
-          if (!best || off < best.off) best = { road, seg: k, t, at: [px, py], off };
+          if (this.blocked) all.push({ road, seg: k, t, at: [px, py], off });
+          else if (!best || off < best.off) best = { road, seg: k, t, at: [px, py], off };
         }
       }
+    }
+    if (this.blocked) {
+      // (The nearest the way to which is clear, else the nearest.)
+      all.sort((a, b) => a.off - b.off);
+      return all.find((p) => !this.blocked!([x, y], p.at)) ?? all[0] ?? null;
     }
     return best;
   }

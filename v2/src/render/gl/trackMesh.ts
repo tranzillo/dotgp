@@ -1,4 +1,4 @@
-import { layoutKind, type Edge, type LineStyle, type Marking, type SRange, type SurfaceRegion, type TrackRect } from '../../sim/layout';
+import { layoutKind, type Edge, type LineStyle, type Marking, type SRange, type SurfaceRegion, type TrackRect, type Wall } from '../../sim/layout';
 import type { Track } from '../../sim/track';
 import { BANK_RAMP, BANK_SCALE_MAX, COLORS, deg, LINE_STYLES, OTHER_LAYOUT_ALPHA, SURFACE_COLORS } from '../view';
 import { rgba, withAlpha, type RGBA } from './glutil';
@@ -138,6 +138,28 @@ class Builder {
     const pts = this.trace(0, this.track.length, at);
     pts.pop(); // (the lap's end is its start)
     return { pts, closed: true };
+  }
+
+  /** A wall's stretches: solid, and its crash gates (s ranges; a whole lap's wall without gates is one null range). */
+  wallPieces(wall: Wall): { solid: SRange[]; gates: Array<[number, number]> } {
+    const gates = [...(wall.gates ?? [])].sort((a, b) => a[0] - b[0]);
+    if (!gates.length) return { solid: [wall.range], gates };
+    const solid: SRange[] = [];
+    if (wall.range) {
+      let from = wall.range[0];
+      for (const [g0, g1] of gates) {
+        if (g0 > from) solid.push([from, g0]);
+        from = Math.max(from, g1);
+      }
+      if (wall.range[1] > from) solid.push([from, wall.range[1]]);
+    } else {
+      // Round the lap from each gate to the next, the last round to the first.
+      gates.forEach(([, g1], k) => {
+        const next = k + 1 < gates.length ? gates[k + 1][0] : gates[0][0] + this.track.length;
+        if (next > g1) solid.push([g1, next]);
+      });
+    }
+    return { solid, gates };
   }
 
   /** A band between two lateral edges along s, as triangles. */
@@ -382,11 +404,19 @@ class Builder {
     for (const m of layout.markings) if (m.style !== 'start') this.marking(m, alpha);
     // Barriers are solid whichever layout is raced: full strength. All the dark edges first, so where one runs on
     // from another the second's edge doesn't cut across the first.
-    const shadow = rgba(COLORS.barrierShadow), white = rgba(COLORS.barrier);
+    const shadow = rgba(COLORS.barrierShadow), white = rgba(COLORS.barrier), gate = rgba(COLORS.gate);
     for (const [color, addPx] of [[shadow, 2], [white, 0]] as const) {
       for (const wall of layout.walls) {
-        const a = this.along(wall.range, wall.d);
-        this.polyline(a.pts, a.closed, { color, minPx: 3, metres: wall.thickness, addPx });
+        // (Its crash gates in the gate's colour over the dark edge: the wall's line broken where they are.)
+        const { solid, gates } = this.wallPieces(wall);
+        for (const range of solid) {
+          const a = this.along(range, wall.d);
+          this.polyline(a.pts, a.closed, { color, minPx: 3, metres: wall.thickness, addPx });
+        }
+        for (const range of gates) {
+          const a = this.along(range, wall.d);
+          this.polyline(a.pts, false, { color: color === shadow ? shadow : gate, minPx: 3, metres: wall.thickness, addPx });
+        }
       }
     }
     const discs: Array<{ x: number; y: number; r: number; color: RGBA }> = [];

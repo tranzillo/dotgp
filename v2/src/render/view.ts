@@ -70,6 +70,8 @@ export const COLORS = {
   barrier: '#e4e4e4',
   barrierShadow: '#050506',
   attenuator: '#f5c518',
+  /** A crash gate in a wall: the wall's line, dimmed. */
+  gate: '#8a8d93',
   /** Surface edges: a quiet line where asphalt meets grass or apron. */
   edge: 'rgba(255,255,255,0.22)',
   blendLine: 'rgba(255,255,255,0.85)',

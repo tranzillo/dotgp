@@ -58,8 +58,10 @@ describe('generated pit complexes', () => {
     const p = setBack.pit;
     expect(path.inAt(p.entryStart)).toBeLessThan(setBack.innerEdgeAt(p.entryStart) + setBack.apronWidth);
     expect(path.inAt(p.wallStart)).toBeGreaterThan(p.wallD);
-    // On it: pavement; between it and the apron, midway down pit road: grass.
-    const mid = (p.wallStart + p.wallEnd) / 2;
+    // On it: pavement; between it and the apron, midway down pit road (beside a crash gate's lane across it): grass.
+    const gates = setBack.walls.find((w) => w.id === 'pit-wall')!.gates ?? [];
+    const half = (p.wallStart + p.wallEnd) / 2;
+    const mid = gates.some(([a, b]) => half > a - 10 && half < b + 10) ? half + 40 : half;
     const surface = (s: number, d: number) => { const [x, y] = setBack.toWorld(s, d); return setBack.surfaceAt(s, d, x, y); };
     expect(surface(mid, setBack.innerEdgeAt(mid) + setBack.apronWidth + gap / 2)).toBe('grass');
     expect(surface(mid, p.wallD + 6 + setBack.pitOffset(mid))).toBe('pit'); // (further in on a chord)
@@ -76,6 +78,39 @@ describe('generated pit complexes', () => {
     for (const id of ids) expect(roads.pathToGarage(id)?.length).toBeGreaterThan(0);
     // Pit exit only joins the oval (one way).
     expect(roads.roads.find((r) => r.id === 'pit-exit')?.oneWay).toBe(true);
+  });
+
+  it('puts crash gates in a long pit wall, a road from pit road through each to the apron: no stretch of it far from a way out', () => {
+    // (Set back across grass, on a chord, and against the track.)
+    for (const t of [setBack, ...([[2, 'superspeedway'], [3, 'short']] as const).map(([seed, variant]) => new Track(generateLayout({ type: 'oval', seed, variant })))]) {
+      const p = t.pit, wall = t.walls.find((w) => w.id === 'pit-wall')!;
+      const gates = wall.gates ?? [];
+      const ways = [p.wallStart, ...gates.map(([a, b]) => (a + b) / 2), p.wallEnd].sort((a, b) => a - b);
+      if (p.wallEnd - p.wallStart > 250) expect(gates.length).toBeGreaterThan(0);
+      for (let k = 0; k + 1 < ways.length; k++) expect(ways[k + 1] - ways[k]).toBeLessThan(260);
+      gates.forEach((gate, k) => {
+        // Two roads from pit road through it, slanting off it either way along the lap: on onto the apron in front of the
+        // wall, or to one lane across a grass island.
+        const ways = ['a', 'b'].map((side) => t.roads.roads.find((r) => r.id === `gate${k}${side}`)!);
+        const lane = t.roads.roads.find((r) => r.id === `gate${k}`);
+        const tops = ways.map((road) => {
+          // (Through the wall in its gate, and nowhere else.)
+          for (let j = 0; j + 1 < road.points.length; j++) expect(t.throughWall(road.points[j], road.points[j + 1])).toBe(false);
+          expect(t.inRange(t.project(...road.points[1]).s, gate)).toBe(true);
+          expect(lane ? road.to : t.roads.nodes.get(road.to)?.kind).toBe(lane ? lane.from : 'apron');
+          return t.signedS(t.project(...road.points[0]).s);
+        });
+        expect(tops[0]).toBeLessThan(tops[1]);
+        for (const end of lane ? [lane.to] : ways.map((r) => r.to)) {
+          expect(t.roads.nodes.get(end)?.kind).toBe('apron');
+          expect(t.roads.pathToGarage(end)?.length).toBeGreaterThan(0);
+        }
+      });
+      // A way that crosses the wall anywhere else is through it.
+      const mid = (p.wallStart + p.wallEnd) / 2;
+      const s0 = gates.some(([a, b]) => mid > a - 20 && mid < b + 20) ? mid + 50 : mid;
+      expect(t.throughWall(t.toWorld(s0, t.innerEdgeAt(s0)), t.toWorld(s0, p.roadD + t.pitOffset(s0)))).toBe(true);
+    }
   });
 
   it('runs the scripted pit cycle cleanly on set-back and classic pit roads alike', () => {

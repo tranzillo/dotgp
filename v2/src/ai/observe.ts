@@ -3,7 +3,7 @@ import type { Car } from '../sim/car';
 import { compromise } from '../sim/damage';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
-import { fastestLine } from './racingLine';
+import { fastestLine, ovalLines, twoLines, whichLine } from './racingLine';
 
 /** Distances ahead (m) at which the driver samples track curvature. */
 export const LOOKAHEAD = [0, 30, 60, 100, 160, 250, 400] as const;
@@ -93,8 +93,13 @@ export function observeKnowledge(
   car: Car, track: Track, out: Float32Array, knowledge: TrackKnowledge = DEFAULT_KNOWLEDGE,
   /** Where it's driving instead of its line, if anywhere (a broken car: brokenRoute). Its line's speeds still. */
   route?: (s: number) => number,
+  /**
+   * Its lane plan (+1 the +d side, -1 the other, 0 holding): on an oval raced in two lines, the line it knows is its
+   * plan's, or the one it's on.
+   */
+  plan = 0,
 ): Float32Array {
-  const line = fastestLine(track, knowledge.margin);
+  const line = twoLines(track) ? ovalLines(track, knowledge.margin)[whichLine(track, knowledge.margin, car.s, car.d, plan)] : fastestLine(track, knowledge.margin);
   const speed = line.at(Math.round(knowledge.grip * car.grip * 50) / 50).speed;
   const n = line.d.length;
   KNOWLEDGE_AHEAD.forEach((a, j) => {
@@ -265,9 +270,11 @@ export function observeCaution(car: Car, world: World, out: Float32Array): Float
   // not by a car that got by the pace car: it drops back).
   const err = ctl.slotGap(car)!;
   out[2] = Math.max(-3, Math.min(3, err / 40));
-  out[3] = Math.max(-2, Math.min(2, (slot.d - car.d) / track.halfWidth));
-  out[4] = Math.max(-2, Math.min(2, (slot.speed - car.speed) / 20));
-  const ahead = ctl.carAheadInFile(car, slot.d);
+  // Its place's lane and speed, round a wreck ahead (the place's own lane ran through it: 2026-10-31).
+  const lane = ctl.aroundWreck(car, slot.d);
+  out[3] = Math.max(-2, Math.min(2, (lane - car.d) / track.halfWidth));
+  out[4] = Math.max(-2, Math.min(2, (Math.min(slot.speed, ctl.wreckSpeed(car, lane)) - car.speed) / 20));
+  const ahead = ctl.carAheadInFile(car, lane);
   if (ahead) {
     const gap = track.distanceFrom(car.s, ahead.s) - 2 * P.CAR_RADIUS;
     out[5] = Math.max(0, Math.min(1, gap / 50));
@@ -294,7 +301,7 @@ export function observeCautionRange(car: Car, world: World, out: Float32Array): 
   const slot = ctl.slotFor(car);
   if (!slot) return out;
   out[0] = Math.asinh(ctl.slotGap(car)! / 40);
-  const ahead = ctl.carAheadInFile(car, slot.d);
+  const ahead = ctl.carAheadInFile(car, ctl.aroundWreck(car, slot.d));
   out[1] = ahead ? Math.sqrt(Math.max(0, Math.min(1, (track.distanceFrom(car.s, ahead.s) - 2 * P.CAR_RADIUS) / 200))) : 1;
   return out;
 }
