@@ -270,3 +270,69 @@ PITHITS green         out along the wall     a car in its pit cycle             
 PITHITS under caution out blend              wreck                                   3 steps  health 1.05
 PITHITS under caution out along the wall     wreck                                   5 steps  health 0.88
 PITHITS green         in before entry        wreck                                   3 steps  health 0.83
+
+== 9. teachers alone with wrecks dropped into their cautions (scripts/wreckDrops.ts + cautionWrecks.ts), before 17b1bc4 / after
+== before speedway
+finished 20/30  cautions 7 (21 laps)  retirements 10  biggest wreck 2 cars
+finished 19/30  cautions 7 (24 laps)  retirements 11  biggest wreck 2 cars
+  WRECKS  10.5 retirements/race, 7.0 cautions/race, 6 multi-car wrecks (mean 2.0 cars, max 2)
+WRECK caution 3627 s, a wreck on the racing surface 927 s, blocked (<3 car widths) 21 s, red flags 0 (0 s)
+WRECK official/truck       cautionNet    hits   14  health   1.31  out 0  speed med 19.6
+WRECK slower car (5+ m/s)  cautionNet    hits    3  health   0.85  out 0  speed med 20.3
+WRECK other car            cautionNet    hits   69  health   0.57  out 0  speed med 32.8
+== before flat
+finished 11/24  cautions 9 (28 laps)  retirements 13  biggest wreck 2 cars
+finished 11/24  cautions 9 (29 laps)  retirements 13  biggest wreck 2 cars
+  WRECKS  13.0 retirements/race, 9.0 cautions/race, 8 multi-car wrecks (mean 2.0 cars, max 2)
+WRECK caution 5436 s, a wreck on the racing surface 982 s, blocked (<3 car widths) 0 s, red flags 0 (0 s)
+WRECK official/truck       cautionNet    hits   12  health   2.52  out 1  speed med 22.1
+WRECK slower car (5+ m/s)  cautionNet    hits    5  health   0.80  out 0  speed med 49.4
+WRECK other car            cautionNet    hits   63  health   0.75  out 0  speed med 24.7
+WRECK wall/wall            cautionNet    hits    2  health   0.10  out 0  speed med 52.4
+WRECK wreck (retired)      cautionNet    hits    1  health   0.01  out 0  speed med 4.9
+== after3 speedway
+finished 18/30  cautions 8 (19 laps)  retirements 12  biggest wreck 2 cars
+finished 16/30  cautions 7 (23 laps)  retirements 14  biggest wreck 2 cars
+  WRECKS  13.0 retirements/race, 7.5 cautions/race, 10 multi-car wrecks (mean 2.0 cars, max 2)
+WRECK caution 3520 s, a wreck on the racing surface 927 s, blocked (<3 car widths) 97 s, red flags 0 (0 s)
+WRECK slower car (5+ m/s)  cautionNet    hits    5  health   1.15  out 1  speed med 42.0
+WRECK official/truck       cautionNet    hits    7  health   0.93  out 0  speed med 4.6
+WRECK other car            cautionNet    hits   69  health   0.74  out 0  speed med 32.8
+== after3 flat
+finished 13/24  cautions 9 (27 laps)  retirements 11  biggest wreck 2 cars
+finished 12/24  cautions 8 (30 laps)  retirements 12  biggest wreck 2 cars
+  WRECKS  11.5 retirements/race, 8.5 cautions/race, 6 multi-car wrecks (mean 2.0 cars, max 2)
+WRECK caution 5636 s, a wreck on the racing surface 771 s, blocked (<3 car widths) 0 s, red flags 0 (0 s)
+WRECK official/truck       cautionNet    hits    7  health   1.98  out 1  speed med 28.0
+WRECK slower car (5+ m/s)  cautionNet    hits    2  health   0.81  out 0  speed med 51.4
+WRECK other car            cautionNet    hits   66  health   0.65  out 0  speed med 24.7
+
+== 10. race labelling with the wreck lesson (v8rw, at 17b1bc4)
+round 0: 92360 caution moments pooled, 109485 racing; held-out race before pedal err 0.301, braking missed 62% (3704 moments); after pedal err 0.239, braking missed 21% (3704 moments) (7.7 min)
+round 1: 212516 caution moments pooled, 256366 racing; held-out race before pedal err 0.293, braking missed 63% (7950 moments); after pedal err 0.272, braking missed 36% (7950 moments) (8.7 min)
+round 2: 212681 caution moments pooled, 271122 racing; held-out race before pedal err 0.271, braking missed 60% (13282 moments); after pedal err 0.260, braking missed 48% (13282 moments) (8.9 min)
+round 3: 199673 caution moments pooled, 281904 racing; held-out race before pedal err 0.257, braking missed 64% (2973 moments); after pedal err 0.237, braking missed 31% (2973 moments) (7.4 min)
+40 drivers -> C:/Users/kappa/AppData/Local/Temp/claude/c--Users-kappa-Documents-Projects-dotgp/6f28a891-a5b6-41ed-89a0-96d2f2415de7/scratchpad/rl/v8rw.json (32.7 min)
+
+== 11. across ovals: v8 races on 8 ovals (raceLabels.ts --race-only 2000-2007, 3% of moments); train on 6, held out the gen. 1240 m and 3554 m ovals
+caution moments: train 86803, held out 39206
+FIT the bundle's own networks, held out: pedal err 0.333, teacher braking 19.5% of which net not 61%, steer err 0.079
+FIT field network 32,24    held out pedal err 0.264, teacher braking 19.5% of which net not 19%, steer err 0.048 | training pedal err 0.238, teacher braking 21.0% of which net not 16%, steer err 0.042 (10 s)
+FIT field network 64,48    held out pedal err 0.259, teacher braking 19.5% of which net not 20%, steer err 0.044 | training pedal err 0.225, teacher braking 21.0% of which net not 18%, steer err 0.040 (21 s)
+FIT field network 128,64   held out pedal err 0.275, teacher braking 19.5% of which net not 17%, steer err 0.054 | training pedal err 0.234, teacher braking 21.0% of which net not 16%, steer err 0.059 (47 s)
+FIT field network 64,64,32 held out pedal err 0.273, teacher braking 19.5% of which net not 14%, steer err 0.048 | training pedal err 0.235, teacher braking 21.0% of which net not 12%, steer err 0.040 (30 s)
+-- pooled fine-tune, caution moments only, 4 epochs
+drivers 40, train moments 86803, held out 39206 (138 s)
+FIT bundle's network, held out:     pedal err 0.333, teacher braking 19.5% of which net not 61%, steer err 0.079
+FIT trained copy, its training data: pedal err 0.238, teacher braking 21.0% of which net not 23%, steer err 0.051
+FIT trained copy, held out:          pedal err 0.264, teacher braking 19.5% of which net not 25%, steer err 0.058
+-- pooled fine-tune, caution moments only, 8 epochs
+drivers 40, train moments 86803, held out 39206 (230 s)
+FIT bundle's network, held out:     pedal err 0.333, teacher braking 19.5% of which net not 61%, steer err 0.079
+FIT trained copy, its training data: pedal err 0.229, teacher braking 21.0% of which net not 19%, steer err 0.048
+FIT trained copy, held out:          pedal err 0.254, teacher braking 19.5% of which net not 23%, steer err 0.057
+-- pooled fine-tune with as many racing moments, 4 epochs
+drivers 40, train moments 86803, held out 39206 (187 s)
+FIT bundle's network, held out:     pedal err 0.333, teacher braking 19.5% of which net not 61%, steer err 0.079
+FIT trained copy, its training data: pedal err 0.237, teacher braking 21.0% of which net not 23%, steer err 0.054
+FIT trained copy, held out:          pedal err 0.261, teacher braking 19.5% of which net not 25%, steer err 0.061

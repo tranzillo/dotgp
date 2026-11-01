@@ -130,6 +130,51 @@ noise). Pit-cycle damage is up again (gen. superspeedway past noise), mostly mor
 stops 78 -> 99, gen. intermediate 53 -> 79): damage a stop about the same except on the gen. speedway (102 stops both,
 0.078 -> 0.122 a stop). Green car damage up with more cars still running (none past noise).
 
+## The wreck lesson (17b1bc4)
+
+Race control's way by a wreck now holds everyone that asks it (formation, teachers, pace car, a driver's caution
+inputs) to pace past a wreck, where before only a gap under 2 m either side slowed them; and the smooth formation's
+follow cap counts on moving across half as fast (1.5 m/s) round a wreck before it leaves it out of the path. Two tries
+that failed on the way (teachers alone with wrecks dropped into their cautions, `scripts/wreckDrops.ts`; `probes.txt`
+9): counting any stopped car as a wreck stopped the queue behind every stopped car (30 of 30 out, 9 hours of caution);
+wanting 3 m of room by a wreck instead of 1.5 left cars stopped short of a narrow gap until race control retired them
+as stuck. As committed, teachers alone hit no wrecks, as before (13.0 / 11.5 out a race on the speedway / flat with
+the drops, 10.5 / 13.0 before).
+
+Race labelling again from v8 under it (v8rw, `probes.txt` 10), benched in the lab at 17b1bc4 (`v8-v8rw.json`,
+`v8r-v8rw.json`; the new rule changes every bundle's caution inputs, so v8 and v8r raced again):
+
+| out | v8 | v8r | v8rw |
+|---|---|---|---|
+| short | 5.3 | 2.8 | 5.0 |
+| speedway | 23.5 | 12.0 | 15.5 (v8r better *) |
+| flat | 11.0 | 8.5 | 4.3 |
+| gen. short | 1.0 | 0.5 | 1.0 |
+| gen. intermediate | 18.3 | 9.5 | 15.0 |
+| gen. speedway | 32.3 | 21.3 | 24.3 |
+| gen. superspeedway | 25.3 | 21.3 | 17.8 |
+| all seven | 116.7 | 75.9 | 82.9 |
+
+No better than v8r: the lesson wasn't what held the trained field back. Kept (teachers no worse, and pace past a wreck
+is the rule a field under caution would follow).
+
+## Does it carry from one oval to another?
+
+v8 raced on 8 ovals (`raceLabels.ts --race-only 2000-2007`), trained on 6, scored on two generated ovals none of it
+saw (`cautionFit.ts --field-layers`, `--pooled`, `--racing`; `probes.txt` 11):
+
+| on two unseen ovals | pedal error | braking missed |
+|---|---|---|
+| v8's own | 0.333 | 61% |
+| one network for the field from scratch: 32-24 / 64-48 / 128-64 / 64-64-32 | 0.26-0.28 | 14-20% |
+| each driver's network fine-tuned on the field's caution moments, 4 / 8 epochs | 0.264 / 0.254 | 25% / 23% |
+| the same with as many racing moments (as raceLabels.ts trains) | 0.261 | 25% |
+
+It carries, at any size, with or without racing moments. So the stage's held-out race, missed at 57-72% every round,
+isn't another oval's states but another policy's: each round's training changes how the field drives, and the next
+round's races go where the networks haven't been (DAgger's moving target; offline, training and held-out races were
+both driven by v8). Rounds kept only the last 2 rounds' moments.
+
 ## Next
 
 - Why a round's learning doesn't carry to the next oval (every network the field's average of 40 teachers on every
