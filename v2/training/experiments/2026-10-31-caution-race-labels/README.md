@@ -92,9 +92,47 @@ npx tsx scripts/bench.ts $B v8f.json --tracks short,speedway,flat,oval:894715320
 
 The dumps sample moments with `Math.random`: v8f isn't reproduced bit for bit (kept outside the repo; not bundled).
 
+## Race labelling as a stage: v8r
+
+`scripts/raceLabels.ts` (`src/school/raceLabels.ts`): each round the whole stable races itself (every car a student
+with all its skills, driving its own cautions) on the apprenticeship's ovals (presets and generated, in turn; not the
+bench's), each car's own teacher labelling from where it is (the apprenticeship's Recorder, the student always
+driving); debris cautions, half of them leaving wrecks. Each driver's caution network trains on the field's caution
+moments from the last rounds and as many racing moments; the round's last race is held out and scores it.
+
+Why it differs from the apprenticeship: there a group of 4-8 students races in a field of teachers (`stable.ts
+--group`), so a student paces behind cars that pace cleanly and almost never in a field of students.
+
+```sh
+DOTGP_EXPERIMENT='?spec=cup&lines=2' npx tsx scripts/raceLabels.ts --in public/drivers/stable-candidate-v8-lines.json   --out v8r.json --rounds 4 --races 10 --km 80 --sample 0.02 --keep 2 --debris 0.03 --wrecks 0.5 --jobs 10 --moments 60000 --epochs 4 --seed 1
+```
+
+39 min in the lab (`probes.txt` 7). The held-out race, before and after each round's training: braking missed 57% ->
+16%, 72% -> 39%, 72% -> 52%, 65% -> 46% (pedal error 0.29 -> 0.25, 0.33 -> 0.30, 0.31 -> 0.30, 0.23 -> 0.27). Within
+a round it learns; the next round's held-out race (another track) is missed as much as ever: it doesn't carry from
+one oval to the next the way one speedway's moments carried to other speedway races.
+
+Bench (`v8-v8r.json`; same 7 ovals and seeds as `v8-v8f.json`, so the v8 column is the same):
+
+| out | v8 | v8f | v8r |
+|---|---|---|---|
+| short | 5.8 | 3.5 | 6.0 |
+| speedway | 20.0 | 15.8 | 14.8 |
+| flat | 13.0 | 8.3 | 5.3 (at fault 8.3 -> 0.5) |
+| gen. short | 1.3 | 1.3 | 0.5 |
+| gen. intermediate | 17.3 | 9.8 * | 10.0 (at fault 10.3 -> 3.8 *) |
+| gen. speedway | 27.3 | 23.3 | 24.3 |
+| gen. superspeedway | 24.8 | 19.3 | 17.8 |
+| all seven | 109.5 | 81.3 | 78.7 |
+
+v8r is v8f's equal over all (better on the flat oval, without v8f's slower flat laps or its flat cautions past
+noise). Pit-cycle damage is up again (gen. superspeedway past noise), mostly more cars running and stopping (speedway
+stops 78 -> 99, gen. intermediate 53 -> 79): damage a stop about the same except on the gen. speedway (102 stops both,
+0.078 -> 0.122 a stop). Green car damage up with more cars still running (none past noise).
+
 ## Next
 
-Race labelling as a training stage for the caution skill: race the stable (students driving) on every kind of oval,
-label from where they are, pool the field's moments, fine-tune each caution network, and go round again with the
-improved field (its own states next time). With racing moments mixed in, as the apprenticeship does (the caution
-network takes over mid-corner at racing speed), and pit-cycle moments looked at (where v8f got worse).
+- Why a round's learning doesn't carry to the next oval (every network the field's average of 40 teachers on every
+  kind of oval; a wider one didn't help on one speedway, not tried across ovals).
+- The wreck lesson: the teacher still doesn't slow for a wreck it's steering round (its follow cap leaves it out).
+- Pit cycles on the gen. speedway: damage a stop up by half.
