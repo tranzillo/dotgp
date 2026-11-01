@@ -175,11 +175,45 @@ isn't another oval's states but another policy's: each round's training changes 
 round's races go where the networks haven't been (DAgger's moving target; offline, training and held-out races were
 both driven by v8). Rounds kept only the last 2 rounds' moments.
 
+## Keeping every round: v8ra
+
+The standard answer to a moving target is to train on everything gathered so far, not the last rounds only, and to run
+more rounds. From v8 again at 17b1bc4: 8 rounds, `--keep 8` (760k caution moments pooled by the end), 74.5 min
+(`probes.txt` 12):
+
+```sh
+DOTGP_EXPERIMENT='?spec=cup&lines=2' npx tsx scripts/raceLabels.ts --in public/drivers/stable-candidate-v8-lines.json   --out v8ra.json --rounds 8 --races 10 --km 80 --sample 0.02 --keep 8 --debris 0.03 --wrecks 0.5 --jobs 10 --moments 60000 --epochs 4 --seed 1
+```
+
+The held-out race still isn't caught up with: braking missed before each round's training 62, 63, 60, 68, 19, 46, 53,
+49%, after 21, 36, 41, 42, 17, 28, 35, 36%. A round's training still halves it, but the field never drives in a way
+the pool already knows (one race each round, a few thousand moments: noisy, but no trend).
+
+Bench (`v8r-v8ra.json`; same ovals and seeds as `v8r-v8rw.json`, and v8r's column came out the same to the decimal, so
+v8's from `v8-v8rw.json` stands beside it):
+
+| out (at fault) | v8 | v8r | v8ra |
+|---|---|---|---|
+| short | 5.3 | 2.8 (1.0) | 1.8 (0.8) |
+| speedway | 23.5 | 12.0 (3.8) | 14.8 (5.5) |
+| flat | 11.0 | 8.5 (2.5) | 5.0 (0.3) |
+| gen. short | 1.0 | 0.5 (0.0) | 0.5 (0.0) |
+| gen. intermediate | 18.3 | 9.5 (4.3) | 7.0 (2.3) |
+| gen. speedway | 32.3 | 21.3 (10.0) | 20.8 (6.0) |
+| gen. superspeedway | 25.3 | 21.3 (11.8) | 18.8 (10.0) |
+| all seven | 116.7 | 75.9 (33.4) | 68.7 (24.9) |
+
+Fewer out than v8r on five ovals, more on the speedway; no track's retirements past noise. Past noise: gen.
+intermediate multi-car wrecks 3.0 -> 1.0 and gen. superspeedway damage done 6.0 -> 4.1 better; speedway damage done
+3.2 -> 4.8, flat green wall damage and gen. short green wall and car damage (small) worse. The best of the stage's
+runs, by a margin inside the noise of any one track.
+
 ## Next
 
-- Why a round's learning doesn't carry to the next oval (every network the field's average of 40 teachers on every
-  kind of oval; a wider one didn't help on one speedway, not tried across ovals).
-- The wreck lesson: the teacher still doesn't slow for a wreck it's steering round (its follow cap leaves it out).
+- Whether to bundle a caution result (v8ra the best: 116.7 -> 68.7 out over seven ovals) as a candidate: the user's
+  call. Its pit cycles are no better than v8's (below).
+- The held-out race each round: the pool never covers the next round's policy. Smaller steps (fewer epochs a round,
+  more rounds), or the field mixed (part v8, part trained) so the states shift less from round to round.
 - Pit cycles on the gen. speedway (`scripts/pitCycleHits.ts`, `probes.txt` 8): not the caution skill. Most of it is the
   pitting car itself into the wall at pit entry (pit skill driving: v8 26.2, v8r 29.9 health in 4 races, green and
   caution), then pitting cars into cars wrecked in that entry (8.1 -> 13.6: more cars still running to pit under

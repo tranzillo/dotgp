@@ -336,3 +336,45 @@ drivers 40, train moments 86803, held out 39206 (187 s)
 FIT bundle's network, held out:     pedal err 0.333, teacher braking 19.5% of which net not 61%, steer err 0.079
 FIT trained copy, its training data: pedal err 0.237, teacher braking 21.0% of which net not 23%, steer err 0.054
 FIT trained copy, held out:          pedal err 0.261, teacher braking 19.5% of which net not 25%, steer err 0.061
+
+== 12. race labelling keeping every round (v8ra, at 17b1bc4): 8 rounds, --keep 8
+round 0: 92360 caution moments pooled, 109485 racing; held-out race before pedal err 0.301, braking missed 62% (3704 moments); after pedal err 0.239, braking missed 21% (3704 moments) (7.9 min)
+round 1: 212516 caution moments pooled, 256366 racing; held-out race before pedal err 0.293, braking missed 63% (7950 moments); after pedal err 0.272, braking missed 36% (7950 moments) (9.5 min)
+round 2: 308745 caution moments pooled, 397111 racing; held-out race before pedal err 0.271, braking missed 60% (13282 moments); after pedal err 0.255, braking missed 41% (13282 moments) (10.7 min)
+round 3: 428045 caution moments pooled, 543053 racing; held-out race before pedal err 0.240, braking missed 68% (991 moments); after pedal err 0.216, braking missed 42% (991 moments) (8.5 min)
+round 4: 516354 caution moments pooled, 706751 racing; held-out race before pedal err 0.173, braking missed 19% (3570 moments); after pedal err 0.179, braking missed 17% (3570 moments) (9.3 min)
+round 5: 583510 caution moments pooled, 848744 racing; held-out race before pedal err 0.230, braking missed 46% (3351 moments); after pedal err 0.215, braking missed 28% (3351 moments) (9.1 min)
+round 6: 676949 caution moments pooled, 993167 racing; held-out race before pedal err 0.216, braking missed 53% (3209 moments); after pedal err 0.212, braking missed 35% (3209 moments) (10.0 min)
+round 7: 756616 caution moments pooled, 1165182 racing; held-out race before pedal err 0.254, braking missed 49% (33477 moments); after pedal err 0.244, braking missed 36% (33477 moments) (9.5 min)
+40 drivers -> C:/Users/kappa/AppData/Local/Temp/claude/c--Users-kappa-Documents-Projects-dotgp/6f28a891-a5b6-41ed-89a0-96d2f2415de7/scratchpad/rl/v8ra.json (74.5 min)
+-- bench v8r vs v8ra (v8r-v8ra.json): retirements / at fault, and lines past noise
+short
+  retirements                     2.8 ± 4.9       1.8 ± 3.3   B-A     -1.0 ± 7.2  within noise
+    at fault                      1.0 ± 2.2       0.8 ± 1.5   B-A     -0.3 ± 3.5  within noise
+speedway
+  retirements                    12.0 ± 2.9      14.8 ± 4.0   B-A      2.8 ± 5.6  within noise
+    at fault                      3.8 ± 3.8       5.5 ± 2.8   B-A      1.8 ± 3.8  within noise
+  damage done (by fault)          3.2 ± 1.3       4.8 ± 1.0   B-A      1.6 ± 1.4  B worse
+flat
+  retirements                     8.5 ± 5.4       5.0 ± 3.2   B-A     -3.5 ± 7.1  within noise
+    at fault                      2.5 ± 3.3       0.3 ± 0.8   B-A     -2.3 ± 2.7  within noise
+  wall damage, green            0.39 ± 0.23     0.57 ± 0.31   B-A    0.18 ± 0.12  B worse
+  clean passes per contact      2.78 ± 0.27     3.71 ± 0.77   B-A    0.93 ± 0.93  B better
+  lockstep, different brains  0.006 ± 0.004   0.016 ± 0.003   B-A  0.009 ± 0.006  B worse
+oval:894715320:short
+  retirements                     0.5 ± 0.9       0.5 ± 0.9   B-A      0.0 ± 0.0  within noise
+    at fault                      0.0 ± 0.0       0.0 ± 0.0   B-A      0.0 ± 0.0  within noise
+  damage done (by fault)          0.3 ± 0.2       0.4 ± 0.2   B-A      0.2 ± 0.1  B worse
+  wall damage, green            1.58 ± 0.40     1.92 ± 0.39   B-A    0.34 ± 0.23  B worse
+  car damage, green             0.66 ± 0.53     1.02 ± 0.33   B-A    0.36 ± 0.35  B worse
+oval:3850048323:intermediate
+  retirements                     9.5 ± 3.8       7.0 ± 3.9   B-A     -2.5 ± 4.9  within noise
+    at fault                      4.3 ± 2.4       2.3 ± 3.0   B-A     -2.0 ± 2.2  within noise
+  multi-car wrecks                3.0 ± 1.3       1.0 ± 1.3   B-A     -2.0 ± 1.3  B better
+oval:3148308672:speedway
+  retirements                    21.3 ± 6.7      20.8 ± 7.6   B-A    -0.5 ± 13.5  within noise
+    at fault                     10.0 ± 9.5       6.0 ± 4.5   B-A    -4.0 ± 12.3  within noise
+oval:774865359:superspeedway
+  retirements                   21.3 ± 12.1     18.8 ± 12.6   B-A    -2.5 ± 22.8  within noise
+    at fault                    11.8 ± 10.4     10.0 ± 11.1   B-A    -1.8 ± 20.4  within noise
+  damage done (by fault)          6.0 ± 2.3       4.1 ± 2.8   B-A     -1.9 ± 1.3  B better
