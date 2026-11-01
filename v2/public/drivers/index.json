@@ -74,6 +74,13 @@
       "file": "stable-candidate-v8-lines.json",
       "candidate": true,
       "note": "v7 retrained on ovals raced in two lines (?spec=cup&lines=2, 2026-10-31): 8 apprenticeship rounds (solo drives on 4 more ovals a round) under wall scraping's cost (c07cbfd) and with teachers that hold the car's own line (b477b56), then the broken-car drills (28 of 40 licensed). For ?spec=cup&lines=2 only. Against v7 (both Cup, two lines, rules, 40 cars, 4 seeds): gen. short green wall damage 11.0 -> 1.7, damage stops 32 -> 3 a race; short out 9.8 -> 4.2, green car hits 10.8 -> 4.7; clean passes up (flat 9.5 -> 16.1, gen. intermediate 7.1 -> 22.2); laps 0.2-0.4 s quicker on short and flat. But the flat oval loses 17.3 a race (v7 8.3), nearly all under caution: sound cars stopping in the caution line and hit from behind. Read-only."
+    },
+    {
+      "id": "stable-candidate-v8ra-lines",
+      "name": "Stable candidate v8ra (two lines)",
+      "file": "stable-candidate-v8ra-lines.json",
+      "candidate": true,
+      "note": "v8 with every driver's oval caution network retrained by race labelling (scripts/raceLabels.ts, circuit machine, 2026-11-01): the whole stable races itself on the apprenticeship's ovals with debris cautions and wrecks, each car's own teacher labelling from where it is, and every caution network trains on the field's caution moments from all 8 rounds plus as many racing ones. Every other skill is v8's. For ?spec=cup&lines=2 only. Against v8 (both Cup, two lines, rules, 40 cars, 4 seeds, at 17b1bc4): out over seven ovals 116.7 -> 68.7 (speedway 23.5 -> 14.8, flat 11.0 -> 5.0, gen. intermediate 18.3 -> 7.0, gen. speedway 32.3 -> 20.8, gen. superspeedway 25.3 -> 18.8); under caution the networks still miss about half their teachers' braking in states the field hasn't raced before; pit-cycle damage no better than v8's (the pit skill's entry on the gen. speedway). training/experiments/2026-10-31-caution-race-labels. Read-only."
     }
   ]
 }

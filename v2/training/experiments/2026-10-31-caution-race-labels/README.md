@@ -206,12 +206,12 @@ v8's from `v8-v8rw.json` stands beside it):
 Fewer out than v8r on five ovals, more on the speedway; no track's retirements past noise. Past noise: gen.
 intermediate multi-car wrecks 3.0 -> 1.0 and gen. superspeedway damage done 6.0 -> 4.1 better; speedway damage done
 3.2 -> 4.8, flat green wall damage and gen. short green wall and car damage (small) worse. The best of the stage's
-runs, by a margin inside the noise of any one track.
+runs, by a margin inside the noise of any one track. Bundled: `public/drivers/stable-candidate-v8ra-lines.json`.
 
 ## Next
 
-- Whether to bundle a caution result (v8ra the best: 116.7 -> 68.7 out over seven ovals) as a candidate: the user's
-  call. Its pit cycles are no better than v8's (below).
+- v8ra is bundled as `public/drivers/stable-candidate-v8ra-lines.json` (candidate, 2026-11-01): v8 with only its caution
+  networks replaced. Its pit cycles are no better than v8's (below).
 - The held-out race each round: the pool never covers the next round's policy. Smaller steps (fewer epochs a round,
   more rounds), or the field mixed (part v8, part trained) so the states shift less from round to round.
 - Pit cycles on the gen. speedway (`scripts/pitCycleHits.ts`, `probes.txt` 8): not the caution skill. Most of it is the
