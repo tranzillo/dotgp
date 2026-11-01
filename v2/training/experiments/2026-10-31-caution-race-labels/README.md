@@ -208,8 +208,34 @@ intermediate multi-car wrecks 3.0 -> 1.0 and gen. superspeedway damage done 6.0 
 3.2 -> 4.8, flat green wall damage and gen. short green wall and car damage (small) worse. The best of the stage's
 runs, by a margin inside the noise of any one track. Bundled: `public/drivers/stable-candidate-v8ra-lines.json`.
 
+## Where v8ra's retirements come from; red for any wreck
+
+`cautionWrecks.ts` on the three ovals with the most out (speedway, gen. speedway, gen. superspeedway; 2 seeds each,
+`probes.txt` 13): of 127 retirements, 78 under caution, 29 green, 16 merging or near a merging car, 4 at restarts.
+Under caution the biggest cause is cars hitting a wreck (39 out, median 29 m/s: at pace), then the pit skill into
+walls (15 out, any flag) and trucks or the pace car (6). They come one at a time minutes into a caution (+128 s,
++296 s, ... +951 s on the gen. superspeedway): the snowball isn't a pileup at the crash but the line filing past a
+wreck lap after lap. The red flag almost never comes: a wreck left less than a car's width and a metre to get by
+for 117 s of 11,499 s of caution, no red flags.
+
+`scripts/redForWrecks.ts` (a preload, no retraining): red for any wreck stopped on the racing surface or an oval's
+apron, so the field stops in line 40 m short of it until it's towed off.
+
+| out a race | v8ra | red for any wreck |
+|---|---|---|
+| speedway | 16.5 | 12.0 |
+| gen. speedway | 24.5 | 18.5 |
+| gen. superspeedway | 22.5 | 12.0 |
+| under caution (6 races) | 78 | 25 (and 10 under red) |
+| into wrecks under caution (6 races) | 39 | 11 |
+
+46 red flags in 6 races, 5,355 s of them (about 15 minutes a race stopped). Under red the formation script stops the
+cars (the "formation" rows): the caution skill has never been taught a red flag.
+
 ## Next
 
+- Red for any wreck (above): make it race control's rule on ovals, shorten the time stopped, and teach the caution
+  skill the stop (race labelling with red flags in the races).
 - v8ra is bundled as `public/drivers/stable-candidate-v8ra-lines.json` (candidate, 2026-11-01): v8 with only its caution
   networks replaced. Its pit cycles are no better than v8's (below).
 - The held-out race each round: the pool never covers the next round's policy. Smaller steps (fewer epochs a round,

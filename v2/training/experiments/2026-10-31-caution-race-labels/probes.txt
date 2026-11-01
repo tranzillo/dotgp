@@ -378,3 +378,165 @@ oval:774865359:superspeedway
   retirements                   21.3 ± 12.1     18.8 ± 12.6   B-A    -2.5 ± 22.8  within noise
     at fault                    11.8 ± 10.4     10.0 ± 11.1   B-A    -1.8 ± 20.4  within noise
   damage done (by fault)          6.0 ± 2.3       4.1 ± 2.8   B-A     -1.9 ± 1.3  B better
+
+== 13. where v8ra's retirements come from, and the red flag for any wreck on track (scripts/redForWrecks.ts, a preload), cautionWrecks.ts, seeds 1-2, at 17b1bc4
+-- v8ra as it is
+=== speedway seed 1: 59 laps, 30 cars (a car a pit box), 4x pace (80 s)
+finished 14/30  cautions 5 (20 laps)  retirements 15  biggest wreck 2 cars
+  t=351s  1 car(s): caution +73s @22
+  t=593s  1 car(s): caution +315s @5
+  t=687s  1 car(s): near a merging car @0
+  t=721s  1 car(s): caution +61s @22
+  t=754s  1 car(s): caution +95s @31
+  t=788s  1 car(s): caution +128s @25
+  t=1560s  1 car(s): caution +163s @22
+  t=2384s  2 car(s): caution +30s @28, caution +30s @34
+  t=2435s  1 car(s): caution +81s @29
+=== speedway seed 2: 59 laps, 30 cars (a car a pit box), 4x pace (80 s)
+finished 12/30  cautions 6 (24 laps)  retirements 18  biggest wreck 3 cars
+  t=340s  1 car(s): merging @2
+  t=483s  1 car(s): caution +143s @22
+  t=527s  3 car(s): caution +12s @3, caution +13s @37, caution +13s @47
+  t=584s  1 car(s): caution +69s @29
+  t=601s  1 car(s): caution +87s @32
+  t=1548s  1 car(s): caution +127s @22
+  t=2156s  3 car(s): green @49, caution +3s @32, caution +6s @24
+  t=2352s  1 car(s): caution +196s @0
+  t=2782s  3 car(s): green @16, green @65, caution +0s @13
+=== oval:3148308672:speedway seed 1: 52 laps, 40 cars (a car a pit box), 4x pace (149 s)
+finished 17/40  cautions 7 (33 laps)  retirements 23  biggest wreck 2 cars
+  t=270s  2 car(s): green @4, green @33
+  t=417s  1 car(s): caution +146s @2
+  t=498s  2 car(s): caution +227s @9, caution +227s @23
+  t=601s  1 car(s): caution +330s @1
+  t=658s  1 car(s): caution +388s @2
+  t=940s  2 car(s): green @75, caution +1s @71
+  t=1174s  2 car(s): merging @0, merging @37
+  t=1200s  1 car(s): near a merging car @50
+  t=1409s  2 car(s): restart @6, restart @22
+  t=1527s  1 car(s): caution +118s @16
+  t=1580s  1 car(s): caution +170s @22
+  t=1699s  1 car(s): caution +289s @22
+  t=2050s  1 car(s): start/restart @11
+  t=2128s  1 car(s): caution +78s @0
+  t=3039s  2 car(s): green @5, caution +0s @36
+  t=3341s  1 car(s): restart @4
+=== oval:3148308672:speedway seed 2: 52 laps, 40 cars (a car a pit box), 4x pace (204 s)
+finished 14/40  cautions 6 (24 laps)  retirements 26  biggest wreck 4 cars
+  t=464s  3 car(s): near a merging car @6, merging @32, caution +7s @22
+  t=547s  1 car(s): caution +83s @1
+  t=912s  2 car(s): green @22, caution +1s @16
+  t=954s  1 car(s): caution +42s @22
+  t=1316s  2 car(s): green @4, green @20
+  t=1464s  1 car(s): caution +148s @0
+  t=1612s  1 car(s): caution +296s @22
+  t=2173s  3 car(s): green @22, green @5, caution +7s @1
+  t=2190s  2 car(s): near a merging car @1, near a merging car @4
+  t=2643s  1 car(s): caution +106s @1
+  t=2963s  4 car(s): green @53, caution +6s @29, caution +7s @32, caution +11s @29
+  t=2983s  1 car(s): caution +20s @22
+  t=3113s  1 car(s): caution +150s @8
+  t=3183s  2 car(s): caution +220s @18, caution +223s @1
+=== oval:774865359:superspeedway seed 1: 45 laps, 36 cars (a car a pit box), 4x pace (147 s)
+finished 12/36  cautions 2 (19 laps)  retirements 24  biggest wreck 4 cars
+  t=468s  2 car(s): caution +24s @14, merging @25
+  t=581s  1 car(s): caution +137s @0
+  t=707s  1 car(s): caution +263s @20
+  t=734s  1 car(s): caution +290s @30
+  t=818s  1 car(s): caution +374s @35
+  t=872s  4 car(s): caution +428s @43, caution +430s @24, caution +432s @21, caution +435s @40
+  t=886s  1 car(s): caution +442s @20
+  t=939s  1 car(s): caution +495s @4
+  t=961s  1 car(s): caution +517s @12
+  t=1024s  2 car(s): caution +580s @40, caution +580s @41
+  t=1058s  1 car(s): near a merging car @2
+  t=1087s  1 car(s): caution +643s @22
+  t=1275s  1 car(s): caution +831s @22
+  t=1395s  1 car(s): caution +951s @0
+  t=1848s  2 car(s): caution +34s @38, caution +43s @30
+  t=1966s  1 car(s): caution +152s @2
+=== oval:774865359:superspeedway seed 2: 45 laps, 36 cars (a car a pit box), 4x pace (169 s)
+finished 15/36  cautions 6 (19 laps)  retirements 21  biggest wreck 4 cars
+  t=1450s  2 car(s): caution +37s @25, caution +37s @5
+  t=1464s  1 car(s): caution +51s @22
+  t=1497s  1 car(s): caution +83s @36
+  t=2455s  3 car(s): merging @28, merging @6, near a merging car @42
+  t=2529s  1 car(s): caution +75s @22
+  t=2542s  1 car(s): near a merging car @35
+  t=2567s  1 car(s): near a merging car @38
+  t=2614s  4 car(s): caution +159s @37, caution +162s @31, caution +163s @45, caution +163s @42
+  t=2720s  3 car(s): caution +265s @33, caution +265s @12, caution +272s @24
+=== summary by track
+speedway (2 races)
+  WRECKS  16.5 retirements/race, 5.5 cautions/race, 4 multi-car wrecks (mean 2.8 cars, max 3)
+          by context: under caution 20, green 11, near a merging car 1, merging 1
+          who / what: driver hit car (driver) 20, driver hit wall 12, driver hit car (official) 1
+          contact retirements: 14 at fault, 7 hit by another
+oval:3148308672:speedway (2 races)
+  WRECKS  24.5 retirements/race, 6.5 cautions/race, 13 multi-car wrecks (mean 2.3 cars, max 4)
+          by context: under caution 26, green 12, near a merging car 4, merging 3, restart 3, start/restart 1
+          who / what: driver hit car (driver) 32, driver hit wall 15, driver hit car (official) 1, pit hit car (driver) 1
+          contact retirements: 14 at fault, 20 hit by another
+oval:774865359:superspeedway (2 races)
+  WRECKS  22.5 retirements/race, 4.0 cautions/race, 8 multi-car wrecks (mean 2.8 cars, max 4)
+          by context: under caution 32, green 6, near a merging car 4, merging 3
+          who / what: driver hit car (driver) 35, driver hit wall 7, driver hit car (official) 3
+          contact retirements: 24 at fault, 14 hit by another
+WRECK caution 11499 s, a wreck on the racing surface 4112 s, blocked (<3 car widths) 117 s, red flags 0 (0 s)
+WRECK wreck (retired)      cautionNet    hits   75  health  35.22  out 39  speed med 28.9
+WRECK wall/wall            pit           hits 32160  health  15.65  out 15  speed med 21.2
+WRECK slower car (5+ m/s)  pit           hits   86  health  11.95  out 3  speed med 20.2
+WRECK wreck (retired)      pit           hits   69  health  11.91  out 1  speed med 9.6
+WRECK official/truck       cautionNet    hits   69  health   9.66  out 6  speed med 22.3
+WRECK slower car (5+ m/s)  cautionNet    hits   60  health   8.27  out 3  speed med 26.5
+WRECK other car            pit           hits  201  health   5.46  out 11  speed med 15.4
+WRECK other car            cautionNet    hits  348  health   5.23  out 7  speed med 30.7
+WRECK wall/wall            cautionNet    hits 31009  health   2.12  out 2  speed med 50.8
+WRECK official/truck       pit           hits    3  health   0.92  out 0  speed med 8.8
+WRECK wreck (stopped)      cautionNet    hits    1  health   0.51  out 0  speed med 28.4
+-- v8ra with red for any wreck on the racing surface or apron
+=== speedway seed 1: 59 laps, 30 cars (a car a pit box), 4x pace (189 s)
+finished 17/30  cautions 5 (17 laps)  retirements 13  biggest wreck 3 cars
+=== speedway seed 2: 59 laps, 30 cars (a car a pit box), 4x pace (210 s)
+finished 18/30  cautions 5 (18 laps)  retirements 11  biggest wreck 2 cars
+=== oval:3148308672:speedway seed 1: 52 laps, 40 cars (a car a pit box), 4x pace (339 s)
+finished 23/40  cautions 7 (22 laps)  retirements 16  biggest wreck 3 cars
+=== oval:3148308672:speedway seed 2: 52 laps, 40 cars (a car a pit box), 4x pace (366 s)
+finished 19/40  cautions 6 (24 laps)  retirements 21  biggest wreck 3 cars
+=== oval:774865359:superspeedway seed 1: 45 laps, 36 cars (a car a pit box), 4x pace (185 s)
+finished 23/36  cautions 2 (8 laps)  retirements 13  biggest wreck 3 cars
+=== oval:774865359:superspeedway seed 2: 45 laps, 36 cars (a car a pit box), 4x pace (192 s)
+finished 25/36  cautions 7 (20 laps)  retirements 11  biggest wreck 2 cars
+=== summary by track
+speedway (2 races)
+  WRECKS  12.0 retirements/race, 5.0 cautions/race, 3 multi-car wrecks (mean 2.3 cars, max 3)
+          by context: under caution 11, green 5, merging 5, red 2, start/restart 1
+          who / what: driver hit car (driver) 11, driver hit wall 7, driver hit car (official) 4, formation hit car (official) 1, pit hit wall 1
+          contact retirements: 5 at fault, 11 hit by another
+oval:3148308672:speedway (2 races)
+  WRECKS  18.5 retirements/race, 6.5 cautions/race, 6 multi-car wrecks (mean 2.5 cars, max 3)
+          by context: green 14, under caution 7, red 7, merging 5, restart 3, near a merging car 1
+          who / what: driver hit car (driver) 21, driver hit wall 14, formation hit car (formation) 1, formation hit car (official) 1
+          contact retirements: 11 at fault, 12 hit by another
+oval:774865359:superspeedway (2 races)
+  WRECKS  12.0 retirements/race, 4.5 cautions/race, 5 multi-car wrecks (mean 2.2 cars, max 3)
+          by context: green 11, under caution 7, merging 4, red 1, near a merging car 1
+          who / what: driver hit car (driver) 16, driver hit wall 7, driver hit car (formation) 1
+          contact retirements: 9 at fault, 8 hit by another
+WRECK caution 12790 s, a wreck on the racing surface 5300 s, blocked (<3 car widths) 463 s, red flags 46 (5355 s)
+WRECK slower car (5+ m/s)  pit           hits  114  health  11.72  out 1  speed med 19.7
+WRECK wall/wall            pit           hits 39986  health  11.57  out 10  speed med 15.8
+WRECK wreck (retired)      cautionNet    hits   24  health  10.16  out 11  speed med 29.6
+WRECK other car            pit           hits  278  health   8.07  out 11  speed med 13.6
+WRECK slower car (5+ m/s)  cautionNet    hits   64  health   7.27  out 2  speed med 37.1
+WRECK wreck (retired)      pit           hits   53  health   7.17  out 4  speed med 9.0
+WRECK official/truck       cautionNet    hits   98  health   6.65  out 5  speed med 28.9
+WRECK other car            cautionNet    hits  411  health   5.14  out 1  speed med 31.1
+WRECK official/truck       formation     hits   58  health   3.87  out 2  speed med 0.6
+WRECK other car            formation     hits   64  health   3.79  out 1  speed med 2.9
+WRECK slower car (5+ m/s)  formation     hits   15  health   3.69  out 0  speed med 18.2
+WRECK wall/wall            cautionNet    hits 19185  health   2.67  out 5  speed med 51.6
+WRECK wreck (stopped)      formation     hits   20  health   1.29  out 0  speed med 9.6
+WRECK wreck (stopped)      pit           hits    3  health   0.26  out 0  speed med 11.8
+WRECK wreck (retired)      formation     hits    1  health   0.14  out 0  speed med 18.6
+WRECK wreck (stopped)      cautionNet    hits    4  health   0.02  out 0  speed med 4.9
