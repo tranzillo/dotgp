@@ -109,6 +109,13 @@
       "file": "stable-candidate-v8s-lines.json",
       "candidate": true,
       "note": "v8ra with every driver's oval racing network retrained by race labelling as a stage (scripts/racingLabels.ts, oval machine, 2026-11-01, at 72d0180): 6 rounds, each the stable racing itself on 8 of the apprenticeship's ovals with every car's own teacher labelling, and solo drives on them; each racing network trains on half its own solo moments and half racing ones (its own and the field's), pooled over every round. Caution, pit, broken-car and tactics networks are v8ra's. For ?spec=cup&lines=2 only. Against v8ra (Cup, two lines, rules, 40 cars, 4 seeds): green wall damage down on all seven ovals (six past noise, to near the teachers' zero), green car damage short 6.4 -> 3.6, speedway out 13.5 -> 8.5, gen. short laps 0.18 s quicker, other laps level; worse: gen. intermediate pit-cycle damage, gen. superspeedway clean passes 57.5 -> 35.7 (teachers 12.3). experiments/2026-11-01-racing-race-labels. Read-only."
+    },
+    {
+      "id": "stable-candidate-v8sp-lines",
+      "name": "Stable candidate v8sp (two lines)",
+      "file": "stable-candidate-v8sp-lines.json",
+      "candidate": true,
+      "note": "v8s with every driver's pit network from v5p (by lineage; every Cup bundle before drove v4's, trained in the classic car before the pit limiter and the pit skill's own inputs) and retrained by race labelling (scripts/raceLabels.ts --skill stops, circuit machine, 2026-11-01, at 34442f5): 4 rounds, each the stable racing itself on 8 of the apprenticeship's ovals, every car's pit skill driving its stops and the pit maneuver labelling from where the car is; each pit network trains on the field's stops. Racing, caution, broken-car and tactics networks are v8s's. For ?spec=cup&lines=2 only. Against v8s (Cup, two lines, rules, 40 cars, 4 seeds): out over seven ovals 52.6 -> 9.9 a race (teachers 5.1), four ovals past noise (gen. speedway 17.5 -> 0.5); pit-cycle damage down on six (speedway 6.97 -> 1.78); the pit wall's nose 57 of 782 ways in -> 4 of 1078 (three ovals); cautions down; more green tire stops on the speedways; worse: gen. intermediate blend-line drive-throughs (85 -> 253 in two races: its set-back pit road's exit, each penalty another way out), fewer clean passes on the bigger ovals (fewer restarts). experiments/2026-11-01-pit-entry. Read-only."
     }
   ]
 }

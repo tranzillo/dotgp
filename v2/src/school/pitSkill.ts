@@ -57,7 +57,7 @@ export interface PitSkillOptions {
 }
 
 /** The pit maneuver's throttle as a teacher (1/s): see PitAutopilot.driveGain. */
-const TEACHING_DRIVE_GAIN = 4;
+export const TEACHING_DRIVE_GAIN = 4;
 
 /**
  * Seconds a drill runs at most: the in-lap, the stop, and out until merged (on a superspeedway the blend lane can

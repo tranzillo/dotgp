@@ -442,6 +442,18 @@ const ABORT_DISTANCE = 60;
 const ABORT_GRACE = 40;
 /** Speed an aborted pit entry backs out at (m/s). */
 const ABORT_SPEED = 18;
+/**
+ * Whether a car on its way in isn't lined up for pit road where it has to be: still on the track side of the pit
+ * wall's line in the last stretch before its nose. The stop is given up there (the car stays out). A car already past
+ * the line commits to pit road (turning back across the nose from there is what hits it).
+ * (A pit road set back across grass: its lane is still swinging over until just before the nose, and the route crosses
+ * the wall's line on its way to the fast lane, so the call waits for its last stretch.)
+ */
+export function notLinedUp(track: Track, car: Car): boolean {
+  const r0 = track.pitInR(car);
+  const decideFrom = Math.max(track.pit.wallStart - ABORT_DISTANCE, pitPath(track).inEnd - 20, track.pit.entryStart + ABORT_GRACE);
+  return r0 > decideFrom && r0 < track.pit.wallStart && car.d < track.pit.wallD + track.pitOffset(car.s);
+}
 /** How far up the road a car on its way in looks for traffic slowing into the pit entry (m). */
 const WAVE_OFF_LOOK = 200;
 /** How far back it looks for cars racing up behind it (m). */
@@ -578,13 +590,8 @@ export class PitAutopilot {
     }
     if (pit.phase === 'in') {
       const r0 = track.pitInR(car);
-      // Still on the track side of the wall's line close to its nose: abort and stay out. A car already
-      // past the line commits to pit road (turning back across the nose from there is what hits it).
-      // (A pit road set back across grass: its lane is still swinging over until just before the nose, so the call
-      // waits for the last stretch, where the lane runs straight at the fast lane.)
-      // (The route crosses the wall's line on its way to the fast lane, so the call waits for its last stretch.)
-      const decideFrom = Math.max(track.pit.wallStart - ABORT_DISTANCE, path.inEnd - 20, entryStart + ABORT_GRACE);
-      if (r0 > decideFrom && r0 < track.pit.wallStart && car.d < track.pit.wallD + track.pitOffset(car.s)) {
+      // Not lined up close to the wall's nose: abort and stay out.
+      if (notLinedUp(track, car)) {
         pit.phase = 'none';
         pit.call = null;
         this.aborting = true;

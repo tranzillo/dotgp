@@ -171,3 +171,421 @@ PITENTRY hit 2525 m wall outer, none, racing skill, green: -107.6 m past the nos
 PITENTRY hit 2525 m wall outer, none, racing skill, green: -138.9 m past the nose, -20.4 m from the wall's line, in at 80.5 m/s, -1 deg (out at 79.2, 0 deg), health 0.005; 60 m: -, 30 m: -, 10 m: -
 PITENTRY hit 2525 m wall outer, none, racing skill, green: -107.5 m past the nose, -20.4 m from the wall's line, in at 78.7 m/s, -1 deg (out at 77.4, 0 deg), health 0.005; 60 m: -, 30 m: -, 10 m: -
 PITENTRY hit 2525 m wall outer, none, racing skill, green: -88.8 m past the nose, -20.4 m from the wall's line, in at 79.1 m/s, -1 deg (out at 77.9, 0 deg), health 0.005; 60 m: -, 30 m: -, 10 m: -
+== 4. v8s (pit skill v4's, as in every Cup bundle), at 34442f5: speedway, gen. intermediate, gen. superspeedway, seeds 1-2
+PITENTRY track 2525 m: entry 150 m long, nose 3.0 m inside the racing surface's edge, apron 8.0 m, car width 2.0 m
+finished 21/30  cautions 5 (16 laps)  retirements 9  biggest wreck 2 cars
+PITENTRY track 2525 m: entry 150 m long, nose 3.0 m inside the racing surface's edge, apron 8.0 m, car width 2.0 m
+finished 21/30  cautions 3 (11 laps)  retirements 9  biggest wreck 2 cars
+PITENTRY track 2442 m: entry 250 m long, nose 36.0 m inside the racing surface's edge, apron 6.0 m, car width 2.0 m
+finished 9/24  cautions 4 (10 laps)  retirements 15  biggest wreck 2 cars
+PITENTRY track 2442 m: entry 250 m long, nose 36.0 m inside the racing surface's edge, apron 6.0 m, car width 2.0 m
+finished 17/24  cautions 2 (6 laps)  retirements 6  biggest wreck 1 cars
+PITENTRY track 3341 m: entry 130 m long, nose 3.0 m inside the racing surface's edge, apron 9.5 m, car width 2.0 m
+finished 19/36  cautions 2 (9 laps)  retirements 17  biggest wreck 4 cars
+PITENTRY track 3341 m: entry 130 m long, nose 3.0 m inside the racing surface's edge, apron 9.5 m, car width 2.0 m
+finished 24/36  cautions 3 (12 laps)  retirements 12  biggest wreck 3 cars
+speedway (2 races)
+  STEWARDS 7.0 decisions/race: pit-speeding: stop-go 5, avoidable-contact: time 4, avoidable-contact: warning 3, avoidable-contact: black-flag 1, avoidable-contact: drive-through 1
+  WRECKS  9.0 retirements/race, 4.0 cautions/race, 3 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: under caution 9, green 8, near a merging car 1
+          who / what: driver hit car (driver) 11, driver hit wall 7
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+  STOPS   117.5/race (21% under caution), tires taken 88%, repairs 6%, called for fuel 40% tires 54% damage 3% caution 0% penalty 3%, tire life at stop 0.45 (min 0.14), service 13.5 s
+  PIT ROAD 55.7 s entry to track under green, 54.6 s under caution; 84.5 contacts, 6.20 health lost /race in pit cycles
+oval:3850048323:intermediate (2 races)
+  STEWARDS 55.5 decisions/race: blend-line: drive-through 85, avoidable-contact: time 9, avoidable-contact: black-flag 8, avoidable-contact: warning 4, blend-line: warning 3, avoidable-contact: drive-through 2
+  WRECKS  10.5 retirements/race, 3.0 cautions/race, 6 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 10, merging 5, under caution 5, near a merging car 1
+          who / what: driver hit car (driver) 18, driver hit wall 3
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+  STOPS   123.5/race (8% under caution), tires taken 55%, repairs 11%, called for fuel 57% tires 4% damage 5% caution 0% penalty 34%, tire life at stop 0.63 (min 0.36), service 9.0 s
+  PIT ROAD 58.4 s entry to track under green, 63.1 s under caution; 197.0 contacts, 9.52 health lost /race in pit cycles
+oval:774865359:superspeedway (2 races)
+  STEWARDS 13.0 decisions/race: avoidable-contact: time 7, avoidable-contact: drive-through 6, passing-below-the-line: drive-through 5, avoidable-contact: warning 3, pit-speeding: stop-go 2, blend-line: drive-through 2, avoidable-contact: black-flag 1
+  WRECKS  14.5 retirements/race, 2.5 cautions/race, 6 multi-car wrecks (mean 3.0 cars, max 4)
+          by context: under caution 15, green 8, merging 6
+          who / what: driver hit car (driver) 26, driver hit wall 3
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+  STOPS   125.5/race (16% under caution), tires taken 61%, repairs 11%, called for fuel 90% tires 2% damage 4% caution 0% penalty 3%, tire life at stop 0.64 (min 0.29), service 11.8 s
+  PIT ROAD 59.9 s entry to track under green, 55.0 s under caution; 190.5 contacts, 9.96 health lost /race in pit cycles
+PITENTRY 782 cars on their way in reached 10 m before the nose; 57 of them hit it
+PITENTRY 10 m before the nose under 1 m short of the fast lane: 558 cars, 14 with a car beside on pit road's side, 0 hit the nose
+PITENTRY 10 m before the nose 1-2.5 m short of the fast lane: 186 cars, 17 with a car beside on pit road's side, 28 hit the nose
+PITENTRY 10 m before the nose 2.5+ m short of the fast lane: 38 cars, 3 with a car beside on pit road's side, 29 hit the nose
+PITENTRY wall damage within 150 m before the pit wall's nose and 80 m past it: 18.22 health, 163 steps
+PITENTRY 2525 m   nose                   in    pit skill            health  11.83  steps    32  past nose med   -1 m  speed in med 20.7  angle in med   2 deg
+PITENTRY 3341 m   nose                   in    pit skill            health   3.03  steps    13  past nose med   -1 m  speed in med 21.9  angle in med  -1 deg
+PITENTRY 2442 m   nose                   in    pit skill            health   2.86  steps    14  past nose med   -1 m  speed in med 21.2  angle in med   2 deg
+PITENTRY 3341 m   nose                   none  racing skill         health   0.26  steps     1  past nose med   -1 m  speed in med 20.1  angle in med  -0 deg
+PITENTRY 3341 m   wall pit-inner-wall0   out   pit skill            health   0.07  steps     5  past nose med   33 m  speed in med  9.8  angle in med  29 deg
+PITENTRY 2442 m   pit wall, pit side     out   pit skill            health   0.05  steps     2  past nose med   72 m  speed in med 16.4  angle in med -17 deg
+PITENTRY 3341 m   wall pit-inner-wall0   in    pit skill            health   0.05  steps     1  past nose med   38 m  speed in med  7.5  angle in med  60 deg
+PITENTRY 2442 m   pit wall, pit side     in    pit skill            health   0.03  steps    23  past nose med   44 m  speed in med 20.3  angle in med  -3 deg
+PITENTRY 2525 m   pit wall, track side   in    pit skill            health   0.02  steps     1  past nose med    2 m  speed in med 52.5  angle in med   4 deg
+PITENTRY 3341 m   pit wall, pit side     in    pit skill            health   0.01  steps    22  past nose med   50 m  speed in med 20.5  angle in med  -2 deg
+PITENTRY 2525 m   pit wall, pit side     in    pit skill            health   0.01  steps    21  past nose med   34 m  speed in med 19.5  angle in med  -2 deg
+PITENTRY 3341 m   wall outer             none  caution skill        health   0.01  steps    20  past nose med -123 m  speed in med 59.4  angle in med  -0 deg
+PITENTRY 2525 m   wall outer             none  racing skill         health   0.00  steps     1  past nose med -132 m  speed in med 78.3  angle in med  -1 deg
+PITENTRY 2442 m   wall outer             none  caution skill        health   0.00  steps     2  past nose med  -76 m  speed in med 30.2  angle in med  -1 deg
+PITENTRY 2442 m   pit wall, track side   none  racing skill         health   0.00  steps     1  past nose med   23 m  speed in med 17.7  angle in med   6 deg
+PITENTRY 2525 m   wall outer             none  caution skill        health   0.00  steps     2  past nose med -123 m  speed in med 37.1  angle in med  -0 deg
+PITENTRY 2525 m   wall pit-inner-wall1   out   pit skill            health   0.00  steps     1  past nose med   48 m  speed in med  7.9  angle in med   5 deg
+PITENTRY 2442 m   wall pit-inner-wall0   in    pit skill            health   0.00  steps     1  past nose med   43 m  speed in med  2.9  angle in med 148 deg
+PITENTRY hit 3341 m nose, in, pit skill, green: -1.4 m past the nose, -0.4 m from the wall's line, in at 33.0 m/s, 4 deg (out at 9.7, -165 deg), health 0.947; 60 m: 6.0 m short at 52 m/s, 30 m: 5.1 m short at 43 m/s, 10 m: 4.2 m short at 36 m/s
+PITENTRY hit 2525 m nose, in, pit skill, green: -0.9 m past the nose, 1.0 m from the wall's line, in at 39.9 m/s, 6 deg (out at 18.2, 65 deg), health 0.917; 60 m: 6.4 m short at 58 m/s, 30 m: 4.7 m short at 49 m/s, 10 m: 3.2 m short at 43 m/s
+PITENTRY hit 2525 m nose, in, pit skill, green: -1.4 m past the nose, -0.3 m from the wall's line, in at 40.7 m/s, 2 deg (out at 11.9, -167 deg), health 0.917; 60 m: 7.6 m short at 57 m/s, 30 m: 5.2 m short at 49 m/s, 10 m: 4.0 m short at 43 m/s
+PITENTRY hit 2525 m nose, in, pit skill, green: -1.2 m past the nose, -0.7 m from the wall's line, in at 42.6 m/s, 4 deg (out at 11.6, -152 deg), health 0.865; 60 m: 6.9 m short at 59 m/s, 30 m: 5.8 m short at 51 m/s, 10 m: 4.6 m short at 45 m/s
+PITENTRY hit 2525 m nose, in, pit skill, green: -1.4 m past the nose, 0.1 m from the wall's line, in at 33.0 m/s, 4 deg (out at 9.8, 177 deg), health 0.806; 60 m: 6.0 m short at 52 m/s, 30 m: 4.8 m short at 43 m/s, 10 m: 3.8 m short at 36 m/s, a car beside
+PITENTRY hit 2525 m nose, in, pit skill, green: -1.4 m past the nose, 0.3 m from the wall's line, in at 20.8 m/s, 0 deg (out at 6.1, 167 deg), health 0.790; 60 m: 4.2 m short at 31 m/s, 30 m: 3.5 m short at 24 m/s, 10 m: 3.2 m short at 22 m/s
+PITENTRY hit 2525 m nose, in, pit skill, caution: -1.3 m past the nose, 0.5 m from the wall's line, in at 21.6 m/s, 0 deg (out at 6.0, 157 deg), health 0.704; 60 m: 1.8 m short at 21 m/s, 30 m: 1.5 m short at 15 m/s, 10 m: 2.8 m short at 22 m/s
+PITENTRY hit 2525 m nose, in, pit skill, green: -1.2 m past the nose, 0.6 m from the wall's line, in at 20.7 m/s, 1 deg (out at 5.5, 153 deg), health 0.662; 60 m: 2.6 m short at 31 m/s, 30 m: 3.0 m short at 25 m/s, a car beside, 10 m: 2.9 m short at 23 m/s, a car beside
+PITENTRY hit 2525 m nose, in, pit skill, green: -1.4 m past the nose, 0.1 m from the wall's line, in at 18.1 m/s, -0 deg (out at 5.4, 178 deg), health 0.643; 60 m: 4.8 m short at 29 m/s, 30 m: 4.1 m short at 23 m/s, 10 m: 3.4 m short at 18 m/s
+PITENTRY hit 2525 m nose, in, pit skill, green: -1.2 m past the nose, 0.8 m from the wall's line, in at 22.9 m/s, 5 deg (out at 6.0, 120 deg), health 0.630; 60 m: 5.9 m short at 45 m/s, 30 m: 4.5 m short at 35 m/s, 10 m: 3.4 m short at 27 m/s
+== 5. the same with the abort rule (scripts/pitSkillAborts.ts: a stop the pit skill drives is given up where the maneuver gives up its own)
+PITENTRY track 2525 m: entry 150 m long, nose 3.0 m inside the racing surface's edge, apron 8.0 m, car width 2.0 m
+finished 14/30  cautions 4 (18 laps)  retirements 16  biggest wreck 4 cars
+PITENTRY track 2525 m: entry 150 m long, nose 3.0 m inside the racing surface's edge, apron 8.0 m, car width 2.0 m
+finished 7/30  cautions 4 (18 laps)  retirements 23  biggest wreck 3 cars
+PITENTRY track 2442 m: entry 250 m long, nose 36.0 m inside the racing surface's edge, apron 6.0 m, car width 2.0 m
+finished 12/24  cautions 3 (11 laps)  retirements 12  biggest wreck 2 cars
+PITENTRY track 2442 m: entry 250 m long, nose 36.0 m inside the racing surface's edge, apron 6.0 m, car width 2.0 m
+finished 14/24  cautions 5 (16 laps)  retirements 9  biggest wreck 2 cars
+PITENTRY track 3341 m: entry 130 m long, nose 3.0 m inside the racing surface's edge, apron 9.5 m, car width 2.0 m
+finished 13/36  cautions 2 (9 laps)  retirements 23  biggest wreck 4 cars
+PITENTRY track 3341 m: entry 130 m long, nose 3.0 m inside the racing surface's edge, apron 9.5 m, car width 2.0 m
+finished 21/36  cautions 5 (14 laps)  retirements 15  biggest wreck 2 cars
+speedway (2 races)
+  STEWARDS 8.5 decisions/race: avoidable-contact: black-flag 9, avoidable-contact: time 5, avoidable-contact: drive-through 1, blend-line: warning 1, avoidable-contact: warning 1
+  WRECKS  19.5 retirements/race, 4.0 cautions/race, 12 multi-car wrecks (mean 2.6 cars, max 4)
+          by context: under caution 20, green 19
+          who / what: driver hit car (driver) 30, driver hit car (pit) 3, pit hit wall 3, driver hit wall 2, driver hit car (official) 1
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 1.5 retirements/race while a script drove
+  STOPS   85.0/race (24% under caution), tires taken 85%, repairs 12%, called for fuel 52% tires 42% damage 5% caution 0% penalty 0%, tire life at stop 0.43 (min 0.12), service 13.7 s
+  PIT ROAD 53.1 s entry to track under green, 61.6 s under caution; 38.0 contacts, 0.96 health lost /race in pit cycles
+oval:3850048323:intermediate (2 races)
+  STEWARDS 40.0 decisions/race: blend-line: drive-through 60, avoidable-contact: black-flag 7, avoidable-contact: time 6, avoidable-contact: warning 6, avoidable-contact: drive-through 1
+  WRECKS  10.5 retirements/race, 4.0 cautions/race, 5 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 11, under caution 6, near a merging car 3, merging 1
+          who / what: driver hit car (driver) 18, driver hit wall 2, driver hit car (official) 1
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+  STOPS   92.0/race (30% under caution), tires taken 57%, repairs 13%, called for fuel 59% tires 3% damage 8% caution 0% penalty 30%, tire life at stop 0.64 (min 0.29), service 9.6 s
+  PIT ROAD 59.1 s entry to track under green, 64.8 s under caution; 129.5 contacts, 5.82 health lost /race in pit cycles
+oval:774865359:superspeedway (2 races)
+  STEWARDS 16.0 decisions/race: avoidable-contact: time 11, avoidable-contact: black-flag 11, passing-below-the-line: drive-through 5, avoidable-contact: warning 3, blend-line: drive-through 1, avoidable-contact: drive-through 1
+  WRECKS  19.0 retirements/race, 3.5 cautions/race, 10 multi-car wrecks (mean 2.3 cars, max 4)
+          by context: under caution 27, green 9, near a merging car 1, merging 1
+          who / what: driver hit car (driver) 29, driver hit wall 5, driver hit car (official) 2, driver hit car (pit) 1, pit hit wall 1
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.5 retirements/race while a script drove
+  STOPS   110.0/race (23% under caution), tires taken 55%, repairs 10%, called for fuel 94% tires 1% damage 2% caution 0% penalty 3%, tire life at stop 0.63 (min 0.35), service 11.3 s
+  PIT ROAD 60.9 s entry to track under green, 56.4 s under caution; 135.0 contacts, 4.42 health lost /race in pit cycles
+PITABORT 154 stops the pit skill drove given up, not lined up
+PITENTRY 601 cars on their way in reached 10 m before the nose; 21 of them hit it
+PITENTRY 10 m before the nose under 1 m short of the fast lane: 492 cars, 10 with a car beside on pit road's side, 0 hit the nose
+PITENTRY 10 m before the nose 1-2.5 m short of the fast lane: 103 cars, 7 with a car beside on pit road's side, 17 hit the nose
+PITENTRY 10 m before the nose 2.5+ m short of the fast lane: 6 cars, 1 with a car beside on pit road's side, 4 hit the nose
+PITENTRY wall damage within 150 m before the pit wall's nose and 80 m past it: 5.79 health, 118 steps
+PITENTRY 2442 m   nose                   in    pit skill            health   1.61  steps     8  past nose med   -1 m  speed in med 21.3  angle in med   0 deg
+PITENTRY 3341 m   nose                   in    pit skill            health   1.49  steps     9  past nose med   -1 m  speed in med 21.8  angle in med  -1 deg
+PITENTRY 2525 m   nose                   none  pit script           health   1.36  steps     3  past nose med   -1 m  speed in med 20.0  angle in med  -2 deg
+PITENTRY 2525 m   nose                   in    pit skill            health   0.79  steps     4  past nose med   -0 m  speed in med 21.9  angle in med  -1 deg
+PITENTRY 3341 m   nose                   none  pit script           health   0.18  steps     1  past nose med   -1 m  speed in med 33.9  angle in med  -3 deg
+PITENTRY 2525 m   pit wall, track side   none  pit script           health   0.18  steps     1  past nose med   11 m  speed in med 26.5  angle in med  23 deg
+PITENTRY 2525 m   wall outer             none  caution skill        health   0.05  steps    14  past nose med -111 m  speed in med 40.0  angle in med  -0 deg
+PITENTRY 3341 m   wall pit-inner-wall0   out   pit skill            health   0.05  steps     2  past nose med   50 m  speed in med  9.1  angle in med  48 deg
+PITENTRY 3341 m   pit wall, pit side     in    pit skill            health   0.03  steps    26  past nose med   30 m  speed in med 20.7  angle in med  -1 deg
+PITENTRY 2442 m   pit wall, pit side     in    pit skill            health   0.02  steps    15  past nose med   44 m  speed in med 19.0  angle in med  -2 deg
+PITENTRY 2525 m   wall outer             none  racing skill         health   0.01  steps    10  past nose med -110 m  speed in med 78.1  angle in med  -0 deg
+PITENTRY 3341 m   wall outer             none  caution skill        health   0.01  steps    12  past nose med -119 m  speed in med 58.5  angle in med  -0 deg
+PITENTRY 2525 m   pit wall, pit side     in    pit skill            health   0.00  steps     8  past nose med   42 m  speed in med 20.8  angle in med  -1 deg
+PITENTRY 2442 m   wall outer             none  caution skill        health   0.00  steps     5  past nose med   62 m  speed in med 27.9  angle in med  -1 deg
+PITENTRY hit 2442 m nose, in, pit skill, caution: -1.4 m past the nose, 0.5 m from the wall's line, in at 22.2 m/s, -1 deg (out at 6.2, 159 deg), health 0.881; 60 m: 4.0 m short at 32 m/s, 30 m: 2.8 m short at 27 m/s, 10 m: 2.8 m short at 23 m/s
+PITENTRY hit 2525 m nose, none, pit script, green: -1.4 m past the nose, -0.1 m from the wall's line, in at 20.0 m/s, -2 deg (out at 6.0, -176 deg), health 0.737; 60 m: -, 30 m: -, 10 m: -
+PITENTRY hit 3341 m nose, in, pit skill, caution: -1.4 m past the nose, 0.1 m from the wall's line, in at 22.1 m/s, -1 deg (out at 6.6, 175 deg), health 0.410; 60 m: 2.7 m short at 28 m/s, 30 m: 3.0 m short at 28 m/s, 10 m: 3.2 m short at 24 m/s
+PITENTRY hit 3341 m nose, in, pit skill, green: -1.4 m past the nose, 0.2 m from the wall's line, in at 22.1 m/s, -1 deg (out at 6.6, 172 deg), health 0.404; 60 m: 3.3 m short at 25 m/s, 30 m: 3.0 m short at 23 m/s, 10 m: 3.1 m short at 23 m/s
+PITENTRY hit 2525 m nose, in, pit skill, caution: -1.0 m past the nose, 1.0 m from the wall's line, in at 20.7 m/s, -1 deg (out at 6.9, 82 deg), health 0.393; 60 m: 2.6 m short at 30 m/s, 30 m: 2.2 m short at 24 m/s, 10 m: 2.3 m short at 22 m/s
+PITENTRY hit 2525 m nose, in, pit skill, caution: -0.9 m past the nose, 1.1 m from the wall's line, in at 22.0 m/s, -0 deg (out at 8.5, 71 deg), health 0.389; 60 m: 1.4 m short at 26 m/s, 30 m: 2.1 m short at 25 m/s, 10 m: 2.3 m short at 23 m/s
+PITENTRY hit 2525 m nose, none, pit script, caution: -1.3 m past the nose, -0.4 m from the wall's line, in at 18.1 m/s, -5 deg (out at 5.1, -164 deg), health 0.382; 60 m: -, 30 m: -, 10 m: -
+PITENTRY hit 2442 m nose, in, pit skill, caution: -1.0 m past the nose, 1.1 m from the wall's line, in at 22.1 m/s, 0 deg (out at 9.5, 64 deg), health 0.339; 60 m: 3.6 m short at 30 m/s, 30 m: 1.9 m short at 27 m/s, 10 m: 2.4 m short at 24 m/s
+PITENTRY hit 3341 m nose, in, pit skill, green: -0.9 m past the nose, 1.1 m from the wall's line, in at 20.0 m/s, 3 deg (out at 8.7, 65 deg), health 0.263; 60 m: 3.2 m short at 30 m/s, 30 m: 3.3 m short at 18 m/s, a car beside, 10 m: 2.8 m short at 22 m/s, a car beside
+PITENTRY hit 2525 m nose, none, pit script, caution: -1.1 m past the nose, -0.8 m from the wall's line, in at 34.9 m/s, 6 deg (out at 9.0, -143 deg), health 0.244; 60 m: -, 30 m: -, 10 m: -
+== 6. v8s with v5p's pit skills, by lineage (no retraining)
+PITENTRY track 2525 m: entry 150 m long, nose 3.0 m inside the racing surface's edge, apron 8.0 m, car width 2.0 m
+finished 28/30  cautions 2 (3 laps)  retirements 2  biggest wreck 1 cars
+PITENTRY track 2525 m: entry 150 m long, nose 3.0 m inside the racing surface's edge, apron 8.0 m, car width 2.0 m
+finished 18/30  cautions 2 (10 laps)  retirements 12  biggest wreck 3 cars
+PITENTRY track 2442 m: entry 250 m long, nose 36.0 m inside the racing surface's edge, apron 6.0 m, car width 2.0 m
+finished 21/24  cautions 1 (3 laps)  retirements 3  biggest wreck 1 cars
+PITENTRY track 2442 m: entry 250 m long, nose 36.0 m inside the racing surface's edge, apron 6.0 m, car width 2.0 m
+finished 22/24  cautions 0 (0 laps)  retirements 1  biggest wreck 1 cars
+PITENTRY track 3341 m: entry 130 m long, nose 3.0 m inside the racing surface's edge, apron 9.5 m, car width 2.0 m
+finished 19/36  cautions 4 (17 laps)  retirements 17  biggest wreck 2 cars
+PITENTRY track 3341 m: entry 130 m long, nose 3.0 m inside the racing surface's edge, apron 9.5 m, car width 2.0 m
+finished 31/36  cautions 4 (11 laps)  retirements 5  biggest wreck 2 cars
+speedway (2 races)
+  STEWARDS 10.0 decisions/race: avoidable-contact: time 5, pit-speeding: stop-go 4, blend-line: warning 4, avoidable-contact: warning 4, avoidable-contact: black-flag 1, blend-line: drive-through 1, avoidable-contact: drive-through 1
+  WRECKS  7.0 retirements/race, 2.0 cautions/race, 4 multi-car wrecks (mean 2.3 cars, max 3)
+          by context: under caution 6, green 3, merging 3, near a merging car 2
+          who / what: driver hit car (driver) 11, driver hit wall 2, driver hit car (official) 1
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+  STOPS   170.0/race (5% under caution), tires taken 92%, repairs 6%, called for fuel 18% tires 79% damage 2% caution 0% penalty 1%, tire life at stop 0.43 (min 0.13), service 13.8 s
+  PIT ROAD 53.2 s entry to track under green, 54.8 s under caution; 94.5 contacts, 3.73 health lost /race in pit cycles
+oval:3850048323:intermediate (2 races)
+  STEWARDS 19.5 decisions/race: blend-line: drive-through 28, blend-line: warning 5, avoidable-contact: time 4, avoidable-contact: black-flag 2
+  WRECKS  2.0 retirements/race, 0.5 cautions/race, 0 multi-car wrecks (mean – cars, max 1)
+          by context: green 3, under caution 1
+          who / what: driver hit wall 2, driver hit car (driver) 1, pit hit wall 1
+  SCRIPTS 1% of car-time on track driven by a script (formation 0%, pit maneuver 1%); 0.5 retirements/race while a script drove
+  STOPS   104.5/race (0% under caution), tires taken 81%, repairs 1%, called for fuel 81% tires 5% damage 0% caution 0% penalty 13%, tire life at stop 0.53 (min 0.36), service 11.8 s
+  PIT ROAD 54.3 s entry to track under green, – s under caution; 95.0 contacts, 2.91 health lost /race in pit cycles
+oval:774865359:superspeedway (2 races)
+  STEWARDS 15.5 decisions/race: avoidable-contact: time 14, pit-speeding: stop-go 6, avoidable-contact: warning 4, avoidable-contact: drive-through 3, avoidable-contact: black-flag 2, passing-below-the-line: drive-through 2
+  WRECKS  11.0 retirements/race, 4.0 cautions/race, 5 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: under caution 9, green 8, merging 2, start/restart 2, near a merging car 1
+          who / what: driver hit car (driver) 14, driver hit wall 7, driver hit car (official) 1
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+  STOPS   136.0/race (25% under caution), tires taken 57%, repairs 8%, called for fuel 91% tires 1% damage 5% caution 0% penalty 4%, tire life at stop 0.65 (min 0.29), service 11.3 s
+  PIT ROAD 58.6 s entry to track under green, 61.7 s under caution; 92.5 contacts, 7.32 health lost /race in pit cycles
+PITENTRY 840 cars on their way in reached 10 m before the nose; 14 of them hit it
+PITENTRY 10 m before the nose under 1 m short of the fast lane: 725 cars, 8 with a car beside on pit road's side, 0 hit the nose
+PITENTRY 10 m before the nose 1-2.5 m short of the fast lane: 102 cars, 7 with a car beside on pit road's side, 5 hit the nose
+PITENTRY 10 m before the nose 2.5+ m short of the fast lane: 13 cars, 2 with a car beside on pit road's side, 9 hit the nose
+PITENTRY wall damage within 150 m before the pit wall's nose and 80 m past it: 8.94 health, 149 steps
+PITENTRY 3341 m   nose                   in    pit skill            health   3.73  steps     7  past nose med   -1 m  speed in med 22.0  angle in med   0 deg
+PITENTRY 2525 m   nose                   in    pit skill            health   2.01  steps     3  past nose med   -1 m  speed in med 33.9  angle in med   7 deg
+PITENTRY 2442 m   nose                   in    pit skill            health   1.59  steps     4  past nose med   -1 m  speed in med 20.0  angle in med   2 deg
+PITENTRY 3341 m   nose                   none  racing skill         health   0.97  steps     2  past nose med   -1 m  speed in med 68.5  angle in med  -0 deg
+PITENTRY 2442 m   another wall end       in    pit skill            health   0.30  steps     3  past nose med    0 m  speed in med 20.0  angle in med -10 deg
+PITENTRY 2525 m   wall outer             none  caution skill        health   0.18  steps     5  past nose med  -75 m  speed in med 39.5  angle in med  -2 deg
+PITENTRY 3341 m   pit wall, pit side     in    pit skill            health   0.05  steps     6  past nose med   49 m  speed in med 15.3  angle in med  -5 deg
+PITENTRY 2442 m   wall pit-inner-wall0   in    pit skill            health   0.04  steps     6  past nose med   21 m  speed in med 20.6  angle in med  -1 deg
+PITENTRY 3341 m   wall outer             none  caution skill        health   0.03  steps    73  past nose med -117 m  speed in med 58.2  angle in med  -0 deg
+PITENTRY 2442 m   pit wall, pit side     out   pit skill            health   0.02  steps     5  past nose med   61 m  speed in med 17.0  angle in med  -7 deg
+PITENTRY 3341 m   pit wall, track side   none  racing skill         health   0.02  steps     1  past nose med   12 m  speed in med 46.3  angle in med   5 deg
+PITENTRY 2525 m   pit wall, pit side     in    pit skill            health   0.01  steps    13  past nose med   43 m  speed in med 20.4  angle in med  -2 deg
+PITENTRY 2442 m   pit wall, pit side     in    pit skill            health   0.01  steps    16  past nose med   53 m  speed in med 20.0  angle in med  -2 deg
+PITENTRY 3341 m   wall pit-inner-wall0   in    pit skill            health   0.01  steps     1  past nose med    1 m  speed in med 27.1  angle in med   7 deg
+PITENTRY 2525 m   wall outer             none  racing skill         health   0.00  steps     1  past nose med -148 m  speed in med 78.0  angle in med  -1 deg
+PITENTRY 2525 m   pit wall, pit side     out   pit skill            health   0.00  steps     1  past nose med   63 m  speed in med 17.1  angle in med  -6 deg
+PITENTRY 2525 m   pit wall, track side   none  caution skill        health   0.00  steps     1  past nose med   11 m  speed in med 18.1  angle in med   4 deg
+PITENTRY 2442 m   wall outer             none  caution skill        health   0.00  steps     1  past nose med   63 m  speed in med 24.2  angle in med  -1 deg
+PITENTRY hit 3341 m nose, in, pit skill, green: -1.4 m past the nose, 0.3 m from the wall's line, in at 29.2 m/s, 5 deg (out at 8.3, 166 deg), health 1.000; 60 m: 6.1 m short at 49 m/s, 30 m: 4.9 m short at 40 m/s, 10 m: 3.8 m short at 32 m/s
+PITENTRY hit 3341 m nose, in, pit skill, green: -1.1 m past the nose, 0.8 m from the wall's line, in at 32.7 m/s, 2 deg (out at 8.6, 115 deg), health 1.000; 60 m: 5.6 m short at 52 m/s, 30 m: 3.8 m short at 43 m/s, 10 m: 2.9 m short at 36 m/s
+PITENTRY hit 2525 m nose, in, pit skill, green: -1.1 m past the nose, -0.9 m from the wall's line, in at 45.5 m/s, 7 deg (out at 11.5, -140 deg), health 0.994; 60 m: 11.1 m short at 54 m/s, 30 m: 8.1 m short at 52 m/s, 10 m: 5.4 m short at 48 m/s
+PITENTRY hit 3341 m nose, in, pit skill, green: -1.3 m past the nose, 0.4 m from the wall's line, in at 22.1 m/s, -1 deg (out at 6.3, 162 deg), health 0.911; 60 m: 2.0 m short at 29 m/s, 30 m: 2.5 m short at 25 m/s, a car beside, 10 m: 2.8 m short at 24 m/s, a car beside
+PITENTRY hit 2525 m nose, in, pit skill, green: -1.2 m past the nose, 0.6 m from the wall's line, in at 33.9 m/s, 7 deg (out at 8.4, 148 deg), health 0.739; 60 m: 6.7 m short at 49 m/s, 30 m: 6.0 m short at 43 m/s, 10 m: 3.9 m short at 37 m/s
+PITENTRY hit 2442 m nose, in, pit skill, green: -1.5 m past the nose, 0.0 m from the wall's line, in at 20.3 m/s, 1 deg (out at 6.1, 180 deg), health 0.612; 60 m: 6.2 m short at 28 m/s, 30 m: 4.3 m short at 24 m/s, 10 m: 3.6 m short at 21 m/s
+PITENTRY hit 3341 m nose, none, racing skill, green: -1.3 m past the nose, -0.5 m from the wall's line, in at 68.5 m/s, -1 deg (out at 19.3, -160 deg), health 0.542; 60 m: -, 30 m: -, 10 m: -
+PITENTRY hit 2442 m nose, in, pit skill, green: -1.2 m past the nose, 0.8 m from the wall's line, in at 20.0 m/s, 2 deg (out at 5.1, 122 deg), health 0.479; 60 m: 5.5 m short at 29 m/s, 30 m: 3.9 m short at 23 m/s, 10 m: 3.0 m short at 21 m/s
+PITENTRY hit 3341 m nose, none, racing skill, green: -0.9 m past the nose, -1.1 m from the wall's line, in at 28.0 m/s, -0 deg (out at 12.4, -62 deg), health 0.424; 60 m: -, 30 m: -, 10 m: -
+PITENTRY hit 3341 m nose, in, pit skill, caution: -0.9 m past the nose, 1.1 m from the wall's line, in at 22.0 m/s, -1 deg (out at 8.5, 70 deg), health 0.384; 60 m: 3.2 m short at 27 m/s, 30 m: 2.5 m short at 27 m/s, 10 m: 2.3 m short at 24 m/s
+== 7. v8sp (scripts/raceLabels.ts --skill stops, 4 rounds from v8s with v5p's pit skills), at 34442f5: the same three ovals, seeds 1-2
+PITENTRY track 2525 m: entry 150 m long, nose 3.0 m inside the racing surface's edge, apron 8.0 m, car width 2.0 m
+finished 28/30  cautions 1 (4 laps)  retirements 2  biggest wreck 2 cars
+PITENTRY track 2525 m: entry 150 m long, nose 3.0 m inside the racing surface's edge, apron 8.0 m, car width 2.0 m
+finished 30/30  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+PITENTRY track 2442 m: entry 250 m long, nose 36.0 m inside the racing surface's edge, apron 6.0 m, car width 2.0 m
+finished 19/24  cautions 1 (3 laps)  retirements 5  biggest wreck 2 cars
+PITENTRY track 2442 m: entry 250 m long, nose 36.0 m inside the racing surface's edge, apron 6.0 m, car width 2.0 m
+finished 21/24  cautions 0 (0 laps)  retirements 1  biggest wreck 1 cars
+PITENTRY track 3341 m: entry 130 m long, nose 3.0 m inside the racing surface's edge, apron 9.5 m, car width 2.0 m
+finished 24/36  cautions 3 (13 laps)  retirements 12  biggest wreck 4 cars
+PITENTRY track 3341 m: entry 130 m long, nose 3.0 m inside the racing surface's edge, apron 9.5 m, car width 2.0 m
+finished 32/36  cautions 2 (6 laps)  retirements 4  biggest wreck 2 cars
+speedway (2 races)
+  STEWARDS 2.5 decisions/race: avoidable-contact: time 2, avoidable-contact: drive-through 1, avoidable-contact: warning 1, pit-speeding: stop-go 1
+  WRECKS  1.0 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 2
+          who / what: driver hit car (driver) 2
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+  STOPS   187.0/race (1% under caution), tires taken 96%, repairs 1%, called for fuel 10% tires 89% damage 0% caution 0% penalty 1%, tire life at stop 0.42 (min 0.10), service 13.6 s
+  PIT ROAD 52.1 s entry to track under green, 52.8 s under caution; 35.0 contacts, 2.01 health lost /race in pit cycles
+oval:3850048323:intermediate (2 races)
+  STEWARDS 137.0 decisions/race: blend-line: drive-through 253, blend-line: warning 6, avoidable-contact: warning 5, avoidable-contact: time 5, avoidable-contact: drive-through 2, avoidable-contact: black-flag 2, jumped-restart: drive-through 1
+  WRECKS  3.0 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 3, near a merging car 2, restart 1
+          who / what: driver hit car (driver) 5, driver hit wall 1
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+  STOPS   207.5/race (2% under caution), tires taken 37%, repairs 6%, called for fuel 35% tires 2% damage 3% caution 0% penalty 60%, tire life at stop 0.68 (min 0.35), service 6.0 s
+  PIT ROAD 48.4 s entry to track under green, 57.6 s under caution; 220.0 contacts, 6.80 health lost /race in pit cycles
+oval:774865359:superspeedway (2 races)
+  STEWARDS 13.0 decisions/race: pit-speeding: stop-go 18, avoidable-contact: time 3, avoidable-contact: drive-through 2, avoidable-contact: black-flag 2, avoidable-contact: warning 1
+  WRECKS  8.0 retirements/race, 2.5 cautions/race, 4 multi-car wrecks (mean 2.5 cars, max 4)
+          by context: under caution 10, green 5, near a merging car 1
+          who / what: driver hit car (driver) 10, driver hit wall 5, driver hit car (official) 1
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+  STOPS   137.0/race (24% under caution), tires taken 57%, repairs 5%, called for fuel 89% tires 2% damage 3% caution 0% penalty 6%, tire life at stop 0.63 (min 0.26), service 11.5 s
+  PIT ROAD 57.0 s entry to track under green, 58.4 s under caution; 52.5 contacts, 3.85 health lost /race in pit cycles
+PITENTRY 1078 cars on their way in reached 10 m before the nose; 4 of them hit it
+PITENTRY 10 m before the nose under 1 m short of the fast lane: 1025 cars, 12 with a car beside on pit road's side, 0 hit the nose
+PITENTRY 10 m before the nose 1-2.5 m short of the fast lane: 50 cars, 5 with a car beside on pit road's side, 1 hit the nose
+PITENTRY 10 m before the nose 2.5+ m short of the fast lane: 3 cars, 0 with a car beside on pit road's side, 3 hit the nose
+PITENTRY wall damage within 150 m before the pit wall's nose and 80 m past it: 4.95 health, 112 steps
+PITENTRY 3341 m   nose                   in    pit skill            health   3.04  steps     4  past nose med   -1 m  speed in med 39.5  angle in med   2 deg
+PITENTRY 3341 m   nose                   none  racing skill         health   1.62  steps     2  past nose med   -1 m  speed in med 76.6  angle in med   1 deg
+PITENTRY 3341 m   wall pit-inner-wall0   in    pit skill            health   0.09  steps     1  past nose med   17 m  speed in med 20.0  angle in med  24 deg
+PITENTRY 3341 m   wall outer             none  caution skill        health   0.09  steps    34  past nose med  -96 m  speed in med 59.9  angle in med  -0 deg
+PITENTRY 3341 m   pit wall, pit side     in    pit skill            health   0.07  steps     6  past nose med   39 m  speed in med 13.0  angle in med -11 deg
+PITENTRY 2442 m   pit wall, pit side     in    pit skill            health   0.01  steps    52  past nose med   65 m  speed in med 21.2  angle in med  -1 deg
+PITENTRY 2442 m   pit wall, pit side     out   pit skill            health   0.01  steps     1  past nose med   59 m  speed in med 15.1  angle in med -14 deg
+PITENTRY 2525 m   wall outer             none  racing skill         health   0.01  steps     5  past nose med -114 m  speed in med 78.7  angle in med  -0 deg
+PITENTRY 2525 m   wall outer             none  caution skill        health   0.00  steps     7  past nose med -121 m  speed in med 38.0  angle in med  -0 deg
+PITENTRY hit 3341 m nose, in, pit skill, green: -1.3 m past the nose, 0.5 m from the wall's line, in at 41.4 m/s, 5 deg (out at 11.3, 160 deg), health 0.998; 60 m: 5.7 m short at 59 m/s, 30 m: 4.8 m short at 50 m/s, 10 m: 3.6 m short at 44 m/s
+PITENTRY hit 3341 m nose, none, racing skill, green: -0.8 m past the nose, -1.2 m from the wall's line, in at 76.6 m/s, -0 deg (out at 39.4, -51 deg), health 0.976; 60 m: -, 30 m: -, 10 m: -
+PITENTRY hit 3341 m nose, in, pit skill, green: -1.4 m past the nose, 0.1 m from the wall's line, in at 39.5 m/s, 2 deg (out at 11.7, 175 deg), health 0.915; 60 m: 6.0 m short at 57 m/s, 30 m: 4.6 m short at 49 m/s, 10 m: 3.6 m short at 42 m/s
+PITENTRY hit 3341 m nose, in, pit skill, green: -1.0 m past the nose, 1.0 m from the wall's line, in at 23.3 m/s, -7 deg (out at 6.1, 108 deg), health 0.658; 60 m: 1.8 m short at 34 m/s, 30 m: 0.1 m short at 27 m/s, 10 m: 1.2 m short at 28 m/s, a car beside
+PITENTRY hit 3341 m nose, none, racing skill, green: -1.3 m past the nose, -0.4 m from the wall's line, in at 71.4 m/s, 1 deg (out at 20.7, -164 deg), health 0.647; 60 m: -, 30 m: -, 10 m: -
+PITENTRY hit 3341 m nose, in, pit skill, green: -0.7 m past the nose, 1.2 m from the wall's line, in at 34.1 m/s, 2 deg (out at 20.6, 42 deg), health 0.469; 60 m: 5.2 m short at 53 m/s, 30 m: 3.7 m short at 44 m/s, 10 m: 2.6 m short at 37 m/s
+PITENTRY hit 3341 m wall pit-inner-wall0, in, pit skill, green: 17.3 m past the nose, 13.4 m from the wall's line, in at 20.0 m/s, 24 deg (out at 13.4, -10 deg), health 0.094; 60 m: 5.2 m short at 53 m/s, 30 m: 3.7 m short at 44 m/s, 10 m: 2.6 m short at 37 m/s
+PITENTRY hit 3341 m wall outer, none, caution skill, caution: 47.7 m past the nose, -20.4 m from the wall's line, in at 19.6 m/s, -22 deg (out at 13.7, 9 deg), health 0.073; 60 m: -, 30 m: -, 10 m: -
+PITENTRY hit 3341 m pit wall, pit side, in, pit skill, green: 47.7 m past the nose, 1.4 m from the wall's line, in at 17.4 m/s, -24 deg (out at 11.5, 11 deg), health 0.069; 60 m: 1.4 m short at 49 m/s, 30 m: -2.3 m short at 40 m/s, 10 m: -4.9 m short at 33 m/s
+PITENTRY hit 2442 m pit wall, pit side, out, pit skill, green: 58.5 m past the nose, 1.4 m from the wall's line, in at 15.1 m/s, -14 deg (out at 12.4, 5 deg), health 0.009; 60 m: -, 30 m: -, 10 m: -
+== 8. the stage's round-2 held-out race again (--race-only 23, 4767 m), with v5p's pit skills, then with v8sp
+PITENTRY track 4767 m: entry 165 m long, nose 5.0 m inside the racing surface's edge, apron 9.5 m, car width 2.0 m
+race 23 (4767 m): 33 out, 3 cautions, 160063 stop moments (1 under caution) (194 s)
+PITENTRY 56 cars on their way in reached 10 m before the nose; 5 of them hit it
+PITENTRY 10 m before the nose under 1 m short of the fast lane: 37 cars, 5 with a car beside on pit road's side, 0 hit the nose
+PITENTRY 10 m before the nose 1-2.5 m short of the fast lane: 12 cars, 0 with a car beside on pit road's side, 0 hit the nose
+PITENTRY 10 m before the nose 2.5+ m short of the fast lane: 7 cars, 0 with a car beside on pit road's side, 5 hit the nose
+PITENTRY wall damage within 150 m before the pit wall's nose and 80 m past it: 2.95 health, 13 steps
+PITENTRY 4767 m   nose                   in    pit skill            health   2.40  steps     5  past nose med   -1 m  speed in med 20.7  angle in med  15 deg
+PITENTRY 4767 m   wall pit-inner-wall1   in    pit skill            health   0.32  steps     2  past nose med   54 m  speed in med 21.8  angle in med  37 deg
+PITENTRY 4767 m   wall outer             none  racing skill         health   0.17  steps     5  past nose med  -52 m  speed in med 47.9  angle in med  -2 deg
+PITENTRY 4767 m   another wall end       in    pit skill            health   0.07  steps     1  past nose med   29 m  speed in med 18.6  angle in med  31 deg
+PITENTRY hit 4767 m nose, in, pit skill, green: -1.4 m past the nose, 0.1 m from the wall's line, in at 21.1 m/s, 15 deg (out at 6.3, -166 deg), health 0.901; 60 m: 3.0 m short at 24 m/s, 30 m: 3.5 m short at 23 m/s, 10 m: 4.4 m short at 22 m/s
+PITENTRY hit 4767 m nose, in, pit skill, green: -1.4 m past the nose, 0.2 m from the wall's line, in at 20.9 m/s, 12 deg (out at 6.3, -170 deg), health 0.885; 60 m: 0.0 m short at 23 m/s, 30 m: 1.2 m short at 21 m/s, 10 m: 3.8 m short at 19 m/s
+PITENTRY hit 4767 m nose, in, pit skill, green: -1.3 m past the nose, 0.9 m from the wall's line, in at 19.9 m/s, 21 deg (out at 5.4, 130 deg), health 0.448; 60 m: 3.5 m short at 21 m/s, 30 m: 4.0 m short at 19 m/s, 10 m: 4.5 m short at 19 m/s
+PITENTRY hit 4767 m wall pit-inner-wall1, in, pit skill, caution: 53.6 m past the nose, 13.4 m from the wall's line, in at 21.8 m/s, 37 deg (out at 9.8, -24 deg), health 0.309; 60 m: 2.7 m short at 21 m/s, 30 m: 1.2 m short at 21 m/s, 10 m: 1.1 m short at 20 m/s
+PITENTRY hit 4767 m wall outer, none, racing skill, caution: -130.4 m past the nose, -25.4 m from the wall's line, in at 20.2 m/s, -29 deg (out at 11.7, 15 deg), health 0.158; 60 m: -, 30 m: -, 10 m: -
+PITENTRY hit 4767 m nose, in, pit skill, caution: -0.9 m past the nose, 1.3 m from the wall's line, in at 20.7 m/s, 14 deg (out at 12.6, 55 deg), health 0.142; 60 m: 1.8 m short at 22 m/s, 30 m: 1.7 m short at 22 m/s, 10 m: 3.0 m short at 21 m/s
+PITENTRY track 4767 m: entry 165 m long, nose 5.0 m inside the racing surface's edge, apron 9.5 m, car width 2.0 m
+race 23 (4767 m): 29 out, 3 cautions, 52602 stop moments (2 under caution) (140 s)
+PITENTRY 60 cars on their way in reached 10 m before the nose; 0 of them hit it
+PITENTRY 10 m before the nose under 1 m short of the fast lane: 55 cars, 1 with a car beside on pit road's side, 0 hit the nose
+PITENTRY 10 m before the nose 1-2.5 m short of the fast lane: 4 cars, 0 with a car beside on pit road's side, 0 hit the nose
+PITENTRY 10 m before the nose 2.5+ m short of the fast lane: 1 cars, 0 with a car beside on pit road's side, 0 hit the nose
+PITENTRY wall damage within 150 m before the pit wall's nose and 80 m past it: 0.89 health, 13 steps
+PITENTRY 4767 m   nose                   none  racing skill         health   0.81  steps     1  past nose med   -1 m  speed in med 21.4  angle in med  12 deg
+PITENTRY 4767 m   wall pit-inner-wall0   in    pit skill            health   0.05  steps     1  past nose med   21 m  speed in med 12.6  angle in med  32 deg
+PITENTRY 4767 m   wall outer             none  racing skill         health   0.02  steps    10  past nose med  -52 m  speed in med 50.8  angle in med  -1 deg
+PITENTRY 4767 m   pit wall, pit side     in    pit skill            health   0.00  steps     1  past nose med    2 m  speed in med 13.4  angle in med -11 deg
+PITENTRY hit 4767 m nose, none, racing skill, green: -1.2 m past the nose, -0.4 m from the wall's line, in at 21.4 m/s, 12 deg (out at 6.0, -148 deg), health 0.812; 60 m: -, 30 m: -, 10 m: -
+PITENTRY hit 4767 m wall pit-inner-wall0, in, pit skill, caution: 21.1 m past the nose, 13.4 m from the wall's line, in at 12.6 m/s, 32 deg (out at 6.8, -17 deg), health 0.054; 60 m: -2.5 m short at 30 m/s, 30 m: -2.0 m short at 24 m/s, 10 m: -1.4 m short at 21 m/s
+PITENTRY hit 4767 m wall outer, none, racing skill, caution: -84.4 m past the nose, -24.5 m from the wall's line, in at 51.0 m/s, -3 deg (out at 49.5, 1 deg), health 0.004; 60 m: -, 30 m: -, 10 m: -
+PITENTRY hit 4767 m wall outer, none, racing skill, caution: -93.4 m past the nose, -24.7 m from the wall's line, in at 49.8 m/s, -2 deg (out at 48.5, 1 deg), health 0.003; 60 m: -, 30 m: -, 10 m: -
+PITENTRY hit 4767 m wall outer, none, racing skill, caution: -10.3 m past the nose, -30.5 m from the wall's line, in at 51.5 m/s, -1 deg (out at 50.6, 0 deg), health 0.002; 60 m: -, 30 m: -, 10 m: -
+PITENTRY hit 4767 m pit wall, pit side, in, pit skill, green: 2.1 m past the nose, 1.4 m from the wall's line, in at 13.4 m/s, -11 deg (out at 11.7, 4 deg), health 0.002; 60 m: -2.8 m short at 26 m/s, 30 m: -2.8 m short at 18 m/s, 10 m: -1.2 m short at 20 m/s, a car beside
+== 9. blend-line crossings, gen. intermediate, seeds 1-2 (scripts/blendCrossings.ts): v8s, then v8sp
+finished 9/24  cautions 4 (10 laps)  retirements 15  biggest wreck 2 cars
+finished 17/24  cautions 2 (6 laps)  retirements 6  biggest wreck 1 cars
+oval:3850048323:intermediate (2 races)
+  STEWARDS 55.5 decisions/race: blend-line: drive-through 85, avoidable-contact: time 9, avoidable-contact: black-flag 8, avoidable-contact: warning 4, blend-line: warning 3, avoidable-contact: drive-through 2
+  WRECKS  10.5 retirements/race, 3.0 cautions/race, 6 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 10, merging 5, under caution 5, near a merging car 1
+          who / what: driver hit car (driver) 18, driver hit wall 3
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+  STOPS   123.5/race (8% under caution), tires taken 55%, repairs 11%, called for fuel 57% tires 4% damage 5% caution 0% penalty 34%, tire life at stop 0.63 (min 0.36), service 9.0 s
+  PIT ROAD 58.4 s entry to track under green, 63.1 s under caution; 197.0 contacts, 9.52 health lost /race in pit cycles
+BLEND 89 crossings of 252 ways out (57 on a penalty's stop, 0 with the maneuver driving)
+BLEND 0-30 m early: 3, speed med 41 m/s, angle med -2 deg
+BLEND 30-60 m early: 36, speed med 41 m/s, angle med -6 deg
+BLEND 60-100 m early: 46, speed med 46 m/s, angle med -9 deg
+BLEND 100-200 m early: 4, speed med 47 m/s, angle med -10 deg
+BLEND 67 m early, 43 m past pit road's exit, 52.5 m/s at -10 deg, pit skill
+BLEND 40 m early, 70 m past pit road's exit, 44.6 m/s at -2 deg, pit skill
+BLEND 75 m early, 35 m past pit road's exit, 40.8 m/s at -13 deg, pit skill
+BLEND 84 m early, 26 m past pit road's exit, 46.5 m/s at -8 deg, pit skill
+BLEND 51 m early, 59 m past pit road's exit, 38.9 m/s at -4 deg, pit skill
+BLEND 61 m early, 49 m past pit road's exit, 53.8 m/s at -10 deg, pit skill, a penalty stop
+BLEND 49 m early, 61 m past pit road's exit, 39.1 m/s at -6 deg, pit skill
+BLEND 61 m early, 49 m past pit road's exit, 42.0 m/s at -7 deg, pit skill
+BLEND 88 m early, 22 m past pit road's exit, 47.5 m/s at -11 deg, pit skill, a penalty stop
+BLEND 45 m early, 65 m past pit road's exit, 40.1 m/s at -5 deg, pit skill, a penalty stop
+BLEND 84 m early, 26 m past pit road's exit, 45.2 m/s at -9 deg, pit skill, a penalty stop
+BLEND 69 m early, 41 m past pit road's exit, 45.9 m/s at -5 deg, pit skill, a penalty stop
+finished 19/24  cautions 1 (3 laps)  retirements 5  biggest wreck 2 cars
+finished 21/24  cautions 0 (0 laps)  retirements 1  biggest wreck 1 cars
+oval:3850048323:intermediate (2 races)
+  STEWARDS 137.0 decisions/race: blend-line: drive-through 253, blend-line: warning 6, avoidable-contact: warning 5, avoidable-contact: time 5, avoidable-contact: drive-through 2, avoidable-contact: black-flag 2, jumped-restart: drive-through 1
+  WRECKS  3.0 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 3, near a merging car 2, restart 1
+          who / what: driver hit car (driver) 5, driver hit wall 1
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+  STOPS   207.5/race (2% under caution), tires taken 37%, repairs 6%, called for fuel 35% tires 2% damage 3% caution 0% penalty 60%, tire life at stop 0.68 (min 0.35), service 6.0 s
+  PIT ROAD 48.4 s entry to track under green, 57.6 s under caution; 220.0 contacts, 6.80 health lost /race in pit cycles
+BLEND 259 crossings of 416 ways out (215 on a penalty's stop, 0 with the maneuver driving)
+BLEND 0-30 m early: 8, speed med 44 m/s, angle med -1 deg
+BLEND 30-60 m early: 58, speed med 40 m/s, angle med -5 deg
+BLEND 60-100 m early: 144, speed med 42 m/s, angle med -7 deg
+BLEND 100-200 m early: 49, speed med 45 m/s, angle med -12 deg
+BLEND 80 m early, 30 m past pit road's exit, 41.6 m/s at -4 deg, pit skill
+BLEND 50 m early, 60 m past pit road's exit, 39.7 m/s at -8 deg, pit skill
+BLEND 45 m early, 65 m past pit road's exit, 43.4 m/s at -3 deg, pit skill
+BLEND 45 m early, 65 m past pit road's exit, 41.1 m/s at -2 deg, pit skill
+BLEND 67 m early, 43 m past pit road's exit, 48.0 m/s at -7 deg, pit skill
+BLEND 120 m early, 2433 m past pit road's exit, 47.2 m/s at -13 deg, pit skill
+BLEND 76 m early, 34 m past pit road's exit, 40.9 m/s at -3 deg, pit skill, a penalty stop
+BLEND 14 m early, 96 m past pit road's exit, 41.9 m/s at -1 deg, pit skill, a penalty stop
+BLEND 46 m early, 64 m past pit road's exit, 42.3 m/s at -3 deg, pit skill, a penalty stop
+BLEND 82 m early, 28 m past pit road's exit, 41.1 m/s at -7 deg, pit skill
+BLEND 76 m early, 34 m past pit road's exit, 48.2 m/s at -7 deg, pit skill, a penalty stop
+BLEND 62 m early, 48 m past pit road's exit, 39.5 m/s at -6 deg, pit skill
+== 10. the same on the speedway (why more stops): v8s, then v8sp
+finished 21/30  cautions 5 (16 laps)  retirements 9  biggest wreck 2 cars
+finished 21/30  cautions 3 (11 laps)  retirements 9  biggest wreck 2 cars
+speedway (2 races)
+  STEWARDS 7.0 decisions/race: pit-speeding: stop-go 5, avoidable-contact: time 4, avoidable-contact: warning 3, avoidable-contact: black-flag 1, avoidable-contact: drive-through 1
+  WRECKS  9.0 retirements/race, 4.0 cautions/race, 3 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: under caution 9, green 8, near a merging car 1
+          who / what: driver hit car (driver) 11, driver hit wall 7
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+  STOPS   117.5/race (21% under caution), tires taken 88%, repairs 6%, called for fuel 40% tires 54% damage 3% caution 0% penalty 3%, tire life at stop 0.45 (min 0.14), service 13.5 s
+  PIT ROAD 55.7 s entry to track under green, 54.6 s under caution; 84.5 contacts, 6.20 health lost /race in pit cycles
+BLEND 0 crossings of 243 ways out (0 on a penalty's stop, 0 with the maneuver driving)
+finished 28/30  cautions 1 (4 laps)  retirements 2  biggest wreck 2 cars
+finished 30/30  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+speedway (2 races)
+  STEWARDS 2.5 decisions/race: avoidable-contact: time 2, avoidable-contact: drive-through 1, avoidable-contact: warning 1, pit-speeding: stop-go 1
+  WRECKS  1.0 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 2
+          who / what: driver hit car (driver) 2
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+  STOPS   187.0/race (1% under caution), tires taken 96%, repairs 1%, called for fuel 10% tires 89% damage 0% caution 0% penalty 1%, tire life at stop 0.42 (min 0.10), service 13.6 s
+  PIT ROAD 52.1 s entry to track under green, 52.8 s under caution; 35.0 contacts, 2.01 health lost /race in pit cycles
+BLEND 0 crossings of 373 ways out (0 on a penalty's stop, 0 with the maneuver driving)
+== 11. the stage's rounds
+race 6 (2157 m): 0 out, 5 cautions, 14099 stop moments (0 under caution) (121 s)
+race 0 (2157 m): 6 out, 4 cautions, 17552 stop moments (0 under caution) (123 s)
+race 2 (1045 m): 1 out, 4 cautions, 28009 stop moments (1 under caution) (126 s)
+race 4 (2525 m): 3 out, 4 cautions, 24602 stop moments (0 under caution) (141 s)
+race 7 (3946 m): 3 out, 2 cautions, 44725 stop moments (0 under caution) (161 s)
+race 1 (2813 m): 17 out, 3 cautions, 47899 stop moments (0 under caution) (188 s)
+race 5 (4191 m): 3 out, 2 cautions, 75921 stop moments (0 under caution) (187 s)
+race 3 (4019 m): 6 out, 4 cautions, 52712 stop moments (1 under caution) (199 s)
+round 0: 260794 stop moments pooled; held-out race before pedal err 0.285, steer err 0.081, hard steering missed 41% of 3668 (44725 moments); after pedal err 0.200, steer err 0.064, hard steering missed 17% of 3668 (44725 moments) (5.2 min)
+race 14 (1045 m): 0 out, 4 cautions, 27314 stop moments (0 under caution) (117 s)
+race 12 (2157 m): 1 out, 5 cautions, 14529 stop moments (0 under caution) (120 s)
+race 15 (901 m): 1 out, 4 cautions, 29373 stop moments (0 under caution) (129 s)
+race 8 (1045 m): 0 out, 8 cautions, 20908 stop moments (0 under caution) (132 s)
+race 9 (1923 m): 1 out, 6 cautions, 32882 stop moments (0 under caution) (137 s)
+race 10 (2525 m): 7 out, 3 cautions, 28727 stop moments (2 under caution) (138 s)
+race 13 (2897 m): 7 out, 4 cautions, 49731 stop moments (0 under caution) (179 s)
+race 11 (5381 m): 2 out, 3 cautions, 75073 stop moments (1 under caution) (192 s)
+round 1: 554683 stop moments pooled; held-out race before pedal err 0.217, steer err 0.088, hard steering missed 9% of 8106 (29373 moments); after pedal err 0.211, steer err 0.077, hard steering missed 8% of 8106 (29373 moments) (5.1 min)
+race 18 (2157 m): 1 out, 3 cautions, 19300 stop moments (0 under caution) (110 s)
+race 20 (1045 m): 0 out, 3 cautions, 24157 stop moments (0 under caution) (116 s)
+race 16 (2525 m): 0 out, 2 cautions, 30542 stop moments (0 under caution) (124 s)
+race 22 (2525 m): 5 out, 4 cautions, 25363 stop moments (0 under caution) (134 s)
+race 17 (1396 m): 3 out, 8 cautions, 33890 stop moments (0 under caution) (149 s)
+race 19 (3619 m): 34 out, 2 cautions, 29414 stop moments (11 under caution) (159 s)
+race 21 (3283 m): 15 out, 2 cautions, 50586 stop moments (5 under caution) (194 s)
+race 23 (4767 m): 28 out, 2 cautions, 126991 stop moments (3 under caution) (247 s)
+round 2: 797308 stop moments pooled; held-out race before pedal err 0.416, steer err 0.235, hard steering missed 79% of 16367 (126991 moments); after pedal err 0.368, steer err 0.176, hard steering missed 66% of 16367 (126991 moments) (5.9 min)
+race 27 (1869 m): 0 out, 4 cautions, 7918 stop moments (0 under caution) (89 s)
+race 30 (2157 m): 0 out, 3 cautions, 14960 stop moments (0 under caution) (110 s)
+race 26 (1045 m): 0 out, 3 cautions, 26961 stop moments (0 under caution) (112 s)
+race 24 (2157 m): 0 out, 3 cautions, 17518 stop moments (0 under caution) (113 s)
+race 28 (2525 m): 0 out, 2 cautions, 33419 stop moments (0 under caution) (124 s)
+race 25 (2785 m): 2 out, 3 cautions, 29542 stop moments (0 under caution) (143 s)
+race 29 (3807 m): 12 out, 3 cautions, 49467 stop moments (0 under caution) (156 s)
+race 31 (2277 m): 7 out, 3 cautions, 55589 stop moments (0 under caution) (182 s)
+round 3: 798565 stop moments pooled; held-out race before pedal err 0.268, steer err 0.119, hard steering missed 30% of 16578 (55589 moments); after pedal err 0.257, steer err 0.114, hard steering missed 29% of 16578 (55589 moments) (4.7 min)
