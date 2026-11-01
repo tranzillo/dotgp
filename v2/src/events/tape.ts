@@ -58,7 +58,7 @@ const STATES: Array<RaceView['state']> = ['green', 'checkered', 'finished'];
 // (Phases added at the end: tapes from before keep theirs.)
 const WRECKER_PHASES = ['drive', 'hook', 'tow', 'done', 'idle', 'drop', 'return'];
 /** Wrecker slots a frame has room for: the fleet, and marshals' cranes at work. */
-export const WRECKER_SLOTS = 8;
+export const WRECKER_SLOTS = 10;
 const slotsOf = (header: TapeHeader) => header.wreckers ?? 4;
 /** No mark across a jump this long between frames (m): a car put back on track, not driving. */
 const STROKE_TELEPORT = 30;
@@ -66,7 +66,7 @@ const STROKE_TELEPORT = 30;
 // Frame header: time, race state, pace car, wreckers.
 const H_TIME = 0, H_BITS = 8, H_STATE = 9, H_FLAG = 10, H_LIGHTS = 11, H_PACE = 12, H_NWRECK = 20, H_WRECK = 21;
 const WRECK_BYTES = 9;
-/** The header's size: 57 bytes with 4 wrecker slots, 93 with 8. */
+/** The header's size: 57 bytes with 4 wrecker slots, 111 with 10. */
 const headerBytes = (slots: number) => H_WRECK + slots * WRECK_BYTES;
 /** In the wrecker count's byte: the pace car is parked (off track, waiting), not out. */
 const NWRECK_PACE_PARKED = 0x80;

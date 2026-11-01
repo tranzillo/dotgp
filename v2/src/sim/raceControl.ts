@@ -6,7 +6,7 @@ import { pitBoxD, pitFastD, type RoadNode } from './layout';
 import { pathLength, type RoadsFrom } from './roads';
 import type { Track } from './track';
 import type { World } from './world';
-import { driveTruck, setOff, trail, TRUCK, truckBody, TruckPath, TRUCKS_SOLID, type TruckDrive } from './wrecker';
+import { driveTruck, progress, setOff, trail, TRUCK, truckBody, truckRoute, TRUCKS_SOLID, type TruckDrive } from './wrecker';
 import type { StartProcedure } from '../rules/rulebook';
 
 /**
@@ -40,6 +40,8 @@ const HOOK_TIME = 10;
 const DROP_TIME = 6;
 /** A truck goes by a wreck this far to its inside (m): its width and the car's clear of it. */
 const PASS = TRUCK.RADIUS + P.CAR_RADIUS + 1.2;
+/** How far back along the lap from a wreck a truck comes over to go by it (m: sendOut's u0). */
+const PASS_RUN = 70;
 /** Where it pulls up to back up to a wreck, on from it in its lane (m). */
 const HOOK_AHEAD = TRUCK.HITCH + TRUCK.BACK_UP;
 /** Longest it backs up for (s), however far it has to go. */
@@ -53,10 +55,12 @@ const TURNAROUND_WEIGHT = 0.25;
 const AGAINST_TRAFFIC = 1.5;
 /** Turning onto (or off) the apron through more than this (cos of the turn), a U-turn, counts this many seconds. */
 const U_TURN_COS = -0.3;
-const U_TURN_COST = 20;
-/** Trucks posted round the infield besides the garage's, and how much sooner they must reach the far side. */
-const MAX_LOT_TRUCKS = 2;
+const U_TURN_COST = 45;
+/** Trucks posted round the infield besides the garage's (at most), and how much each must bring the average call down. */
+const MAX_LOT_TRUCKS = 3;
 const LOT_GAIN = 0.9;
+/** A wreck no post reaches counts as this long (s) in weighing where to post trucks. */
+const UNREACHED = 600;
 /** A truck making no headway this long is moved on (s); a wreck no truck has set out for this long, lifted off. */
 const STALLED_TIME = 15;
 /**
@@ -73,7 +77,7 @@ const JOIN_RUN = 24;
  * metres into the infield, crossing the grass to (from) the apron's lane DIVE_RUN metres on (before).
  */
 const DIVE_TURN = (100 * Math.PI) / 180;
-const DIVE_DEPTH = 14;
+const DIVE_DEPTH = 22;
 const DIVE_RUN = 30;
 /** A free truck this near a wreck (m) may go straight to it across the grass. */
 const DIRECT_RANGE = 60;
@@ -1214,7 +1218,7 @@ export class RaceControl {
     this.fleetBuilt = true;
     if (this.safetyCar) return;
     const t = this.track;
-    const roads = t.roads;
+    const roads = t.serviceRoads;
     const sOf = (n: RoadNode) => t.wrapS(n.s ?? t.project(n.at[0], n.at[1]).s);
     const tangentAt = (n: RoadNode): [number, number] => { const i = t.project(n.at[0], n.at[1]).idx; return [t.tx[i], t.ty[i]]; };
     this.entries = [...roads.nodes.values()].filter((n) => n.kind === 'apron').map((n) => ({ id: n.id, s: sOf(n), tangent: tangentAt(n) }));
@@ -1235,20 +1239,25 @@ export class RaceControl {
     const inGarage = Math.max(1, Math.min(t.length < 1000 ? 4 : 5, g.parking.length - 1));
     const posts = g.parking.slice(-inGarage).reverse();
     this.bays = g.parking.length > inGarage ? g.parking.slice(0, -inGarage) : [...g.parking];
-    // How long the slowest call round the lap takes from the posts so far (s, by the pace estimates).
-    const samples: number[] = [];
-    for (let s = 0; s < t.length; s += 25) samples.push(s);
-    const reach = (from: RoadsFrom) => samples.map((s) => Math.min(...this.entries.map((a) => {
-      const road = from.dist.get(a.id);
-      return road === undefined ? Infinity : road / ROAD_PACE + Math.min(t.distanceFrom(a.s, s), t.distanceFrom(s, a.s)) / APRON_PACE;
-    })));
-    let best = reach(roads.from(...posts[0]));
-    const worst = (r: number[]) => Math.max(...r);
-    const lots = stagingPosts(t).map((at) => ({ at, reach: reach(roads.from(...at)) }));
+    // How soon a truck from a post could be at a wreck anywhere round the lap (every 25 m, by the same reckoning race
+    // control sends trucks by): posts round the infield are kept where they bring the average down.
+    const wrecks: Car[] = [];
+    for (let s = 0; s < t.length; s += 25) {
+      const w = new Car(0);
+      w.placeOnTrack(t, s, 0);
+      wrecks.push(w);
+    }
+    const reach = (at: [number, number]) => {
+      const body = truckBody(0, t, at), from = roads.from(...at);
+      return wrecks.map((w) => this.approach(from, w, body)?.cost ?? Infinity);
+    };
+    const mean = (r: number[]) => r.reduce((a, b) => a + Math.min(b, UNREACHED), 0) / r.length;
+    let best = reach(posts[0]);
+    const lots = stagingPosts(t).map((at) => ({ at, reach: reach(at) }));
     for (let k = 0; k < MAX_LOT_TRUCKS && lots.length; k++) {
       const pick = lots.map((lot) => ({ lot, r: best.map((v, i) => Math.min(v, lot.reach[i])) }))
-        .reduce((a, b) => (worst(b.r) < worst(a.r) ? b : a));
-      if (worst(pick.r) > LOT_GAIN * worst(best)) break;
+        .reduce((a, b) => (mean(b.r) < mean(a.r) ? b : a));
+      if (mean(pick.r) > LOT_GAIN * mean(best)) break;
       posts.push(pick.lot.at);
       best = pick.r;
       lots.splice(lots.indexOf(pick.lot), 1);
@@ -1298,7 +1307,7 @@ export class RaceControl {
       for (const w of this.wreckers) {
         if (!w.truck || (w.phase !== 'idle' && w.phase !== 'return')) continue;
         let from = ways.get(w);
-        if (!from) ways.set(w, (from = this.track.roads.from(w.truck.body.x, w.truck.body.y)));
+        if (!from) ways.set(w, (from = this.track.serviceRoads.from(w.truck.body.x, w.truck.body.y)));
         for (const callout of this.callouts) {
           const plan = this.approach(from, callout.wreck, w.truck.body);
           if (plan) callout.reachable = true;
@@ -1336,7 +1345,8 @@ export class RaceControl {
         if (!out || cost < out.cost) out = { id: e.id, dist, cost };
       }
       if (!out) continue;
-      if (near < DIRECT_RANGE && dir === side) {
+      // (Never through a wall: the pit wall between them, it goes round by a gate.)
+      if (near < DIRECT_RANGE && dir === side && !t.throughWall([truck.x, truck.y], this.directBy(wreck, dir))) {
         const cost = near / TRUCK.GRASS_SPEED + out.cost;
         if (!best || cost < best.cost) best = { via: '', s: wreck.s, dir, out: out.id, cost, direct: true };
       }
@@ -1344,7 +1354,7 @@ export class RaceControl {
       if (truck.d - t.apronEdgeAt(truck.s) < GRASS_ENTRY) {
         const s0 = t.wrapS(truck.s + dir * DIVE_RUN);
         const [lx, ly] = t.toWorld(s0, this.truckLane(s0));
-        if (along(t, s0, wreck.s, dir) < along(t, truck.s, wreck.s, dir)) {
+        if (along(t, s0, wreck.s, dir) < along(t, truck.s, wreck.s, dir) && !t.throughWall([truck.x, truck.y], [lx, ly])) {
           const cost = Math.hypot(lx - truck.x, ly - truck.y) / TRUCK.GRASS_SPEED
             + (along(t, s0, wreck.s, dir) / APRON_PACE) * (dir < 0 ? AGAINST_TRAFFIC : 1) + out.cost;
           if (!best || cost < best.cost) best = { via: '', s: s0, dir, out: out.id, cost, grass: true };
@@ -1368,7 +1378,37 @@ export class RaceControl {
   private truckLane(s: number): number {
     const t = this.track;
     const r = TRUCK.RADIUS + 0.4;
-    return t.apronWidth >= 2 * r + 0.5 ? t.apronEdgeAt(s) - r : t.apronEdgeAt(s) + r;
+    const lane = t.apronWidth >= 2 * r + 0.5 ? t.apronEdgeAt(s) - r : t.apronEdgeAt(s) + r;
+    // Along pit road the pit wall stands on the apron: between it and the track (straddling the track's edge where the
+    // strip is narrower than a truck).
+    if (!t.inRange(s, [t.pit.wallStart, t.pit.wallEnd])) return lane;
+    const face = t.pit.wallD - t.pit.wallThickness / 2 + t.pitOffset(s), inner = t.innerEdgeAt(s);
+    return face - inner < 2 * r ? (inner + face) / 2 : Math.min(lane, face - r);
+  }
+
+  /**
+   * The line a truck takes by a wreck (d), coming to it the way dir runs: on
+   * its inside, `extra` more than PASS clear of it, or on its outside where
+   * the pit wall leaves no room inside it anywhere it comes down to it and
+   * pulls up past it (the wreck against the wall).
+   */
+  private passBy(wreck: Car, extra: number, dir: number): number {
+    const t = this.track, inside = wreck.d + PASS + extra;
+    const wall: [number, number] = [t.pit.wallStart, t.pit.wallEnd];
+    const face = (s: number) => t.pit.wallD - t.pit.wallThickness / 2 + t.pitOffset(s);
+    // (Behind the wall, on pit road, it's pit road's to go by.)
+    if (t.inRange(wreck.s, wall) && wreck.d > face(wreck.s)) return inside;
+    for (let u = -PASS_RUN; u <= HOOK_AHEAD; u += 5) {
+      const s = t.wrapS(wreck.s + dir * u);
+      if (t.inRange(s, wall) && inside > face(s) - TRUCK.RADIUS - 0.4) return wreck.d - PASS - extra;
+    }
+    return inside;
+  }
+
+  /** Going straight across to a wreck: the point beside it the truck makes for (on its inside, in the apron's lane, if there's room). */
+  private directBy(wreck: Car, dir: number): [number, number] {
+    const t = this.track, pass = this.passBy(wreck, 3, dir);
+    return t.toWorld(t.wrapS(wreck.s + dir * 4), pass > wreck.d ? Math.max(pass, this.truckLane(wreck.s)) : pass);
   }
 
   /** World points along the oval the way dir runs from s0, `length` metres, at lateral d(u, s) (u: metres from s0). */
@@ -1402,8 +1442,8 @@ export class RaceControl {
     if (plan.direct) {
       // Straight across: down to the wreck's inside, and into its lane ahead of it.
       const hook = this.hookPoint(wreck, plan.dir);
-      const by = t.toWorld(t.wrapS(wreck.s + plan.dir * 4), Math.max(wreck.d + PASS + 3, this.truckLane(wreck.s)));
-      setOff(tr, new TruckPath([[tr.body.x, tr.body.y], by, t.toWorld(hook.s, hook.d)], t, TRUCK.SPEED, TRUCK.BRAKE));
+      const by = this.directBy(wreck, plan.dir);
+      setOff(tr, truckRoute([[tr.body.x, tr.body.y], by, t.toWorld(hook.s, hook.d)], t, TRUCK.SPEED, TRUCK.BRAKE));
       tr.body.cleared = false;
       Object.assign(w, { wreck, phase: 'drive', dir: plan.dir, via: plan.out, progress: 0, stalled: 0, tries: 0, waited: 0 });
       return;
@@ -1417,14 +1457,14 @@ export class RaceControl {
     const total = along(t, start, wreck.s, plan.dir);
     const hook = this.hookPoint(wreck, plan.dir);
     // Along the apron, over to go by the wreck on its inside, and into its lane ahead of it.
-    const by = wreck.d + PASS;
-    const u0 = Math.max(0, total - 70), u1 = Math.max(0, total - 8), u2 = total + 2, u3 = total + HOOK_AHEAD;
+    const by = this.passBy(wreck, 0, plan.dir);
+    const u0 = Math.max(0, total - PASS_RUN), u1 = Math.max(0, total - 8), u2 = total + 2, u3 = total + HOOK_AHEAD;
     const oval = this.alongOval(start, plan.dir, u3, (u, s) => (u < u2
       ? mix(this.truckLane(s), by, smooth((u - u0) / Math.max(1, u1 - u0)))
       : mix(by, hook.d, smooth((u - u2) / (u3 - u2)))));
     // (Onto the apron's lane a little way along from where the road meets it: room to turn onto it on a curve.)
     const pts = dive ? [...dive.points, ...oval] : plan.grass ? [...head, ...oval] : [...head, ...oval.slice(JOIN_RUN / 3)];
-    setOff(tr, new TruckPath(pts, t, TRUCK.SPEED, TRUCK.BRAKE));
+    setOff(tr, truckRoute(pts, t, TRUCK.SPEED, TRUCK.BRAKE));
     tr.body.cleared = false;
     Object.assign(w, { wreck, phase: 'drive', dir: plan.dir, via: plan.out, progress: 0, stalled: 0, tries: 0, waited: 0 });
   }
@@ -1472,8 +1512,8 @@ export class RaceControl {
         w.timer -= dt;
         if (w.timer <= 0) {
           this.parkWreck(w);
-          const back = t.roads.from(body.x, body.y).to(...w.post);
-          setOff(tr, new TruckPath(back.points, t, TRUCK.RETURN_SPEED, TRUCK.BRAKE));
+          const back = t.serviceRoads.from(body.x, body.y).to(...w.post);
+          setOff(tr, truckRoute(back.points, t, TRUCK.RETURN_SPEED, TRUCK.BRAKE));
           Object.assign(w, { phase: 'return', progress: 0, stalled: 0 });
         }
       } else {
@@ -1508,7 +1548,10 @@ export class RaceControl {
     const tr = w.truck!, wreck = w.wreck!;
     if (Math.hypot(wreck.x - tr.body.x, wreck.y - tr.body.y) > TRUCK.HITCH + 3 && w.tries++ < 3) {
       const hook = this.hookPoint(wreck, w.dir);
-      setOff(tr, new TruckPath([[tr.body.x, tr.body.y], t.toWorld(hook.s, hook.d)], t, TRUCK.GRASS_SPEED, TRUCK.BRAKE));
+      setOff(tr, truckRoute([[tr.body.x, tr.body.y], t.toWorld(hook.s, hook.d)], t, TRUCK.GRASS_SPEED, TRUCK.BRAKE));
+      // (Headway counted afresh along the new way: counted against the old one's, it looked stuck and was moved on.)
+      w.progress = 0;
+      w.stalled = 0;
       return;
     }
     w.phase = 'hook';
@@ -1523,7 +1566,7 @@ export class RaceControl {
     const tr = w.truck!, body = tr.body;
     const exit = this.exits.find((e) => e.id === w.via)!;
     const bay = this.bays[this.baysUsed++ % this.bays.length];
-    let road = t.roads.fromNode(w.via).to(...bay).points;
+    let road = t.serviceRoads.fromNode(w.via).to(...bay).points;
     let total = along(t, body.s, exit.s, w.dir);
     if (total > t.length - 20) total = 0;
     // A road leaving the apron back the way it came: off across the grass to it instead, turning round out there.
@@ -1537,7 +1580,7 @@ export class RaceControl {
     const len = Math.hypot(bay[0] - px, bay[1] - py) || 1;
     const through: [number, number] = [bay[0] + ((bay[0] - px) / len) * TRUCK.HITCH, bay[1] + ((bay[1] - py) / len) * TRUCK.HITCH];
     const lead = dove ? oval : oval.slice(0, Math.max(1, oval.length - JOIN_RUN / 3));
-    setOff(tr, new TruckPath([...lead, ...road, through], t, TRUCK.TOW_SPEED, TRUCK.TOW_BRAKE));
+    setOff(tr, truckRoute([...lead, ...road, through], t, TRUCK.TOW_SPEED, TRUCK.TOW_BRAKE));
     Object.assign(w, { phase: 'tow', bay, progress: 0, stalled: 0, waited: 0 });
   }
 
@@ -1567,6 +1610,9 @@ export class RaceControl {
     if (k < 0) return null;
     const deep = ordered[k];
     const sDeep = t.project(deep[0], deep[1]).s;
+    // (Not across a wall: off pit road's end, say, beside the pit wall.)
+    const sLane = t.wrapS(sDeep + (entering ? dir : -dir) * DIVE_RUN);
+    if (t.throughWall(deep, t.toWorld(sLane, this.truckLane(sLane)))) return null;
     return entering
       ? { points: points.slice(0, points.length - k), s: t.wrapS(sDeep + dir * DIVE_RUN) }
       : { points: points.slice(k), s: t.wrapS(sDeep - dir * DIVE_RUN) };
@@ -1613,17 +1659,17 @@ export class RaceControl {
   /** A truck that has made no headway along its path in a while (caught on something) is moved on along it. */
   private watchProgress(w: Wrecker, dt: number): void {
     const tr = w.truck!, path = tr.path!;
-    const at = path.at[tr.idx];
+    const at = progress(tr);
     if (at > w.progress + 1) { w.progress = at; w.stalled = 0; return; }
     w.stalled += dt;
     if (w.stalled < STALLED_TIME) return;
     let j = tr.idx;
-    while (j < path.x.length - 1 && path.at[j] < at + 10) j++;
+    while (j < path.x.length - 1 && path.at[j] < path.at[tr.idx] + 10) j++;
     const k = Math.min(path.x.length - 1, j + 1);
     tr.body.x = path.x[j]; tr.body.y = path.y[j];
     if (k > j) tr.heading = Math.atan2(path.y[k] - path.y[j], path.x[k] - path.x[j]);
     tr.idx = j; tr.kappa = 0;
-    w.progress = path.at[j];
+    w.progress = progress(tr);
     w.stalled = 0;
   }
 
@@ -1652,8 +1698,10 @@ export class RaceControl {
 
 /**
  * Where a truck can wait round the infield: in each parking lot, a little way
- * in from where its lane reaches it; and staged up each escape road, on its
- * verge a little way from the apron (as wreckers wait at the turns).
+ * in from where its lane reaches it; and staged up each road off the apron
+ * (escape roads, crossovers, pit road's entry and exit), on its verge a
+ * little way from the apron, as wreckers wait at the turns and the ends of
+ * pit road.
  */
 function stagingPosts(t: Track): Array<[number, number]> {
   const out: Array<[number, number]> = [];
@@ -1663,9 +1711,13 @@ function stagingPosts(t: Track): Array<[number, number]> {
     const len = Math.hypot(bx - ax, by - ay) || 1;
     out.push([bx + ((bx - ax) / len) * 8, by + ((by - ay) / len) * 8]);
   }
+  // Up every road off the apron: escape roads, crossovers, pit road's entry and exit.
   for (const road of t.roads.roads) {
-    if (road.grade !== 'escape' || t.roads.nodes.get(road.from)?.kind !== 'apron') continue;
-    const at = pointAlong(road.points, STAGE_UP_ESCAPE);
+    // (Not through a gate in the pit wall: that's up onto pit road.)
+    if (road.grade === 'course' || road.grade === 'garage' || /^gate\d+[ab]?$/.test(road.id)) continue;
+    const fromApron = t.roads.nodes.get(road.from)?.kind === 'apron', toApron = t.roads.nodes.get(road.to)?.kind === 'apron';
+    if (!fromApron && !toApron) continue;
+    const at = pointAlong(fromApron ? road.points : [...road.points].reverse(), STAGE_UP_ESCAPE);
     if (!at) continue;
     const [x, y, ux, uy] = at;
     const side = road.width / 2 + TRUCK.RADIUS + 1;
@@ -1678,7 +1730,7 @@ function stagingPosts(t: Track): Array<[number, number]> {
   return out;
 }
 
-/** How far up an escape road from the apron a truck waits (m). */
+/** How far up a road off the apron a truck waits (m). */
 const STAGE_UP_ESCAPE = 25;
 
 /** The point `dist` metres along a polyline, and the way it runs there; null if it's shorter. */

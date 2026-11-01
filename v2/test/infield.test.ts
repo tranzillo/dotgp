@@ -133,6 +133,15 @@ describe('generated infields', () => {
     expect(validateVenue(layouts.map((l) => ({ ...l, neighbours: undefined })))).toEqual([]);
     // No cross-infield roads through it.
     expect(outer.roads.roads.some((r) => r.id.startsWith('link'))).toBe(false);
+    // Roads out to it from the service road through crash gates in its outer wall: from the garage, the wreckers can
+    // drive onto it and round it to the other side of the infield.
+    const links = outer.roads.roads.filter((r) => r.id.startsWith('inner-link'));
+    expect(links.length).toBeGreaterThan(1);
+    const inner = outer.neighbours[0];
+    const gates = inner.walls.find((w) => w.id === 'outer')!.gates ?? [];
+    expect(gates).toHaveLength(links.length);
+    const fromGarage = outer.serviceRoads.from(...outer.infield.garage.parking[outer.infield.garage.parking.length - 1]);
+    for (const road of outer.serviceRoads.roads.filter((r) => r.grade === 'course')) expect(fromGarage.dist.has(road.from)).toBe(true);
     // Both can be lapped, each with the other round it.
     for (const layout of layouts) {
       const t = new Track(layout);

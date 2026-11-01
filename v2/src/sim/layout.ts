@@ -129,6 +129,11 @@ export interface Wall {
   caps: boolean;
   /** Visual style: attenuators on the caps. */
   attenuators?: boolean;
+  /**
+   * Crash gates in it (signed s ranges): closed to the cars, as solid as the
+   * rest of the wall, and drawn as gates; the service vehicles' ways through.
+   */
+  gates?: Array<[number, number]>;
 }
 
 export interface Barrier {
