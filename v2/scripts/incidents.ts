@@ -25,9 +25,11 @@
  *                                 for head to head (each side's mean finishing place, retirements, damage done)
  *     [--limits lo:hi,lo:hi]   human limits for every car (drawn per car): latency (s) and motor noise ranges, e.g. 0.1:0.2,0.02:0.08;
  *                              without it, a driver with `limits` in its file has its own, and the rest none
+ *   TEACHER_HANDS=k (env, so bench.ts passes it on): teacher:drivers.json's teachers drive through their students' own
+ *                              limits times k (latency and motor noise, as each student's NeuralDriver does); unset, none
  */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { adaptWeights, neuralTeam, Team } from '../src/ai/drivers';
+import { adaptWeights, Hands, neuralTeam, Team } from '../src/ai/drivers';
 import { TowerSpotter } from '../src/ai/spotter';
 import { DEFAULT_STYLE, racerStyle, type RacerStyle, TrafficRacer } from '../src/ai/trafficRacer';
 import { hashSeed } from '../src/trackgen/generator';
@@ -109,6 +111,8 @@ const teacher = driversFile.startsWith('teacher:') ? driversFile.split(':') : nu
  * race like at best, and paired with the file itself, what copying lost.
  */
 const teacherFile = teacher && driversFile.endsWith('.json') ? driversFile.slice('teacher:'.length) : null;
+/** TEACHER_HANDS=k: those teachers through their students' latency and motor noise, times k (see the header). */
+const teacherHands = Number(process.env.TEACHER_HANDS ?? 0);
 const roster: Entrant[] = teacher && !teacherFile ? [{ weights: [] }] : JSON.parse(readFileSync(teacherFile ?? driversFile, 'utf8')).drivers;
 const teacherStyle: RacerStyle = {
   ...DEFAULT_STYLE,
@@ -336,6 +340,11 @@ function runRace(trackName: string, seed: number): RaceStats {
         const { style, traits } = racerStyle(nerve, talent, () => who.next());
         racer = new TrafficRacer(style, undefined, traits);
         brains[k].driver = (k + seed) % STYLED_RACERS; // each an individual, for the twins numbers
+      }
+      if (teacherFile && teacherHands > 0 && limits) {
+        const hands = new Hands({ latency: teacherHands * limits.latency, noise: teacherHands * limits.noise, seed: (seed * 7919 + k * 104729) >>> 0 }, P.CONTROL_EVERY * P.DT);
+        const decide = racer.decide.bind(racer);
+        racer.decide = (c, w) => { decide(c, w); hands.apply(c.inputX, c.inputY, c); };
       }
       world.addCar(car, new Team(racer, new TowerSpotter(), chief, false, true));
       continue;

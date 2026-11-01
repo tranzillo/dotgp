@@ -1,0 +1,113 @@
+# 1. Green contacts (scripts/greenContacts.ts), preset short, 2 races: v8s, its teachers, its teachers through their students' hands (TEACHER_HANDS=1)
+GREEN contacts 516: by angle and who was moving across (count; median closing across, along m/s)
+GREEN   beside        one        117  2.58  1.76
+GREEN   beside        both        44  3.31  0.93
+GREEN   beside        neither      6  0.33  5.57
+GREEN   nose to tail  one        256  0.49  2.84
+GREEN   nose to tail  both        25  3.17  2.26
+GREEN   nose to tail  neither     68  -0.36  3.20
+GREEN closing across: <-0.5 201, 0.5-1 64, 1-2 85, 2-3 64, 3- 102
+GREEN contacts 113: by angle and who was moving across (count; median closing across, along m/s)
+GREEN   beside        one         41  3.49  1.05
+GREEN   beside        both        36  3.61  0.57
+GREEN   beside        neither      0  NaN  NaN
+GREEN   nose to tail  one         31  0.40  2.74
+GREEN   nose to tail  both         5  4.17  1.12
+GREEN   nose to tail  neither      0  NaN  NaN
+GREEN closing across: <-0.5 21, 0.5-1 6, 1-2 3, 2-3 22, 3- 61
+GREEN contacts 199: by angle and who was moving across (count; median closing across, along m/s)
+GREEN   beside        one         69  3.84  0.87
+GREEN   beside        both        41  3.94  0.26
+GREEN   beside        neither      0  NaN  NaN
+GREEN   nose to tail  one         71  0.33  2.72
+GREEN   nose to tail  both        15  4.55  0.58
+GREEN   nose to tail  neither      3  -0.14  2.77
+GREEN closing across: <-0.5 44, 0.5-1 16, 1-2 11, 2-3 29, 3- 99
+
+# 2. Green contacts, speedway, 2 races: v8s, its teachers
+GREEN contacts 215: by angle and who was moving across (count; median closing across, along m/s)
+GREEN   beside        one         56  2.22  1.58
+GREEN   beside        both        55  3.66  0.26
+GREEN   beside        neither      5  -0.80  9.60
+GREEN   nose to tail  one         50  1.37  2.87
+GREEN   nose to tail  both        22  2.75  1.87
+GREEN   nose to tail  neither     27  -1.18  4.95
+GREEN closing across: <-0.5 44, 0.5-1 12, 1-2 37, 2-3 57, 3- 65
+GREEN contacts 25: by angle and who was moving across (count; median closing across, along m/s)
+GREEN   beside        one         13  1.96  2.76
+GREEN   beside        both         4  3.26  0.97
+GREEN   beside        neither      3  -1.89  12.27
+GREEN   nose to tail  one          3  0.98  2.11
+GREEN   nose to tail  both         1  2.97  2.16
+GREEN   nose to tail  neither      1  0.28  3.15
+GREEN closing across: <-0.5 4, 0.5-1 4, 1-2 5, 2-3 6, 3- 6
+
+# 3. Green labels (scripts/greenLabels.ts), v8s, preset short, 2 races
+GLABELS all green: 19410805 moments, mean |push across gap| 0.109, |pedal gap| 0.114, teacher braking while student not 3.1%
+GLABELS beside: 297 contacts
+GLABELS   3-2s toward +0.00/+0.05 (student only 5%) pedal -0.04/-0.18 miss 13% moving toward -0.21 m/s
+GLABELS   2-1s toward +0.02/+0.08 (student only 5%) pedal -0.02/-0.15 miss 14% moving toward -0.04 m/s
+GLABELS   1-0.5s toward +0.07/+0.06 (student only 6%) pedal -0.01/-0.10 miss 16% moving toward +0.57 m/s
+GLABELS   0.5-0s toward +0.06/-0.03 (student only 5%) pedal +0.01/-0.07 miss 15% moving toward +1.20 m/s
+GLABELS nose to tail: 634 contacts
+GLABELS   3-2s toward -0.01/+0.00 (student only 4%) pedal +0.14/-0.12 miss 24% moving toward -0.03 m/s
+GLABELS   2-1s toward +0.00/+0.02 (student only 4%) pedal -0.01/-0.22 miss 17% moving toward -0.08 m/s
+GLABELS   1-0.5s toward +0.02/+0.01 (student only 6%) pedal -0.19/-0.34 miss 12% moving toward +0.10 m/s
+GLABELS   0.5-0s toward +0.02/+0.01 (student only 7%) pedal -0.26/-0.38 miss 11% moving toward +0.23 m/s
+
+# 4. Rear-ends (scripts/rearEnds.ts), 2 races each: v8s short, handed teachers short, v8s speedway, handed teachers speedway
+REAR nose-to-tail damaging contacts (the follower's side): 349
+REAR phase      n   behind it (s)  closing 1 s out  leader slowed / follower slowed in that 1 s (m/s)  same line  other line open  plan to go by  ...on the open side
+REAR straight    47      16.0        0.23       19.00 / 19.70                         98%         85%          5%          3%
+REAR entry      134      50.4        1.37        6.05 / 8.34                          99%         72%          4%          1%
+REAR mid        163      18.7        1.38        4.67 / 7.45                          99%         55%          8%          2%
+REAR exit         5       0.6        3.66       -5.27 / 0.12                         100%         20%         29%         20%
+REAR behind the same car 3 s or more: 229 of 349; of them other line open 72%, a plan to go by 5%
+REAR all green following (closing on a car within 30 m in its lane): share of moments with a plan to go by, by phase: straight 5% (531496), entry 3% (676907), mid 16% (2508936), exit 22% (130341)
+REAR nose-to-tail damaging contacts (the follower's side): 89
+REAR phase      n   behind it (s)  closing 1 s out  leader slowed / follower slowed in that 1 s (m/s)  same line  other line open  plan to go by  ...on the open side
+REAR straight     4       0.4        0.45       -7.24 / -2.62                        100%        100%         30%          0%
+REAR entry       40       8.5        1.89        6.48 / 9.67                         100%         73%          2%          2%
+REAR mid         43       5.2        2.89        1.81 / 6.66                          98%         72%         13%          4%
+REAR exit         2       0.5       -0.41       -3.67 / -0.76                         50%        100%         22%          0%
+REAR behind the same car 3 s or more: 58 of 89; of them other line open 72%, a plan to go by 1%
+REAR all green following (closing on a car within 30 m in its lane): share of moments with a plan to go by, by phase: straight 12% (519210), entry 3% (647639), mid 14% (2190030), exit 22% (79692)
+REAR nose-to-tail damaging contacts (the follower's side): 98
+REAR phase      n   behind it (s)  closing 1 s out  leader slowed / follower slowed in that 1 s (m/s)  same line  other line open  plan to go by  ...on the open side
+REAR straight    29       3.8        1.11       41.15 / 44.05                        100%         97%         20%          6%
+REAR entry        1      16.0        0.87       -1.08 / 0.93                         100%        100%         10%          0%
+REAR mid         61       9.3        0.12        5.32 / 6.97                          97%         70%         72%         17%
+REAR exit         7       2.8        1.56       15.06 / 17.23                        100%        100%         31%          0%
+REAR behind the same car 3 s or more: 42 of 98; of them other line open 76%, a plan to go by 60%
+REAR all green following (closing on a car within 30 m in its lane): share of moments with a plan to go by, by phase: straight 66% (454391), entry 61% (90974), mid 70% (668301), exit 73% (79034)
+REAR nose-to-tail damaging contacts (the follower's side): 24
+REAR phase      n   behind it (s)  closing 1 s out  leader slowed / follower slowed in that 1 s (m/s)  same line  other line open  plan to go by  ...on the open side
+REAR straight     2       1.7       11.22       -4.93 / 7.90                         100%        100%         86%         50%
+REAR entry        1       0.2       36.16      -15.50 / 27.47                        100%        100%        100%          0%
+REAR mid         18       2.9        2.81        1.64 / 6.16                         100%         89%         93%         22%
+REAR exit         3       1.6       -1.10       -0.90 / 0.95                         100%        100%         67%         26%
+REAR behind the same car 3 s or more: 5 of 24; of them other line open 100%, a plan to go by 87%
+REAR all green following (closing on a car within 30 m in its lane): share of moments with a plan to go by, by phase: straight 76% (461120), entry 81% (109450), mid 81% (779859), exit 78% (80823)
+
+# 5. Stage logs: control (v8s-c), then lead labels (v8s-l)
+round 0: 139490 racing moments pooled, 210000 solo; loss 0.0607; held-out race before pedal err 0.116, braking missed 31%, steer err 0.118 (38467); after pedal err 0.111, braking missed 29%, steer err 0.121 (38467) (25.9 min)
+round 1: 296420 racing moments pooled, 420000 solo; loss 0.0476; held-out race before pedal err 0.118, braking missed 11%, steer err 0.098 (26754); after pedal err 0.110, braking missed 8%, steer err 0.083 (26754) (12.5 min)
+round 2: 454791 racing moments pooled, 630000 solo; loss 0.0431; held-out race before pedal err 0.095, braking missed 0%, steer err 0.087 (2569); after pedal err 0.083, braking missed 0%, steer err 0.081 (2569) (11.2 min)
+40 drivers -> C:/Users/kappa/AppData/Local/Temp/claude/c--Users-kappa-Documents-Projects-dotgp/4749c000-d72c-4f20-a2d8-8e954ec103df/scratchpad/contact/v8s-c.json (49.5 min)
+round 0: 139475 racing moments pooled, 210000 solo; loss 0.0674; held-out race before pedal err 0.121, braking missed 33%, steer err 0.140 (38455); after pedal err 0.119, braking missed 31%, steer err 0.135 (38455) (25.5 min)
+round 1: 291338 racing moments pooled, 420000 solo; loss 0.0538; held-out race before pedal err 0.160, braking missed 19%, steer err 0.113 (42474); after pedal err 0.135, braking missed 17%, steer err 0.098 (42474) (11.9 min)
+round 2: 450761 racing moments pooled, 630000 solo; loss 0.0509; held-out race before pedal err 0.093, braking missed 3%, steer err 0.106 (2594); after pedal err 0.085, braking missed 3%, steer err 0.122 (2594) (11.5 min)
+40 drivers -> C:/Users/kappa/AppData/Local/Temp/claude/c--Users-kappa-Documents-Projects-dotgp/4749c000-d72c-4f20-a2d8-8e954ec103df/scratchpad/contact/v8s-l.json (49.0 min)
+
+# 6. Green labels, v8s, speedway, 2 races
+GLABELS all green: 7867314 moments, mean |push across gap| 0.207, |pedal gap| 0.162, teacher braking while student not 3.9%
+GLABELS beside: 204 contacts
+GLABELS   3-2s toward -0.03/+0.03 (student only 4%) pedal +0.12/+0.02 miss 12% moving toward -0.07 m/s
+GLABELS   2-1s toward -0.01/+0.03 (student only 5%) pedal +0.08/+0.01 miss 11% moving toward -0.13 m/s
+GLABELS   1-0.5s toward +0.03/-0.02 (student only 7%) pedal +0.06/-0.03 miss 10% moving toward +0.23 m/s
+GLABELS   0.5-0s toward +0.06/-0.11 (student only 11%) pedal +0.04/-0.04 miss 13% moving toward +0.88 m/s
+GLABELS nose to tail: 139 contacts
+GLABELS   3-2s toward -0.04/-0.04 (student only 3%) pedal +0.08/-0.08 miss 17% moving toward +0.10 m/s
+GLABELS   2-1s toward -0.04/-0.03 (student only 5%) pedal +0.04/-0.16 miss 15% moving toward -0.09 m/s
+GLABELS   1-0.5s toward -0.00/-0.04 (student only 6%) pedal +0.02/-0.21 miss 18% moving toward -0.04 m/s
+GLABELS   0.5-0s toward +0.00/-0.10 (student only 7%) pedal -0.04/-0.25 miss 19% moving toward +0.46 m/s

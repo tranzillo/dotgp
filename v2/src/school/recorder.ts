@@ -59,7 +59,18 @@ export interface RecorderOptions {
    * there). Only which moments are kept for training: who drives, and how, is the same as any other moment.
    */
   launches?: Example[];
+  /**
+   * Label each driving moment with what the teacher says when the student's command for it lands (its latency later)
+   * instead of at the moment: the teacher answers at once, a student's answer reaches the car 0.1-0.2 s on, so taught
+   * the teacher's answer for now, it is always that late (2026-11-01: teachers driving through their students' hands
+   * had about as much green car damage as the students). Moments whose command lands on pit road are dropped.
+   */
+  lead?: boolean;
 }
+
+/** `lead` for recorders not told (experiments: scripts/racingLabels.ts --lead 1). */
+let leadByDefault = false;
+export function setLeadLabels(on: boolean): void { leadByDefault = on; }
 
 /** Share of the students' decisions recorded, by default. */
 const SAMPLE = 0.3;
@@ -98,6 +109,10 @@ export class Recorder implements Controller {
   /** The flag at its last look, and how far the car had gone when the green last flew (m). */
   private flagWas: string | null = null;
   private greenFrom = -Infinity;
+  /** With `lead`: decisions it waits for a moment's label, decisions so far, and the moments waiting. */
+  private readonly lead: number;
+  private decisions = 0;
+  private readonly waiting: Array<{ due: number; x: Float32Array; mirrored: boolean; launch: boolean }> = [];
 
   /** `teacher`: the driving skill's teacher (unused for stops: the team's pit maneuver teaches them). */
   constructor(
@@ -112,6 +127,7 @@ export class Recorder implements Controller {
     this.studentDrives = driving.kind === 'student';
     this.hands = driving.kind === 'shaken' ? new ShakenHands(opts.latency ?? 0, driving.sigma, rng) : null;
     this.stops = opts.skill === 'stops';
+    this.lead = (opts.lead ?? leadByDefault) && !this.stops ? Math.max(0, Math.round((opts.latency ?? 0) / (P.CONTROL_EVERY * P.DT))) : 0;
     // While it has no tactics of its own, it races to its teacher's plan; recorded, it's shown its teacher's plan.
     if (teacher && 'intent' in teacher) student.intentFrom = () => teacher.intent ?? 0;
   }
@@ -157,6 +173,12 @@ export class Recorder implements Controller {
       if (this.hands) this.hands.apply(label[0], label[1], car);
       else { car.inputX = label[0]; car.inputY = label[1]; }
     }
+    this.decisions++;
+    // Moments whose command lands now take this decision's label (driving off pit road, or none).
+    while (this.waiting.length && this.waiting[0].due <= this.decisions) {
+      const w = this.waiting.shift()!;
+      if (label && car.pit.phase === 'none') this.record(w.x, label, w.mirrored, w.launch);
+    }
     // A moment of the skill taught: a stop under way, or driving off pit road.
     if (!label || (!this.stops && car.pit.phase !== 'none') || this.rng.next() >= (this.opts.sample ?? SAMPLE)) return;
     // What the student saw at this moment (its last command included).
@@ -191,12 +213,17 @@ export class Recorder implements Controller {
     }
     car.inputX = ax;
     car.inputY = ay;
+    const launch = !!this.opts.launches && flag === 'green' && car.dist - this.greenFrom < world.track.length
+      && seen[CAUTION_FROM] === 0 && seen[DAMAGE_FROM] === 0;
+    if (this.lead) this.waiting.push({ due: this.decisions + this.lead, x, mirrored: this.student.mirrored, launch });
+    else this.record(x, label, this.student.mirrored, launch);
+  }
+
+  private record(x: Float32Array, label: [number, number], mirrored: boolean, launch: boolean): void {
     // The teacher steers in the world's frame; a student seeing a right-hander sees it mirrored (never on ovals, half
     // the corners on road circuits).
-    if (this.student.mirrored) label[1] = -label[1];
     const clamp = (v: number) => Math.max(-0.95, Math.min(0.95, v));
-    const launch = this.opts.launches && flag === 'green' && car.dist - this.greenFrom < world.track.length
-      && seen[CAUTION_FROM] === 0 && seen[DAMAGE_FROM] === 0;
-    (launch ? this.opts.launches! : this.examples).push({ x, y: Float32Array.of(clamp(label[0]), clamp(label[1])), mask: Float32Array.of(1, 1) });
+    const y = Float32Array.of(clamp(label[0]), clamp(mirrored ? -label[1] : label[1]));
+    (launch ? this.opts.launches! : this.examples).push({ x, y, mask: Float32Array.of(1, 1) });
   }
 }

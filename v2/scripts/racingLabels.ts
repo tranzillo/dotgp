@@ -13,7 +13,10 @@
  *
  *   DOTGP_EXPERIMENT='?spec=cup&lines=2' npx tsx scripts/racingLabels.ts --in stable.json --out labelled.json
  *     [--rounds 4] [--races 8] [--km 80] [--sample 0.05] [--per-race 20000] [--per-solo 30000] [--keep 8] [--field-share 0.5]
- *     [--epochs 4] [--moments 60000] [--debris 0.03] [--wrecks 0.5] [--seed 1] [--jobs N]
+ *     [--epochs 4] [--moments 60000] [--debris 0.03] [--wrecks 0.5] [--seed 1] [--jobs N] [--lead 1] [--brake-weight 1]
+ *   --lead 1: every moment labelled with what the teacher says when the student's command lands (its latency later:
+ *     src/school/recorder.ts RecorderOptions.lead), races and solo drives alike.
+ *   --brake-weight w: a racing moment whose teacher brakes (pedal under -0.3) is drawn w times as often as another.
  *   npx tsx scripts/racingLabels.ts --in stable.json --race-only <index> --out rows.bin ...   (one race: what the parent runs)
  *   npx tsx scripts/racingLabels.ts --in stable.json --solo-only <index> --out rows.bin ...   (every driver's solo drives on that oval)
  */
@@ -26,6 +29,7 @@ import { Network, trainSupervised, type Example } from '../src/ai/network';
 import { Rng } from '../src/ai/rng';
 import { apprenticeTrack, soloDrives, type StableDriver } from '../src/school/ovalApprentice';
 import { labelledRace, ROW, rowsToExamples, type RaceDriver } from '../src/school/raceLabels';
+import { setLeadLabels } from '../src/school/recorder';
 import { hashSeed } from '../src/trackgen/generator';
 
 const args = new Map<string, string>();
@@ -38,6 +42,7 @@ const trackOf = (index: number) => apprenticeTrack(3000 + index, seed);
 if (args.has('race-only') || args.has('solo-only')) {
   const roster: RaceDriver[] = JSON.parse(readFileSync(args.get('in')!, 'utf8')).drivers;
   const t0 = Date.now();
+  setLeadLabels(num('lead', 0) > 0);
   if (args.has('race-only')) {
     const index = Number(args.get('race-only'));
     const track = trackOf(index);
@@ -76,6 +81,7 @@ if (args.has('race-only') || args.has('solo-only')) {
 const input = args.get('in')!, out = args.get('out') ?? 'labelled.json';
 const rounds = num('rounds', 4), races = num('races', 8), keep = num('keep', 8), epochs = num('epochs', 4), moments = num('moments', 60_000);
 const perRace = num('per-race', 20_000), perSolo = num('per-solo', 30_000), fieldShare = num('field-share', 0.5);
+const brakeWeight = Math.max(1, Math.round(num('brake-weight', 1)));
 const jobs = num('jobs', Math.max(1, cpus().length - 1));
 const file = JSON.parse(readFileSync(input, 'utf8'));
 const roster: RaceDriver[] = file.drivers;
@@ -92,7 +98,7 @@ function pick<T>(all: T[], n: number): T[] {
 /** One child per race or solo set, `jobs` at a time. */
 function runAll(tasks: Array<{ kind: 'race' | 'solo'; index: number; file: string }>, bundle: string): Promise<void> {
   const queue = tasks.slice();
-  const pass = ['km', 'sample', 'debris', 'wrecks', 'seed'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
+  const pass = ['km', 'sample', 'debris', 'wrecks', 'seed', 'lead'].flatMap((k) => (args.has(k) ? [`--${k}`, args.get(k)!] : []));
   return Promise.all(Array.from({ length: Math.min(jobs, queue.length) }, async () => {
     for (let t = queue.shift(); t !== undefined; t = queue.shift()) {
       const task = t;
@@ -150,9 +156,11 @@ for (let round = 0; round < rounds; round++) {
   while (racingPool.length > keep) { racingPool.shift(); soloPool.shift(); }
   const field = racingPool.flat(), solo = soloPool.flat();
   const ownRacing = new Map<number, Example[]>(), ownSolo = new Map<number, Example[]>();
-  for (const m of field) (ownRacing.get(m.who) ?? ownRacing.set(m.who, []).get(m.who)!).push(m.example);
+  // (A braking moment goes in brakeWeight times: drawn that much more often.)
+  const weighted = field.flatMap((m) => Array<Moment>(m.example.y[0] < -0.3 ? brakeWeight : 1).fill(m));
+  for (const m of weighted) (ownRacing.get(m.who) ?? ownRacing.set(m.who, []).get(m.who)!).push(m.example);
   for (const m of solo) (ownSolo.get(m.who) ?? ownSolo.set(m.who, []).get(m.who)!).push(m.example);
-  const fieldExamples = field.map((m) => m.example);
+  const fieldExamples = weighted.map((m) => m.example);
   const half = Math.floor(moments / 2);
   const losses: number[] = [];
   roster.forEach((d, who) => {
