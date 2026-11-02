@@ -111,3 +111,45 @@ GLABELS   3-2s toward -0.04/-0.04 (student only 3%) pedal +0.08/-0.08 miss 17% m
 GLABELS   2-1s toward -0.04/-0.03 (student only 5%) pedal +0.04/-0.16 miss 15% moving toward -0.09 m/s
 GLABELS   1-0.5s toward -0.00/-0.04 (student only 6%) pedal +0.02/-0.21 miss 18% moving toward -0.04 m/s
 GLABELS   0.5-0s toward +0.00/-0.10 (student only 7%) pedal -0.04/-0.25 miss 19% moving toward +0.46 m/s
+
+7. scripts/passKinds.ts, 2 races each: teachers (no hands) and v8sp (stable-candidate-v8sp-lines, c9da59d)
+
+-- teacher-short
+  PASSING 9.4 clean passes/100 green car-laps; of all passes 6% with contact, 2% damaging, 55% from the draft; 1.5 damaging contacts/100 green car-laps
+PASS green passes 908: pulled out 60 (7%), gap left 70 (8%), both moved 107 (12%), neither 52 (6%), other lane 619 (68%)
+PASS   pull-outs ending passed         184 (6%): closing along at the pull-out / 1 / 2 / 3 s on -0.34 / 0.21 / 0.84 / 2.17 m/s; nearest -5.1 m behind; a car ahead in the lane it pulled into 31%
+PASS   pull-outs ending back in line  1038 (34%): closing along at the pull-out / 1 / 2 / 3 s on 0.12 / 0.33 / 1.08 / 0.84 m/s; nearest 15.3 m behind; a car ahead in the lane it pulled into 34%
+PASS   pull-outs ending blocked        725 (24%): closing along at the pull-out / 1 / 2 / 3 s on -0.37 / 0.47 / 1.38 / 1.99 m/s; nearest 13.6 m behind; a car ahead in the lane it pulled into 58%
+PASS   pull-outs ending dropped back   398 (13%): closing along at the pull-out / 1 / 2 / 3 s on -2.24 / -1.80 / -1.01 / 0.09 m/s; nearest 25.3 m behind; a car ahead in the lane it pulled into 59%
+PASS   pull-outs ending still trying   718 (23%): closing along at the pull-out / 1 / 2 / 3 s on -0.54 / 0.29 / 1.01 / 1.90 m/s; nearest 3.8 m behind; a car ahead in the lane it pulled into 49%
+PASS pull-outs (in line behind, then a lane over still behind) 3063, of them a pass within 10 s 112 (4%); passers in the other car's lane in front of it within 5 s 361 (40%)
+
+-- teacher-speedway
+  PASSING 26.4 clean passes/100 green car-laps; of all passes 2% with contact, 1% damaging, 22% from the draft; 0.8 damaging contacts/100 green car-laps
+PASS green passes 1152: pulled out 79 (7%), gap left 32 (3%), both moved 39 (3%), neither 112 (10%), other lane 890 (77%)
+PASS   pull-outs ending passed         121 (11%): closing along at the pull-out / 1 / 2 / 3 s on 1.58 / 1.96 / 1.87 / 2.44 m/s; nearest -5.1 m behind; a car ahead in the lane it pulled into 18%
+PASS   pull-outs ending back in line   297 (28%): closing along at the pull-out / 1 / 2 / 3 s on 0.21 / 0.15 / 0.04 / -0.28 m/s; nearest 16.2 m behind; a car ahead in the lane it pulled into 31%
+PASS   pull-outs ending blocked        289 (27%): closing along at the pull-out / 1 / 2 / 3 s on -0.30 / -0.23 / -0.19 / 0.25 m/s; nearest 15.8 m behind; a car ahead in the lane it pulled into 30%
+PASS   pull-outs ending dropped back   182 (17%): closing along at the pull-out / 1 / 2 / 3 s on -3.01 / -3.61 / -4.16 / -4.11 m/s; nearest 22.7 m behind; a car ahead in the lane it pulled into 36%
+PASS   pull-outs ending still trying   188 (17%): closing along at the pull-out / 1 / 2 / 3 s on -0.24 / -0.28 / -0.20 / -0.19 m/s; nearest 1.8 m behind; a car ahead in the lane it pulled into 27%
+PASS pull-outs (in line behind, then a lane over still behind) 1077, of them a pass within 10 s 83 (8%); passers in the other car's lane in front of it within 5 s 384 (33%)
+
+-- short
+  PASSING 7.8 clean passes/100 green car-laps; of all passes 19% with contact, 4% damaging, 51% from the draft; 4.7 damaging contacts/100 green car-laps
+PASS green passes 950: pulled out 39 (4%), gap left 34 (4%), both moved 211 (22%), neither 71 (7%), other lane 595 (63%)
+PASS   pull-outs ending passed         124 (8%): closing along at the pull-out / 1 / 2 / 3 s on 0.22 / 1.99 / 2.86 / 2.35 m/s; nearest -5.1 m behind; a car ahead in the lane it pulled into 21%
+PASS   pull-outs ending back in line   484 (30%): closing along at the pull-out / 1 / 2 / 3 s on 0.98 / 0.44 / 0.32 / 0.03 m/s; nearest 19.1 m behind; a car ahead in the lane it pulled into 46%
+PASS   pull-outs ending blocked        314 (19%): closing along at the pull-out / 1 / 2 / 3 s on -0.60 / 0.61 / 1.56 / 0.87 m/s; nearest 14.5 m behind; a car ahead in the lane it pulled into 70%
+PASS   pull-outs ending dropped back   258 (16%): closing along at the pull-out / 1 / 2 / 3 s on -2.82 / -2.14 / -1.30 / -0.98 m/s; nearest 28.0 m behind; a car ahead in the lane it pulled into 53%
+PASS   pull-outs ending still trying   434 (27%): closing along at the pull-out / 1 / 2 / 3 s on -0.42 / 0.24 / 1.00 / 0.85 m/s; nearest 4.5 m behind; a car ahead in the lane it pulled into 49%
+PASS pull-outs (in line behind, then a lane over still behind) 1614, of them a pass within 10 s 82 (5%); passers in the other car's lane in front of it within 5 s 316 (33%)
+
+-- speedway
+  PASSING 24.0 clean passes/100 green car-laps; of all passes 9% with contact, 3% damaging, 26% from the draft; 5.0 damaging contacts/100 green car-laps
+PASS green passes 958: pulled out 54 (6%), gap left 55 (6%), both moved 18 (2%), neither 111 (12%), other lane 720 (75%)
+PASS   pull-outs ending passed          77 (10%): closing along at the pull-out / 1 / 2 / 3 s on 1.76 / 3.50 / 3.59 / 3.33 m/s; nearest -5.1 m behind; a car ahead in the lane it pulled into 32%
+PASS   pull-outs ending back in line   248 (34%): closing along at the pull-out / 1 / 2 / 3 s on -0.02 / 0.16 / 0.22 / 0.20 m/s; nearest 16.6 m behind; a car ahead in the lane it pulled into 41%
+PASS   pull-outs ending blocked        105 (14%): closing along at the pull-out / 1 / 2 / 3 s on -0.38 / -0.20 / -0.06 / -0.00 m/s; nearest 15.5 m behind; a car ahead in the lane it pulled into 44%
+PASS   pull-outs ending dropped back   134 (18%): closing along at the pull-out / 1 / 2 / 3 s on -3.39 / -3.18 / -2.86 / -2.37 m/s; nearest 25.1 m behind; a car ahead in the lane it pulled into 43%
+PASS   pull-outs ending still trying   175 (24%): closing along at the pull-out / 1 / 2 / 3 s on -0.75 / -0.52 / -0.16 / -0.09 m/s; nearest -2.0 m behind; a car ahead in the lane it pulled into 47%
+PASS pull-outs (in line behind, then a lane over still behind) 739, of them a pass within 10 s 49 (7%); passers in the other car's lane in front of it within 5 s 298 (31%)

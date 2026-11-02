@@ -88,6 +88,36 @@ labels are harder to fit (stage loss 0.051 against 0.043). The rear-ends are the
 student copies however its labels are timed. `--brake-weight` (a braking racing moment drawn w times as often) is in
 the stage, untried.
 
+## How passes happen: no slingshot, teachers included
+
+`scripts/passKinds.ts` (`probes.txt` 7), 2 races each, teachers without hands and v8sp. A pass is a car getting 5 m
+ahead of one it was 5 m behind; a pull-out is a car in line behind (within 30 m, under 2.5 m across) moving a lane
+over (3.5 m across) while still behind, followed to its end.
+
+| | short: teachers / v8sp | speedway: teachers / v8sp |
+|---|---|---|
+| green passes | 908 / 950 | 1152 / 958 |
+| already a lane apart (passing on lane speed) | 68% / 63% | 77% / 75% |
+| the passer pulled out of line, the other car held | 7% / 4% | 7% / 6% |
+| pull-outs that became a pass | 6% / 8% | 11% / 10% |
+| closing (m/s) at the pull-out, failed ones | -0.4 to 0.1 / -0.6 to 1.0 | -0.3 to 0.2 / -0.8 to 0.0 |
+| closing at the pull-out, the ones that passed | -0.3 / 0.2 | 1.6 / 1.8 |
+| failed: nearest they got (m behind, centres) | 14-15 / 15-19 | 16 / 16-17 |
+| ended with the car ahead moving across into them | 24% / 19% | 27% / 14% |
+| a car ahead in the lane they pulled into | 30-58% / 41-70% | 18-36% / 32-47% |
+
+Nobody gets a run in the tow and pulls out with it. Drivers pull out from about 15 m back with no closing speed,
+give up the draft (none beyond 2.6 m across: `computeDraft`), and fall back in line. The students do what their
+teachers do. In the teacher (`src/ai/trafficRacer.ts`):
+
+- Following, it holds the reaction gap (`capAt(gap)`) and runs at the car ahead's speed, so the tow never turns into
+  closing speed. `building` (tuck in while the run builds, pull out at the last moment) needs `closing > 0`, which the
+  follow cap keeps near zero.
+- It goes for a pass only when `faster = max(paceAt(other.s), vMe) - vOther` beats its passing edge (0.7-1.8 m/s).
+  `paceAt` is its own pace with no draft, and `vMe` is held to the car ahead's, so in a pack of equal cars only a talent
+  gap makes it pull out.
+- Once out, the run dies in a second or two (closing back to 0, nearest 15 m), and `spent` / back in line follows.
+
 ## Next (teachers: every student's labels change with them)
 
 - Following into a corner: room for the car ahead slowing to the corner's speed ahead, not only for its braking from
@@ -107,6 +137,7 @@ TEACHER_HANDS=1 npx tsx scripts/bench.ts teacher:$B $B --tracks $T --seeds 4 --f
 npx tsx --import ./scripts/greenContacts.ts scripts/incidents.ts $B --tracks short --seeds 2 --field 40 --rules 1
 npx tsx --import ./scripts/greenLabels.ts scripts/incidents.ts $B --tracks short --seeds 2 --field 40 --rules 1
 npx tsx --import ./scripts/rearEnds.ts scripts/incidents.ts $B --tracks short --seeds 2 --field 40 --rules 1
+npx tsx --import ./scripts/passKinds.ts scripts/incidents.ts $B --tracks short --seeds 2 --field 40 --rules 1  # B=...v8sp-lines.json, and teacher:$B
 # the two continuations, then their bench
 C="--in $B --rounds 3 --races 8 --km 80 --sample 0.05 --keep 3 --field-share 0.5 --epochs 4 --moments 60000 --debris 0.03 --wrecks 0.5 --seed 2 --jobs 5"
 npx tsx scripts/racingLabels.ts $C --out v8s-c.json
