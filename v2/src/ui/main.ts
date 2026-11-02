@@ -930,6 +930,7 @@ function updateTimeline(s: SessionSnapshot | null, cars: CarView[], time: number
  */
 const MARKS: Partial<Record<TimelineEvent['kind'], { color: string; minor?: boolean; rank: number }>> = {
   caution: { color: '#f5c518', rank: 3 },
+  red: { color: '#ff2a2a', rank: 4 },
   retired: { color: '#ff5a5a', rank: 2 },
   review: { color: '#ff9f1a', minor: true, rank: 1 },
   steward: { color: '#ff9f1a', minor: true, rank: 1 },

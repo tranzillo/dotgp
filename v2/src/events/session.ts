@@ -146,7 +146,7 @@ export interface RaceView {
 }
 
 /** What a timeline event is: race control's flags and lead changes, or one of the world's announcements. */
-export type TimelineKind = 'start' | 'caution' | 'restart' | 'green' | 'checkered' | 'lead' | 'pole' | 'round' | Exclude<WorldEvent['kind'], 'flag'>;
+export type TimelineKind = 'start' | 'caution' | 'red' | 'restart' | 'green' | 'checkered' | 'lead' | 'pole' | 'round' | Exclude<WorldEvent['kind'], 'flag'>;
 
 /**
  * Something that happened in a session, when and to whom: the timeline's
@@ -585,7 +585,9 @@ export class Session {
       this.log('start', null, call?.text ?? 'Green flag');
       this.leaderId = race.leader()?.id ?? -1;
     } else if (race.started && flag !== this.flagWas) {
-      if (flag === 'caution') this.log('caution', call?.key ?? null, call?.text ?? 'Caution');
+      // (Back to the caution from a red is the same caution going on.)
+      if (flag === 'caution' && this.flagWas !== 'red') this.log('caution', call?.key ?? null, call?.text ?? 'Caution');
+      else if (flag === 'red') this.log('red', null, call?.text ?? 'Red flag');
       else if (flag === 'restart') this.log('restart', null, call?.text ?? 'Restart: leader to the line');
       else if (flag === 'green') this.log('green', null, call?.text ?? 'Green flag');
     }

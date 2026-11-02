@@ -161,15 +161,37 @@ export interface WorkZone { s: number; lo: number; hi: number; parts: Array<[num
 /**
  * The red flag: under caution, stopped wrecks leaving less than RED_FREE (m) of the racing surface to get by (a car's
  * width and half a metre either side: one car in the middle of a narrow circuit leaves more) for RED_AFTER (s) stop
- * the race. The field stops in line behind the pace car RED_SHORT (m) short of them, at RED_DECEL (m/s^2), and every
- * car on track stops short of them too; once nowhere has been blocked for RED_CLEAR (s) the field rolls again under
- * caution, for a lap at least.
+ * the race; on ovals, so do the wrecks the field runs into (RED_MID, RED_PILE). The field stops in line behind the pace
+ * car RED_SHORT (m) short of them, at RED_DECEL (m/s^2), and every car on track stops short of them too; once nowhere
+ * has been blocked for RED_CLEAR (s) the field rolls again under caution, for a lap at least.
  */
 const RED_FREE = 2 * P.CAR_RADIUS + 1;
 const RED_AFTER = 2;
 const RED_SHORT = 40;
 const RED_DECEL = 2.5;
 const RED_CLEAR = 2;
+/**
+ * When the red flies, a car that would have to brake harder than this (m/s^2) to stop RED_SHORT short of a place the
+ * track is blocked goes on past it (no faster than past a wreck under caution) and stops at the tail of the line the
+ * next time round. Told to stop short of a wreck it was nearly on, it braked as hard as it could and was hit, or
+ * couldn't and hit it (2026-11-01: 171 of 556 cars needed more than 8; experiments/2026-11-01-red-stop).
+ */
+const RED_PASS_DECEL = 5;
+/**
+ * On ovals, a wreck stopped this far (m) or more from both the outside wall's edge and the inside edge is a red: the
+ * field runs into those (62% of them were hit, against 19% of those low and 33% against the wall:
+ * experiments/2026-11-01-pileup-reds). So are RED_PILE wrecks within RED_PILE_RANGE (m) of each other, held until every
+ * wreck within RED_PILE_RANGE of them is towed (rolling again with one still there is the caution it started in). Any
+ * other wreck stays a caution.
+ */
+const RED_MID = 3;
+const RED_PILE = 2;
+const RED_PILE_RANGE = 150;
+/**
+ * Under the red the pace car is let out only to a leader still doing this (m/s): let out at pace speed onto a line
+ * stopped by the end of pit road, it drove into it.
+ */
+const RED_RELEASE_SPEED = 10;
 /** A wreck waiting for a truck this far off the racing surface (m; past an oval's apron) doesn't hold up a restart. */
 const CLEAR_OFF = 5;
 /** Air a car going by a wreck keeps to it (m), where there's room. */
@@ -244,6 +266,11 @@ export class RaceControl {
   private blockedFor = 0;
   /** Under the red flag, where the track is blocked (s of each place). */
   redZones: number[] = [];
+  /** Under the red flag, the cars going on past a place it's blocked (its s), and the places they've been told about. */
+  private readonly redPassing = new Map<Car, number>();
+  private redTold: number[] = [];
+  /** On ovals, where wrecks have piled up (s), until they're towed. */
+  private pileUps: number[] = [];
   /** Red flags this race. */
   reds = 0;
   private readonly cautioned = new Set<Car>();
@@ -574,7 +601,7 @@ export class RaceControl {
       this.world.announce(leader, 'flag', 'One lap to go to the green');
     }
     this.watchBlocked(dt);
-    if (this.flag === 'red') this.releasePaceCar(this.order[0] ?? null);
+    if (this.flag === 'red' && (this.order[0]?.speed ?? 0) > RED_RELEASE_SPEED) this.releasePaceCar(this.order[0] ?? null);
     if (this.flag === 'caution') {
       const laps = leader ? leader.lapsCompleted - this.cautionLap : 0;
       const clear = this.trackClear();
@@ -629,23 +656,51 @@ export class RaceControl {
   }
 
   /**
-   * Where wrecks on the racing surface (and an oval's apron) leave less than RED_FREE to get by: each such place (its s). Wrecks within
+   * Where wrecks on the racing surface (and an oval's apron) leave less than RED_FREE to get by, and on ovals where a
+   * wreck sits mid-track or wrecks have piled up (RED_MID, RED_PILE): each such place (its s). Wrecks within
    * ZONE_LENGTH of each other are one place; trucks don't count (they move on).
    */
   blockedPlaces(): number[] {
     const t = this.track;
     const near = (a: number, b: number) => { const ds = t.distanceFrom(a, b); return Math.min(ds, t.length - ds) <= ZONE_LENGTH; };
-    const wrecks = this.world.cars.filter((c) => c.retired && !c.cleared && c.speed < 1 && c.d < t.innerEdge(c.trackIdx) + t.apronWidth);
+    const wrecks = this.stoppedWrecks();
     const places: number[] = [];
     for (const w of wrecks) {
       if (places.some((s) => near(s, w.s))) continue;
-      const ds = wrecks.filter((o) => near(w.s, o.s)).map((o) => o.d).sort((a, b) => a - b);
-      const lo = t.outerEdge(w.trackIdx), hi = t.innerEdge(w.trackIdx) + t.apronWidth; // (an oval's apron is a way by)
-      let free = Math.max(ds[0] - P.CAR_RADIUS - lo, hi - ds[ds.length - 1] - P.CAR_RADIUS);
-      for (let k = 1; k < ds.length; k++) free = Math.max(free, ds[k] - ds[k - 1] - 2 * P.CAR_RADIUS);
-      if (free < RED_FREE) places.push(w.s);
+      if (this.wayByWrecks(w.s) < RED_FREE) places.push(w.s);
+    }
+    if (t.kind === 'road') return places;
+    const nearPile = (a: number, b: number) => Math.min(t.distanceFrom(a, b), t.distanceFrom(b, a)) <= RED_PILE_RANGE;
+    for (const w of wrecks) {
+      if (this.pileUps.some((z) => nearPile(z, w.s))) continue;
+      if (wrecks.filter((o) => nearPile(w.s, o.s)).length >= RED_PILE) this.pileUps.push(w.s);
+    }
+    this.pileUps = this.pileUps.filter((z) => wrecks.some((w) => nearPile(z, w.s)));
+    for (const w of wrecks) {
+      if (places.some((s) => near(s, w.s))) continue;
+      const mid = w.d - t.outerEdge(w.trackIdx) >= RED_MID && t.innerEdge(w.trackIdx) - w.d >= RED_MID;
+      if (mid || this.pileUps.some((z) => nearPile(z, w.s))) places.push(w.s);
     }
     return places;
+  }
+
+  /** Wrecks stopped on the racing surface or an oval's apron, not yet towed. */
+  private stoppedWrecks(): Car[] {
+    const t = this.track;
+    return this.world.cars.filter((c) => c.retired && !c.cleared && c.speed < 1 && c.d < t.innerEdge(c.trackIdx) + t.apronWidth);
+  }
+
+  /** The widest way by the wrecks within ZONE_LENGTH of s (m), across the racing surface and an oval's apron. */
+  private wayByWrecks(s: number): number {
+    const t = this.track;
+    const near = (a: number, b: number) => { const ds = t.distanceFrom(a, b); return Math.min(ds, t.length - ds) <= ZONE_LENGTH; };
+    const ds = this.stoppedWrecks().filter((o) => near(s, o.s)).map((o) => o.d).sort((a, b) => a - b);
+    if (!ds.length) return Infinity;
+    const i = t.indexAt(s);
+    const lo = t.outerEdge(i), hi = t.innerEdge(i) + t.apronWidth; // (an oval's apron is a way by)
+    let free = Math.max(ds[0] - P.CAR_RADIUS - lo, hi - ds[ds.length - 1] - P.CAR_RADIUS);
+    for (let k = 1; k < ds.length; k++) free = Math.max(free, ds[k] - ds[k - 1] - 2 * P.CAR_RADIUS);
+    return free;
   }
 
   /** Under caution, a track blocked long enough is a red flag; under the red flag, a track clear long enough isn't. */
@@ -660,16 +715,19 @@ export class RaceControl {
       this.oneToGo = false;
       this.blockedFor = 0;
       this.redZones = places;
-      this.world.announce(this.order[0] ?? this.paceCar, 'flag', 'Red flag! Track blocked: the field stops in line');
+      this.tellRedPassers();
+      this.world.announce(this.order[0] ?? this.paceCar, 'flag', 'Red flag! Wreck in the way: the field stops in line');
       return;
     }
     // (While it's still blocked somewhere, its places follow the wrecks as they're moved.)
-    if (places.length) { this.redZones = places; this.blockedFor = 0; return; }
+    if (places.length) { this.redZones = places; this.blockedFor = 0; this.tellRedPassers(); return; }
     this.blockedFor += dt;
     if (this.blockedFor < RED_CLEAR) return;
     this.flag = 'caution';
     this.blockedFor = 0;
     this.redZones = [];
+    this.redPassing.clear();
+    this.redTold = [];
     const head = this.order[0];
     if (head) this.cautionMinLaps = Math.max(this.cautionMinLaps, head.lapsCompleted - this.cautionLap + 1);
     this.world.announce(head ?? this.paceCar, 'flag', 'Track clear: the field rolls again under caution');
@@ -679,11 +737,41 @@ export class RaceControl {
    * Under the red flag, the fastest a car at s may go: able to stop RED_SHORT short of the next place the track is
    * blocked (one RED_SHORT or less ahead: stopped). Otherwise no limit.
    */
-  redSpeedAt(s: number): number {
+  redSpeedAt(s: number, car?: Car): number {
     if (this.flag !== 'red') return Infinity;
+    const t = this.track;
+    const passing = car && this.redPassing.get(car);
     let v = Infinity;
-    for (const z of this.redZones) v = Math.min(v, Math.sqrt(2 * RED_DECEL * Math.max(0, this.track.distanceFrom(s, z) - RED_SHORT)));
+    for (const z of this.redZones) {
+      // (A car going on past it: not this one.)
+      if (passing !== undefined && Math.min(t.distanceFrom(passing, z), t.distanceFrom(z, passing)) <= ZONE_LENGTH) continue;
+      v = Math.min(v, Math.sqrt(2 * RED_DECEL * Math.max(0, t.distanceFrom(s, z) - RED_SHORT)));
+    }
     return v;
+  }
+
+  /**
+   * For each place newly blocked under the red, the cars on track too near it to stop RED_SHORT short at RED_PASS_DECEL
+   * go on past it; once past (or it's towed off), they stop short of it like everyone else. Not where there's no way
+   * by (RED_FREE): there everyone stops, as hard as it takes.
+   */
+  private tellRedPassers(): void {
+    const t = this.track;
+    const near = (a: number, b: number) => Math.min(t.distanceFrom(a, b), t.distanceFrom(b, a)) <= ZONE_LENGTH;
+    for (const z of this.redZones) {
+      if (this.redTold.some((s) => near(s, z))) continue;
+      this.redTold.push(z);
+      if (this.wayByWrecks(z) < RED_FREE) continue;
+      for (const car of this.world.cars) {
+        if (car.retired || car.finished || car.surface === 'pit') continue;
+        const room = t.distanceFrom(car.s, z) - RED_SHORT;
+        if (room > t.length / 2) continue; // (just past it)
+        if (room <= 0 || (car.speed * car.speed) / (2 * room) > RED_PASS_DECEL) this.redPassing.set(car, z);
+      }
+    }
+    for (const [car, z] of this.redPassing) {
+      if (t.distanceFrom(z, car.s) < t.length / 2 || !this.redZones.some((s) => near(s, z))) this.redPassing.delete(car);
+    }
   }
 
   /** The starter's moment for the green: a random share of the leader's time to the line at pace speed. */

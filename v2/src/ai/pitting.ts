@@ -618,8 +618,9 @@ export class PitAutopilot {
         car.inputY = 0;
         return;
       }
-      // Never faster than lets us stop behind the car ahead (or a car still in our box).
-      const follow = this.followLimit(car, world, lane);
+      // Never faster than lets us stop behind the car ahead (or a car still in our box); under the red, still on the
+      // track, short of where it's blocked.
+      const follow = Math.min(this.followLimit(car, world, lane), car.surface === 'pit' ? Infinity : world.control?.redSpeedAt(car.s, car) ?? Infinity);
       const cap = (s: number) => {
         const r = track.pitInAt(car, s);
         if (r < track.pit.wallStart - LIMIT_EARLY || r > track.pit.wallEnd + 5) return Math.min(follow, path.inCap(r));
@@ -659,16 +660,22 @@ export class PitAutopilot {
         }
         return ramp(du, mergeFrom, mergeFrom + 90, apronLaneAt(s), track.innerEdgeAt(s) - 2.5);
       };
-      // Leaving the box: wait for a gap in the fast lane behind (cars coming down pit road), within reason.
-      let hold = false;
-      if (u < 20) {
+      // Leaving the box: wait for a gap in the fast lane behind (cars coming down pit road), within reason. Under the
+      // red, pit road is closed: wait in the box, or stop short of the end of pit road if already rolling, and once
+      // out on the track (it flew as the car left) stop short of where it's blocked.
+      const red = world.control?.flag === 'red';
+      const toEnd = track.distanceFrom(pit.boxS, track.pit.wallEnd) - u;
+      const redCap = !red ? Infinity
+        : toEnd > 0 ? Math.sqrt(2 * PIT_DECEL * Math.max(0, toEnd - 5)) : world.control!.redSpeedAt(car.s, car);
+      let hold = red && u < 20;
+      if (u < 20 && !hold) {
         if (Number.isNaN(this.waitingSince)) this.waitingSince = world.time;
         const waited = world.time - this.waitingSince;
         hold = waited < BOX_WAIT_LIMIT && world.cars.some((o) => o !== car && !o.cleared && !o.retired
           && o.surface === 'pit' && o.d < boxLane + track.pitOffset(o.s) - 4 && o.speed > 4
           && track.distanceFrom(o.s, car.s) > 0 && track.distanceFrom(o.s, car.s) < 45);
       }
-      const follow = hold ? 0 : this.followLimit(car, world, lane);
+      const follow = hold ? 0 : Math.min(this.followLimit(car, world, lane), redCap);
       const cap = (s: number) => Math.min(follow, track.pitOutAt(car, s) < track.pit.wallEnd ? PIT_SERVICE.SPEED_LIMIT - 1 : path.outCap(track.pitOutAt(car, s)));
       followLine(car, world, lane, cap, 0.9, path.laid, this.driveGain);
     } else {

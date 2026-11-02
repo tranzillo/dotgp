@@ -161,7 +161,7 @@ export class FormationDriver {
   private drive(car: Car, world: World, lane: number, v: number): void {
     // (Under the red flag, stopping short of where the track is blocked; slowly through a narrow gap by a wreck.)
     const ctl = world.control!;
-    const want = Math.min(this.discipline ? Math.min(v, this.discipline(car, world, lane)) : v, ctl.redSpeedAt(car.s), ctl.wreckSpeed(car, lane));
+    const want = Math.min(this.discipline ? Math.min(v, this.discipline(car, world, lane)) : v, ctl.redSpeedAt(car.s, car), ctl.wreckSpeed(car, lane));
     // Never at the pit wall's nose unless pitting (it stands closer to the edge than a car's width).
     const t = world.track;
     const laneAt = car.pit.phase === 'none' ? (s: number) => Math.min(lane, t.pitWallClear(s)) : () => lane;
@@ -232,13 +232,35 @@ export class PaceCarDriver implements Controller {
         if (x < path.outStart) return fastLane + t.pitOffset(s);
         return x < t.pit.exitEnd ? path.outAt(x, s) : ramp(x, t.pit.exitEnd, t.pit.exitEnd + 80, path.outAt(t.pit.exitEnd, s), 0);
       };
-      followLine(car, world, lane, (s) => Math.min(ctl.paceSpeedAt(s) * 1.2, path.outCap(t.pitOutS(s))), 0.8, path.laid);
+      const stop = redStop(car, world, lane(car.s));
+      followLine(car, world, lane, (s) => Math.min(ctl.paceSpeedAt(s) * 1.2, path.outCap(t.pitOutS(s)), stop), 0.8, path.laid);
       return;
     }
     // Out on track: slowly until it has picked up the leader (the leader catches it), then at pace speed; round a wreck
     // as the field goes round it; under the red flag, stopping short of where the track is blocked.
     const lane = ctl.aroundWreck(car, 0);
-    const by = ctl.wreckSpeed(car, lane);
+    const by = Math.min(ctl.wreckSpeed(car, lane), redStop(car, world, lane));
     followLine(car, world, () => lane, (s) => Math.min(ctl.redSpeedAt(s), by, ctl.pickedUp ? ctl.paceSpeedAt(s) : PICKUP_SPEED * ctl.paceSpeedAt(s)), 0.9);
   }
+}
+
+/** Braking the pace car plans on for a car ahead under the red (m/s^2), and the gap it stops at (m, bumper to bumper). */
+const RED_STOP_DECEL = 3;
+const RED_STOP_GAP = 3;
+
+/**
+ * Under the red flag, the fastest the pace car may go and still stop behind a car ahead in its lane (it can come up on
+ * a line stopped round the track, or out of pit road onto one: it drove into them). Otherwise no limit.
+ */
+function redStop(car: Car, world: World, lane: number): number {
+  if (world.control?.flag !== 'red') return Infinity;
+  const t = world.track;
+  let v = Infinity;
+  for (const o of world.cars) {
+    if (o.cleared || o.finished) continue;
+    const gap = t.distanceFrom(car.s, o.s);
+    if (gap <= 0 || gap > 200 || Math.abs(o.d - lane) > 2 * P.CAR_RADIUS + 0.5) continue;
+    v = Math.min(v, Math.sqrt(o.speed * o.speed + 2 * RED_STOP_DECEL * Math.max(0, gap - 2 * P.CAR_RADIUS - RED_STOP_GAP)));
+  }
+  return v;
 }

@@ -30,7 +30,11 @@ describe('race control', () => {
       if (race.started && Number.isNaN(greenAt)) greenAt = world.time;
       const leader = race.leader();
       if (!wrecked && race.started && leader && leader.lapsCompleted === 2) {
+        // Wrecked low, by the inside edge: a caution (in the racing line it would be a red, below).
         wrecked = world.cars.find((c) => c !== leader)!;
+        wrecked.placeOnTrack(track, wrecked.s, track.innerEdgeAt(wrecked.s) - 1.5);
+        wrecked.vx = 0;
+        wrecked.vy = 0;
         wrecked.health = 0;
         wrecked.retired = true;
       }
@@ -103,6 +107,33 @@ describe('red flag', () => {
     expect(world.cars.filter((c) => !wrecks.includes(c)).map((c) => c.health)).toEqual(healthAtRed);
     // The wreckers cleared them, and the race finished.
     expect(wrecks.every((w) => w.cleared || w.parked)).toBe(true);
+    expect(race.state).toBe('finished');
+  });
+
+  it('on an oval a wreck stopped in the racing line is a red (one low stays a caution); the field stops, and rolls again once it is towed', () => {
+    const track = ovalTrack(SPEEDWAY);
+    const world = new World(track, { wearScale: 4 });
+    for (let k = 0; k < 6; k++) world.addCar(new Car(k), neuralTeam(drivers[k % drivers.length]));
+    const race = new Race(world, 6, new PaceCarDriver());
+    const ctl = race.control!;
+    const flags: string[] = [];
+    let wrecked: Car | null = null;
+    while (race.state !== 'finished' && world.time < 900) {
+      race.step();
+      if (flags[flags.length - 1] !== ctl.flag) flags.push(ctl.flag);
+      const leader = race.leader();
+      if (!wrecked && race.started && leader && leader.lapsCompleted === 2) {
+        // Wrecked where it is, at racing speed: it slides to a stop mid-track.
+        wrecked = world.cars.find((c) => c !== leader)!;
+        wrecked.health = 0;
+        wrecked.retired = true;
+      }
+    }
+    expect(flags.slice(0, 6)).toEqual(['pace', 'restart', 'green', 'caution', 'red', 'caution']);
+    expect(ctl.reds).toBe(1);
+    // Nobody else went out stopping for it, and it was towed.
+    expect(world.cars.filter((c) => c.retired)).toHaveLength(1);
+    expect(wrecked!.cleared || wrecked!.parked).toBe(true);
     expect(race.state).toBe('finished');
   });
 });

@@ -100,7 +100,7 @@ export class SmoothFormation {
     lane = Math.max(t.outerEdge(car.trackIdx) + inside, Math.min(t.innerEdge(car.trackIdx) - inside, lane));
     // Round a wreck ahead, on the side you're already on (or the one with room), pushed out more the nearer it is.
     lane = ctl.aroundWreck(car, lane);
-    v = Math.min(v, this.followCap(car, world, lane, tr), ctl.redSpeedAt(car.s), ctl.wreckSpeed(car, lane));
+    v = Math.min(v, this.followCap(car, world, lane, tr), ctl.redSpeedAt(car.s, car), ctl.wreckSpeed(car, lane));
     followLine(car, world, () => lane, () => v, this.grip, false, this.gain);
   }
 
