@@ -80,4 +80,7 @@ seconds ahead and labels the best. It needs a way to copy a race mid-way, which 
 
 ## Where it stands
 
-- 2026-11-04: plan agreed; step 1 under way (oval machine thread).
+- 2026-11-04: plan agreed. Steps 1 and 2 done (experiments/2026-11-04-pack-scorecard): the scorecard confirms no runs
+  and lanes left open (teachers and students alike); the second air model (`?draft=2`, `?wake=1`) is in, off by
+  default: today's teachers never race close enough to feel it. Next: steps 3 and 4 together (the lane call and
+  teachers that build runs), tested with the new air on and off.

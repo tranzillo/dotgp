@@ -189,6 +189,11 @@ export class Car {
   /** Skid mark strength this step (0..1): sliding, spinning, tearing up turf. */
   skid = 0;
   draftFactor = 1;
+  /** The second air model's parts (?draft=2): the drag cut from the car ahead and the push from the line behind. */
+  draftAhead = 0;
+  draftPush = 0;
+  /** Downforce left in the wake of the car ahead (?wake=1): 1 in clean air. */
+  wakeFactor = 1;
   wallContact = false;
   surface: Surface = 'track';
 
@@ -345,7 +350,7 @@ export function stepCar(car: Car, track: Track, dt: number, wearScale = 1, wheel
   // Downforce presses the tires into the surface; across the slope it pushes the car out as hard as the extra load
   // the surface pushes back with pushes it in, so it only adds to the load (none on the classic car).
   const spec = car.spec ?? carSpec(track);
-  const loadAcc = normalAcc + (0.5 * P.AIR_DENSITY * spec.cla(track) * speed * speed) / car.mass;
+  const loadAcc = normalAcc + (0.5 * P.AIR_DENSITY * spec.cla(track) * car.wakeFactor * speed * speed) / car.mass;
   car.bank = bank;
   car.normalAcc = normalAcc;
   car.bankAcc = bankAcc;

@@ -87,6 +87,11 @@ export const PHYSICS = {
   DRAFT_WIDTH: 2.6,
   DRAFT_MAX: 0.35, // max drag reduction for the follower
   DRAFT_PUSH: 0.06, // drag reduction for the leader with a car tucked behind
+  // The second air model (?draft=2, ?wake=1: experiment.ts, computeDraft): a car in a line has air ahead and behind,
+  // a line pushes its leader along, and the wake ahead costs downforce.
+  DRAFT_TRAIN: 0.5, // share of the push a car gets from behind that it passes on to the car ahead of it
+  DRAFT_PUSH_MAX: 0.12, // the most a line's push cuts its leader's drag
+  WAKE_MAX: 0.15, // downforce lost right behind a car (the wake's strength as the draft's)
 } as const;
 
 /**

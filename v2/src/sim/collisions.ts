@@ -1,4 +1,5 @@
 import { PHYSICS as P } from './constants';
+import { EXPERIMENT } from './experiment';
 import { applyImpact, trauma, type Car } from './car';
 import type { Track } from './track';
 
@@ -209,6 +210,7 @@ export function draftStrength(gap: number, lateral: number): number {
 
 /** Slipstream: a car tucked behind another in the same lane sees less drag. */
 export function computeDraft(cars: Car[], track: Track): void {
+  if (EXPERIMENT.draft === 2 || EXPERIMENT.wake) { computeAir(cars, track); return; }
   for (const c of cars) c.draftFactor = 1;
   for (const A of cars) {
     if (A.retired || A.cleared) continue;
@@ -225,5 +227,39 @@ export function computeDraft(cars: Car[], track: Track): void {
       B.draftFactor = Math.min(B.draftFactor, 1 - P.DRAFT_PUSH * strength);
     }
     A.draftFactor = Math.min(A.draftFactor, 1 - P.DRAFT_MAX * best);
+  }
+}
+
+/**
+ * The second air model (experiment.ts). With ?draft=2, a car in a line has air both ahead of it and behind it: its drag
+ * is cut by the draft of the car ahead and by the push of the car behind, both at once (the first model took the
+ * larger). And a line pushes its leader along: the push a car gets from behind, DRAFT_TRAIN of it, goes on to the car
+ * ahead with its own (up to DRAFT_PUSH_MAX), so a long line nose to tail outruns a short one, as real packs do. (The
+ * push a car passes on is its last step's: a line settles in a few steps.) With ?wake=1, the wake of the car ahead
+ * costs a follower downforce (WAKE_MAX right behind it, fading as the draft does): following closely through a corner
+ * takes grip it would have in clean air.
+ */
+function computeAir(cars: Car[], track: Track): void {
+  const passOn = new Map<Car, number>();
+  for (const c of cars) passOn.set(c, c.draftPush);
+  for (const c of cars) { c.draftAhead = 0; c.draftPush = 0; c.wakeFactor = 1; }
+  for (const A of cars) {
+    if (A.retired || A.cleared) continue;
+    let best = 0;
+    for (const B of cars) {
+      if (B === A || B.retired || B.cleared) continue;
+      const lateral = Math.abs(B.d - A.d);
+      if (lateral > P.DRAFT_WIDTH) continue;
+      const strength = draftStrength(track.wrapS(B.s - A.s), lateral);
+      if (strength <= 0) continue;
+      if (strength > best) best = strength;
+      const push = EXPERIMENT.draft === 2 ? Math.min(P.DRAFT_PUSH_MAX, P.DRAFT_PUSH * strength + P.DRAFT_TRAIN * passOn.get(A)!) : P.DRAFT_PUSH * strength;
+      B.draftPush = Math.max(B.draftPush, push);
+    }
+    A.draftAhead = P.DRAFT_MAX * best;
+    if (EXPERIMENT.wake) A.wakeFactor = 1 - P.WAKE_MAX * best;
+  }
+  for (const c of cars) {
+    c.draftFactor = EXPERIMENT.draft === 2 ? (1 - c.draftAhead) * (1 - c.draftPush) : Math.min(1 - c.draftAhead, 1 - c.draftPush);
   }
 }

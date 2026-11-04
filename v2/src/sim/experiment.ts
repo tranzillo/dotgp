@@ -9,13 +9,15 @@ import { PHYSICS } from './constants';
  * 2 m wide unless ?car says otherwise); ?damage=1 or 2 (one damage model
  * on every track, not the second on ovals and the first on road circuits:
  * damage.ts); ?lines=2 (ovals banked for two lines, low and high, both off
- * the wall: trackgen/balance.ts).
+ * the wall: trackgen/balance.ts); ?draft=2 (the second air model: a car in a
+ * line takes its draft and its push both, and a line pushes its leader along)
+ * and ?wake=1 (the wake ahead costs a follower downforce): collisions.ts.
  * Read from the page's address when this loads (the page imports it first);
  * a worker gets the page's in its first message (experimentName) and applies
  * them before it builds or simulates anything. Outside a browser (scripts,
  * tests) off, unless DOTGP_EXPERIMENT says otherwise.
  */
-export const EXPERIMENT = { widthScale: 1, car: 0, pitWidth: 1, spec: '', damage: 0, lines: 0 };
+export const EXPERIMENT = { widthScale: 1, car: 0, pitWidth: 1, spec: '', damage: 0, lines: 0, draft: 0, wake: 0 };
 
 /** Puts the switches in a query (?car=2&widths=0.75) in force. */
 export function applyExperiment(query: string): void {
@@ -37,6 +39,8 @@ export function applyExperiment(query: string): void {
   const damage = params.get('damage');
   if (damage === '1' || damage === '2') EXPERIMENT.damage = Number(damage);
   if (params.get('lines') === '2') EXPERIMENT.lines = 2;
+  if (params.get('draft') === '2') EXPERIMENT.draft = 2;
+  if (params.get('wake') === '1') EXPERIMENT.wake = 1;
 }
 if (typeof window !== 'undefined') applyExperiment(window.location.search);
 // Scripts and the lab (node): the same switches from the environment, DOTGP_EXPERIMENT='?spec=cup' (worker threads
@@ -52,6 +56,8 @@ export function experimentName(): string {
   if (EXPERIMENT.spec) on.set('spec', EXPERIMENT.spec);
   if (EXPERIMENT.damage) on.set('damage', String(EXPERIMENT.damage));
   if (EXPERIMENT.lines) on.set('lines', String(EXPERIMENT.lines));
+  if (EXPERIMENT.draft) on.set('draft', String(EXPERIMENT.draft));
+  if (EXPERIMENT.wake) on.set('wake', String(EXPERIMENT.wake));
   return on.size ? `?${on}` : '';
 }
 
