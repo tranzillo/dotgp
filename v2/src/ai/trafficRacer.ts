@@ -2,6 +2,7 @@ import { G, PHYSICS as P } from '../sim/constants';
 import type { Car } from '../sim/car';
 import { brakingAt, carSpec, cornerSpeed } from '../sim/carSpec';
 import { compromise, DAMAGE2 } from '../sim/damage';
+import { EXPERIMENT } from '../sim/experiment';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
 import { FormationDriver, formationTraits, type FormationTraits } from './formation';
@@ -96,6 +97,21 @@ export function followLoss(v: number, reaction: number, lead: number, brake: num
   const level = reaction + (lead * reaction) / (brake - lead); // when the follower's speed is down to the leader's
   if (level * lead >= v) return stopAll;
   return 0.5 * lead * reaction * reaction + (lead * reaction) ** 2 / (2 * (brake - lead));
+}
+
+/**
+ * The closing speed (m/s) a follower can have `room` m beyond the gap it keeps at the same speed's margin (its
+ * length and 2 m) and still check up behind the car ahead if that car started slowing at `lead` now: the room it
+ * loses (followLoss, plus the closing over its reaction and its braking) no more than `room`. Both cars are moving: the
+ * room is the gap between them, not the ground it covers (a stopping distance from the follower's own speed down to
+ * the leader's held a follower 20 m back at 80 m/s to about 1 m/s of closing, whatever it insured against).
+ */
+export function closingRoom(room: number, reaction: number, lead: number, brake: number): number {
+  if (lead >= brake) return 0;
+  // c reaction + lead reaction^2 / 2 + (c + lead reaction)^2 / (2 (brake - lead)) <= room, for c.
+  const k = 1 / (2 * (brake - lead)), b0 = lead * reaction;
+  const x = (-reaction + Math.sqrt(Math.max(0, reaction * reaction + 4 * k * (room + reaction * b0 - 0.5 * lead * reaction * reaction)))) / (2 * k);
+  return Math.max(0, x - b0);
 }
 
 export const DEFAULT_STYLE: RacerStyle = { grip: 0.85, margin: 0.6, room: 0.5, pass: 1 };
@@ -484,7 +500,13 @@ export class TrafficRacer {
       // own following brake: under a safety car on circuits, cars at 40 m/s ran into pitters slowing for pit road.)
       const insure = other.pit.phase === 'in' || smoking ? P.TIRE_MU * G : this.style.insure;
       const gap = 2 * P.CAR_RADIUS + 2 + (insure === undefined ? REACTION * vMe : followLoss(vMe, REACTION, insure, brake));
-      const capAt = (room: number) => Math.sqrt(vOther * vOther + 2 * brake * Math.max(0, ds - room));
+      // Insuring against no more than a lift (its nerve), it closes as fast as it could still check up behind that
+      // car if it lifted now: the gap between two moving cars (closingRoom). Insuring against harder braking than its
+      // own, the room it could stop in from its speed, as before. (?follow=2: training/PACK-RACING.md, step 4.)
+      const follow2 = EXPERIMENT.follow === 2;
+      const relative = follow2 && insure !== undefined && insure < brake && !other.retired;
+      const capAt = (room: number) => relative ? vOther + closingRoom(ds - 2 * P.CAR_RADIUS - 2, REACTION, insure, brake)
+        : Math.sqrt(vOther * vOther + 2 * brake * Math.max(0, ds - room));
       // Pushing up to a car it means to pass, it closes on what it can really stop with (its car's braking, not the
       // gentle braking it follows on): to the room its nerve insures, or, if it's willing to bump (its nerve), right up
       // to that car, touching at no more than its bump speed. (Pulling out at the gentle limit, at oval speeds, was 20
@@ -493,14 +515,19 @@ export class TrafficRacer {
       const pushing = this.passSide === 0 && !other.retired && other.pit.phase === 'none' && faster > pass;
       const hard = brakingAt(spec, track, mu, vMe, car.mass);
       const bump = bumpSpeed(this.style.bump ?? 0, car);
-      const capPush = Math.max(Math.sqrt(vOther * vOther + 2 * hard * Math.max(0, ds - gap)),
+      const capPush = Math.max(relative ? vOther + closingRoom(ds - 2 * P.CAR_RADIUS - 2, REACTION, insure, hard)
+        : Math.sqrt(vOther * vOther + 2 * hard * Math.max(0, ds - gap)),
         bump > 0 ? Math.sqrt((vOther + bump) ** 2 + 2 * hard * Math.max(0, ds - 2 * P.CAR_RADIUS)) : 0);
       const cap = pushing ? capPush : capAt(gap);
       // Catching it in its tow, it stays tucked in while the draft builds its run, and pulls out at the last moment
       // it can (when it would have to brake for it, or once inside the room it follows at): still closing, so it goes
       // by with the run instead of giving up the tow far back and arriving beside with nothing. A pass under way
       // carries on.
-      const building = this.passSide === 0 && closing > 0 && ds > gap && (pushing ? capPush : capAt(gap)) > vMe;
+      // The last moment is the last it could still get beside it before reaching its tail with the run it has (as a
+      // pull-out with a run, below, is let go), a reaction early: building on to its following gap, a bold racer's
+      // (5 m) came too late to get across, and it was braked to that car's speed pulling out.
+      const lastMoment = alongside() + Math.max(0, closing) * (Math.max(0, width - Math.abs(other.d - car.d)) / CROSS_RATE + REACTION) + 1;
+      const building = this.passSide === 0 && closing > 0 && ds > (follow2 ? Math.max(gap, lastMoment) : gap) && (pushing ? capPush : capAt(gap)) > vMe;
       // A stopped car is gone round by every driver, wherever it is: one that waited behind it was stopped on track
       // too, and race control retired it (a whole field queued behind a car that ran dry after the flag). Not a car
       // just getting away (a standing start: everyone is slow), unless it's already going round it.

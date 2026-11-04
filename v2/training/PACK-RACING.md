@@ -84,3 +84,11 @@ seconds ahead and labels the best. It needs a way to copy a race mid-way, which 
   and lanes left open (teachers and students alike); the second air model (`?draft=2`, `?wake=1`) is in, off by
   default: today's teachers never race close enough to feel it. Next: steps 3 and 4 together (the lane call and
   teachers that build runs), tested with the new air on and off.
+- 2026-11-04: step 4 begun, behind `?follow=2` (off by default; experiments/2026-11-04-follow-cap). Why nobody builds a
+  run was the teachers' follow cap: a stopping distance from the follower's own speed, as if the car ahead weren't
+  moving, which lifted every run away from 50 m out whatever the driver's nerve. Now the gap between two moving cars
+  (checking up behind a lift, as the nerve insures), and a pull-out at the last moment the run can still get beside.
+  Passing comes alive (pull-outs pass 1.3-3x as often, 12-42% more position changes) but damaging contact doubles, and
+  still no run is built in the tow: nothing makes a teacher hang back to take one. Next: where the new contact is (a cap
+  that sees the corner the car ahead will brake for), then a teacher that hangs back and takes a run, then the lane
+  call. The superspeedway is not yet measured with it.
