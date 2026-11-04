@@ -8,6 +8,7 @@ Driver training runs on more than one machine (oval drivers on one, road-circuit
 | [RESULTS.md](RESULTS.md) | One line per experiment, from any machine, newest last, tagged by discipline. |
 | [PROCESS.md](PROCESS.md) | How both machines train: one pipeline per skill (teacher, apprenticeship, practice, bundle, readiness), each stage with a gate; shared code; who owns which skill; the order of work. |
 | [ROADMAP.md](ROADMAP.md) | Where this is going: one driver identity (personality, style, skills) across every discipline, measured in every event, rated from real results. Phases and open decisions. |
+| [PACK-RACING.md](PACK-RACING.md) | Pack racing under green (agreed 2026-11-04): drafting runs, choosing lines in traffic, what drivers see; why the drivers race single-file and the plan, step by step, with where it stands. Read it before changing the draft, the teachers' following or passing, or the racing inputs. |
 
 ## How to use it
 
