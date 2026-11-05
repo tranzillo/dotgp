@@ -66,6 +66,44 @@ What it says:
    and pulls out at the last moment. Measured by closing built in the tow turning positive.
 3. Then the lane call (step 3) and choosing a line by ground gained.
 
+## 2026-11-05: the corners
+
+Where the new contact was (`scripts/rearEnds.ts`, `scripts/greenContacts.ts`, and a new probe, `scripts/entryHits.ts`:
+the 3 s before each damaging nose-to-tail hit, from the teacher's own follow decision, now kept in `TrafficRacer.last`
+as `behind`, `slowing` and `lead`). On the short oval nose-to-tail damage went 39 -> 134 a two-race run with the first
+`?follow=2`, 83 of them at corner entry: followers insuring only against a lift closed hard into corners on cars braking
+for them.
+
+What `?follow=2` does now, in steps:
+
+1. **It sees the corner the car ahead will slow for.** Over the next `SLOWING_LOOK` (3.5 s; 2 s was too late on the
+   intermediate), the slowing that car's line asks (this car's pace on the line, scaled to that car's speed now), and
+   insures against that or its lift, the harder. Slowing harder than its following brake, it uses its full braking
+   (still the gap between the cars, not a stopping distance: switching formula took its run away in one step).
+2. **Its following gap insures against the same**, not only its closing.
+3. **Inside its gap it opens it**: `OPEN_GAIN` (0.5 m/s per m short) slower than the car ahead. Held at that car's
+   speed, a gap that grew was never opened (the old cap the same).
+
+Teachers, `?follow=2` now (short / speedway / gen. intermediate / gen. superspeedway; `probes/n-*`):
+
+| | baseline (t) | first ?follow=2 (f) | now |
+|---|---|---|---|
+| damaging car contacts a 100 car-laps | 1.8 / 0.6 / 1.2 / 0.3 | 3.3 / 1.7 / 2.7 / 0.8 | 2.6 / 1.2 / 1.9 / 0.8 |
+| position changes a car-lap | 0.152 / 0.238 / 0.149 / 0.113 | 0.171 / 0.302 / 0.211 / 0.264 | 0.172 / 0.304 / 0.203 / 0.262 |
+| pull-outs with a run that pass | 8% / 35% / 13% / 25% | 20% / 44% / 40% / 23% | 10% / 43% / 20% / 23% |
+| short oval: nose-to-tail damaging hits, at entry | 39, 21 | 134, 83 | 70, 35 |
+
+What the probe says is left, and it was there before `?follow=2` too (the baseline's 21 entry hits are the same): a
+short oval's followers go into the corners 2-4 m behind the car ahead, which brakes at up to 10 m/s^2 for 0.5 s. The
+slowing a follower sees coming is an average to the corner (about 4 m/s^2), not that burst; insuring against the burst
+with a reaction would be a 20 m gap into every short-oval turn, which isn't how packs run. Real drivers anticipate: the
+car ahead brakes where the corner is, and the follower brakes with it, not after it. The teacher's follow cap is one
+speed for every distance ahead (that car's speed now plus room), so it plans braking for its own line's corner speed
+but never for the slower one of the car ahead, and reacts to it through its speed control instead.
+
+Next: an anticipating cap. At each distance ahead, the speed the car ahead will have where this car is then (its line's
+speeds there, as it drives it), so the teacher's speed plan brakes with it for the corner, as it brakes for its own.
+
 ## Commands
 
 ```sh

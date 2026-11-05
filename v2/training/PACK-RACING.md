@@ -92,3 +92,8 @@ seconds ahead and labels the best. It needs a way to copy a race mid-way, which 
   still no run is built in the tow: nothing makes a teacher hang back to take one. Next: where the new contact is (a cap
   that sees the corner the car ahead will brake for), then a teacher that hangs back and takes a run, then the lane
   call. The superspeedway is not yet measured with it.
+- 2026-11-05: `?follow=2` now sees the corner the car ahead will slow for, sizes its gap by it, and opens a gap that
+  grew. Contact down from the first version (teachers 1.2-2.6 damaging contacts a 100 car-laps, baseline 0.3-1.8),
+  position changes still 13-130% up. Left: on short ovals followers go into corners 2-4 m back and react to the car
+  ahead's braking instead of anticipating it (in the baseline too). Next: an anticipating cap (the car ahead's speeds
+  along its line at each distance ahead), then the hang-back run and the lane call.

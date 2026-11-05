@@ -108,11 +108,19 @@ export function followLoss(v: number, reaction: number, lead: number, brake: num
  */
 export function closingRoom(room: number, reaction: number, lead: number, brake: number): number {
   if (lead >= brake) return 0;
+  // Inside that gap (it grew: a corner coming), opening it: slower than the car ahead in proportion to the room
+  // short. (Held at that car's speed, a gap that grew was never opened, and followers went into a short oval's
+  // corners 2-4 m back of cars braking at up to 10 m/s^2.)
+  const short = followLoss(Infinity, reaction, lead, brake) - room;
+  if (short > 0) return -OPEN_GAIN * short;
   // c reaction + lead reaction^2 / 2 + (c + lead reaction)^2 / (2 (brake - lead)) <= room, for c.
   const k = 1 / (2 * (brake - lead)), b0 = lead * reaction;
   const x = (-reaction + Math.sqrt(Math.max(0, reaction * reaction + 4 * k * (room + reaction * b0 - 0.5 * lead * reaction * reaction)))) / (2 * k);
   return Math.max(0, x - b0);
 }
+
+/** Inside its following gap, how much slower than the car ahead it runs to open it (m/s per m short). */
+const OPEN_GAIN = 0.5;
 
 export const DEFAULT_STYLE: RacerStyle = { grip: 0.85, margin: 0.6, room: 0.5, pass: 1 };
 
@@ -214,6 +222,8 @@ const SAVE_PASS = 60;
 const SAVE_WALL_LEAD = 150;
 /** A broken car moves down only with nothing arriving below it within this (s, in its mirrors): else it holds its lane. */
 const SAVE_CLEAR = 2.5;
+/** How far ahead (s, at its speed) a follower looks for the corner the car ahead will slow for (?follow=2). */
+const SLOWING_LOOK = 3.5;
 /** Seconds ahead a lane held off the line is kept clear of the road's edges (it moves over at CROSS_RATE). */
 const EDGE_LOOK = 2;
 
@@ -261,7 +271,7 @@ export class TrafficRacer {
   private passGap = 0;
   private readonly mirror = new Float32Array(MIRROR_SIZE);
   /** What it was doing at its last decision (for looking into races). */
-  last = { want: 0, offset: 0, low: 0, high: 0, follow: Infinity, squeezed: false, passing: false };
+  last = { want: 0, offset: 0, low: 0, high: 0, follow: Infinity, squeezed: false, passing: false, behind: null as Car | null, slowing: 0, lead: 0 };
   private readonly lineFor: (track: Track) => RacingLine;
 
   /**
@@ -423,6 +433,8 @@ export class TrafficRacer {
     let passing = false;
     let low = here.lo, high = hiEdge; // absolute bounds on d now
     let followCap = Infinity;
+    // The car that sets it, the slowing it saw ahead for that car (?follow=2), and the slowing it insured against.
+    let behind: Car | null = null, behindSlowing = 0, behindLead = 0;
     let yieldTo = Infinity; // the speed of the slowest car alongside and ahead of it, to drop back behind if squeezed
     const reach = lookahead(vMe);
     // The car a pass under way is on first: its side is the plan, whatever other cars ahead come to (judged in the
@@ -499,23 +511,44 @@ export class TrafficRacer {
       // braking. (Before, it got the reaction gap, which plans on the car ahead braking no harder than this one's
       // own following brake: under a safety car on circuits, cars at 40 m/s ran into pitters slowing for pit road.)
       const insure = other.pit.phase === 'in' || smoking ? P.TIRE_MU * G : this.style.insure;
-      const gap = 2 * P.CAR_RADIUS + 2 + (insure === undefined ? REACTION * vMe : followLoss(vMe, REACTION, insure, brake));
       // Insuring against no more than a lift (its nerve), it closes as fast as it could still check up behind that
       // car if it lifted now: the gap between two moving cars (closingRoom). Insuring against harder braking than its
       // own, the room it could stop in from its speed, as before. (?follow=2: training/PACK-RACING.md, step 4.)
+      // The car ahead slows for the corner it's coming to as well, as hard as its line there asks over the next
+      // SLOWING_LOOK s (this car's own pace on the line, scaled to that car's speed now): it insures against that or
+      // its lift, the harder. (Insuring only against a lift, followers closed hard into the corners and ran into the
+      // back of cars braking for them: a short oval's nose-to-tail damage 39 -> 134, 83 of them at corner entry.)
       const follow2 = EXPERIMENT.follow === 2;
-      const relative = follow2 && insure !== undefined && insure < brake && !other.retired;
-      const capAt = (room: number) => relative ? vOther + closingRoom(ds - 2 * P.CAR_RADIUS - 2, REACTION, insure, brake)
-        : Math.sqrt(vOther * vOther + 2 * brake * Math.max(0, ds - room));
+      let slowing = 0;
+      if (follow2) {
+        const scale = vOther / Math.max(1, paceAt(other.s));
+        for (let a = CATCH_STEP; a <= vOther * SLOWING_LOOK; a += CATCH_STEP) {
+          const v = paceAt(other.s + a) * scale;
+          if (v < vOther) slowing = Math.max(slowing, (vOther * vOther - v * v) / (2 * a));
+        }
+      }
+      // Slowing harder than its own following brake, it brakes as hard as the car can to follow it (still the gap
+      // between them): switched to the stopping distance there, its run was taken away at once at a corner's entry
+      // and it couldn't shed it in time (a short oval's entry rear-ends 21 -> 38).
+      const hard = brakingAt(spec, track, mu, vMe, car.mass);
+      const lead = Math.max(insure ?? 0, slowing);
+      const relative = follow2 && insure !== undefined && lead < hard && !other.retired;
+      const followBrake = lead < brake ? brake : hard;
+      // Its following gap insures against the same (?follow=2): sized for a lift, a short oval's followers ran 2-4 m
+      // back into corners where the car ahead braked at up to 10 m/s^2, and their foot was a reaction behind. Seeing
+      // the corner coming, it drops back to room it can brake in, and closes again in the draft on the straight.
+      const gap = 2 * P.CAR_RADIUS + 2 + (insure === undefined ? REACTION * vMe
+        : follow2 ? followLoss(vMe, REACTION, lead, followBrake) : followLoss(vMe, REACTION, insure, brake));
+      const capAt = (room: number) => relative ? vOther + closingRoom(ds - 2 * P.CAR_RADIUS - 2, REACTION, lead, followBrake)
+        : follow2 && ds < room ? vOther - OPEN_GAIN * (room - ds) : Math.sqrt(vOther * vOther + 2 * brake * Math.max(0, ds - room));
       // Pushing up to a car it means to pass, it closes on what it can really stop with (its car's braking, not the
       // gentle braking it follows on): to the room its nerve insures, or, if it's willing to bump (its nerve), right up
       // to that car, touching at no more than its bump speed. (Pulling out at the gentle limit, at oval speeds, was 20
       // m back with a run that died before it got by; the field's passes had been bump-and-run, by a bug.) What a
       // touch does is the physics': the car ahead loses speed, or both get damaged, and the stewards see it.
       const pushing = this.passSide === 0 && !other.retired && other.pit.phase === 'none' && faster > pass;
-      const hard = brakingAt(spec, track, mu, vMe, car.mass);
       const bump = bumpSpeed(this.style.bump ?? 0, car);
-      const capPush = Math.max(relative ? vOther + closingRoom(ds - 2 * P.CAR_RADIUS - 2, REACTION, insure, hard)
+      const capPush = Math.max(relative ? vOther + closingRoom(ds - 2 * P.CAR_RADIUS - 2, REACTION, lead, hard)
         : Math.sqrt(vOther * vOther + 2 * hard * Math.max(0, ds - gap)),
         bump > 0 ? Math.sqrt((vOther + bump) ** 2 + 2 * hard * Math.max(0, ds - 2 * P.CAR_RADIUS)) : 0);
       const cap = pushing ? capPush : capAt(gap);
@@ -597,6 +630,7 @@ export class TrafficRacer {
           if (!pitting && mergeTo === other.d && ds - alongside() > Math.max(0, closing) * getAcross + 1) continue;
         }
       }
+      if (cap < followCap) { behind = other; behindSlowing = slowing; behindLead = lead; }
       followCap = Math.min(followCap, cap);
     }
 
@@ -677,7 +711,7 @@ export class TrafficRacer {
       if (low > high && yieldTo < Infinity) cap = Math.min(cap, Math.max(5, yieldTo - 4));
       return cap;
     };
-    this.last = { want, offset, low, high, follow: followCap, squeezed: low > high, passing };
+    this.last = { want, offset, low, high, follow: followCap, squeezed: low > high, passing, behind, slowing: behindSlowing, lead: behindLead };
     followRacingLine(car, world, line, grip, offset, capAt, this.style.driveGain, this.style.followGain, offsetRate);
     if (nextPath !== undefined && nextPath !== this.path) {
       // Same place on the road, measured from the new path.
