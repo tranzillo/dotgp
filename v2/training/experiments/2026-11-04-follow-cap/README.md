@@ -104,6 +104,29 @@ but never for the slower one of the car ahead, and reacts to it through its spee
 Next: an anticipating cap. At each distance ahead, the speed the car ahead will have where this car is then (its line's
 speeds there, as it drives it), so the teacher's speed plan brakes with it for the corner, as it brakes for its own.
 
+## 2026-11-05: the anticipating cap, `?follow=3`
+
+`?follow=3` is `?follow=2` plus that: each car a teacher follows gives a follow cap at every distance ahead of it, with
+that car as far on again, at its line's speed there (the teacher's own pace on the line, scaled to that car's speed
+now). The speed plan (`followRacingLine`'s `capAt`) takes the lowest, so it plans the car ahead's corner braking as it
+plans its own, and its throttle eases off with it instead of a reaction after it. Braking only: out of a corner it still
+waits for the car ahead to speed up (its cap now is still the ceiling). (`probes/a-*`.)
+
+| | `?follow=2` (n) | `?follow=3` (a) | baseline (t) |
+|---|---|---|---|
+| damaging car contacts a 100 car-laps | 2.6 / 1.2 / 1.9 / 0.8 | 1.2 / 1.3 / 1.3 / 0.8 | 1.8 / 0.6 / 1.2 / 0.3 |
+| nose-to-tail damaging hits, a teacher following | 70 / 15 / 33 / 4 | 20 / 20 / 9 / 4 | |
+| of them at corner entry | 35 / 1 / 21 / 0 | 1 / 2 / 2 / 0 | |
+| position changes a car-lap | 0.172 / 0.304 / 0.203 / 0.262 | 0.130 / 0.290 / 0.203 / 0.252 | 0.152 / 0.238 / 0.149 / 0.113 |
+| clean passes a 100 green car-laps | 10.3 / 33.1 / 16.8 / 26.3 | 8.5 / 30.6 / 18.7 / 24.4 | |
+| pull-outs with a run that pass | 10% / 43% / 20% / 23% | 11% / 41% / 21% / 27% | 8% / 35% / 13% / 25% |
+
+Corner-entry rear-ends are nearly gone (short oval 35 -> 1, gen. intermediate 21 -> 2), and the short oval's damaging
+contact is under the baseline's (2.6 -> 1.2, baseline 1.8). The speedway's is level (its hits are mid-corner and on the
+straight, closing 3-10 m/s: pulling out or back in, not following). Open: the short oval passes less (position
+changes 0.172 -> 0.130, under the baseline's 0.152; clean passes 10.3 -> 8.5); two races a track, so part may be noise.
+The short oval's remaining hits are mid-corner (12) and on the straight (7). The one wreck there (2 cars) is new.
+
 ## Commands
 
 ```sh
@@ -112,6 +135,8 @@ DOTGP_EXPERIMENT='?spec=cup&lines=2&follow=2' npx tsx --import ./scripts/packCar
   --tracks speedway --seeds 2 --field 40 --rules 1
 # with the new air: '?spec=cup&lines=2&follow=2&draft=2&wake=1'; tracks short, speedway, oval:3850048323:intermediate,
 # oval:774865359:superspeedway (--field 36). Before: without follow=2 (the scorecard's t- probes).
+# The rear-end probe alongside: --import ./scripts/packCard.ts --import ./scripts/entryHits.ts (probes n-*: follow=2,
+# a-*: follow=3).
 ```
 
 The probes (`probes/f-*`, `probes/fa-*`) were run before the switch was added, with the change on unconditionally: the

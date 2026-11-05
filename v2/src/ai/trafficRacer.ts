@@ -433,6 +433,8 @@ export class TrafficRacer {
     let passing = false;
     let low = here.lo, high = hiEdge; // absolute bounds on d now
     let followCap = Infinity;
+    // ?follow=3: the follow caps at each distance ahead, with the car ahead where it will be (capAt, below).
+    const follows: ((ahead: number) => number)[] = [];
     // The car that sets it, the slowing it saw ahead for that car (?follow=2), and the slowing it insured against.
     let behind: Car | null = null, behindSlowing = 0, behindLead = 0;
     let yieldTo = Infinity; // the speed of the slowest car alongside and ahead of it, to drop back behind if squeezed
@@ -518,10 +520,10 @@ export class TrafficRacer {
       // SLOWING_LOOK s (this car's own pace on the line, scaled to that car's speed now): it insures against that or
       // its lift, the harder. (Insuring only against a lift, followers closed hard into the corners and ran into the
       // back of cars braking for them: a short oval's nose-to-tail damage 39 -> 134, 83 of them at corner entry.)
-      const follow2 = EXPERIMENT.follow === 2;
+      const follow2 = EXPERIMENT.follow >= 2;
+      const scale = vOther / Math.max(1, paceAt(other.s));
       let slowing = 0;
       if (follow2) {
-        const scale = vOther / Math.max(1, paceAt(other.s));
         for (let a = CATCH_STEP; a <= vOther * SLOWING_LOOK; a += CATCH_STEP) {
           const v = paceAt(other.s + a) * scale;
           if (v < vOther) slowing = Math.max(slowing, (vOther * vOther - v * v) / (2 * a));
@@ -539,8 +541,9 @@ export class TrafficRacer {
       // the corner coming, it drops back to room it can brake in, and closes again in the draft on the straight.
       const gap = 2 * P.CAR_RADIUS + 2 + (insure === undefined ? REACTION * vMe
         : follow2 ? followLoss(vMe, REACTION, lead, followBrake) : followLoss(vMe, REACTION, insure, brake));
-      const capAt = (room: number) => relative ? vOther + closingRoom(ds - 2 * P.CAR_RADIUS - 2, REACTION, lead, followBrake)
-        : follow2 && ds < room ? vOther - OPEN_GAIN * (room - ds) : Math.sqrt(vOther * vOther + 2 * brake * Math.max(0, ds - room));
+      // (vO: that car's speed; now, or where it will be: ?follow=3, below.)
+      const capAt = (room: number, vO = vOther) => relative ? vO + closingRoom(ds - 2 * P.CAR_RADIUS - 2, REACTION, lead, followBrake)
+        : follow2 && ds < room ? vO - OPEN_GAIN * (room - ds) : Math.sqrt(vO * vO + 2 * brake * Math.max(0, ds - room));
       // Pushing up to a car it means to pass, it closes on what it can really stop with (its car's braking, not the
       // gentle braking it follows on): to the room its nerve insures, or, if it's willing to bump (its nerve), right up
       // to that car, touching at no more than its bump speed. (Pulling out at the gentle limit, at oval speeds, was 20
@@ -548,9 +551,10 @@ export class TrafficRacer {
       // touch does is the physics': the car ahead loses speed, or both get damaged, and the stewards see it.
       const pushing = this.passSide === 0 && !other.retired && other.pit.phase === 'none' && faster > pass;
       const bump = bumpSpeed(this.style.bump ?? 0, car);
-      const capPush = Math.max(relative ? vOther + closingRoom(ds - 2 * P.CAR_RADIUS - 2, REACTION, lead, hard)
-        : Math.sqrt(vOther * vOther + 2 * hard * Math.max(0, ds - gap)),
-        bump > 0 ? Math.sqrt((vOther + bump) ** 2 + 2 * hard * Math.max(0, ds - 2 * P.CAR_RADIUS)) : 0);
+      const pushAt = (vO: number) => Math.max(relative ? vO + closingRoom(ds - 2 * P.CAR_RADIUS - 2, REACTION, lead, hard)
+        : Math.sqrt(vO * vO + 2 * hard * Math.max(0, ds - gap)),
+        bump > 0 ? Math.sqrt((vO + bump) ** 2 + 2 * hard * Math.max(0, ds - 2 * P.CAR_RADIUS)) : 0);
+      const capPush = pushAt(vOther);
       const cap = pushing ? capPush : capAt(gap);
       // Catching it in its tow, it stays tucked in while the draft builds its run, and pulls out at the last moment
       // it can (when it would have to brake for it, or once inside the room it follows at): still closing, so it goes
@@ -632,6 +636,17 @@ export class TrafficRacer {
       }
       if (cap < followCap) { behind = other; behindSlowing = slowing; behindLead = lead; }
       followCap = Math.min(followCap, cap);
+      // Where this car will be `ahead` on, that car will be as far on again, at its line's speed there as it drives it
+      // (this car's pace on the line, scaled to that car's speed now): the speed plan brakes with it for the corner it
+      // comes to, as for its own, instead of reacting once it has slowed. (?follow=3. Capped on that car's speed now
+      // at every distance, a short oval's followers entered the turns 2-4 m behind cars braking at up to 10 m/s^2 and
+      // ran into them: training/experiments/2026-11-04-follow-cap.)
+      if (EXPERIMENT.follow === 3 && !other.retired) {
+        follows.push((ahead) => {
+          const vO = ahead <= 0 ? vOther : paceAt(other.s + ahead) * scale;
+          return pushing ? pushAt(vO) : capAt(gap, vO);
+        });
+      }
     }
 
     // Beside the car it's passing, out of its path: the pass carries on, in its lane, until it's past that car or its
@@ -708,6 +723,8 @@ export class TrafficRacer {
       // closer than the speed plan's look ahead vanished from it, and the plan floored it into that car: most of a
       // 40-car short oval's contact).
       cap = Math.min(cap, followCap);
+      // (Braking with it only: speeding up with it out of the corner, it still waits for it.)
+      for (const f of follows) cap = Math.min(cap, f(ahead));
       if (low > high && yieldTo < Infinity) cap = Math.min(cap, Math.max(5, yieldTo - 4));
       return cap;
     };

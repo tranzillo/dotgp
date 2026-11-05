@@ -97,3 +97,7 @@ seconds ahead and labels the best. It needs a way to copy a race mid-way, which 
   position changes still 13-130% up. Left: on short ovals followers go into corners 2-4 m back and react to the car
   ahead's braking instead of anticipating it (in the baseline too). Next: an anticipating cap (the car ahead's speeds
   along its line at each distance ahead), then the hang-back run and the lane call.
+- 2026-11-05: the anticipating cap, `?follow=3` (`?follow=2` plus braking with the car ahead for the corner it comes
+  to). Corner-entry rear-ends nearly gone (short oval 35 -> 1); damaging contacts a 100 car-laps 1.2/1.3/1.3/0.8 (short
+  under the baseline's 1.8). Position changes still up on the bigger ovals (0.290/0.203/0.252), but the short oval's
+  fell to 0.130, under the baseline's 0.152: to look into. Then the hang-back run and the lane call.
