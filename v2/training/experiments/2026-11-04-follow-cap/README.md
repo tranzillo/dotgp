@@ -127,6 +127,28 @@ straight, closing 3-10 m/s: pulling out or back in, not following). Open: the sh
 changes 0.172 -> 0.130, under the baseline's 0.152; clean passes 10.3 -> 8.5); two races a track, so part may be noise.
 The short oval's remaining hits are mid-corner (12) and on the straight (7). The one wreck there (2 cars) is new.
 
+### The short oval's passing, over 4 races (`probes/w-short-*`)
+
+Where position changes happen and how close followers run there (`scripts/passWhere.ts`, with the scorecard), short
+oval, 4 races each:
+
+| | baseline | `?follow=2` | `?follow=3` |
+|---|---|---|---|
+| position changes a car-lap | 0.158 | 0.168 | 0.145 |
+| clean passes a 100 green car-laps | 9.8 | 10.5 | 9.7 |
+| damaging car contacts a 100 car-laps | 1.9 | 2.5 | 1.3 |
+| position changes straight / entry / mid / exit | 567 / 148 / 1247 / 208 | 760 / 152 / 1199 / 215 | 658 / 134 / 971 / 190 |
+| following mid-corner under 3 m / 10-20 m (share of following time) | 14% / 24% | 17% / 24% | 9% / 30% |
+
+Over 4 races the drop is smaller than 2 showed (0.130): clean passes are the baseline's, position changes 8% under it.
+What `?follow=3` gave up against `?follow=2` is mid-corner (1199 -> 971), where followers no longer run on the car
+ahead's bumper (under 3 m 17% -> 9% of following time); some of those changes came with the contact it no longer has
+(damaging contacts 2.5 -> 1.3). The short oval's passing was thin before any of this (a pull-out with a run passes 7-11%
+of the time in all three): that's the hang-back run's job, next.
+
+Seen on the way: a teacher's pass attempts flicker. Mid-corner some 10,000-11,000 starts in 4 races, 1% of them passing
+within 10 s, in all three (the baseline too): `passing` turns on and off from one decision to the next.
+
 ## Commands
 
 ```sh

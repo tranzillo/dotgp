@@ -101,3 +101,7 @@ seconds ahead and labels the best. It needs a way to copy a race mid-way, which 
   to). Corner-entry rear-ends nearly gone (short oval 35 -> 1); damaging contacts a 100 car-laps 1.2/1.3/1.3/0.8 (short
   under the baseline's 1.8). Position changes still up on the bigger ovals (0.290/0.203/0.252), but the short oval's
   fell to 0.130, under the baseline's 0.152: to look into. Then the hang-back run and the lane call.
+  Over 4 races: short oval position changes 0.158 baseline / 0.168 `?follow=2` / 0.145 `?follow=3`, clean passes
+  9.8/10.5/9.7, damaging contacts 1.9/2.5/1.3. What it gave up is mid-corner, where followers no longer sit on the
+  bumper. Short-oval passing was thin before (runs pass 7-11%): next, the hang-back run. Also seen: pass attempts
+  flicker on and off (some 10,000 mid-corner starts in 4 races, 1% passing, the baseline too).
