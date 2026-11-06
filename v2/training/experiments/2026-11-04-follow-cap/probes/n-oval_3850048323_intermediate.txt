@@ -1,0 +1,48 @@
+
+=== oval:3850048323:intermediate seed 1: 61 laps, 24 cars (a car a pit box), 4x pace (153 s)
+finished 24/24  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 1% >25%
+  marks lap 20: groove 8%, skids 0% mean darkness; 24% of surface >10% dark, 13% >25%
+
+=== oval:3850048323:intermediate seed 2: 61 laps, 24 cars (a car a pit box), 4x pace (231 s)
+finished 24/24  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 1% >25%
+  marks lap 20: groove 8%, skids 0% mean darkness; 24% of surface >10% dark, 13% >25%
+
+=== summary by track
+
+oval:3850048323:intermediate (2 races)
+  STEWARDS 1.0 decisions/race: avoidable-contact: time 1, avoidable-contact: warning 1
+  WRECKS  0.0 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 0)
+          by context: 
+          who / what: 
+          damage done to others (by fault): 0.46 health/race
+  PACK    18.2 passes/100 green car-laps, alongside 2%, drafting 22%, lane spread 4.01 m; lockstep same brain –, different brains -0.000
+  PASSING 16.8 clean passes/100 green car-laps; of all passes 7% with contact, 3% damaging, 45% from the draft; 2.0 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 3.71 m, 1.10 m/s, 0.109
+  SCRIPTS 11% of car-time on track driven by a script (formation 0%, pit maneuver 11%); 0.0 retirements/race while a script drove
+  TIRES   wear 0.0426/green lap -> cliff (0.3) after 16 laps; sliding >0.05 0%, >0.35 0%, >0.6 0% of car-steps
+  FUEL    burn 4.15 kg/green lap -> 14 laps per tank
+  DAMAGE  health lost on track /race: green walls 0.01 (0.00 with a car alongside), cars 0.79; caution walls 0.00, cars 0.00
+  STOPS   97.0/race (0% under caution), tires taken 95%, repairs 0%, called for fuel 98% tires 2% damage 0% caution 0% penalty 0%, tire life at stop 0.47 (min 0.38), service 13.6 s
+  PIT ROAD 52.8 s entry to track under green, – s under caution; 3.5 contacts, 0.14 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 40.09 s (700) | 0.6-0.8: 40.43 s (1082) | 0.4-0.6: 40.98 s (647) | 0.3-0.4: 41.77 s (20) | 0.2-0.3: 41.90 s (13) | 0.0-0.2: 42.86 s (8)
+PACK runs: 872 pull-outs, 28% with a run (closing 1+ m/s); closing built in the tow over 3 s before -0.23 m/s, at the pull-out 0.30 m/s
+PACK   passed within 10 s: with a run 20%, without 6%, all 10%
+PACK held up (following, closing under 1 m/s): 16.8% of green car-time; the better lane beside: open 91%, faster 3%, no faster 4%, taken 3%, none 0%
+PACK   lane open or faster: moved over within 3 s 44% of 7349 chances
+PACK pack: 0.203 position changes a car-lap; alongside 3% of green car-time; in a tow 30% (drag cut there 14%); damaging car contacts 1.9 a 100 car-laps (2784 green car-laps)
+HIT damaging nose-to-tail contacts, a teacher following: 33
+HIT phase      n  capped on it 1 s out  gap 2 s / 1 s (m)  closing 2 s / 1 s  slowing seen 2 s out / insured  leader slowed (mean over 2 s / peak 0.5 s, m/s^2)  over its cap 1 s out (m/s)  pedal 1 s out
+HIT straight    3     100%     2.59 /    1.63     1.70 /    1.09     4.02 /    4.02     0.47 /    8.29    -1.05     0.12
+HIT entry      21      90%     2.95 /    2.26     0.38 /    1.27     5.64 /    5.64     3.92 /   11.55    -0.50     0.04
+HIT mid         8      50%    10.54 /   11.28    -0.39 /    1.66     5.55 /    7.01     3.95 /    5.92    -7.81    -0.06
+HIT exit        1       0%        - /       -    14.16 /   18.83        - /       -     0.28 /   16.04   -29.64     0.17
+HIT trace (entry): -3s gap 3.5 v 74.3 vo 73.9 cap 76.4 saw 2.1 ins 2.1 pedal 0.13 | -2s gap 2.7 v 75.4 vo 74.7 cap 77.0 saw 5.1 ins 5.1 pedal 0.14 | -1.5s gap 2.4 v 75.9 vo 75.4 cap 77.7 saw 6.2 ins 6.2 pedal 0.12 | -1s gap 2.1 v 76.3 vo 75.4 cap 77.8 saw 7.8 ins 7.8 pedal 0.12 | -0.5s gap (-0) v 75.3 vo 72.8 cap 73.4* saw 14.7 ins 14.7 pedal -0.36 | -0.1s gap 0.2 v 72.1 vo 69.3 cap 71.2 saw 15.0 ins 15.0 pedal -0.27
+HIT trace (entry): -3s gap 5.9 v 74.1 vo 73.1 cap 78.4 saw 3.3 ins 3.3 pedal 0.23 | -2s gap 4.0 v 75.0 vo 73.0 cap 75.2 saw 5.6 ins 5.6 pedal 0.03 | -1.5s gap 2.6 v 72.5 vo 70.2 cap 72.0 saw 6.2 ins 6.2 pedal -0.10 | -1s gap 1.9 v 72.0 vo 70.8 cap 72.6 saw 8.1 ins 8.1 pedal 0.08 | -0.5s gap 0.9 v 70.1 vo 68.7 cap 70.2 saw 14.3 ins 14.3 pedal 0.00 | -0.1s gap 0.1 v 68.3 vo 65.6 cap 67.2 saw 11.4 ins 11.4 pedal -0.19
+HIT trace (entry): -3s gap 3.9 v 71.2 vo 71.6 cap 71.8 saw 3.9 ins 3.9 pedal 0.10 | -2s gap 4.2 v 71.6 vo 71.3 cap 73.9 saw 5.8 ins 5.8 pedal 0.39 | -1.5s gap 3.8 v 72.8 vo 70.9 cap 73.5 saw 7.8 ins 7.8 pedal 0.13 | -1s gap 2.5 v 71.4 vo 69.0 cap 71.4 saw 13.8 ins 13.8 pedal -0.00 | -0.5s gap 1.1 v 67.4 vo 64.8 cap 67.2 saw 10.7 ins 10.7 pedal -0.35 | -0.1s gap 0.2 v 63.5 vo 61.2 cap 63.2 saw 9.2 ins 9.2 pedal -0.36
+HIT trace (entry): -3s gap (0) v 71.4 vo 71.4 cap 88.5* saw 2.6 ins 2.6 pedal 0.28 | -2s gap 3.8 v 72.1 vo 72.8 cap 74.9 saw 5.9 ins 5.9 pedal 0.39 | -1.5s gap 4.2 v 73.0 vo 73.5 cap 75.6 saw 7.8 ins 7.8 pedal 0.30 | -1s gap 3.6 v 73.1 vo 70.1 cap 72.4 saw 15.1 ins 15.1 pedal -0.17 | -0.5s gap 1.8 v 68.4 vo 64.4 cap 66.6 saw 12.1 ins 12.1 pedal -0.39 | -0.1s gap 0.3 v 64.3 vo 60.8 cap 62.4 saw 8.3 ins 8.3 pedal -0.34
+HIT trace (entry): -3s gap 1.4 v 74.1 vo 74.0 cap 74.9 saw 4.3 ins 4.3 pedal 0.14 | -2s gap 1.4 v 74.1 vo 75.0 cap 74.4 saw 6.7 ins 6.7 pedal 0.04 | -1.5s gap 2.0 v 74.2 vo 75.5 cap 75.0 saw 8.7 ins 8.7 pedal 0.12 | -1s gap 2.3 v 74.9 vo 73.9 cap 75.3 saw 13.0 ins 13.0 pedal 0.04 | -0.5s gap 1.2 v 70.1 vo 67.5 cap 68.8 saw 14.0 ins 14.0 pedal -0.46 | -0.1s gap 0.2 v 64.9 vo 62.5 cap 63.7 saw 11.8 ins 11.8 pedal -0.48
+HIT trace (entry): -3s gap 3.2 v 73.6 vo 74.2 cap 74.0 saw 3.9 ins 3.9 pedal 0.06 | -2s gap 3.3 v 74.4 vo 74.3 cap 76.6 saw 6.1 ins 6.1 pedal 0.29 | -1.5s gap 3.3 v 75.2 vo 75.1 cap 77.4 saw 7.8 ins 7.8 pedal 0.25 | -1s gap 3.0 v 76.2 vo 74.7 cap 77.0 saw 11.3 ins 11.3 pedal 0.13 | -0.5s gap 1.3 v 72.3 vo 68.7 cap 70.6 saw 14.3 ins 14.3 pedal -0.44 | -0.1s gap 0.2 v 67.0 vo 65.1 cap 66.9 saw 13.6 ins 13.6 pedal -0.20
+HIT trace (entry): -3s gap 2.6 v 73.0 vo 73.1 cap 73.7 saw 3.6 ins 3.6 pedal 0.13 | -2s gap 2.7 v 74.2 vo 74.2 cap 75.0 saw 6.0 ins 6.0 pedal 0.14 | -1.5s gap 2.7 v 74.7 vo 74.7 cap 75.6 saw 7.5 ins 7.5 pedal 0.16 | -1s gap 2.5 v 74.6 vo 73.4 cap 74.4 saw 10.2 ins 10.2 pedal -0.08 | -0.5s gap 1.4 v 70.3 vo 67.2 cap 68.1 saw 14.2 ins 14.2 pedal -0.42 | -0.1s gap 0.2 v 65.6 vo 62.9 cap 63.5 saw 9.9 ins 9.9 pedal -0.39
+HIT trace (entry): -3s gap 2.2 v 73.9 vo 73.6 cap 74.7 saw 2.3 ins 2.4 pedal 0.14 | -2s gap 1.9 v 75.0 vo 74.8 cap 75.8 saw 5.2 ins 5.2 pedal 0.13 | -1.5s gap 1.8 v 75.5 vo 75.3 cap 76.3 saw 6.3 ins 6.3 pedal 0.13 | -1s gap 1.6 v 75.7 vo 75.4 cap 76.4 saw 7.9 ins 7.9 pedal 0.11 | -0.5s gap 1.3 v 75.7 vo 74.1 cap 75.2 saw 11.7 ins 11.7 pedal -0.10 | -0.1s gap 0.3 v 72.1 vo 69.0 cap 69.9 saw 14.7 ins 14.7 pedal -0.40

@@ -1,0 +1,35 @@
+# Real oval centrelines (OpenStreetMap)
+
+These centrelines come from [OpenStreetMap](https://www.openstreetmap.org)
+(© OpenStreetMap contributors). The data is available under the
+[Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/).
+Each file's second line lists the OpenStreetMap ways it was assembled from.
+
+`scripts/osmtrack.ts` makes them:
+- It fetches the raceway ways around a track from the Overpass API.
+- It assembles the oval's loop.
+- It puts the start line where the loop passes the pit lane's middle.
+
+The widths are published figures, not mapped ones. Banking is in
+`src/trackgen/realtrack.ts` (`REAL_TRACKS`), also from published figures.
+Pits, run-off and infield are DotGP's own.
+
+## Pit lanes (`../pits.json`)
+
+The real tracks' pit lanes, also from OpenStreetMap (ODbL), in each
+survey's own frame. Each entry lists the ways it was assembled from.
+`scripts/osmpits.ts` makes them:
+- It fetches the raceway ways around the track.
+- It takes the longest chain of ways named as a pit lane, in any of
+  several languages.
+- It lays the survey over OpenStreetMap's raceway. An OpenStreetMap
+  survey shares its frame; a TUMFTM one is fitted with a turn and a shift.
+
+25 of the 30 tracks have one. The circuits use theirs by default, where
+DotGP's pit lane fits it: the entry and exit lanes follow the real line
+where they can, otherwise they run alongside the track. Where the mapped
+entry comes out shorter than pit road's 40 m flare, DotGP places its own
+lane instead, if that one's entry is longer and it holds as many boxes. The
+ovals' lanes aren't used. `?pits=placed` in the app, or `--placed` in
+`scripts/realtracks.ts` and `scripts/pitsurvey.ts`, places DotGP's own lanes
+everywhere, for comparison.

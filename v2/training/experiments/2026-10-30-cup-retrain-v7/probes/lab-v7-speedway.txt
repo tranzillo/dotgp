@@ -1,0 +1,106 @@
+
+=== speedway seed 1: 59 laps, 30 cars (a car a pit box), 4x pace (181 s)
+finished 7/30  cautions 5 (20 laps)  retirements 23  biggest wreck 6 cars
+  t=429s  3 car(s): green @75, caution +7s @30, caution +8s @64
+  t=497s  6 car(s): caution +68s @26, caution +68s @34, caution +73s @26, caution +73s @40, caution +73s @29, caution +80s @53
+  t=517s  4 car(s): caution +89s @44, caution +89s @47, caution +93s @34, caution +95s @31
+  t=634s  1 car(s): caution +206s @13
+  t=1079s  2 car(s): green @33, green @10
+  t=1108s  1 car(s): caution +29s @34
+  t=1139s  1 car(s): caution +59s @41
+  t=1213s  1 car(s): caution +134s @30
+  t=2547s  2 car(s): green @39, caution +8s @21
+  marks lap 5: groove 7%, skids 0% mean darkness; 34% of surface >10% dark, 0% >25%
+  marks lap 20: groove 11%, skids 1% mean darkness; 50% of surface >10% dark, 10% >25%
+
+=== summary by track
+
+speedway (1 races)
+  STEWARDS 10.0 decisions/race: avoidable-contact: black-flag 4, pit-speeding: stop-go 3, avoidable-contact: time 2, blend-line: drive-through 1
+  WRECKS  23.0 retirements/race, 5.0 cautions/race, 5 multi-car wrecks (mean 3.4 cars, max 6)
+          by context: under caution 17, green 6
+          who / what: driver hit car (driver) 18, driver hit wall 5
+          contact retirements: 17 at fault, 1 hit by another
+          damage done to others (by fault): 4.29 health/race
+  PACK    64.6 passes/100 green car-laps, alongside 6%, drafting 29%, lane spread 3.79 m; lockstep same brain –, different brains -0.005
+  PASSING 53.2 clean passes/100 green car-laps; of all passes 18% with contact, 7% damaging, 62% from the draft; 28.3 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 3.93 m, 1.80 m/s, 0.242
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+          in a pit cycle: in entry 5, in before entry 2
+  TIRES   wear 0.0946/green lap -> cliff (0.3) after 7 laps; sliding >0.05 2%, >0.35 0%, >0.6 0% of car-steps
+  FUEL    burn 4.84 kg/green lap -> 12 laps per tank
+  DAMAGE  health lost on track /race: green walls 3.47 (0.20 with a car alongside), cars 2.26; caution walls 1.71, cars 17.51
+  STOPS   73.0/race (42% under caution), tires taken 95%, repairs 25%, called for fuel 15% tires 67% damage 14% caution 0% penalty 4%, tire life at stop 0.48 (min 0.26), service 15.7 s
+  PIT ROAD 50.8 s entry to track under green, 76.0 s under caution; 83.0 contacts, 3.21 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 33.01 s (70) | 0.6-0.8: 32.40 s (149) | 0.4-0.6: 33.28 s (94) | 0.3-0.4: 34.01 s (8) | 0.2-0.3: 33.09 s (2) | 0.0-0.2: 35.00 s (2)
+LABELS by wall gap, corner or straight: decisions; speed; throttle student vs teacher; teacher steers more by; teacher wants 0.3+ less throttle
+LABELS 0.3-1 m corner       22258  77.9 m/s  0.24 vs 0.18  +0.014  9%
+LABELS 0.3-1 m straight      7562  78.2 m/s  0.40 vs 0.38  +0.008  7%
+LABELS off corner          273025  75.5 m/s  0.25 vs 0.18  -0.043  15%
+LABELS off straight        167073  74.3 m/s  0.38 vs 0.32  +0.058  15%
+LABELS riding corner         7707  75.0 m/s  0.27 vs 0.18  +0.097  15%
+LABELS riding straight       1446  78.3 m/s  0.39 vs 0.42  +0.079  2%
+WALL by tyres (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   40-60%             66   2.317    0.85
+WALL   60-80%             85   2.464    0.84
+WALL   over 80%          101   1.899    0.53
+WALL   under 40%          14   2.832    1.89
+WALL by car ahead in lane (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   10-25 m            50   2.260    0.52
+WALL   25-60 m            39   2.499    0.89
+WALL   none in 60 m      149   2.320    0.85
+WALL   under 10 m         29   1.360    0.71
+WALL by alongside (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   car inside         21   1.276    0.56
+WALL   car outside        20   0.000    0.00
+WALL   clear             225   2.519    0.87
+WALL by tow (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   clean air         172   2.509    0.93
+WALL   in a tow           94   1.727    0.50
+WALL by outside wall (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   0.3-1 m            17   0.000    0.00
+WALL   1-2 m              31   0.000    0.00
+WALL   over 2 m          214   0.009    0.03
+WALL   under 0.3 m         5  116.287   39.53
+WALL by riding the wall (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   in a corner         4  124.665   42.54
+WALL   off it            261   0.008    0.03
+WALL   on a straight       1  71.839   23.59
+RIDING speed by 20 m of the lap (2525 m), riding the wall vs off it (samples):
+RIDING   s   300  80.9 vs 76.0 m/s  (27/1067)
+RIDING   s   400  77.4 vs 76.6 m/s  (32/1029)
+RIDING   s   420  78.5 vs 76.6 m/s  (32/1037)
+RIDING   s   440  80.0 vs 76.7 m/s  (25/1041)
+RIDING   s   460  79.5 vs 76.6 m/s  (26/1036)
+RIDING   s   480  79.4 vs 76.6 m/s  (33/1035)
+RIDING   s   500  79.4 vs 76.8 m/s  (35/1031)
+RIDING   s   520  78.8 vs 76.9 m/s  (24/1042)
+RIDING   s   580  78.1 vs 77.3 m/s  (23/1036)
+RIDING   s   640  78.7 vs 77.4 m/s  (28/1029)
+RIDING   s   660  76.1 vs 77.5 m/s  (26/1037)
+RIDING   s   680  75.5 vs 77.6 m/s  (21/1034)
+RIDING   s   700  76.5 vs 77.7 m/s  (31/1027)
+RIDING   s   720  76.7 vs 77.8 m/s  (41/1022)
+RIDING   s   740  76.8 vs 77.8 m/s  (33/1020)
+RIDING   s   760  77.1 vs 77.9 m/s  (30/1022)
+RIDING   s   780  77.0 vs 78.0 m/s  (40/999)
+RIDING   s   800  76.3 vs 78.1 m/s  (30/1017)
+RIDING   s   820  76.5 vs 78.2 m/s  (33/1006)
+RIDING   s   840  76.9 vs 78.2 m/s  (44/989)
+RIDING   s   860  76.2 vs 78.2 m/s  (34/1003)
+RIDING   s   880  76.7 vs 78.2 m/s  (34/1003)
+RIDING   s   900  76.8 vs 78.3 m/s  (26/992)
+RIDING   s   920  76.5 vs 78.3 m/s  (26/1010)
+RIDING   s   940  77.2 vs 78.3 m/s  (35/991)
+RIDING   s   960  77.6 vs 78.3 m/s  (27/1003)
+RIDING   s  1220  80.2 vs 79.7 m/s  (23/977)
+RIDING   s  1540  78.6 vs 80.6 m/s  (21/953)
+RIDING   s  2100  76.6 vs 77.0 m/s  (20/884)
+RIDING   s  2200  79.3 vs 68.8 m/s  (28/1091)
+RIDING   s  2220  78.2 vs 67.6 m/s  (29/1144)
+RIDING   s  2380  79.5 vs 69.6 m/s  (23/1212)
+RIDING   s  2420  80.3 vs 69.2 m/s  (20/1237)
+RIDING   s  2440  79.7 vs 69.1 m/s  (22/1239)
+RIDING   s  2480  80.4 vs 70.0 m/s  (21/1230)
+RIDING scrape work 11787 (m/s)^2 under green, 9687 of it riding: 128.0 a second riding (76 car-s)
+RIDING laps: clean 87, riding 10; cars with both 0: riding lap minus clean lap, median - s, mean - s, faster riding 0 of 0

@@ -1,0 +1,544 @@
+== 1. the old red stop under the mid-track red (RED_PILE=2:150 RED_MID=3), v8s, seeds 1-8 (scripts/redStopHits.ts, first version: wrecks moving or stopped not told apart, pit cycles not either)
+-- stop-v8s-1.txt
+speedway (4 races)
+  WRECKS  9.0 retirements/race, 5.3 cautions/race, 4 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 19, under caution 12, merging 2, start/restart 2, near a merging car 1
+oval:3850048323:intermediate (4 races)
+  WRECKS  9.5 retirements/race, 3.0 cautions/race, 9 multi-car wrecks (mean 2.1 cars, max 3)
+          by context: green 20, under caution 10, red 4, merging 3, near a merging car 1
+oval:3148308672:speedway (4 races)
+  WRECKS  16.5 retirements/race, 6.8 cautions/race, 15 multi-car wrecks (mean 2.5 cars, max 4)
+          by context: green 33, under caution 24, red 3, start/restart 2, near a merging car 2, restart 2
+oval:774865359:superspeedway (4 races)
+  WRECKS  11.8 retirements/race, 3.8 cautions/race, 12 multi-car wrecks (mean 2.5 cars, max 4)
+          by context: green 15, under caution 15, merging 8, red 7, start/restart 1, near a merging car 1
+REDPILE rule 2 wrecks within 150 m, or one 3 m or more from both edges: 16 races, 1.81 reds a race (0.00 race control's own rule, 1.81 pile-ups), 2.3 min stopped a race
+REDPILE out: green, no a wreck already there: 109
+REDPILE out: caution, no a wreck already there: 40
+REDPILE out: caution, within 50 m of a wreck already there: 27
+REDPILE out: green, within 50 m of a wreck already there: 25
+REDPILE out: red, within 50 m of a wreck already there: 16
+REDPILE out: caution, 50-150 m from a wreck already there: 3
+REDPILE out: red, no a wreck already there: 3
+REDPILE out: green, 150-400 m from a wreck already there: 3
+REDPILE out: caution, 150-400 m from a wreck already there: 1
+REDPILE out: restart, no a wreck already there: 1
+REDPILE out: restart, within 50 m of a wreck already there: 1
+REDPILE out: green, 50-150 m from a wreck already there: 1
+REDSTOP 29 reds; braking needed at the red to stop 40 m short (m/s^2): median 2.4, 90th Infinity, 82 of 249 cars over 5, 70 over 8
+REDSTOP formation script, into a wreck                       hits   18, health   8.34, out 6, speed med 15.2, 24 s after the red (med), 41 m to the wreck (med), over the red's cap 9
+REDSTOP its own skill, into a wreck                          hits    7, health   2.95, out 4, speed med 17.2, 16 s after the red (med), 893 m to the wreck (med), over the red's cap 3
+REDSTOP formation script, into a slower moving car           hits   20, health   2.66, out 2, speed med 8.7, 26 s after the red (med), 52 m to the wreck (med), over the red's cap 11
+REDSTOP formation script, into something                     hits   27, health   2.02, out 0, speed med 0.4, 53 s after the red (med), 77 m to the wreck (med), over the red's cap 0
+REDSTOP formation script, into a faster moving car           hits   22, health   1.41, out 3, speed med 0.6, 25 s after the red (med), 55 m to the wreck (med), over the red's cap 3
+REDSTOP its own skill, into a slower moving car              hits   27, health   1.36, out 1, speed med 20.8, 16 s after the red (med), 2455 m to the wreck (med), over the red's cap 3
+REDSTOP its own skill, into something                        hits    3, health   0.51, out 0, speed med 24.1, 19 s after the red (med), 557 m to the wreck (med), over the red's cap 1
+REDSTOP its own skill, into a wall                           hits   32, health   0.38, out 1, speed med 21.0, 32 s after the red (med), 1031 m to the wreck (med), over the red's cap 1
+REDSTOP its own skill, into a faster moving car              hits   26, health   0.21, out 1, speed med 16.8, 15 s after the red (med), 2454 m to the wreck (med), over the red's cap 2
+REDSTOP formation script, into a wall                        hits    1, health   0.14, out 1, speed med 14.6, 24 s after the red (med), 935 m to the wreck (med), over the red's cap 0
+REDSTOP its own skill, into a stopped car in the line        hits    1, health   0.01, out 0, speed med 4.7, 30 s after the red (med), 2376 m to the wreck (med), over the red's cap 0
+REDSTOP hit formation script into a wreck at 28.6 m/s (it 21.3), 0.6 s after the red, 26 m short of the wreck, health 1.00, out, over the cap
+REDSTOP hit formation script into a slower moving car at 23.4 m/s (it 16.4), 56.5 s after the red, 30 m short of the wreck, health 0.98, out, over the cap
+REDSTOP hit formation script into a wreck at 24.3 m/s (it 15.4), 15.1 s after the red, 42 m short of the wreck, health 0.88, over the cap
+REDSTOP hit formation script into a wreck at 27.0 m/s (it 17.3), 0.5 s after the red, 37 m short of the wreck, health 0.86, out, over the cap
+REDSTOP hit its own skill into a slower moving car at 50.0 m/s (it 19.0), 24.0 s after the red, 940 m short of the wreck, health 0.81, out
+REDSTOP hit formation script into a wreck at 51.4 m/s (it 39.2), 27.2 s after the red, 41 m short of the wreck, health 0.81, out, over the cap
+REDSTOP hit formation script into a wreck at 29.6 m/s (it 15.6), 23.6 s after the red, 17 m short of the wreck, health 0.79, over the cap
+REDSTOP hit formation script into a wreck at 4.6 m/s (it 44.3), 24.1 s after the red, 945 m short of the wreck, health 0.78, out
+REDSTOP hit its own skill into a wreck at 52.4 m/s (it 26.6), 24.1 s after the red, 946 m short of the wreck, health 0.76, out
+REDSTOP hit formation script into a wreck at 0.8 m/s (it 12.2), 56.5 s after the red, 28 m short of the wreck, health 0.74
+REDSTOP hit its own skill into a wreck at 42.5 m/s (it 31.7), 46.7 s after the red, 893 m short of the wreck, health 0.74, out, over the cap
+REDSTOP hit its own skill into a wreck at 39.2 m/s (it 20.3), 8.0 s after the red, 1606 m short of the wreck, health 0.64, out
+-- stop-v8s-5.txt
+speedway (4 races)
+  WRECKS  13.3 retirements/race, 6.0 cautions/race, 7 multi-car wrecks (mean 2.7 cars, max 3)
+          by context: green 27, under caution 20, red 3, start/restart 2, merging 1
+oval:3850048323:intermediate (4 races)
+  WRECKS  8.0 retirements/race, 3.3 cautions/race, 5 multi-car wrecks (mean 2.2 cars, max 3)
+          by context: green 18, under caution 8, merging 3, red 2, near a merging car 1
+oval:3148308672:speedway (4 races)
+  WRECKS  17.0 retirements/race, 6.8 cautions/race, 11 multi-car wrecks (mean 2.6 cars, max 5)
+          by context: under caution 31, green 27, merging 6, red 2, restart 1, start/restart 1
+oval:774865359:superspeedway (4 races)
+  WRECKS  13.5 retirements/race, 4.3 cautions/race, 12 multi-car wrecks (mean 2.4 cars, max 3)
+          by context: under caution 21, green 17, merging 7, red 5, start/restart 2, near a merging car 2
+REDPILE rule 2 wrecks within 150 m, or one 3 m or more from both edges: 16 races, 2.50 reds a race (0.00 race control's own rule, 2.50 pile-ups), 2.9 min stopped a race
+REDPILE out: green, no a wreck already there: 117
+REDPILE out: caution, no a wreck already there: 54
+REDPILE out: caution, within 50 m of a wreck already there: 31
+REDPILE out: green, within 50 m of a wreck already there: 31
+REDPILE out: red, no a wreck already there: 7
+REDPILE out: red, 150-400 m from a wreck already there: 4
+REDPILE out: caution, 150-400 m from a wreck already there: 4
+REDPILE out: green, 150-400 m from a wreck already there: 3
+REDPILE out: caution, 50-150 m from a wreck already there: 1
+REDPILE out: restart, no a wreck already there: 1
+REDPILE out: red, 50-150 m from a wreck already there: 1
+REDPILE out: red, within 50 m of a wreck already there: 1
+REDSTOP 40 reds; braking needed at the red to stop 40 m short (m/s^2): median 3.6, 90th Infinity, 121 of 307 cars over 5, 101 over 8
+REDSTOP formation script, into something                     hits   28, health   5.09, out 5, speed med 0.9, 62 s after the red (med), 127 m to the wreck (med), over the red's cap 0
+REDSTOP formation script, into a slower moving car           hits   18, health   2.68, out 1, speed med 13.4, 70 s after the red (med), 186 m to the wreck (med), over the red's cap 1
+REDSTOP its own skill, into a wreck                          hits   12, health   2.19, out 1, speed med 9.8, 25 s after the red (med), 2693 m to the wreck (med), over the red's cap 11
+REDSTOP its own skill, into a slower moving car              hits   36, health   1.55, out 1, speed med 20.4, 26 s after the red (med), 2778 m to the wreck (med), over the red's cap 3
+REDSTOP its own skill, into a wall                           hits   71, health   1.54, out 2, speed med 21.1, 23 s after the red (med), 2455 m to the wreck (med), over the red's cap 4
+REDSTOP its own skill, into a faster moving car              hits   38, health   1.42, out 1, speed med 10.8, 28 s after the red (med), 2548 m to the wreck (med), over the red's cap 2
+REDSTOP formation script, into a faster moving car           hits   19, health   1.15, out 0, speed med 0.8, 70 s after the red (med), 179 m to the wreck (med), over the red's cap 0
+REDSTOP formation script, into a wreck                       hits    4, health   1.03, out 0, speed med 14.3, 69 s after the red (med), 2445 m to the wreck (med), over the red's cap 2
+REDSTOP its own skill, into a stopped car in the line        hits    9, health   0.43, out 0, speed med 7.7, 23 s after the red (med), 2463 m to the wreck (med), over the red's cap 0
+REDSTOP formation script, into a wall                        hits    1, health   0.07, out 0, speed med 7.4, 20 s after the red (med), 3237 m to the wreck (med), over the red's cap 0
+REDSTOP hit formation script into something at 7.4 m/s (it 0.0), 8.9 s after the red, 2972 m short of the wreck, health 0.94, out
+REDSTOP hit formation script into something at 1.9 m/s (it 0.0), 17.7 s after the red, 2419 m short of the wreck, health 0.84, out
+REDSTOP hit its own skill into a wreck at 44.9 m/s (it 33.3), 48.4 s after the red, 2693 m short of the wreck, health 0.77
+REDSTOP hit its own skill into a wreck at 33.8 m/s (it 20.1), 37.3 s after the red, 30 m short of the wreck, health 0.73, out, over the cap
+REDSTOP hit formation script into a slower moving car at 26.3 m/s (it 20.0), 69.1 s after the red, 196 m short of the wreck, health 0.64, out
+REDSTOP hit its own skill into a wall at 22.2 m/s (it 0.0), 18.1 s after the red, 1927 m short of the wreck, health 0.58, out
+REDSTOP hit its own skill into a wreck at 17.0 m/s (it 12.6), 2.0 s after the red, 3324 m short of the wreck, health 0.56, over the cap
+REDSTOP hit formation script into something at 0.2 m/s (it 0.0), 69.2 s after the red, 186 m short of the wreck, health 0.55
+REDSTOP hit formation script into something at 19.9 m/s (it 0.0), 14.5 s after the red, 2749 m short of the wreck, health 0.47
+REDSTOP hit formation script into a slower moving car at 19.7 m/s (it 15.7), 15.5 s after the red, 2721 m short of the wreck, health 0.47
+REDSTOP hit formation script into something at 0.4 m/s (it 0.0), 69.7 s after the red, 127 m short of the wreck, health 0.44
+REDSTOP hit its own skill into a faster moving car at 21.0 m/s (it 35.9), 48.4 s after the red, 2691 m short of the wreck, health 0.40, out
+== 2. the same, refined (seeds 1-2, 3-4, 5-6, 7-8)
+-- stop2-v8s-1.txt
+speedway (2 races)
+  WRECKS  10.0 retirements/race, 5.5 cautions/race, 3 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 11, under caution 8, near a merging car 1
+oval:3850048323:intermediate (2 races)
+  WRECKS  9.5 retirements/race, 3.0 cautions/race, 5 multi-car wrecks (mean 2.2 cars, max 3)
+          by context: green 11, under caution 3, red 3, near a merging car 1, merging 1
+oval:3148308672:speedway (2 races)
+  WRECKS  17.0 retirements/race, 6.5 cautions/race, 7 multi-car wrecks (mean 2.9 cars, max 4)
+          by context: green 17, under caution 13, red 3, start/restart 1
+oval:774865359:superspeedway (2 races)
+  WRECKS  15.5 retirements/race, 4.5 cautions/race, 9 multi-car wrecks (mean 2.6 cars, max 4)
+          by context: green 8, under caution 7, red 7, merging 7, start/restart 1, near a merging car 1
+REDPILE rule 2 wrecks within 150 m, or one 3 m or more from both edges: 8 races, 2.38 reds a race (0.00 race control's own rule, 2.38 pile-ups), 3.2 min stopped a race
+REDPILE out: green, no a wreck already there: 56
+REDPILE out: caution, no a wreck already there: 20
+REDPILE out: caution, within 50 m of a wreck already there: 16
+REDPILE out: red, within 50 m of a wreck already there: 16
+REDPILE out: caution, 50-150 m from a wreck already there: 2
+REDPILE out: red, no a wreck already there: 2
+REDSTOP 19 reds; braking needed at the red to stop 40 m short (m/s^2): median 2.3, 90th Infinity, 58 of 185 cars over 5, 51 over 8
+REDSTOP formation script, into a car wrecking                hits   18, health   8.34, out 6, speed med 15.2, impact med 20.8, 24 s after the red (med), 41 m to the wreck (med), over the red's cap 9
+REDSTOP formation script, into a slower moving car           hits   16, health   2.24, out 2, speed med 8.2, impact med 5.8, 48 s after the red (med), 49 m to the wreck (med), over the red's cap 10
+REDSTOP its own skill, into a car wrecking                   hits    4, health   2.18, out 3, speed med 42.5, impact med 30.9, 24 s after the red (med), 946 m to the wreck (med), over the red's cap 2
+REDSTOP formation script, into the pace car                  hits   17, health   1.62, out 0, speed med 0.4, impact med 10.1, 53 s after the red (med), 82 m to the wreck (med), over the red's cap 0
+REDSTOP formation script, into a faster moving car           hits   18, health   1.15, out 3, speed med 0.5, impact med 5.8, 26 s after the red (med), 52 m to the wreck (med), over the red's cap 3
+REDSTOP its own skill, into a slower moving car              hits    3, health   0.92, out 1, speed med 24.6, impact med 7.8, 19 s after the red (med), 565 m to the wreck (med), over the red's cap 0
+REDSTOP its own skill, into the pace car                     hits    3, health   0.51, out 0, speed med 24.1, impact med 12.0, 19 s after the red (med), 557 m to the wreck (med), over the red's cap 1
+REDSTOP pit skill (out), into a car wrecking                 hits    1, health   0.37, out 1, speed med 17.2, impact med 16.9, 11 s after the red (med), 22 m to the wreck (med), over the red's cap 1
+REDSTOP pit skill (in), into a car wrecking                  hits    1, health   0.36, out 0, speed med 14.1, impact med 14.0, 16 s after the red (med), 1670 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (out), into a slower moving car            hits   12, health   0.27, out 0, speed med 20.8, impact med 4.8, 29 s after the red (med), 2324 m to the wreck (med), over the red's cap 3
+REDSTOP pit skill (in), into a slower moving car             hits   11, health   0.17, out 0, speed med 20.7, impact med 3.7, 8 s after the red (med), 2635 m to the wreck (med), over the red's cap 0
+REDSTOP formation script, into a wall                        hits    1, health   0.14, out 1, speed med 14.6, impact med 10.3, 24 s after the red (med), 935 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (in), into a faster moving car             hits   16, health   0.10, out 1, speed med 17.2, impact med 4.0, 8 s after the red (med), 2631 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (out), into a faster moving car            hits    6, health   0.06, out 0, speed med 19.1, impact med 4.8, 38 s after the red (med), 218 m to the wreck (med), over the red's cap 2
+REDSTOP pit skill (out), into a wall                         hits   19, health   0.06, out 0, speed med 21.0, impact med 0.4, 42 s after the red (med), 1025 m to the wreck (med), over the red's cap 1
+REDSTOP its own skill, into a faster moving car              hits    2, health   0.04, out 0, speed med 16.8, impact med 7.8, 19 s after the red (med), 563 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (in), into a wall                          hits    7, health   0.04, out 0, speed med 21.1, impact med 0.5, 6 s after the red (med), 1173 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (out), into a stopped car in the line      hits    1, health   0.01, out 0, speed med 4.7, impact med 4.2, 30 s after the red (med), 2376 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (service), into a faster moving car        hits    1, health   0.00, out 0, speed med 0.0, impact med 4.2, 30 s after the red (med), 2374 m to the wreck (med), over the red's cap 0
+REDSTOP hit formation script into a car wrecking at 28.6 m/s (it 21.3, impact 28.5), 0.6 s after the red, 26 m short of the wreck, health 1.00, out, over the cap
+REDSTOP hit formation script into a slower moving car at 23.4 m/s (it 16.4, impact 22.0), 56.5 s after the red, 30 m short of the wreck, health 0.98, out, over the cap
+REDSTOP hit formation script into a car wrecking at 24.3 m/s (it 15.4, impact 20.8), 15.1 s after the red, 42 m short of the wreck, health 0.88, over the cap
+REDSTOP hit formation script into a car wrecking at 27.0 m/s (it 17.3, impact 22.8), 0.5 s after the red, 37 m short of the wreck, health 0.86, out, over the cap
+REDSTOP hit its own skill into a slower moving car at 50.0 m/s (it 19.0, impact 20.5), 24.0 s after the red, 940 m short of the wreck, health 0.81, out
+REDSTOP hit formation script into a car wrecking at 51.4 m/s (it 39.2, impact 34.3), 27.2 s after the red, 41 m short of the wreck, health 0.81, out, over the cap
+REDSTOP hit formation script into a car wrecking at 29.6 m/s (it 15.6, impact 19.8), 23.6 s after the red, 17 m short of the wreck, health 0.79, over the cap
+REDSTOP hit formation script into a car wrecking at 4.6 m/s (it 44.3, impact 30.9), 24.1 s after the red, 945 m short of the wreck, health 0.78, out
+REDSTOP hit its own skill into a car wrecking at 52.4 m/s (it 26.6, impact 30.9), 24.1 s after the red, 946 m short of the wreck, health 0.76, out
+REDSTOP hit formation script into a car wrecking at 0.8 m/s (it 12.2, impact 22.0), 56.5 s after the red, 28 m short of the wreck, health 0.74
+REDSTOP hit its own skill into a car wrecking at 42.5 m/s (it 31.7, impact 41.4), 46.7 s after the red, 893 m short of the wreck, health 0.74, out, over the cap
+REDSTOP hit its own skill into a car wrecking at 39.2 m/s (it 20.3, impact 26.9), 8.0 s after the red, 1606 m short of the wreck, health 0.64, out
+-- stop2-v8s-3.txt
+speedway (2 races)
+  WRECKS  8.0 retirements/race, 5.0 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 8, under caution 4, merging 2, start/restart 2
+oval:3850048323:intermediate (2 races)
+  WRECKS  9.5 retirements/race, 3.0 cautions/race, 4 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 9, under caution 7, merging 2, red 1
+oval:3148308672:speedway (2 races)
+  WRECKS  16.0 retirements/race, 7.0 cautions/race, 8 multi-car wrecks (mean 2.1 cars, max 3)
+          by context: green 16, under caution 11, near a merging car 2, restart 2, start/restart 1
+oval:774865359:superspeedway (2 races)
+  WRECKS  8.0 retirements/race, 3.0 cautions/race, 3 multi-car wrecks (mean 2.3 cars, max 3)
+          by context: under caution 8, green 7, merging 1
+REDPILE rule 2 wrecks within 150 m, or one 3 m or more from both edges: 8 races, 1.25 reds a race (0.00 race control's own rule, 1.25 pile-ups), 1.4 min stopped a race
+REDPILE out: green, no a wreck already there: 53
+REDPILE out: green, within 50 m of a wreck already there: 25
+REDPILE out: caution, no a wreck already there: 20
+REDPILE out: caution, within 50 m of a wreck already there: 11
+REDPILE out: green, 150-400 m from a wreck already there: 3
+REDPILE out: red, no a wreck already there: 1
+REDPILE out: caution, 150-400 m from a wreck already there: 1
+REDPILE out: caution, 50-150 m from a wreck already there: 1
+REDPILE out: restart, no a wreck already there: 1
+REDPILE out: restart, within 50 m of a wreck already there: 1
+REDPILE out: green, 50-150 m from a wreck already there: 1
+REDSTOP 10 reds; braking needed at the red to stop 40 m short (m/s^2): median 3.2, 90th Infinity, 24 of 64 cars over 5, 19 over 8
+REDSTOP formation script, into a slower moving car           hits    4, health   0.42, out 0, speed med 16.3, impact med 9.4, 25 s after the red (med), 1658 m to the wreck (med), over the red's cap 1
+REDSTOP formation script, into the pace car                  hits   10, health   0.40, out 0, speed med 0.5, impact med 5.9, 62 s after the red (med), 54 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (in), into a wall                          hits    4, health   0.29, out 1, speed med 20.0, impact med 0.5, 36 s after the red (med), 766 m to the wreck (med), over the red's cap 0
+REDSTOP formation script, into a faster moving car           hits    4, health   0.27, out 0, speed med 3.0, impact med 9.4, 25 s after the red (med), 1656 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (in), into a car wrecking                  hits    1, health   0.04, out 0, speed med 14.4, impact med 5.9, 16 s after the red (med), 768 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (in), into a faster moving car             hits    1, health   0.00, out 0, speed med 16.3, impact med 2.7, 65 s after the red (med), 1236 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (in), into a slower moving car             hits    1, health   0.00, out 0, speed med 14.7, impact med 2.7, 65 s after the red (med), 1234 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (out), into a wall                         hits    2, health   0.00, out 0, speed med 21.5, impact med 0.5, 43 s after the red (med), 2321 m to the wreck (med), over the red's cap 0
+REDSTOP hit pit skill (in) into a wall at 17.2 m/s (it 0.0, impact 16.3), 9.1 s after the red, 766 m short of the wreck, health 0.29, out
+REDSTOP hit formation script into a slower moving car at 16.3 m/s (it 11.7, impact 12.1), 24.7 s after the red, 1760 m short of the wreck, health 0.25
+REDSTOP hit formation script into a faster moving car at 0.6 m/s (it 19.8, impact 9.4), 20.4 s after the red, 10 m short of the wreck, health 0.13
+REDSTOP hit formation script into a slower moving car at 20.8 m/s (it 6.6, impact 9.4), 20.4 s after the red, 11 m short of the wreck, health 0.13, over the cap
+REDSTOP hit formation script into a faster moving car at 3.0 m/s (it 9.8, impact 12.1), 24.7 s after the red, 1758 m short of the wreck, health 0.12
+REDSTOP hit formation script into the pace car at 5.4 m/s (it 0.0, impact 11.3), 24.1 s after the red, 1669 m short of the wreck, health 0.11
+REDSTOP hit formation script into the pace car at 3.2 m/s (it 0.0, impact 8.3), 26.2 s after the red, 1634 m short of the wreck, health 0.09
+REDSTOP hit formation script into the pace car at 0.5 m/s (it 0.0, impact 8.9), 39.0 s after the red, 84 m short of the wreck, health 0.08
+REDSTOP hit pit skill (in) into a car wrecking at 14.4 m/s (it 4.5, impact 5.9), 16.2 s after the red, 768 m short of the wreck, health 0.04
+REDSTOP hit formation script into the pace car at 0.1 m/s (it 0.0, impact 5.9), 62.0 s after the red, 101 m short of the wreck, health 0.04
+REDSTOP hit formation script into the pace car at 0.1 m/s (it 0.0, impact 8.8), 63.7 s after the red, 53 m short of the wreck, health 0.03
+REDSTOP hit formation script into a slower moving car at 8.7 m/s (it 7.2, impact 5.6), 25.3 s after the red, 1658 m short of the wreck, health 0.03
+-- stop2-v8s-5.txt
+speedway (2 races)
+  WRECKS  13.5 retirements/race, 6.5 cautions/race, 4 multi-car wrecks (mean 2.8 cars, max 3)
+          by context: green 16, under caution 8, red 3
+oval:3850048323:intermediate (2 races)
+  WRECKS  8.0 retirements/race, 4.5 cautions/race, 2 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 9, merging 3, under caution 2, red 1, near a merging car 1
+oval:3148308672:speedway (2 races)
+  WRECKS  19.5 retirements/race, 6.5 cautions/race, 8 multi-car wrecks (mean 2.5 cars, max 4)
+          by context: under caution 19, green 16, red 2, merging 1, restart 1
+oval:774865359:superspeedway (2 races)
+  WRECKS  11.5 retirements/race, 3.5 cautions/race, 5 multi-car wrecks (mean 2.4 cars, max 3)
+          by context: green 8, under caution 8, red 4, start/restart 2, merging 1
+REDPILE rule 2 wrecks within 150 m, or one 3 m or more from both edges: 8 races, 2.63 reds a race (0.00 race control's own rule, 2.63 pile-ups), 3.5 min stopped a race
+REDPILE out: green, no a wreck already there: 61
+REDPILE out: green, within 50 m of a wreck already there: 28
+REDPILE out: caution, no a wreck already there: 24
+REDPILE out: caution, within 50 m of a wreck already there: 13
+REDPILE out: red, no a wreck already there: 4
+REDPILE out: red, 150-400 m from a wreck already there: 4
+REDPILE out: caution, 150-400 m from a wreck already there: 2
+REDPILE out: green, 150-400 m from a wreck already there: 2
+REDPILE out: restart, no a wreck already there: 1
+REDPILE out: red, 50-150 m from a wreck already there: 1
+REDPILE out: red, within 50 m of a wreck already there: 1
+REDSTOP 21 reds; braking needed at the red to stop 40 m short (m/s^2): median 3.5, 90th Infinity, 60 of 174 cars over 5, 54 over 8
+REDSTOP formation script, into the pace car                  hits   18, health   3.36, out 3, speed med 0.5, impact med 11.3, 70 s after the red (med), 186 m to the wreck (med), over the red's cap 0
+REDSTOP formation script, into a slower moving car           hits   14, health   2.45, out 1, speed med 13.5, impact med 8.5, 70 s after the red (med), 196 m to the wreck (med), over the red's cap 1
+REDSTOP pit skill (in), into a car wrecking                  hits    6, health   1.32, out 1, speed med 15.7, impact med 4.1, 25 s after the red (med), 2517 m to the wreck (med), over the red's cap 6
+REDSTOP pit skill (in), into a wall                          hits   15, health   1.10, out 2, speed med 20.5, impact med 0.6, 28 s after the red (med), 2406 m to the wreck (med), over the red's cap 2
+REDSTOP formation script, into a car wrecking                hits    4, health   1.03, out 0, speed med 14.3, impact med 18.7, 69 s after the red (med), 2445 m to the wreck (med), over the red's cap 2
+REDSTOP formation script, into a faster moving car           hits   13, health   0.93, out 0, speed med 0.8, impact med 7.3, 70 s after the red (med), 186 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (out), into a slower moving car            hits    9, health   0.75, out 0, speed med 32.1, impact med 4.5, 23 s after the red (med), 1988 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (out), into a faster moving car            hits    7, health   0.47, out 0, speed med 23.4, impact med 7.2, 23 s after the red (med), 1968 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (out), into a stopped car in the line      hits    5, health   0.33, out 0, speed med 7.0, impact med 3.1, 36 s after the red (med), 2463 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (in), into a slower moving car             hits   12, health   0.29, out 1, speed med 21.0, impact med 3.1, 31 s after the red (med), 2799 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (service), into a faster moving car        hits    7, health   0.18, out 0, speed med 0.0, impact med 5.8, 23 s after the red (med), 2319 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (in), into a stopped car in the line       hits    2, health   0.10, out 0, speed med 8.9, impact med 7.0, 22 s after the red (med), 2321 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (in), into a faster moving car             hits   11, health   0.03, out 0, speed med 17.0, impact med 3.1, 31 s after the red (med), 2776 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (out), into a wall                         hits   19, health   0.01, out 0, speed med 21.6, impact med 0.3, 34 s after the red (med), 2233 m to the wreck (med), over the red's cap 0
+REDSTOP hit formation script into the pace car at 7.4 m/s (it 0.0, impact 31.5), 8.9 s after the red, 2972 m short of the wreck, health 0.94, out
+REDSTOP hit pit skill (in) into a car wrecking at 33.8 m/s (it 20.1, impact 26.5), 37.3 s after the red, 30 m short of the wreck, health 0.73, out, over the cap
+REDSTOP hit formation script into a slower moving car at 26.3 m/s (it 20.0, impact 24.8), 69.1 s after the red, 196 m short of the wreck, health 0.64, out
+REDSTOP hit pit skill (in) into a wall at 22.2 m/s (it 0.0, impact 21.0), 18.1 s after the red, 1927 m short of the wreck, health 0.58, out
+REDSTOP hit pit skill (in) into a car wrecking at 17.0 m/s (it 12.6, impact 17.0), 2.0 s after the red, 3324 m short of the wreck, health 0.56, over the cap
+REDSTOP hit formation script into the pace car at 0.2 m/s (it 0.0, impact 19.7), 69.2 s after the red, 186 m short of the wreck, health 0.55
+REDSTOP hit formation script into the pace car at 19.9 m/s (it 0.0, impact 20.0), 14.5 s after the red, 2749 m short of the wreck, health 0.47
+REDSTOP hit formation script into a slower moving car at 19.7 m/s (it 15.7, impact 15.7), 15.5 s after the red, 2721 m short of the wreck, health 0.47
+REDSTOP hit formation script into the pace car at 0.0 m/s (it 0.0, impact 16.3), 66.2 s after the red, 135 m short of the wreck, health 0.36
+REDSTOP hit formation script into a car wrecking at 1.2 m/s (it 8.2, impact 24.8), 69.1 s after the red, 194 m short of the wreck, health 0.34
+REDSTOP hit pit skill (in) into a wall at 20.8 m/s (it 0.0, impact 20.7), 82.2 s after the red, 331 m short of the wreck, health 0.33, out
+REDSTOP hit formation script into a slower moving car at 13.5 m/s (it 10.1, impact 13.3), 69.9 s after the red, 180 m short of the wreck, health 0.32
+-- stop2-v8s-7.txt
+speedway (2 races)
+  WRECKS  13.0 retirements/race, 5.5 cautions/race, 3 multi-car wrecks (mean 2.7 cars, max 3)
+          by context: under caution 12, green 11, start/restart 2, merging 1
+oval:3850048323:intermediate (2 races)
+  WRECKS  8.0 retirements/race, 2.0 cautions/race, 3 multi-car wrecks (mean 2.3 cars, max 3)
+          by context: green 9, under caution 6, red 1
+oval:3148308672:speedway (2 races)
+  WRECKS  14.5 retirements/race, 7.0 cautions/race, 3 multi-car wrecks (mean 3.0 cars, max 5)
+          by context: under caution 12, green 11, merging 5, start/restart 1
+oval:774865359:superspeedway (2 races)
+  WRECKS  15.5 retirements/race, 5.0 cautions/race, 7 multi-car wrecks (mean 2.4 cars, max 3)
+          by context: under caution 13, green 9, merging 6, near a merging car 2, red 1
+REDPILE rule 2 wrecks within 150 m, or one 3 m or more from both edges: 8 races, 2.38 reds a race (0.00 race control's own rule, 2.38 pile-ups), 2.3 min stopped a race
+REDPILE out: green, no a wreck already there: 56
+REDPILE out: caution, no a wreck already there: 30
+REDPILE out: caution, within 50 m of a wreck already there: 18
+REDPILE out: red, no a wreck already there: 3
+REDPILE out: green, within 50 m of a wreck already there: 3
+REDPILE out: caution, 150-400 m from a wreck already there: 2
+REDPILE out: caution, 50-150 m from a wreck already there: 1
+REDPILE out: green, 150-400 m from a wreck already there: 1
+REDSTOP 19 reds; braking needed at the red to stop 40 m short (m/s^2): median 4.6, 90th Infinity, 61 of 133 cars over 5, 47 over 8
+REDSTOP formation script, into the pace car                  hits   10, health   1.74, out 2, speed med 1.8, impact med 12.3, 52 s after the red (med), 82 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (out), into a car wrecking                 hits    1, health   0.77, out 0, speed med 44.9, impact med 19.6, 48 s after the red (med), 2693 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (out), into a faster moving car            hits    4, health   0.42, out 1, speed med 21.0, impact med 5.0, 42 s after the red (med), 2999 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (in), into a wall                          hits   23, health   0.41, out 0, speed med 14.0, impact med 0.6, 9 s after the red (med), 3090 m to the wreck (med), over the red's cap 2
+REDSTOP pit skill (out), into a slower moving car            hits    6, health   0.31, out 0, speed med 21.5, impact med 4.7, 28 s after the red (med), 3000 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (in), into a faster moving car             hits    8, health   0.31, out 0, speed med 7.5, impact med 3.9, 30 s after the red (med), 2949 m to the wreck (med), over the red's cap 2
+REDSTOP formation script, into a slower moving car           hits    4, health   0.23, out 0, speed med 13.4, impact med 5.5, 70 s after the red (med), 127 m to the wreck (med), over the red's cap 0
+REDSTOP formation script, into a faster moving car           hits    6, health   0.22, out 0, speed med 10.7, impact med 5.5, 70 s after the red (med), 127 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (in), into a slower moving car             hits    9, health   0.20, out 0, speed med 11.7, impact med 3.9, 11 s after the red (med), 3189 m to the wreck (med), over the red's cap 3
+REDSTOP pit skill (in), into a car wrecking                  hits    5, health   0.10, out 0, speed med 7.1, impact med 4.8, 11 s after the red (med), 3334 m to the wreck (med), over the red's cap 5
+REDSTOP formation script, into a wall                        hits    1, health   0.07, out 0, speed med 7.4, impact med 7.4, 20 s after the red (med), 3237 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (out), into a wall                         hits   14, health   0.03, out 0, speed med 21.4, impact med 0.3, 20 s after the red (med), 2944 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (out), into a stopped car in the line      hits    1, health   0.01, out 0, speed med 9.9, impact med 3.6, 29 s after the red (med), 2582 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (service), into a faster moving car        hits    1, health   0.01, out 0, speed med 0.0, impact med 3.6, 29 s after the red (med), 2581 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (in), into a stopped car in the line       hits    1, health   0.00, out 0, speed med 1.4, impact med 4.2, 8 s after the red (med), 3188 m to the wreck (med), over the red's cap 0
+REDSTOP hit formation script into the pace car at 1.9 m/s (it 0.0, impact 27.6), 17.7 s after the red, 2419 m short of the wreck, health 0.84, out
+REDSTOP hit pit skill (out) into a car wrecking at 44.9 m/s (it 33.3, impact 19.6), 48.4 s after the red, 2693 m short of the wreck, health 0.77
+REDSTOP hit formation script into the pace car at 0.4 m/s (it 0.0, impact 18.0), 69.7 s after the red, 127 m short of the wreck, health 0.44
+REDSTOP hit pit skill (out) into a faster moving car at 21.0 m/s (it 35.9, impact 19.6), 48.4 s after the red, 2691 m short of the wreck, health 0.40, out
+REDSTOP hit pit skill (in) into a wall at 22.1 m/s (it 0.0, impact 14.0), 55.0 s after the red, 10 m short of the wreck, health 0.36, over the cap
+REDSTOP hit pit skill (out) into a slower moving car at 19.2 m/s (it 10.2, impact 12.4), 25.4 s after the red, 2951 m short of the wreck, health 0.27
+REDSTOP hit formation script into the pace car at 1.8 m/s (it 0.0, impact 12.3), 71.1 s after the red, 642 m short of the wreck, health 0.19
+REDSTOP hit formation script into a slower moving car at 13.4 m/s (it 7.9, impact 10.7), 69.7 s after the red, 127 m short of the wreck, health 0.19
+REDSTOP hit formation script into a faster moving car at 0.3 m/s (it 10.0, impact 10.7), 69.7 s after the red, 127 m short of the wreck, health 0.19
+REDSTOP hit pit skill (in) into a faster moving car at 0.8 m/s (it 15.9, impact 12.4), 25.4 s after the red, 2949 m short of the wreck, health 0.18
+REDSTOP hit pit skill (in) into a slower moving car at 14.6 m/s (it 6.6, impact 9.0), 56.7 s after the red, 5 m short of the wreck, health 0.12, over the cap
+REDSTOP hit pit skill (in) into a faster moving car at 0.7 m/s (it 12.7, impact 9.0), 56.7 s after the red, 4 m short of the wreck, health 0.12
+== 3. the new red stop (pass or stop, the pace car, pit road closed), v8s and v8sp, the same rule and seeds
+-- v8s-1.txt
+speedway (2 races)
+  WRECKS  9.5 retirements/race, 4.5 cautions/race, 3 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 10, under caution 8, near a merging car 1
+oval:3850048323:intermediate (2 races)
+  WRECKS  5.5 retirements/race, 1.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 7, under caution 2, near a merging car 1, merging 1
+oval:3148308672:speedway (2 races)
+  WRECKS  13.0 retirements/race, 4.0 cautions/race, 5 multi-car wrecks (mean 2.6 cars, max 4)
+          by context: under caution 15, green 10, red 1
+oval:774865359:superspeedway (2 races)
+  WRECKS  12.5 retirements/race, 4.5 cautions/race, 8 multi-car wrecks (mean 2.6 cars, max 4)
+          by context: green 8, under caution 8, merging 7, red 1, start/restart 1
+REDPILE rule 2 wrecks within 150 m, or one 3 m or more from both edges: 8 races, 2.13 reds a race (0.00 race control's own rule, 2.13 pile-ups), 2.6 min stopped a race
+REDPILE out: green, no a wreck already there: 44
+REDPILE out: caution, no a wreck already there: 20
+REDPILE out: caution, within 50 m of a wreck already there: 14
+REDPILE out: green, within 50 m of a wreck already there: 7
+REDPILE out: green, 150-400 m from a wreck already there: 3
+REDPILE out: red, within 50 m of a wreck already there: 2
+REDPILE out: caution, 50-150 m from a wreck already there: 2
+REDPILE out: caution, 150-400 m from a wreck already there: 1
+REDSTOP 17 reds; braking needed at the red to stop 40 m short (m/s^2): median 3.6, 90th Infinity, 48 of 117 cars over 5, 41 over 8
+REDSTOP formation script, into a car wrecking                hits    3, health   1.87, out 2, speed med 27.0, impact med 22.8, 1 s after the red (med), 37 m to the wreck (med), over the red's cap 3
+REDSTOP pit maneuver, into a slower moving car               hits    2, health   0.37, out 0, speed med 42.8, impact med 14.1, 1 s after the red (med), 97 m to the wreck (med), over the red's cap 2
+REDSTOP pit maneuver, into a faster moving car               hits    2, health   0.10, out 0, speed med 33.4, impact med 14.1, 1 s after the red (med), 97 m to the wreck (med), over the red's cap 2
+REDSTOP formation script, into the pace car                  hits    2, health   0.05, out 0, speed med 36.7, impact med 5.4, 31 s after the red (med), 1966 m to the wreck (med), over the red's cap 0
+REDSTOP formation script, into a slower moving car           hits    1, health   0.03, out 0, speed med 33.3, impact med 5.3, 1 s after the red (med), 176 m to the wreck (med), over the red's cap 1
+REDSTOP formation script, into a faster moving car           hits    1, health   0.02, out 0, speed med 27.0, impact med 5.3, 1 s after the red (med), 175 m to the wreck (med), over the red's cap 0
+REDSTOP its own skill, into a wall                           hits    1, health   0.00, out 0, speed med 55.4, impact med 0.1, 0 s after the red (med), 2474 m to the wreck (med), over the red's cap 0
+REDSTOP hit formation script into a car wrecking at 28.6 m/s (it 21.3, impact 28.5), 0.6 s after the red, 26 m short of the wreck, health 1.00, out, over the cap
+REDSTOP hit formation script into a car wrecking at 27.0 m/s (it 17.3, impact 22.8), 0.5 s after the red, 37 m short of the wreck, health 0.86, out, over the cap
+REDSTOP hit pit maneuver into a slower moving car at 31.3 m/s (it 27.7, impact 14.1), 0.9 s after the red, 63 m short of the wreck, health 0.36, over the cap
+REDSTOP hit pit maneuver into a faster moving car at 17.2 m/s (it 20.7, impact 14.1), 0.9 s after the red, 61 m short of the wreck, health 0.09, over the cap
+REDSTOP hit formation script into the pace car at 26.4 m/s (it 0.0, impact 5.4), 2.1 s after the red, 1966 m short of the wreck, health 0.03
+REDSTOP hit formation script into a slower moving car at 33.3 m/s (it 28.5, impact 5.3), 0.8 s after the red, 176 m short of the wreck, health 0.03, over the cap
+REDSTOP hit formation script into a faster moving car at 27.0 m/s (it 31.8, impact 5.3), 0.8 s after the red, 175 m short of the wreck, health 0.02
+REDSTOP hit formation script into the pace car at 36.7 m/s (it 0.0, impact 5.1), 31.4 s after the red, 1040 m short of the wreck, health 0.02
+REDSTOP hit formation script into a car wrecking at 11.6 m/s (it 3.2, impact 4.2), 0.5 s after the red, 76 m short of the wreck, health 0.01, over the cap
+REDSTOP hit pit maneuver into a slower moving car at 42.8 m/s (it 33.7, impact 3.3), 0.0 s after the red, 97 m short of the wreck, health 0.00, over the cap
+REDSTOP hit pit maneuver into a faster moving car at 33.4 m/s (it 42.4, impact 3.3), 0.0 s after the red, 97 m short of the wreck, health 0.00, over the cap
+REDSTOP hit its own skill into a wall at 55.4 m/s (it 0.0, impact 0.1), 0.0 s after the red, 2474 m short of the wreck, health 0.00
+-- v8s-3.txt
+speedway (2 races)
+  WRECKS  8.0 retirements/race, 5.0 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 8, under caution 4, merging 2, start/restart 2
+oval:3850048323:intermediate (2 races)
+  WRECKS  8.0 retirements/race, 3.0 cautions/race, 3 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 8, merging 5, under caution 3
+oval:3148308672:speedway (2 races)
+  WRECKS  16.0 retirements/race, 6.0 cautions/race, 8 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: under caution 16, green 9, near a merging car 3, start/restart 3, restart 1
+oval:774865359:superspeedway (2 races)
+  WRECKS  9.5 retirements/race, 3.0 cautions/race, 4 multi-car wrecks (mean 2.3 cars, max 3)
+          by context: green 9, under caution 8, merging 2
+REDPILE rule 2 wrecks within 150 m, or one 3 m or more from both edges: 8 races, 1.25 reds a race (0.00 race control's own rule, 1.25 pile-ups), 1.2 min stopped a race
+REDPILE out: green, no a wreck already there: 53
+REDPILE out: caution, no a wreck already there: 23
+REDPILE out: green, within 50 m of a wreck already there: 18
+REDPILE out: caution, within 50 m of a wreck already there: 12
+REDPILE out: green, 150-400 m from a wreck already there: 4
+REDPILE out: caution, 50-150 m from a wreck already there: 1
+REDPILE out: restart, no a wreck already there: 1
+REDSTOP 10 reds; braking needed at the red to stop 40 m short (m/s^2): median 2.3, 90th Infinity, 20 of 63 cars over 5, 17 over 8
+REDSTOP formation script, into a slower moving car           hits    1, health   0.00, out 0, speed med 5.4, impact med 2.5, 17 s after the red (med), 1609 m to the wreck (med), over the red's cap 0
+REDSTOP formation script, into a faster moving car           hits    1, health   0.00, out 0, speed med 3.0, impact med 2.5, 17 s after the red (med), 1608 m to the wreck (med), over the red's cap 0
+REDSTOP hit formation script into a slower moving car at 5.4 m/s (it 4.2, impact 2.5), 17.3 s after the red, 1609 m short of the wreck, health 0.00
+REDSTOP hit formation script into a faster moving car at 3.0 m/s (it 4.2, impact 2.5), 17.3 s after the red, 1608 m short of the wreck, health 0.00
+-- v8s-5.txt
+speedway (2 races)
+  WRECKS  13.5 retirements/race, 6.0 cautions/race, 5 multi-car wrecks (mean 2.6 cars, max 3)
+          by context: green 12, under caution 10, merging 3, start/restart 2
+oval:3850048323:intermediate (2 races)
+  WRECKS  9.0 retirements/race, 4.5 cautions/race, 3 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 10, merging 4, under caution 4
+oval:3148308672:speedway (2 races)
+  WRECKS  18.5 retirements/race, 5.5 cautions/race, 7 multi-car wrecks (mean 3.4 cars, max 6)
+          by context: under caution 19, green 14, red 3, near a merging car 1
+oval:774865359:superspeedway (2 races)
+  WRECKS  11.0 retirements/race, 5.0 cautions/race, 4 multi-car wrecks (mean 2.3 cars, max 3)
+          by context: under caution 9, green 7, merging 3, start/restart 2, restart 1
+REDPILE rule 2 wrecks within 150 m, or one 3 m or more from both edges: 8 races, 2.13 reds a race (0.00 race control's own rule, 2.13 pile-ups), 2.7 min stopped a race
+REDPILE out: green, no a wreck already there: 59
+REDPILE out: caution, no a wreck already there: 23
+REDPILE out: caution, within 50 m of a wreck already there: 20
+REDPILE out: green, 50-150 m from a wreck already there: 5
+REDPILE out: red, within 50 m of a wreck already there: 3
+REDPILE out: green, within 50 m of a wreck already there: 2
+REDPILE out: caution, 150-400 m from a wreck already there: 1
+REDPILE out: restart, no a wreck already there: 1
+REDSTOP 17 reds; braking needed at the red to stop 40 m short (m/s^2): median 2.4, 90th Infinity, 32 of 107 cars over 5, 25 over 8
+REDSTOP pit maneuver, into a car wrecking                    hits   12, health   2.15, out 1, speed med 10.2, impact med 7.5, 1 s after the red (med), 7 m to the wreck (med), over the red's cap 12
+REDSTOP formation script, into a car wrecking                hits    2, health   1.02, out 1, speed med 27.5, impact med 22.2, 3 s after the red (med), 72 m to the wreck (med), over the red's cap 2
+REDSTOP pit maneuver, into a slower moving car               hits    6, health   0.96, out 1, speed med 10.1, impact med 8.9, 1 s after the red (med), 10 m to the wreck (med), over the red's cap 6
+REDSTOP pit maneuver, into a faster moving car               hits    5, health   0.25, out 0, speed med 2.1, impact med 8.3, 1 s after the red (med), 3 m to the wreck (med), over the red's cap 3
+REDSTOP formation script, into a slower moving car           hits    2, health   0.10, out 0, speed med 26.8, impact med 8.4, 6 s after the red (med), 2824 m to the wreck (med), over the red's cap 0
+REDSTOP formation script, into a faster moving car           hits    2, health   0.05, out 0, speed med 17.8, impact med 8.4, 6 s after the red (med), 2823 m to the wreck (med), over the red's cap 0
+REDSTOP formation script, into the pace car                  hits    1, health   0.01, out 0, speed med 33.5, impact med 3.6, 11 s after the red (med), 2758 m to the wreck (med), over the red's cap 0
+REDSTOP pit skill (in), into a slower moving car             hits    1, health   0.00, out 0, speed med 16.5, impact med 3.2, 0 s after the red (med), 5 m to the wreck (med), over the red's cap 1
+REDSTOP pit skill (in), into a faster moving car             hits    1, health   0.00, out 0, speed med 10.0, impact med 3.2, 0 s after the red (med), 3 m to the wreck (med), over the red's cap 1
+REDSTOP formation script, into a wall                        hits    1, health   0.00, out 0, speed med 40.1, impact med 0.9, 0 s after the red (med), 953 m to the wreck (med), over the red's cap 0
+REDSTOP hit formation script into a car wrecking at 27.5 m/s (it 16.9, impact 22.2), 3.4 s after the red, 9 m short of the wreck, health 0.80, out, over the cap
+REDSTOP hit pit maneuver into a car wrecking at 19.5 m/s (it 16.5, impact 17.5), 0.1 s after the red, 11 m short of the wreck, health 0.60, over the cap
+REDSTOP hit pit maneuver into a car wrecking at 18.1 m/s (it 10.0, impact 16.3), 1.3 s after the red, 4 m short of the wreck, health 0.51, over the cap
+REDSTOP hit pit maneuver into a car wrecking at 18.2 m/s (it 11.5, impact 14.9), 2.2 s after the red, 3 m short of the wreck, health 0.41, over the cap
+REDSTOP hit pit maneuver into a slower moving car at 6.9 m/s (it 6.6, impact 17.5), 0.1 s after the red, 10 m short of the wreck, health 0.38, out, over the cap
+REDSTOP hit pit maneuver into a slower moving car at 19.0 m/s (it 15.8, impact 13.2), 0.1 s after the red, 13 m short of the wreck, health 0.31, over the cap
+REDSTOP hit pit maneuver into a car wrecking at 10.2 m/s (it 6.9, impact 13.7), 0.2 s after the red, 10 m short of the wreck, health 0.28, out, over the cap
+REDSTOP hit formation script into a car wrecking at 15.8 m/s (it 8.7, impact 11.5), 0.2 s after the red, 72 m short of the wreck, health 0.22, over the cap
+REDSTOP hit pit maneuver into a slower moving car at 11.5 m/s (it 5.2, impact 8.9), 0.8 s after the red, 3 m short of the wreck, health 0.12, over the cap
+REDSTOP hit pit maneuver into a faster moving car at 2.1 m/s (it 9.7, impact 8.9), 0.8 s after the red, 2 m short of the wreck, health 0.12, over the cap
+REDSTOP hit formation script into a slower moving car at 26.8 m/s (it 23.4, impact 8.4), 6.2 s after the red, 2808 m short of the wreck, health 0.10
+REDSTOP hit pit maneuver into a slower moving car at 10.1 m/s (it 7.0, impact 8.3), 1.0 s after the red, 5 m short of the wreck, health 0.10, over the cap
+-- v8s-7.txt
+speedway (2 races)
+  WRECKS  16.5 retirements/race, 6.5 cautions/race, 8 multi-car wrecks (mean 2.5 cars, max 3)
+          by context: green 10, under caution 8, merging 7, red 4, start/restart 2, near a merging car 2
+oval:3850048323:intermediate (2 races)
+  WRECKS  7.0 retirements/race, 2.5 cautions/race, 3 multi-car wrecks (mean 2.3 cars, max 3)
+          by context: green 9, under caution 5
+oval:3148308672:speedway (2 races)
+  WRECKS  14.5 retirements/race, 7.0 cautions/race, 6 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 12, under caution 9, merging 5, start/restart 2, restart 1
+oval:774865359:superspeedway (2 races)
+  WRECKS  11.5 retirements/race, 5.5 cautions/race, 4 multi-car wrecks (mean 2.5 cars, max 3)
+          by context: green 9, under caution 8, merging 3, red 2, start/restart 1
+REDPILE rule 2 wrecks within 150 m, or one 3 m or more from both edges: 8 races, 2.38 reds a race (0.00 race control's own rule, 2.38 pile-ups), 3.2 min stopped a race
+REDPILE out: green, no a wreck already there: 57
+REDPILE out: caution, no a wreck already there: 26
+REDPILE out: caution, within 50 m of a wreck already there: 14
+REDPILE out: red, within 50 m of a wreck already there: 6
+REDPILE out: red, no a wreck already there: 4
+REDPILE out: red, 150-400 m from a wreck already there: 3
+REDPILE out: caution, 50-150 m from a wreck already there: 2
+REDPILE out: green, within 50 m of a wreck already there: 2
+REDPILE out: restart, no a wreck already there: 1
+REDSTOP 19 reds; braking needed at the red to stop 40 m short (m/s^2): median 2.7, 90th Infinity, 38 of 100 cars over 5, 26 over 8
+REDSTOP its own skill, into a car wrecking                   hits    9, health   6.59, out 8, speed med 52.9, impact med 35.6, 34 s after the red (med), 912 m to the wreck (med), over the red's cap 5
+REDSTOP formation script, into a car wrecking                hits    5, health   2.97, out 4, speed med 17.3, impact med 35.6, 34 s after the red (med), 689 m to the wreck (med), over the red's cap 0
+REDSTOP its own skill, into a slower moving car              hits   22, health   1.34, out 0, speed med 41.7, impact med 4.3, 10 s after the red (med), 2626 m to the wreck (med), over the red's cap 8
+REDSTOP formation script, into a faster moving car           hits    5, health   0.83, out 1, speed med 18.7, impact med 14.3, 10 s after the red (med), 764 m to the wreck (med), over the red's cap 0
+REDSTOP its own skill, into the pace car                     hits    3, health   0.56, out 0, speed med 36.7, impact med 7.7, 3 s after the red (med), 48 m to the wreck (med), over the red's cap 2
+REDSTOP its own skill, into a faster moving car              hits   16, health   0.20, out 0, speed med 37.5, impact med 4.3, 4 s after the red (med), 2653 m to the wreck (med), over the red's cap 7
+REDSTOP its own skill, into a wall                           hits    2, health   0.00, out 0, speed med 28.2, impact med 1.3, 36 s after the red (med), 2499 m to the wreck (med), over the red's cap 0
+REDSTOP hit its own skill into a car wrecking at 57.9 m/s (it 44.7, impact 36.5), 67.4 s after the red, 691 m short of the wreck, health 0.99, out
+REDSTOP hit its own skill into a car wrecking at 56.6 m/s (it 40.3, impact 53.2), 16.3 s after the red, 42 m short of the wreck, health 0.95, out, over the cap
+REDSTOP hit its own skill into a car wrecking at 52.9 m/s (it 42.7, impact 34.6), 33.7 s after the red, 1316 m short of the wreck, health 0.92, out
+REDSTOP hit formation script into a car wrecking at 17.3 m/s (it 30.3, impact 34.6), 33.7 s after the red, 1314 m short of the wreck, health 0.84, out
+REDSTOP hit its own skill into a car wrecking at 70.9 m/s (it 38.5, impact 35.6), 16.5 s after the red, 1708 m short of the wreck, health 0.84, out
+REDSTOP hit formation script into a car wrecking at 18.7 m/s (it 36.6, impact 36.5), 67.4 s after the red, 689 m short of the wreck, health 0.82, out
+REDSTOP hit its own skill into a car wrecking at 40.6 m/s (it 28.7, impact 37.5), 92.9 s after the red, 54 m short of the wreck, health 0.79, out, over the cap
+REDSTOP hit formation script into a car wrecking at 16.9 m/s (it 60.7, impact 35.6), 16.5 s after the red, 1707 m short of the wreck, health 0.74, out
+REDSTOP hit its own skill into a car wrecking at 59.6 m/s (it 44.5, impact 59.4), 39.9 s after the red, 38 m short of the wreck, health 0.70, out, over the cap
+REDSTOP hit its own skill into a car wrecking at 40.2 m/s (it 22.6, impact 30.0), 79.9 s after the red, 912 m short of the wreck, health 0.52, out, over the cap
+REDSTOP hit its own skill into a car wrecking at 46.5 m/s (it 33.0, impact 16.2), 6.8 s after the red, 3047 m short of the wreck, health 0.50
+REDSTOP hit formation script into a car wrecking at 0.1 m/s (it 28.4, impact 53.2), 16.3 s after the red, 40 m short of the wreck, health 0.44, out
+-- v8sp-1.txt
+speedway (2 races)
+  WRECKS  1.0 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 2
+oval:3850048323:intermediate (2 races)
+  WRECKS  3.0 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 3, near a merging car 2, restart 1
+oval:3148308672:speedway (2 races)
+  WRECKS  0.5 retirements/race, 0.5 cautions/race, 0 multi-car wrecks (mean – cars, max 1)
+          by context: green 1
+oval:774865359:superspeedway (2 races)
+  WRECKS  8.0 retirements/race, 2.5 cautions/race, 3 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 9, under caution 6, near a merging car 1
+REDPILE rule 2 wrecks within 150 m, or one 3 m or more from both edges: 8 races, 0.50 reds a race (0.00 race control's own rule, 0.50 pile-ups), 0.5 min stopped a race
+REDPILE out: green, no a wreck already there: 16
+REDPILE out: caution, no a wreck already there: 5
+REDPILE out: green, within 50 m of a wreck already there: 4
+REDPILE out: restart, no a wreck already there: 1
+REDPILE out: caution, within 50 m of a wreck already there: 1
+REDSTOP 4 reds; braking needed at the red to stop 40 m short (m/s^2): median 6.1, 90th Infinity, 23 of 40 cars over 5, 14 over 8
+REDSTOP formation script, into a car wrecking                hits    1, health   0.05, out 0, speed med 16.4, impact med 6.5, 0 s after the red (med), 9 m to the wreck (med), over the red's cap 1
+REDSTOP hit formation script into a car wrecking at 16.4 m/s (it 4.9, impact 6.5), 0.1 s after the red, 9 m short of the wreck, health 0.05, over the cap
+-- v8sp-3.txt
+speedway (2 races)
+  WRECKS  0.5 retirements/race, 0.5 cautions/race, 0 multi-car wrecks (mean – cars, max 1)
+          by context: green 1
+oval:3850048323:intermediate (2 races)
+  WRECKS  1.5 retirements/race, 0.5 cautions/race, 0 multi-car wrecks (mean – cars, max 1)
+          by context: near a merging car 1, merging 1, green 1
+oval:3148308672:speedway (2 races)
+  WRECKS  0.5 retirements/race, 0.5 cautions/race, 0 multi-car wrecks (mean – cars, max 1)
+          by context: green 1
+oval:774865359:superspeedway (2 races)
+  WRECKS  4.5 retirements/race, 2.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 6, under caution 3
+REDPILE rule 2 wrecks within 150 m, or one 3 m or more from both edges: 8 races, 0.25 reds a race (0.00 race control's own rule, 0.25 pile-ups), 0.4 min stopped a race
+REDPILE out: green, no a wreck already there: 12
+REDPILE out: caution, within 50 m of a wreck already there: 4
+REDPILE out: caution, no a wreck already there: 2
+REDPILE out: green, within 50 m of a wreck already there: 1
+REDSTOP 2 reds; braking needed at the red to stop 40 m short (m/s^2): median 1.0, 90th 1.0, 0 of 1 cars over 5, 0 over 8
+REDSTOP pit maneuver, into a car wrecking                    hits    1, health   0.01, out 0, speed med 6.9, impact med 3.5, 0 s after the red (med), 3328 m to the wreck (med), over the red's cap 1
+REDSTOP hit pit maneuver into a car wrecking at 6.9 m/s (it 2.6, impact 3.5), 0.4 s after the red, 3328 m short of the wreck, health 0.01, over the cap
+-- v8sp-5.txt
+speedway (2 races)
+  WRECKS  2.0 retirements/race, 1.0 cautions/race, 2 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: near a merging car 1, merging 1, green 1, under caution 1
+oval:3850048323:intermediate (2 races)
+  WRECKS  5.0 retirements/race, 1.5 cautions/race, 2 multi-car wrecks (mean 2.5 cars, max 3)
+          by context: near a merging car 3, merging 3, green 2, under caution 2
+oval:3148308672:speedway (2 races)
+  WRECKS  0.0 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 0)
+          by context: 
+oval:774865359:superspeedway (2 races)
+  WRECKS  4.0 retirements/race, 2.5 cautions/race, 3 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 6, under caution 1, red 1
+REDPILE rule 2 wrecks within 150 m, or one 3 m or more from both edges: 8 races, 0.75 reds a race (0.00 race control's own rule, 0.75 pile-ups), 0.5 min stopped a race
+REDPILE out: green, no a wreck already there: 13
+REDPILE out: caution, within 50 m of a wreck already there: 5
+REDPILE out: caution, no a wreck already there: 3
+REDPILE out: red, within 50 m of a wreck already there: 1
+REDSTOP 6 reds; braking needed at the red to stop 40 m short (m/s^2): median 3.0, 90th Infinity, 16 of 49 cars over 5, 13 over 8
+REDSTOP formation script, into a car wrecking                hits    1, health   0.85, out 1, speed med 28.1, impact med 27.9, 0 s after the red (med), Infinity m to the wreck (med), over the red's cap 1
+REDSTOP pit maneuver, into a slower moving car               hits    1, health   0.02, out 0, speed med 32.2, impact med 5.0, 0 s after the red (med), 51 m to the wreck (med), over the red's cap 1
+REDSTOP pit maneuver, into a faster moving car               hits    1, health   0.01, out 0, speed med 27.1, impact med 5.0, 0 s after the red (med), 49 m to the wreck (med), over the red's cap 1
+REDSTOP hit formation script into a car wrecking at 28.1 m/s (it 21.0, impact 27.9), 0.1 s after the red, Infinity m short of the wreck, health 0.85, out, over the cap
+REDSTOP hit pit maneuver into a slower moving car at 32.2 m/s (it 30.9, impact 5.0), 0.0 s after the red, 51 m short of the wreck, health 0.02, over the cap
+REDSTOP hit pit maneuver into a faster moving car at 27.1 m/s (it 28.4, impact 5.0), 0.0 s after the red, 49 m short of the wreck, health 0.01, over the cap
+-- v8sp-7.txt
+speedway (2 races)
+  WRECKS  0.0 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 0)
+          by context: 
+oval:3850048323:intermediate (2 races)
+  WRECKS  2.5 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 2, near a merging car 1, under caution 1, merging 1
+oval:3148308672:speedway (2 races)
+  WRECKS  0.0 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 0)
+          by context: 
+oval:774865359:superspeedway (2 races)
+  WRECKS  5.0 retirements/race, 2.5 cautions/race, 1 multi-car wrecks (mean 4.0 cars, max 4)
+          by context: green 6, under caution 4
+REDPILE rule 2 wrecks within 150 m, or one 3 m or more from both edges: 8 races, 0.38 reds a race (0.00 race control's own rule, 0.38 pile-ups), 0.5 min stopped a race
+REDPILE out: green, no a wreck already there: 9
+REDPILE out: caution, within 50 m of a wreck already there: 4
+REDPILE out: caution, no a wreck already there: 2
+REDSTOP 3 reds; braking needed at the red to stop 40 m short (m/s^2): median 2.7, 90th 13.8, 6 of 25 cars over 5, 4 over 8

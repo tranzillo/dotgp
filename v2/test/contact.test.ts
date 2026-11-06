@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { Car } from '../src/sim/car';
 import { PHYSICS as P } from '../src/sim/constants';
 import { computeDraft, resolveCarCollisions } from '../src/sim/collisions';
-import { SPEEDWAY, Track } from '../src/sim/track';
+import { ovalTrack, SPEEDWAY } from '../src/trackgen';
 
-const track = new Track(SPEEDWAY);
+const track = ovalTrack(SPEEDWAY);
 
 function carAt(s: number, d: number, speed: number): Car {
   const car = new Car(0);

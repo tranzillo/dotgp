@@ -1,0 +1,88 @@
+
+=== short seed 1: 143 laps, 26 cars (a car a pit box), 4x pace (44 s)
+finished 7/26  cautions 5 (22 laps)  retirements 18  biggest wreck 2 cars
+  t=287s  2 car(s): green @45, caution +10s @23
+  t=311s  2 car(s): caution +23s @29, caution +35s @30
+  t=382s  1 car(s): caution +94s @0
+  t=509s  1 car(s): caution +221s @2
+  t=841s  2 car(s): green @0, green @39
+  t=855s  2 car(s): caution +14s @22, caution +25s @45
+  t=871s  1 car(s): caution +30s @15
+  t=903s  1 car(s): near a merging car @28
+  t=1274s  1 car(s): caution +14s @22
+  t=2194s  1 car(s): caution +36s @36
+  marks lap 5: groove 3%, skids 0% mean darkness; 6% of surface >10% dark, 0% >25%
+  marks lap 20: groove 7%, skids 1% mean darkness; 28% of surface >10% dark, 2% >25%
+
+=== short seed 2: 143 laps, 26 cars (a car a pit box), 4x pace (62 s)
+finished 14/26  cautions 5 (18 laps)  retirements 12  biggest wreck 4 cars
+  t=557s  1 car(s): caution +46s @8
+  t=945s  4 car(s): caution +30s @1, caution +31s @35, caution +35s @36, caution +37s @20
+  t=1130s  1 car(s): restart @0
+  t=1649s  2 car(s): green @9, caution +0s @25
+  marks lap 5: groove 2%, skids 0% mean darkness; 1% of surface >10% dark, 0% >25%
+  marks lap 20: groove 8%, skids 1% mean darkness; 30% of surface >10% dark, 4% >25%
+
+=== summary by track
+
+short (2 races)
+  STEWARDS 17.5 decisions/race: avoidable-contact: time 12, jumped-restart: drive-through 11, avoidable-contact: warning 8, avoidable-contact: drive-through 3, avoidable-contact: black-flag 1
+  WRECKS  15.0 retirements/race, 5.0 cautions/race, 6 multi-car wrecks (mean 2.3 cars, max 4)
+          by context: under caution 16, green 12, near a merging car 1, restart 1
+          who / what: driver hit car (driver) 22, driver hit wall 7, driver hit car (official) 1
+          contact retirements: 14 at fault, 9 hit by another
+          damage done to others (by fault): 7.83 health/race
+  PACK    15.7 passes/100 green car-laps, alongside 5%, drafting 23%, lane spread 4.99 m; lockstep same brain –, different brains 0.019
+  PASSING 11.8 clean passes/100 green car-laps; of all passes 22% with contact, 11% damaging, 78% from the draft; 17.2 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 3.24 m, 2.34 m/s, 0.123
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+          in a pit cycle: in past the blend 3, in along the wall (box lane) 2, in along the wall (fast lane) 1
+  TIRES   wear 0.0237/green lap -> cliff (0.3) after 30 laps; sliding >0.05 2%, >0.35 1%, >0.6 0% of car-steps
+  FUEL    burn 1.76 kg/green lap -> 34 laps per tank
+  DAMAGE  health lost on track /race: green walls 22.57 (2.32 with a car alongside), cars 12.30; caution walls 1.49, cars 9.84
+  STOPS   110.0/race (28% under caution), tires taken 90%, repairs 86%, called for fuel 9% tires 8% damage 77% caution 0% penalty 5%, tire life at stop 0.68 (min 0.31), service 19.6 s
+  PIT ROAD 81.5 s entry to track under green, 87.2 s under caution; 100.0 contacts, 2.71 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 23.75 s (1186) | 0.6-0.8: 23.80 s (903) | 0.4-0.6: 23.98 s (467) | 0.3-0.4: 24.59 s (62)
+CAUTION hits 381; ahead under 15 m/s 87; ahead smoking 62, behind smoking 35; side by side 136
+CAUTION by phase (hits; per car-minute; health lost):
+CAUTION   before the start          1    0.21    0.00  impact 2.4, behind 17.1 -> ahead 17.3 m/s, side by side 1
+CAUTION   caution forming          69    0.71    8.46  impact 5.0, behind 23.8 -> ahead 16.4 m/s, side by side 25
+CAUTION   caution one to go        26    0.43    0.18  impact 2.4, behind 21.8 -> ahead 19.4 m/s, side by side 8
+CAUTION   caution pacing           95    0.40    8.49  impact 3.6, behind 18.9 -> ahead 13.3 m/s, side by side 23
+CAUTION   restart green 0-10 s     41    1.58    1.77  impact 4.1, behind 35.8 -> ahead 30.4 m/s, side by side 21
+CAUTION   restart green 10-30 s    76    1.60    4.19  impact 4.2, behind 37.5 -> ahead 34.7 m/s, side by side 24
+CAUTION   restart                  17    0.25    0.44  impact 2.8, behind 20.6 -> ahead 17.6 m/s, side by side 6
+CAUTION   start green 0-10 s       16    1.84    0.89  impact 4.9, behind 40.0 -> ahead 36.1 m/s, side by side 3
+CAUTION   start green 10-30 s      40    2.35    2.42  impact 3.3, behind 41.3 -> ahead 38.5 m/s, side by side 25
+CAUTION behind -> ahead (driving): cautionNet -> cautionNet 276, cautionNet -> cautionNet* 41, cautionNet -> pit-in 17, cautionNet* -> cautionNet 15, cautionNet -> pit-in* 5, pit-in* -> pit-in* 5, cautionNet* -> cautionNet* 5, pit-in* -> pit-in 4, pit-in* -> cautionNet 4, pit-out -> pit-in* 2, pit-out -> cautionNet 1, pit-out* -> pit-in* 1, pit-out -> pit-service* 1, pit-in* -> pit-service 1, pit-in -> cautionNet 1, pit-out -> pit-out* 1, cautionNet -> pit-out* 1
+CAUTION lanes behind/ahead: track/track 332, apron/apron 24, track/apron 14, apron/track 11
+CAUTION impact median 3.8 p90 8.9 m/s
+CAUTION bSpeed median 29.2 p90 43.2 m/s
+CAUTION aSpeed median 21.9 p90 40.2 m/s
+CAUTION retirements 20: caution forming: sound (car) 4, caution pacing: smoking (car) 4, restart green 10-30 s: smoking (car) 3, caution pacing: sound (car) 5, caution forming: smoking 2, caution forming: smoking (car) 1, caution pacing: smoking 1
+WALL by tyres (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   40-60%            190   2.197    0.98
+WALL   60-80%            361   3.447    1.79
+WALL   over 80%          616   5.203    2.98
+WALL   under 40%          24   3.522    1.61
+WALL by car ahead in lane (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   10-25 m           165   4.917    2.14
+WALL   25-60 m           217   5.083    2.96
+WALL   none in 60 m      716   3.885    2.24
+WALL   under 10 m         92   2.738    1.12
+WALL by alongside (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   car inside         75   6.503    3.61
+WALL   car outside        63   0.111    0.02
+WALL   clear            1053   4.233    2.31
+WALL by tow (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   clean air         839   4.229    2.52
+WALL   in a tow          352   3.987    1.69
+WALL by outside wall (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   0.3-1 m            49   0.000    0.00
+WALL   1-2 m              70   0.000    0.00
+WALL   over 2 m         1039   0.348    0.52
+WALL   under 0.3 m        33  138.070   65.20
+WALL by riding the wall (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   in a corner         4  563.618  378.02
+WALL   off it           1158   0.312    0.47
+WALL   on a straight      29  83.127   24.81

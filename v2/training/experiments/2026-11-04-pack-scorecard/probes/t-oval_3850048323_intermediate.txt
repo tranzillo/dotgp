@@ -1,0 +1,10 @@
+=== oval:3850048323:intermediate seed 1: 61 laps, 24 cars (a car a pit box), 4x pace (221 s)
+=== oval:3850048323:intermediate seed 2: 61 laps, 24 cars (a car a pit box), 4x pace (203 s)
+=== summary by track
+  WRECKS  0.5 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 1)
+  PASSING 13.9 clean passes/100 green car-laps; of all passes 5% with contact, 2% damaging, 37% from the draft; 1.3 damaging contacts/100 green car-laps
+PACK runs: 1110 pull-outs, 25% with a run (closing 1+ m/s); closing built in the tow over 3 s before -0.04 m/s, at the pull-out 0.25 m/s
+PACK   passed within 10 s: with a run 13%, without 3%, all 5%
+PACK held up (following, closing under 1 m/s): 17.4% of green car-time; the better lane beside: open 91%, faster 3%, no faster 4%, taken 2%, none 0%
+PACK   lane open or faster: moved over within 3 s 44% of 7779 chances
+PACK pack: 0.149 position changes a car-lap; alongside 2% of green car-time; in a tow 30% (drag cut there 13%); damaging car contacts 1.2 a 100 car-laps (2793 green car-laps)

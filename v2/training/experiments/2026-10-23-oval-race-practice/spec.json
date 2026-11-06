@@ -1,0 +1,8 @@
+{
+  "note": "oval stable v10 after 120 races of race practice (PPO in 40-car races, anchored to teachers): what practice changed, then against the house drivers head to head",
+  "steps": [
+    { "kind": "bench", "a": "lab/inputs/stable10.json", "b": "lab/inputs/stable10-practised.json", "field": 40, "tracks": "short,speedway,flat,ovals:3", "seeds": 8 },
+    { "kind": "bench", "a": "$house", "b": "lab/inputs/stable10-practised.json", "field": 40, "tracks": "short,speedway,flat,ovals:3", "seeds": 8, "h2h": true },
+    { "kind": "promote", "candidate": "lab/inputs/stable10-practised.json" }
+  ]
+}

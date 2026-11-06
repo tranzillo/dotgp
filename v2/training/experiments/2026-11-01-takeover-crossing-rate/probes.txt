@@ -1,0 +1,76 @@
+# 1. Green labels (scripts/greenLabels.ts), v8ra, preset short, 1 race, labels before the fix
+GLABELS all green: 10075077 moments, mean |push across gap| 0.346, |pedal gap| 0.119, teacher braking while student not 2.8%
+GLABELS beside: 101 contacts
+GLABELS   3-2s toward -0.00/+0.07 (student only 8%) pedal +0.02/-0.16 miss 17% moving toward -0.21 m/s
+GLABELS   2-1s toward +0.02/+0.09 (student only 15%) pedal -0.09/-0.23 miss 13% moving toward -0.06 m/s
+GLABELS   1-0.5s toward +0.03/+0.07 (student only 14%) pedal -0.08/-0.26 miss 14% moving toward +0.17 m/s
+GLABELS   0.5-0s toward +0.04/-0.01 (student only 15%) pedal -0.04/-0.21 miss 14% moving toward +0.67 m/s
+GLABELS nose to tail: 279 contacts
+GLABELS   3-2s toward -0.00/+0.05 (student only 7%) pedal +0.10/-0.07 miss 16% moving toward -0.11 m/s
+GLABELS   2-1s toward +0.00/+0.05 (student only 10%) pedal -0.11/-0.28 miss 16% moving toward -0.07 m/s
+GLABELS   1-0.5s toward -0.01/+0.03 (student only 13%) pedal -0.20/-0.37 miss 15% moving toward -0.04 m/s
+GLABELS   0.5-0s toward -0.00/-0.01 (student only 16%) pedal -0.20/-0.36 miss 15% moving toward +0.07 m/s
+
+# 2. Pit-cycle damage by section (scripts/pitCycleHits.ts), preset short, 2 races: teachers, then v8ra
+PITHITS pit-cycle damage 1.57 in all
+PITHITS green         out past the blend     wall/wall                               4 steps  health 1.48
+PITHITS green         in exit                a car its racing skill drove            6 steps  health 0.06
+PITHITS green         in along the wall      a car in its pit cycle                  1 steps  health 0.02
+PITHITS green         out along the wall     a car in its pit cycle                  1 steps  health 0.02
+PITHITS pit-cycle damage 8.67 in all
+PITHITS green         in past the blend      wall/wall                              25 steps  health 1.90
+PITHITS green         out along the wall     a car in its pit cycle                 23 steps  health 1.47
+PITHITS green         in exit                a car its racing skill drove           51 steps  health 1.28
+PITHITS green         in along the wall      a car in its pit cycle                 14 steps  health 0.82
+PITHITS green         in past the blend      a car in its pit cycle                  9 steps  health 0.62
+PITHITS green         out exit               a car in its pit cycle                  8 steps  health 0.48
+PITHITS green         in along the wall      a car its racing skill drove           12 steps  health 0.42
+PITHITS green         out exit               a car its racing skill drove            5 steps  health 0.41
+PITHITS green         in blend               a car its racing skill drove           15 steps  health 0.36
+PITHITS green         in exit                a car in its pit cycle                  2 steps  health 0.30
+PITHITS green         service along the wall a car in its pit cycle                  9 steps  health 0.25
+PITHITS green         in blend               wall/wall                               1 steps  health 0.08
+PITHITS green         in along the wall      wall/wall                              76 steps  health 0.06
+PITHITS green         out along the wall     wall/wall                              36 steps  health 0.05
+
+# 3. Takeover gaps (scripts/takeoverGaps.ts), preset short, 6 laps, 8 v8ra students in a field of teachers
+short: 35283 green takeovers; label crossing rate: 0-0.5 m/s 2.2%, 0.5-1.5 m/s 2.9%, 1.5-2.9 m/s 3.7%, 2.9-Infinity m/s 91.3%
+
+# 4. Wall labels (scripts/wallLabels.ts), v8ra, speedway, 1 race: before the fix, then after
+LABELS by wall gap, corner or straight: decisions; speed; throttle student vs teacher; teacher steers more by; teacher wants 0.3+ less throttle
+LABELS 0.3-1 m corner       13070  78.5 m/s  0.24 vs 0.10  +0.182  11%
+LABELS 0.3-1 m straight      3061  76.5 m/s  0.54 vs 0.42  +0.530  7%
+LABELS off corner          462254  75.3 m/s  0.18 vs 0.13  -0.017  12%
+LABELS off straight        277519  74.5 m/s  0.34 vs 0.27  +0.073  11%
+LABELS riding corner         7931  75.8 m/s  0.33 vs 0.13  +0.230  29%
+LABELS riding straight        394  77.1 m/s  0.52 vs 0.40  +0.528  4%
+LABELS by wall gap, corner or straight: decisions; speed; throttle student vs teacher; teacher steers more by; teacher wants 0.3+ less throttle
+LABELS 0.3-1 m corner       13070  78.5 m/s  0.24 vs 0.10  +0.174  10%
+LABELS 0.3-1 m straight      3061  76.5 m/s  0.54 vs 0.46  +0.388  4%
+LABELS off corner          462254  75.3 m/s  0.18 vs 0.13  -0.001  11%
+LABELS off straight        277519  74.5 m/s  0.34 vs 0.29  +0.014  11%
+LABELS riding corner         7931  75.8 m/s  0.33 vs 0.14  +0.227  28%
+LABELS riding straight        394  77.1 m/s  0.52 vs 0.44  +0.403  4%
+
+# 5. Racing fit (scripts/racingFit.ts), v8ra, trained on races 2000-2005, held out 2006-2007: labels before the fix
+racing moments: train 417724 (40 drivers), held out 272842
+FIT bundle's racing network, held out: pedal err 0.117, teacher braking 11.4% of which net not 22%, steer err 0.341
+FIT trained on own    moments, held out: pedal err 0.137, teacher braking 11.4% of which net not 19%, steer err 0.205
+FIT trained on pooled moments, held out: pedal err 0.116, teacher braking 11.4% of which net not 20%, steer err 0.144
+FIT trained on mixed  moments, held out: pedal err 0.114, teacher braking 11.4% of which net not 19%, steer err 0.163
+
+# 6. The same with the fix (labels recorded again from the same races)
+FIT bundle's racing network, held out: pedal err 0.110, teacher braking 12.9% of which net not 20%, steer err 0.133
+FIT trained on own    moments, held out: pedal err 0.136, teacher braking 12.9% of which net not 17%, steer err 0.108
+FIT trained on pooled moments, held out: pedal err 0.114, teacher braking 12.9% of which net not 17%, steer err 0.089
+FIT trained on mixed  moments, held out: pedal err 0.114, teacher braking 12.9% of which net not 17%, steer err 0.093
+
+# 7. Labelled races (scripts/raceLabels.ts --race-only, v8ra, --sample 0.1) (the same with and without the fix: students drive, only the labels differ)
+race 2000 (1045 m): 3 out, 4 cautions, 49887 caution moments, 111165 racing
+race 2001 (3100 m): 14 out, 3 cautions, 80141 caution moments, 60831 racing
+race 2002 (2525 m): 16 out, 4 cautions, 81446 caution moments, 46014 racing
+race 2003 (2505 m): 4 out, 2 cautions, 41487 caution moments, 95319 racing
+race 2004 (2157 m): 5 out, 3 cautions, 36289 caution moments, 71120 racing
+race 2005 (3554 m): 20 out, 4 cautions, 100569 caution moments, 38625 racing
+race 2006 (1045 m): 0 out, 1 cautions, 12424 caution moments, 132127 racing
+race 2007 (1240 m): 3 out, 4 cautions, 77196 caution moments, 140939 racing

@@ -1,0 +1,524 @@
+{
+  "files": [
+    "teacher:public/drivers/stable-candidate-v5.json"
+  ],
+  "seeds": 4,
+  "tracks": {
+    "oval:894715320:short": {
+      "retirements": {
+        "values": [
+          {
+            "mean": 0,
+            "ci": 0
+          }
+        ]
+      },
+      "atFault": {
+        "values": [
+          {
+            "mean": 0,
+            "ci": 0
+          }
+        ]
+      },
+      "formationWrecks": {
+        "values": [
+          {
+            "mean": 0,
+            "ci": 0
+          }
+        ]
+      },
+      "multiCar": {
+        "values": [
+          {
+            "mean": 0,
+            "ci": 0
+          }
+        ]
+      },
+      "harm": {
+        "values": [
+          {
+            "mean": 0.19908548803747975,
+            "ci": 0.08675635366586393
+          }
+        ]
+      },
+      "cautions": {
+        "values": [
+          {
+            "mean": 0,
+            "ci": 0
+          }
+        ]
+      },
+      "stops": {
+        "values": [
+          {
+            "mean": 37.5,
+            "ci": 1.59
+          }
+        ]
+      },
+      "damageStops": {
+        "values": [
+          {
+            "mean": 0,
+            "ci": 0
+          }
+        ]
+      },
+      "wallGreen": {
+        "values": [
+          {
+            "mean": 0.6153281534510505,
+            "ci": 0.4245454432514631
+          }
+        ]
+      },
+      "wallAlongside": {
+        "values": [
+          {
+            "mean": 0.05943052203501875,
+            "ci": 0.06907699097627483
+          }
+        ]
+      },
+      "carGreen": {
+        "values": [
+          {
+            "mean": 0.48413149089284147,
+            "ci": 0.24558518165142187
+          }
+        ]
+      },
+      "pitLaneTime": {
+        "values": [
+          {
+            "mean": 66.03640416704542,
+            "ci": 1.0265511628403965
+          }
+        ]
+      },
+      "pitHits": {
+        "values": [
+          {
+            "mean": 0,
+            "ci": 0
+          }
+        ]
+      },
+      "pitDamage": {
+        "values": [
+          {
+            "mean": 0,
+            "ci": 0
+          }
+        ]
+      },
+      "lapTime": {
+        "values": [
+          {
+            "mean": 21.56915832612016,
+            "ci": 0.08174938116133837
+          }
+        ]
+      },
+      "scripted": {
+        "values": [
+          {
+            "mean": 0.07090178898336584,
+            "ci": 0.003242365043897973
+          }
+        ]
+      },
+      "scriptedRetirements": {
+        "values": [
+          {
+            "mean": 0,
+            "ci": 0
+          }
+        ]
+      },
+      "passes": {
+        "values": [
+          {
+            "mean": 4.632310090234423,
+            "ci": 3.631320921536126
+          }
+        ]
+      },
+      "cleanPasses": {
+        "values": [
+          {
+            "mean": 3.993560344374743,
+            "ci": 3.1845432197201617
+          }
+        ]
+      },
+      "passDamage": {
+        "values": [
+          {
+            "mean": 0.029405162738496072,
+            "ci": 0.04899321774774695
+          }
+        ]
+      },
+      "passDraft": {
+        "values": [
+          {
+            "mean": 0.7479323145989814,
+            "ci": 0.32482045410963534
+          }
+        ]
+      },
+      "greenHits": {
+        "values": [
+          {
+            "mean": 3.7585711752796955,
+            "ci": 1.115235413699248
+          }
+        ]
+      },
+      "passesPerHit": {
+        "values": [
+          {
+            "mean": 1.0273359619104299,
+            "ci": 0.6168106391173664
+          }
+        ]
+      },
+      "alongside": {
+        "values": [
+          {
+            "mean": 0.030160584482843988,
+            "ci": 0.012534863710490694
+          }
+        ]
+      },
+      "drafting": {
+        "values": [
+          {
+            "mean": 0.34448827902824425,
+            "ci": 0.06367752153106694
+          }
+        ]
+      },
+      "laneSpread": {
+        "values": [
+          {
+            "mean": 5.2887326809360005,
+            "ci": 0.044376890167839134
+          }
+        ]
+      },
+      "lockSame": {
+        "values": [
+          {
+            "mean": null,
+            "ci": null
+          }
+        ]
+      },
+      "lockDiff": {
+        "values": [
+          {
+            "mean": -0.014034927269036084,
+            "ci": 0.013396763801755548
+          }
+        ]
+      },
+      "spotSameD": {
+        "values": [
+          {
+            "mean": null,
+            "ci": null
+          }
+        ]
+      },
+      "spotDiffD": {
+        "values": [
+          {
+            "mean": 1.5610264027296545,
+            "ci": 0.40087328908411035
+          }
+        ]
+      },
+      "spotSameV": {
+        "values": [
+          {
+            "mean": null,
+            "ci": null
+          }
+        ]
+      },
+      "spotDiffV": {
+        "values": [
+          {
+            "mean": 0.9825441315879636,
+            "ci": 0.1516737552595937
+          }
+        ]
+      }
+    },
+    "oval:3850048323:intermediate": {
+      "retirements": {
+        "values": [
+          {
+            "mean": 0,
+            "ci": 0
+          }
+        ]
+      },
+      "atFault": {
+        "values": [
+          {
+            "mean": 0,
+            "ci": 0
+          }
+        ]
+      },
+      "formationWrecks": {
+        "values": [
+          {
+            "mean": 0,
+            "ci": 0
+          }
+        ]
+      },
+      "multiCar": {
+        "values": [
+          {
+            "mean": 0,
+            "ci": 0
+          }
+        ]
+      },
+      "harm": {
+        "values": [
+          {
+            "mean": 0.36464132829301266,
+            "ci": 0.2615552107109284
+          }
+        ]
+      },
+      "cautions": {
+        "values": [
+          {
+            "mean": 0,
+            "ci": 0
+          }
+        ]
+      },
+      "stops": {
+        "values": [
+          {
+            "mean": 99.25,
+            "ci": 2.7154419529792935
+          }
+        ]
+      },
+      "damageStops": {
+        "values": [
+          {
+            "mean": 0,
+            "ci": 0
+          }
+        ]
+      },
+      "wallGreen": {
+        "values": [
+          {
+            "mean": 0.42119175579945767,
+            "ci": 0.02989226688238677
+          }
+        ]
+      },
+      "wallAlongside": {
+        "values": [
+          {
+            "mean": 0.018265995621290776,
+            "ci": 0.009685090327364934
+          }
+        ]
+      },
+      "carGreen": {
+        "values": [
+          {
+            "mean": 0.7781243884288477,
+            "ci": 0.609071373175821
+          }
+        ]
+      },
+      "pitLaneTime": {
+        "values": [
+          {
+            "mean": 52.137240990725616,
+            "ci": 0.564457485389645
+          }
+        ]
+      },
+      "pitHits": {
+        "values": [
+          {
+            "mean": 2.25,
+            "ci": 2.7154419529792935
+          }
+        ]
+      },
+      "pitDamage": {
+        "values": [
+          {
+            "mean": 0.015641962598222536,
+            "ci": 0.018252825316993716
+          }
+        ]
+      },
+      "lapTime": {
+        "values": [
+          {
+            "mean": 40.29924827550445,
+            "ci": 0.0887460249461368
+          }
+        ]
+      },
+      "scripted": {
+        "values": [
+          {
+            "mean": 0.10616132369114341,
+            "ci": 0.0023519746251726803
+          }
+        ]
+      },
+      "scriptedRetirements": {
+        "values": [
+          {
+            "mean": 0,
+            "ci": 0
+          }
+        ]
+      },
+      "passes": {
+        "values": [
+          {
+            "mean": 13.824262673636454,
+            "ci": 5.21252427934199
+          }
+        ]
+      },
+      "cleanPasses": {
+        "values": [
+          {
+            "mean": 12.728233539228203,
+            "ci": 4.6962414391625895
+          }
+        ]
+      },
+      "passDamage": {
+        "values": [
+          {
+            "mean": 0.027668948355697023,
+            "ci": 0.025579527022106252
+          }
+        ]
+      },
+      "passDraft": {
+        "values": [
+          {
+            "mean": 0.5353076594039392,
+            "ci": 0.07506862294984848
+          }
+        ]
+      },
+      "greenHits": {
+        "values": [
+          {
+            "mean": 1.8459894493836342,
+            "ci": 1.1328767482662971
+          }
+        ]
+      },
+      "passesPerHit": {
+        "values": [
+          {
+            "mean": 7.989674388111888,
+            "ci": 6.941342548479924
+          }
+        ]
+      },
+      "alongside": {
+        "values": [
+          {
+            "mean": 0.017240253245506862,
+            "ci": 0.0057482357357493226
+          }
+        ]
+      },
+      "drafting": {
+        "values": [
+          {
+            "mean": 0.23885850981228732,
+            "ci": 0.0048507025256653334
+          }
+        ]
+      },
+      "laneSpread": {
+        "values": [
+          {
+            "mean": 4.442028127382403,
+            "ci": 0.016016875044306773
+          }
+        ]
+      },
+      "lockSame": {
+        "values": [
+          {
+            "mean": null,
+            "ci": null
+          }
+        ]
+      },
+      "lockDiff": {
+        "values": [
+          {
+            "mean": -0.019970851429179752,
+            "ci": 0.009970165715320892
+          }
+        ]
+      },
+      "spotSameD": {
+        "values": [
+          {
+            "mean": null,
+            "ci": null
+          }
+        ]
+      },
+      "spotDiffD": {
+        "values": [
+          {
+            "mean": 2.359656204736581,
+            "ci": 0.06320488451225821
+          }
+        ]
+      },
+      "spotSameV": {
+        "values": [
+          {
+            "mean": null,
+            "ci": null
+          }
+        ]
+      },
+      "spotDiffV": {
+        "values": [
+          {
+            "mean": 1.2573692508285175,
+            "ci": 0.05347712180753984
+          }
+        ]
+      }
+    }
+  }
+}

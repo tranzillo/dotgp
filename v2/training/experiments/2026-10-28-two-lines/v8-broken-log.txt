@@ -1,0 +1,101 @@
+﻿group 12 round 0: 36/36 to the apron (median 4.0 s), 6 hits, 0 stalls, harm 0.21, loss 0.0014; a car ahead breaking: 4 hits in 48 drills, racing loss 0.0049 (248 s)
+group 8 round 0: 36/36 to the apron (median 3.8 s), 6 hits, 0 stalls, harm 0.13, loss 0.0009; a car ahead breaking: 1 hits in 48 drills, racing loss 0.0054 (254 s)
+group 0 round 0: 36/36 to the apron (median 2.8 s), 2 hits, 0 stalls, harm 0.10, loss 0.0009; a car ahead breaking: 5 hits in 48 drills, racing loss 0.0047 (274 s)
+group 24 round 0: 36/36 to the apron (median 3.3 s), 6 hits, 0 stalls, harm 0.14, loss 0.0010; a car ahead breaking: 6 hits in 48 drills, racing loss 0.0052 (291 s)
+group 20 round 0: 36/36 to the apron (median 2.8 s), 2 hits, 0 stalls, harm 0.02, loss 0.0010; a car ahead breaking: 2 hits in 48 drills, racing loss 0.0053 (292 s)
+group 36 round 0: 36/36 to the apron (median 2.8 s), 6 hits, 0 stalls, harm 0.11, loss 0.0009; a car ahead breaking: 2 hits in 48 drills, racing loss 0.0046 (295 s)
+group 4 round 0: 36/36 to the apron (median 3.2 s), 8 hits, 0 stalls, harm 0.15, loss 0.0012; a car ahead breaking: 2 hits in 48 drills, racing loss 0.0052 (319 s)
+group 32 round 0: 36/36 to the apron (median 2.8 s), 5 hits, 0 stalls, harm 0.10, loss 0.0010; a car ahead breaking: 0 hits in 48 drills, racing loss 0.0056 (337 s)
+group 16 round 0: 36/36 to the apron (median 2.6 s), 0 hits, 0 stalls, harm 0.01, loss 0.0008; a car ahead breaking: 2 hits in 48 drills, racing loss 0.0049 (360 s)
+group 28 round 0: 36/36 to the apron (median 3.3 s), 7 hits, 0 stalls, harm 0.09, loss 0.0013; a car ahead breaking: 4 hits in 48 drills, racing loss 0.0059 (362 s)
+group 12 round 1: 34/36 to the apron (median 4.4 s), 6 hits, 0 stalls, harm 1.27, loss 0.0045; a car ahead breaking: 24 hits in 48 drills, racing loss 0.0174 (133 s)
+group 8 round 1: 35/36 to the apron (median 2.6 s), 6 hits, 0 stalls, harm 0.09, loss 0.0022; a car ahead breaking: 15 hits in 48 drills, racing loss 0.0192 (267 s)
+group 0 round 1: 36/36 to the apron (median 3.8 s), 5 hits, 0 stalls, harm 0.45, loss 0.0026; a car ahead breaking: 30 hits in 48 drills, racing loss 0.0182 (249 s)
+group 24 round 1: 36/36 to the apron (median 3.2 s), 6 hits, 0 stalls, harm 0.37, loss 0.0023; a car ahead breaking: 14 hits in 48 drills, racing loss 0.0222 (267 s)
+group 4 round 1: 36/36 to the apron (median 3.4 s), 12 hits, 0 stalls, harm 0.69, loss 0.0037; a car ahead breaking: 42 hits in 48 drills, racing loss 0.0225 (310 s)
+group 12 round 2: 36/36 to the apron (median 3.1 s), 7 hits, 0 stalls, harm 0.57, loss 0.0042; a car ahead breaking: 11 hits in 48 drills, racing loss 0.0210 (287 s)
+group 20 round 1: 35/36 to the apron (median 3.0 s), 4 hits, 0 stalls, harm 0.22, loss 0.0023; a car ahead breaking: 6 hits in 48 drills, racing loss 0.0210 (381 s)
+group 16 round 1: 36/36 to the apron (median 2.8 s), 0 hits, 0 stalls, harm 0.17, loss 0.0021; a car ahead breaking: 12 hits in 48 drills, racing loss 0.0249 (345 s)
+group 32 round 1: 36/36 to the apron (median 3.6 s), 0 hits, 0 stalls, harm 0.06, loss 0.0020; a car ahead breaking: 23 hits in 48 drills, racing loss 0.0231 (371 s)
+group 28 round 1: 36/36 to the apron (median 3.6 s), 2 hits, 0 stalls, harm 0.23, loss 0.0019; a car ahead breaking: 14 hits in 48 drills, racing loss 0.0198 (362 s)
+group 36 round 1: 36/36 to the apron (median 2.6 s), 0 hits, 0 stalls, harm 0.00, loss 0.0016; a car ahead breaking: 29 hits in 48 drills, racing loss 0.0192 (442 s)
+group 0 round 2: 35/36 to the apron (median 3.0 s), 4 hits, 0 stalls, harm 0.09, loss 0.0032; a car ahead breaking: 16 hits in 48 drills, racing loss 0.0217 (252 s)
+group 8 round 2: 36/36 to the apron (median 2.8 s), 6 hits, 0 stalls, harm 0.09, loss 0.0029; a car ahead breaking: 36 hits in 48 drills, racing loss 0.0214 (279 s)
+group 12 round 3: 36/36 to the apron (median 3.2 s), 6 hits, 0 stalls, harm 0.04, loss 0.0043; a car ahead breaking: 10 hits in 48 drills, racing loss 0.0195 (175 s)
+group 16 round 2: 36/36 to the apron (median 3.8 s), 8 hits, 0 stalls, harm 0.68, loss 0.0030; a car ahead breaking: 16 hits in 48 drills, racing loss 0.0239 (238 s)
+group 24 round 2: 36/36 to the apron (median 2.8 s), 0 hits, 0 stalls, harm 0.00, loss 0.0026; a car ahead breaking: 4 hits in 48 drills, racing loss 0.0233 (385 s)
+group 36 round 2: 36/36 to the apron (median 3.2 s), 0 hits, 0 stalls, harm 0.02, loss 0.0024; a car ahead breaking: 13 hits in 48 drills, racing loss 0.0197 (244 s)
+group 20 round 2: 36/36 to the apron (median 3.4 s), 2 hits, 0 stalls, harm 0.11, loss 0.0027; a car ahead breaking: 12 hits in 48 drills, racing loss 0.0244 (321 s)
+group 4 round 2: 36/36 to the apron (median 2.5 s), 2 hits, 0 stalls, harm 0.00, loss 0.0035; a car ahead breaking: 17 hits in 48 drills, racing loss 0.0246 (368 s)
+group 32 round 2: 36/36 to the apron (median 2.5 s), 3 hits, 0 stalls, harm 0.10, loss 0.0023; a car ahead breaking: 6 hits in 48 drills, racing loss 0.0239 (305 s)
+group 0 round 3: 36/36 to the apron (median 3.8 s), 12 hits, 0 stalls, harm 0.20, loss 0.0033; a car ahead breaking: 13 hits in 48 drills, racing loss 0.0214 (250 s)
+group 28 round 2: 36/36 to the apron (median 3.4 s), 2 hits, 0 stalls, harm 0.07, loss 0.0029; a car ahead breaking: 14 hits in 48 drills, racing loss 0.0230 (304 s)
+group 8 round 3: 36/36 to the apron (median 3.3 s), 2 hits, 0 stalls, harm 0.10, loss 0.0026; a car ahead breaking: 2 hits in 48 drills, racing loss 0.0209 (289 s)
+group 12 round 4: 36/36 to the apron (median 3.4 s), 6 hits, 0 stalls, harm 0.09, loss 0.0045; a car ahead breaking: 12 hits in 48 drills, racing loss 0.0200 (277 s)
+group 24 round 3: 36/36 to the apron (median 3.3 s), 10 hits, 0 stalls, harm 0.15, loss 0.0029; a car ahead breaking: 10 hits in 48 drills, racing loss 0.0232 (189 s)
+group 16 round 3: 36/36 to the apron (median 2.4 s), 4 hits, 0 stalls, harm 0.11, loss 0.0031; a car ahead breaking: 4 hits in 48 drills, racing loss 0.0244 (249 s)
+group 4 round 3: 36/36 to the apron (median 3.4 s), 8 hits, 0 stalls, harm 0.21, loss 0.0035; a car ahead breaking: 12 hits in 48 drills, racing loss 0.0240 (199 s)
+group 36 round 3: 36/36 to the apron (median 3.1 s), 0 hits, 0 stalls, harm 0.04, loss 0.0022; a car ahead breaking: 10 hits in 48 drills, racing loss 0.0212 (239 s)
+group 28 round 3: 36/36 to the apron (median 3.2 s), 4 hits, 0 stalls, harm 0.24, loss 0.0035; a car ahead breaking: 6 hits in 48 drills, racing loss 0.0235 (218 s)
+group 20 round 3: 36/36 to the apron (median 2.4 s), 0 hits, 0 stalls, harm 0.01, loss 0.0029; a car ahead breaking: 4 hits in 48 drills, racing loss 0.0246 (317 s)
+group 32 round 3: 36/36 to the apron (median 3.1 s), 6 hits, 0 stalls, harm 0.08, loss 0.0029; a car ahead breaking: 9 hits in 48 drills, racing loss 0.0234 (342 s)
+group 8 round 4: 36/36 to the apron (median 2.7 s), 10 hits, 0 stalls, harm 0.46, loss 0.0029; a car ahead breaking: 22 hits in 48 drills, racing loss 0.0212 (287 s)
+group 0 round 4: 36/36 to the apron (median 2.7 s), 8 hits, 0 stalls, harm 0.11, loss 0.0032; a car ahead breaking: 18 hits in 48 drills, racing loss 0.0220 (404 s)
+group 16 round 4: 36/36 to the apron (median 3.0 s), 2 hits, 0 stalls, harm 0.05, loss 0.0036; a car ahead breaking: 0 hits in 48 drills, racing loss 0.0257 (263 s)
+group 12 round 5: 36/36 to the apron (median 2.9 s), 2 hits, 0 stalls, harm 0.02, loss 0.0042; a car ahead breaking: 6 hits in 48 drills, racing loss 0.0218 (364 s)
+group 4 round 4: 36/36 to the apron (median 3.3 s), 0 hits, 0 stalls, harm 0.01, loss 0.0035; a car ahead breaking: 8 hits in 48 drills, racing loss 0.0238 (330 s)
+group 24 round 4: 36/36 to the apron (median 2.8 s), 4 hits, 0 stalls, harm 0.08, loss 0.0033; a car ahead breaking: 4 hits in 48 drills, racing loss 0.0236 (419 s)
+group 36 round 4: 36/36 to the apron (median 3.0 s), 8 hits, 0 stalls, harm 0.08, loss 0.0026; a car ahead breaking: 16 hits in 48 drills, racing loss 0.0214 (337 s)
+group 12 driver 12 licence PASSED: 6/6 to the apron (median 3.1 s), 0 hits, 0 stalls, harm 0.01
+group 12 driver 13 licence PASSED: 6/6 to the apron (median 1.6 s), 0 hits, 0 stalls, harm 0.01
+group 12 driver 14 licence PASSED: 6/6 to the apron (median 4.0 s), 0 hits, 0 stalls, harm 0.00
+group 12 driver 15 licence PASSED: 6/6 to the apron (median 3.4 s), 0 hits, 0 stalls, harm 0.00
+group 0 round 5: 36/36 to the apron (median 3.7 s), 8 hits, 0 stalls, harm 0.69, loss 0.0039; a car ahead breaking: 18 hits in 48 drills, racing loss 0.0226 (250 s)
+group 28 round 4: 36/36 to the apron (median 3.0 s), 1 hits, 0 stalls, harm 0.05, loss 0.0033; a car ahead breaking: 11 hits in 48 drills, racing loss 0.0231 (479 s)
+group 32 round 4: 36/36 to the apron (median 3.1 s), 4 hits, 0 stalls, harm 0.23, loss 0.0026; a car ahead breaking: 4 hits in 48 drills, racing loss 0.0228 (426 s)
+group 16 round 5: 36/36 to the apron (median 3.4 s), 8 hits, 0 stalls, harm 0.09, loss 0.0036; a car ahead breaking: 4 hits in 48 drills, racing loss 0.0256 (368 s)
+group 8 round 5: 36/36 to the apron (median 2.6 s), 6 hits, 0 stalls, harm 0.11, loss 0.0027; a car ahead breaking: 17 hits in 48 drills, racing loss 0.0220 (464 s)
+group 0 driver 0 licence PASSED: 6/6 to the apron (median 3.7 s), 0 hits, 0 stalls, harm 0.00
+group 0 driver 1 licence PASSED: 6/6 to the apron (median 4.0 s), 0 hits, 0 stalls, harm 0.00
+group 0 driver 2 licence PASSED: 6/6 to the apron (median 3.1 s), 0 hits, 0 stalls, harm 0.00
+group 0 driver 3 licence PASSED: 6/6 to the apron (median 4.0 s), 0 hits, 0 stalls, harm 0.00
+group 24 round 5: 36/36 to the apron (median 2.9 s), 6 hits, 0 stalls, harm 0.16, loss 0.0031; a car ahead breaking: 5 hits in 48 drills, racing loss 0.0239 (313 s)
+group 20 round 4: 36/36 to the apron (median 2.2 s), 6 hits, 0 stalls, harm 0.07, loss 0.0028; a car ahead breaking: 2 hits in 48 drills, racing loss 0.0251 (563 s)
+group 4 round 5: 36/36 to the apron (median 3.5 s), 20 hits, 0 stalls, harm 0.34, loss 0.0034; a car ahead breaking: 22 hits in 48 drills, racing loss 0.0250 (354 s)
+group 16 driver 16 licence PASSED: 6/6 to the apron (median 2.5 s), 0 hits, 0 stalls, harm 0.00
+group 16 driver 17 licence PASSED: 6/6 to the apron (median 3.1 s), 0 hits, 0 stalls, harm 0.00
+group 16 driver 18 licence failed: 6/6 to the apron (median 4.1 s), 2 hits, 0 stalls, harm 0.08
+group 16 driver 19 licence PASSED: 6/6 to the apron (median 3.1 s), 0 hits, 0 stalls, harm 0.01
+group 8 driver 8 licence PASSED: 6/6 to the apron (median 3.3 s), 0 hits, 0 stalls, harm 0.00
+group 8 driver 9 licence PASSED: 6/6 to the apron (median 2.8 s), 0 hits, 0 stalls, harm 0.02
+group 8 driver 10 licence PASSED: 6/6 to the apron (median 4.0 s), 0 hits, 0 stalls, harm 0.00
+group 8 driver 11 licence failed: 6/6 to the apron (median 2.7 s), 2 hits, 0 stalls, harm 0.04
+group 28 round 5: 36/36 to the apron (median 3.8 s), 6 hits, 0 stalls, harm 1.26, loss 0.0035; a car ahead breaking: 31 hits in 48 drills, racing loss 0.0237 (310 s)
+group 24 driver 24 licence failed: 6/6 to the apron (median 3.6 s), 2 hits, 0 stalls, harm 0.01
+group 24 driver 25 licence PASSED: 6/6 to the apron (median 3.3 s), 0 hits, 0 stalls, harm 0.00
+group 24 driver 26 licence PASSED: 6/6 to the apron (median 3.4 s), 0 hits, 0 stalls, harm 0.03
+group 24 driver 27 licence PASSED: 6/6 to the apron (median 2.7 s), 0 hits, 0 stalls, harm 0.02
+group 36 round 5: 36/36 to the apron (median 2.9 s), 2 hits, 0 stalls, harm 0.08, loss 0.0031; a car ahead breaking: 8 hits in 48 drills, racing loss 0.0220 (505 s)
+group 4 driver 4 licence failed: 6/6 to the apron (median 4.1 s), 2 hits, 0 stalls, harm 0.02
+group 4 driver 5 licence PASSED: 6/6 to the apron (median 4.4 s), 0 hits, 0 stalls, harm 0.00
+group 4 driver 6 licence failed: 6/6 to the apron (median 3.1 s), 2 hits, 0 stalls, harm 0.02
+group 4 driver 7 licence PASSED: 6/6 to the apron (median 3.7 s), 0 hits, 0 stalls, harm 0.00
+group 20 round 5: 36/36 to the apron (median 4.2 s), 13 hits, 0 stalls, harm 0.84, loss 0.0034; a car ahead breaking: 3 hits in 48 drills, racing loss 0.0251 (272 s)
+group 28 driver 28 licence PASSED: 6/6 to the apron (median 3.8 s), 0 hits, 0 stalls, harm 0.00
+group 28 driver 29 licence failed: 6/6 to the apron (median 3.4 s), 4 hits, 0 stalls, harm 0.05
+group 28 driver 30 licence PASSED: 6/6 to the apron (median 3.0 s), 0 hits, 0 stalls, harm 0.00
+group 28 driver 31 licence PASSED: 6/6 to the apron (median 3.7 s), 0 hits, 0 stalls, harm 0.01
+group 36 driver 36 licence PASSED: 6/6 to the apron (median 3.0 s), 0 hits, 0 stalls, harm 0.00
+group 36 driver 37 licence PASSED: 6/6 to the apron (median 2.5 s), 0 hits, 0 stalls, harm 0.00
+group 36 driver 38 licence PASSED: 6/6 to the apron (median 4.9 s), 0 hits, 0 stalls, harm 0.00
+group 36 driver 39 licence failed: 6/6 to the apron (median 2.3 s), 2 hits, 0 stalls, harm 0.00
+group 20 driver 20 licence PASSED: 6/6 to the apron (median 3.5 s), 0 hits, 0 stalls, harm 0.00
+group 20 driver 21 licence failed: 6/6 to the apron (median 3.4 s), 2 hits, 0 stalls, harm 0.52
+group 20 driver 22 licence failed: 6/6 to the apron (median 4.9 s), 6 hits, 0 stalls, harm 0.03
+group 20 driver 23 licence PASSED: 6/6 to the apron (median 3.5 s), 0 hits, 0 stalls, harm 0.00
+group 32 round 5: 36/36 to the apron (median 2.8 s), 2 hits, 0 stalls, harm 0.02, loss 0.0026; a car ahead breaking: 6 hits in 48 drills, racing loss 0.0232 (536 s)
+group 32 driver 32 licence failed: 6/6 to the apron (median 2.7 s), 2 hits, 0 stalls, harm 0.04
+group 32 driver 33 licence PASSED: 6/6 to the apron (median 2.7 s), 0 hits, 0 stalls, harm 0.00
+group 32 driver 34 licence failed: 6/6 to the apron (median 2.2 s), 0 hits, 0 stalls, harm 0.45
+group 32 driver 35 licence failed: 6/6 to the apron (median 2.4 s), 2 hits, 0 stalls, harm 0.01
+40 drivers -> C:\Users\kappa\AppData\Local\Temp\claude\c--Users-kappa-Documents-Projects-dotgp\4749c000-d72c-4f20-a2d8-8e954ec103df\scratchpad\lines-retrain2\v8.json (28 licensed, 41.0 min)

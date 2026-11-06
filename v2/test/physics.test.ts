@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { Car, stepCar } from '../src/sim/car';
+import { Car, stepCar, tireGrip } from '../src/sim/car';
 import { G, PHYSICS as P, SURFACES } from '../src/sim/constants';
 import { resolveWalls } from '../src/sim/collisions';
-import { FLAT_TRACK, SHORT_TRACK, SPEEDWAY, Track, type OvalSpec } from '../src/sim/track';
+import { Track } from '../src/sim/track';
+import { FLAT_TRACK, type OvalParams, ovalTrack, SHORT_TRACK, SPEEDWAY } from '../src/trackgen';
 import { World } from '../src/sim/world';
 import { ScriptedDriver } from '../src/ai/drivers';
 
@@ -17,7 +18,7 @@ function stepOnTrack(car: Car, track: Track) {
 }
 
 describe('track', () => {
-  const track = new Track(SPEEDWAY);
+  const track = ovalTrack(SPEEDWAY);
 
   it('closes into a loop of the expected length', () => {
     const { straightLength: S, turnRadius: R, easementLength: Le } = SPEEDWAY;
@@ -46,8 +47,8 @@ describe('track', () => {
 
 describe('powertrain', () => {
   it('reaches the power/drag terminal speed on a long flat straight', () => {
-    const spec: OvalSpec = { ...SPEEDWAY, straightLength: 30000, bankStraight: 0 };
-    const track = new Track(spec);
+    const spec: OvalParams = { ...SPEEDWAY, straightLength: 30000, bankStraight: 0 };
+    const track = ovalTrack(spec);
     const car = new Car(0);
     car.placeOnTrack(track, 10, 0);
     car.inputX = 1;
@@ -73,7 +74,7 @@ describe('powertrain', () => {
 
 describe('banking', () => {
   it('carries a car around the turn at neutral speed with zero tire input', () => {
-    const track = new Track(SPEEDWAY);
+    const track = ovalTrack(SPEEDWAY);
     const lane = 0;
     const sMid = SPEEDWAY.straightLength / 2 + SPEEDWAY.easementLength + 50;
     const idx = track.indexAt(sMid);
@@ -94,8 +95,46 @@ describe('banking', () => {
     expect(Math.abs(car.d - lane)).toBeLessThan(1.0);
   });
 
+  it('matches the textbook banked-curve limit: tires grip in the banked plane', () => {
+    // Hold a car at speed v mid-arc of a constant-bank turn, asking the tires for exactly the
+    // force the circle needs (but never more than they have), and see whether it holds its line.
+    const R = 230;
+    const holds = (bank: number, v: number) => {
+      const track = ovalTrack({ ...SPEEDWAY, turnRadius: R, easementLength: 30, bankInner: bank, bankOuter: bank, bankStraight: 0, width: 40 });
+      const car = new Car(0);
+      car.placeOnTrack(track, SPEEDWAY.straightLength / 2 + 300, 0);
+      car.vx = track.tx[car.trackIdx] * v;
+      car.vy = track.ty[car.trackIdx] * v;
+      for (let k = 0; k < 3 / P.DT; k++) {
+        stepOnTrack(car, track);
+        const kappa = track.kappa[car.trackIdx] / (1 - track.kappa[car.trackIdx] * car.d);
+        const need = v * v * kappa - car.bankAcc;
+        car.inputX = 0;
+        car.inputY = Math.max(-1 / P.OVERDRIVE_MAX, Math.min(1 / P.OVERDRIVE_MAX, need / (P.OVERDRIVE_MAX * car.capacity)));
+        const sp = car.speed;
+        car.vx *= v / sp;
+        car.vy *= v / sp;
+        // Settle first: the tire load builds over a few steps (dropped in mid-turn, the car has
+        // no cornering history), so hold it on its lane for half a second before judging.
+        if (k < 0.5 / P.DT) {
+          const s = car.s;
+          car.placeOnTrack(track, s, 0);
+          car.vx = track.tx[car.trackIdx] * v;
+          car.vy = track.ty[car.trackIdx] * v;
+        }
+      }
+      return car.d > -1;
+    };
+    for (const deg of [0, 15, 30]) {
+      const b = (deg * Math.PI) / 180, mu = P.TIRE_MU;
+      const textbook = Math.sqrt((G * R * (Math.sin(b) + mu * Math.cos(b))) / (Math.cos(b) - mu * Math.sin(b)));
+      expect(holds(b, textbook * 0.98), `${deg} deg below the limit`).toBe(true);
+      expect(holds(b, textbook * 1.04), `${deg} deg above the limit`).toBe(false);
+    }
+  });
+
   it('lets cars corner far faster on a banked turn than a flat one', () => {
-    const vMax = (spec: OvalSpec) => {
+    const vMax = (spec: OvalParams) => {
       const b = spec.bankOuter, mu = P.TIRE_MU;
       return Math.sqrt((G * (Math.sin(b) + mu * Math.cos(b))) / (Math.cos(b) - mu * Math.sin(b)) * spec.turnRadius);
     };
@@ -106,7 +145,7 @@ describe('banking', () => {
 describe('scripted baseline', () => {
   for (const [name, spec] of [['speedway', SPEEDWAY], ['short', SHORT_TRACK], ['flat', FLAT_TRACK]] as const) {
     it(`laps the ${name} oval cleanly`, () => {
-      const track = new Track(spec);
+      const track = ovalTrack(spec);
       const world = new World(track);
       const car = new Car(0);
       car.placeOnTrack(track, track.length - 20, 0);
@@ -122,7 +161,7 @@ describe('scripted baseline', () => {
 
 describe('walls', () => {
   const hit = (angleDeg: number, speed: number) => {
-    const track = new Track(SPEEDWAY);
+    const track = ovalTrack(SPEEDWAY);
     const car = new Car(0);
     car.placeOnTrack(track, 20, -track.halfWidth + P.CAR_RADIUS + 0.01);
     const i = car.trackIdx;
@@ -163,7 +202,7 @@ describe('walls', () => {
 describe('tire wear', () => {
   it('wears hardest under lateral load, least driving straight', () => {
     const wear = (ix: number, iy: number) => {
-      const track = new Track({ ...SPEEDWAY, straightLength: 8000, bankStraight: 0 });
+      const track = ovalTrack({ ...SPEEDWAY, straightLength: 8000, bankStraight: 0 });
       const car = new Car(0);
       car.placeOnTrack(track, 100, 0);
       car.vx = 60;
@@ -182,5 +221,33 @@ describe('tire wear', () => {
     const driving = wear(0.8, 0);
     expect(lateral).toBeGreaterThan(braking * 2);
     expect(braking).toBeGreaterThan(driving);
+  });
+});
+
+describe('worn tires', () => {
+  it('fade gently to the cliff, then fall away fast', () => {
+    const drop = (a: number, b: number) => tireGrip(a) - tireGrip(b);
+    expect(tireGrip(1)).toBe(1);
+    expect(tireGrip(P.TIRE_CLIFF)).toBeCloseTo(P.GRIP_AT_CLIFF);
+    expect(tireGrip(0)).toBeCloseTo(P.GRIP_CORDED);
+    // The last 0.2 of tire life costs far more than the first 0.2.
+    expect(drop(0.2, 0)).toBeGreaterThan(4 * drop(1, 0.8));
+  });
+
+  it('lose cornering grip faster than braking grip', () => {
+    const track = ovalTrack(SPEEDWAY);
+    const car = new Car(0);
+    car.placeOnTrack(track, 100, 0);
+    car.vx = 50;
+    car.tireLife = 0.1;
+    stepCar(car, track, P.DT);
+    const fresh = new Car(1);
+    fresh.placeOnTrack(track, 100, 0);
+    fresh.vx = 50;
+    stepCar(fresh, track, P.DT);
+    const lat = car.capacity / fresh.capacity;
+    const lon = car.capacityLon / fresh.capacityLon;
+    expect(lat).toBeLessThan(0.8);
+    expect(lon).toBeGreaterThan(lat);
   });
 });

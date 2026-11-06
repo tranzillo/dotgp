@@ -1,0 +1,57 @@
+
+=== speedway seed 1: 59 laps, 30 cars (a car a pit box), 4x pace (62 s)
+finished 7/30  cautions 5 (20 laps)  retirements 23  biggest wreck 6 cars
+  t=429s  3 car(s): green @75, caution +7s @30, caution +8s @64
+  t=497s  6 car(s): caution +68s @26, caution +68s @34, caution +73s @26, caution +73s @40, caution +73s @29, caution +80s @53
+  t=517s  4 car(s): caution +89s @44, caution +89s @47, caution +93s @34, caution +95s @31
+  t=634s  1 car(s): caution +206s @13
+  t=1079s  2 car(s): green @33, green @10
+  t=1108s  1 car(s): caution +29s @34
+  t=1139s  1 car(s): caution +59s @41
+  t=1213s  1 car(s): caution +134s @30
+  t=2547s  2 car(s): green @39, caution +8s @21
+  marks lap 5: groove 7%, skids 0% mean darkness; 34% of surface >10% dark, 0% >25%
+  marks lap 20: groove 11%, skids 1% mean darkness; 50% of surface >10% dark, 10% >25%
+
+=== speedway seed 2: 59 laps, 30 cars (a car a pit box), 4x pace (66 s)
+finished 11/30  cautions 6 (22 laps)  retirements 18  biggest wreck 3 cars
+  t=488s  2 car(s): green @5, green @22
+  t=746s  3 car(s): start/restart @47, start/restart @8, caution +10s @22
+  t=759s  1 car(s): caution +13s @4
+  t=781s  1 car(s): caution +35s @29
+  t=794s  2 car(s): caution +48s @25, caution +53s @51
+  t=807s  2 car(s): caution +61s @47, caution +62s @49
+  t=832s  1 car(s): caution +86s @28
+  t=1028s  1 car(s): near a merging car @46
+  t=1100s  1 car(s): caution +354s @8
+  marks lap 5: groove 7%, skids 0% mean darkness; 33% of surface >10% dark, 0% >25%
+  marks lap 20: groove 10%, skids 1% mean darkness; 45% of surface >10% dark, 4% >25%
+
+=== summary by track
+
+speedway (2 races)
+  STEWARDS 12.5 decisions/race: avoidable-contact: time 11, pit-speeding: stop-go 6, avoidable-contact: black-flag 4, jumped-restart: drive-through 2, blend-line: drive-through 1, avoidable-contact: drive-through 1
+  WRECKS  20.5 retirements/race, 5.5 cautions/race, 9 multi-car wrecks (mean 2.9 cars, max 6)
+          by context: under caution 26, green 12, start/restart 2, near a merging car 1
+          who / what: driver hit car (driver) 30, driver hit wall 10, driver hit car (official) 1
+          contact retirements: 26 at fault, 5 hit by another
+          damage done to others (by fault): 5.07 health/race
+  PACK    60.8 passes/100 green car-laps, alongside 7%, drafting 28%, lane spread 3.75 m; lockstep same brain –, different brains -0.005
+  PASSING 49.0 clean passes/100 green car-laps; of all passes 19% with contact, 10% damaging, 66% from the draft; 31.7 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 3.90 m, 1.95 m/s, 0.245
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+          in a pit cycle: in entry 12, in before entry 2
+  TIRES   wear 0.0932/green lap -> cliff (0.3) after 8 laps; sliding >0.05 2%, >0.35 0%, >0.6 0% of car-steps
+  FUEL    burn 4.81 kg/green lap -> 12 laps per tank
+  DAMAGE  health lost on track /race: green walls 4.12 (0.47 with a car alongside), cars 4.53; caution walls 2.41, cars 15.32
+  STOPS   87.5/race (47% under caution), tires taken 89%, repairs 38%, called for fuel 18% tires 56% damage 22% caution 0% penalty 4%, tire life at stop 0.53 (min 0.18), service 16.1 s
+  PIT ROAD 58.8 s entry to track under green, 71.6 s under caution; 101.5 contacts, 5.06 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 33.57 s (139) | 0.6-0.8: 33.02 s (316) | 0.4-0.6: 33.38 s (180) | 0.3-0.4: 34.21 s (18) | 0.2-0.3: 33.34 s (5) | 0.0-0.2: 37.65 s (12)
+GREEN contacts 272: by angle and who was moving across (count; median closing across, along m/s)
+GREEN   beside        one         73  2.64  1.35
+GREEN   beside        both        93  4.33  0.85
+GREEN   beside        neither      3  -0.41  10.85
+GREEN   nose to tail  one         51  0.99  3.53
+GREEN   nose to tail  both        40  3.89  1.25
+GREEN   nose to tail  neither     12  -1.71  4.54
+GREEN closing across: <-0.5 36, 0.5-1 13, 1-2 32, 2-3 56, 3- 135

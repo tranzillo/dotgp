@@ -1,0 +1,639 @@
+== 1. pile-up rules (red held until the stretch is clear), v8s and v8sp, speedway, gen. intermediate, gen. speedway, gen. superspeedway, seeds 1-4, at 34442f5
+-- v8s-999_0.txt
+speedway (4 races)
+  WRECKS  8.5 retirements/race, 4.5 cautions/race, 4 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 16, under caution 13, merging 2, start/restart 2, near a merging car 1
+oval:3850048323:intermediate (4 races)
+  WRECKS  9.5 retirements/race, 3.0 cautions/race, 9 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 19, under caution 9, merging 8, near a merging car 2
+oval:3148308672:speedway (4 races)
+  WRECKS  17.5 retirements/race, 6.3 cautions/race, 16 multi-car wrecks (mean 2.4 cars, max 4)
+          by context: under caution 31, green 28, merging 4, near a merging car 4, start/restart 2, restart 1
+oval:774865359:superspeedway (4 races)
+  WRECKS  11.3 retirements/race, 2.8 cautions/race, 9 multi-car wrecks (mean 2.8 cars, max 4)
+          by context: under caution 23, green 15, merging 7
+REDPILE rule 999 wrecks within 0 m: 16 races, 0.00 reds a race (0.00 race control's own rule, 0.00 pile-ups), 0.0 min stopped a race
+REDPILE out: green, no a wreck already there: 105
+REDPILE out: caution, no a wreck already there: 49
+REDPILE out: caution, within 50 m of a wreck already there: 43
+REDPILE out: green, within 50 m of a wreck already there: 15
+REDPILE out: caution, 150-400 m from a wreck already there: 5
+REDPILE out: restart, no a wreck already there: 2
+REDPILE out: restart, within 50 m of a wreck already there: 2
+REDPILE out: restart, 150-400 m from a wreck already there: 2
+REDPILE out: caution, 50-150 m from a wreck already there: 1
+REDPILE out: green, 50-150 m from a wreck already there: 1
+-- v8s-2_150.txt
+speedway (4 races)
+  WRECKS  9.0 retirements/race, 5.3 cautions/race, 4 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 19, under caution 12, merging 2, start/restart 2, near a merging car 1
+oval:3850048323:intermediate (4 races)
+  WRECKS  8.3 retirements/race, 2.5 cautions/race, 6 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 15, under caution 12, merging 5, near a merging car 1
+oval:3148308672:speedway (4 races)
+  WRECKS  18.0 retirements/race, 6.3 cautions/race, 18 multi-car wrecks (mean 2.5 cars, max 4)
+          by context: green 33, under caution 30, restart 3, red 2, start/restart 2, near a merging car 2
+oval:774865359:superspeedway (4 races)
+  WRECKS  9.8 retirements/race, 3.3 cautions/race, 10 multi-car wrecks (mean 2.4 cars, max 4)
+          by context: under caution 17, green 11, merging 9, near a merging car 2
+REDPILE rule 2 wrecks within 150 m: 16 races, 1.13 reds a race (0.00 race control's own rule, 1.13 pile-ups), 1.5 min stopped a race
+REDPILE out: green, no a wreck already there: 100
+REDPILE out: caution, no a wreck already there: 48
+REDPILE out: caution, within 50 m of a wreck already there: 29
+REDPILE out: green, within 50 m of a wreck already there: 15
+REDPILE out: red, within 50 m of a wreck already there: 4
+REDPILE out: caution, 50-150 m from a wreck already there: 2
+REDPILE out: restart, no a wreck already there: 2
+REDPILE out: red, 50-150 m from a wreck already there: 2
+REDPILE out: caution, 150-400 m from a wreck already there: 1
+REDPILE out: restart, within 50 m of a wreck already there: 1
+REDPILE out: red, no a wreck already there: 1
+-- v8s-2_150_5.txt
+speedway (4 races)
+  WRECKS  9.0 retirements/race, 5.3 cautions/race, 4 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 19, under caution 12, merging 2, start/restart 2, near a merging car 1
+oval:3850048323:intermediate (4 races)
+  WRECKS  9.5 retirements/race, 3.0 cautions/race, 9 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 19, under caution 9, merging 8, near a merging car 2
+oval:3148308672:speedway (4 races)
+  WRECKS  17.5 retirements/race, 6.5 cautions/race, 19 multi-car wrecks (mean 2.4 cars, max 4)
+          by context: green 31, under caution 29, start/restart 3, near a merging car 3, merging 2, red 1, restart 1
+oval:774865359:superspeedway (4 races)
+  WRECKS  12.0 retirements/race, 3.8 cautions/race, 12 multi-car wrecks (mean 2.6 cars, max 4)
+          by context: under caution 20, green 13, merging 9, start/restart 3, near a merging car 3
+REDPILE rule 2 wrecks within 150 m, one 5 s or more after another: 16 races, 0.63 reds a race (0.00 race control's own rule, 0.63 pile-ups), 1.0 min stopped a race
+REDPILE out: green, no a wreck already there: 113
+REDPILE out: caution, no a wreck already there: 44
+REDPILE out: caution, within 50 m of a wreck already there: 39
+REDPILE out: green, within 50 m of a wreck already there: 14
+REDPILE out: caution, 150-400 m from a wreck already there: 3
+REDPILE out: red, within 50 m of a wreck already there: 2
+REDPILE out: caution, 50-150 m from a wreck already there: 1
+REDPILE out: restart, no a wreck already there: 1
+-- v8s-3_150.txt
+speedway (4 races)
+  WRECKS  9.0 retirements/race, 4.5 cautions/race, 5 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 16, under caution 15, merging 2, start/restart 2, near a merging car 1
+oval:3850048323:intermediate (4 races)
+  WRECKS  9.5 retirements/race, 3.0 cautions/race, 9 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 19, under caution 9, merging 8, near a merging car 2
+oval:3148308672:speedway (4 races)
+  WRECKS  17.8 retirements/race, 6.3 cautions/race, 15 multi-car wrecks (mean 2.5 cars, max 4)
+          by context: under caution 33, green 28, start/restart 3, near a merging car 3, merging 2, red 1, restart 1
+oval:774865359:superspeedway (4 races)
+  WRECKS  10.8 retirements/race, 3.5 cautions/race, 11 multi-car wrecks (mean 2.5 cars, max 4)
+          by context: under caution 18, green 14, merging 10, start/restart 1
+REDPILE rule 3 wrecks within 150 m: 16 races, 0.63 reds a race (0.00 race control's own rule, 0.63 pile-ups), 0.9 min stopped a race
+REDPILE out: green, no a wreck already there: 109
+REDPILE out: caution, no a wreck already there: 51
+REDPILE out: caution, within 50 m of a wreck already there: 37
+REDPILE out: green, within 50 m of a wreck already there: 15
+REDPILE out: restart, no a wreck already there: 2
+REDPILE out: restart, within 50 m of a wreck already there: 2
+REDPILE out: restart, 150-400 m from a wreck already there: 2
+REDPILE out: caution, 150-400 m from a wreck already there: 1
+REDPILE out: caution, 50-150 m from a wreck already there: 1
+REDPILE out: red, no a wreck already there: 1
+REDPILE out: green, 150-400 m from a wreck already there: 1
+REDPILE out: red, within 50 m of a wreck already there: 1
+-- v8sp-999_0.txt
+speedway (4 races)
+  WRECKS  0.8 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 3
+oval:3850048323:intermediate (4 races)
+  WRECKS  2.3 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 4, near a merging car 3, restart 1, merging 1
+oval:3148308672:speedway (4 races)
+  WRECKS  0.5 retirements/race, 0.5 cautions/race, 0 multi-car wrecks (mean – cars, max 1)
+          by context: green 2
+oval:774865359:superspeedway (4 races)
+  WRECKS  5.5 retirements/race, 2.0 cautions/race, 5 multi-car wrecks (mean 2.4 cars, max 4)
+          by context: under caution 13, green 8, near a merging car 1
+REDPILE rule 999 wrecks within 0 m: 16 races, 0.00 reds a race (0.00 race control's own rule, 0.00 pile-ups), 0.0 min stopped a race
+REDPILE out: green, no a wreck already there: 23
+REDPILE out: caution, within 50 m of a wreck already there: 11
+REDPILE out: caution, no a wreck already there: 4
+REDPILE out: restart, no a wreck already there: 1
+REDPILE out: green, within 50 m of a wreck already there: 1
+REDPILE out: caution, 150-400 m from a wreck already there: 1
+-- v8sp-2_150.txt
+speedway (4 races)
+  WRECKS  0.8 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 3
+oval:3850048323:intermediate (4 races)
+  WRECKS  2.3 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 4, near a merging car 3, restart 1, merging 1
+oval:3148308672:speedway (4 races)
+  WRECKS  0.5 retirements/race, 0.5 cautions/race, 0 multi-car wrecks (mean – cars, max 1)
+          by context: green 2
+oval:774865359:superspeedway (4 races)
+  WRECKS  5.0 retirements/race, 1.8 cautions/race, 5 multi-car wrecks (mean 2.2 cars, max 3)
+          by context: under caution 12, green 6, near a merging car 1, merging 1
+REDPILE rule 2 wrecks within 150 m: 16 races, 0.31 reds a race (0.00 race control's own rule, 0.31 pile-ups), 0.5 min stopped a race
+REDPILE out: green, no a wreck already there: 22
+REDPILE out: caution, within 50 m of a wreck already there: 8
+REDPILE out: caution, no a wreck already there: 7
+REDPILE out: restart, no a wreck already there: 1
+REDPILE out: green, within 50 m of a wreck already there: 1
+-- v8sp-2_150_5.txt
+speedway (4 races)
+  WRECKS  0.8 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 3
+oval:3850048323:intermediate (4 races)
+  WRECKS  2.3 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 4, near a merging car 3, restart 1, merging 1
+oval:3148308672:speedway (4 races)
+  WRECKS  0.5 retirements/race, 0.5 cautions/race, 0 multi-car wrecks (mean – cars, max 1)
+          by context: green 2
+oval:774865359:superspeedway (4 races)
+  WRECKS  5.3 retirements/race, 1.8 cautions/race, 5 multi-car wrecks (mean 2.2 cars, max 3)
+          by context: under caution 13, green 7, near a merging car 1
+REDPILE rule 2 wrecks within 150 m, one 5 s or more after another: 16 races, 0.31 reds a race (0.00 race control's own rule, 0.31 pile-ups), 0.5 min stopped a race
+REDPILE out: green, no a wreck already there: 22
+REDPILE out: caution, within 50 m of a wreck already there: 9
+REDPILE out: caution, no a wreck already there: 7
+REDPILE out: restart, no a wreck already there: 1
+REDPILE out: green, within 50 m of a wreck already there: 1
+-- v8sp-3_150.txt
+speedway (4 races)
+  WRECKS  0.8 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 3
+oval:3850048323:intermediate (4 races)
+  WRECKS  2.3 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 4, near a merging car 3, restart 1, merging 1
+oval:3148308672:speedway (4 races)
+  WRECKS  0.5 retirements/race, 0.5 cautions/race, 0 multi-car wrecks (mean – cars, max 1)
+          by context: green 2
+oval:774865359:superspeedway (4 races)
+  WRECKS  6.8 retirements/race, 2.0 cautions/race, 5 multi-car wrecks (mean 2.6 cars, max 4)
+          by context: under caution 15, green 7, red 3, start/restart 1, near a merging car 1
+REDPILE rule 3 wrecks within 150 m: 16 races, 0.06 reds a race (0.00 race control's own rule, 0.06 pile-ups), 0.1 min stopped a race
+REDPILE out: green, no a wreck already there: 22
+REDPILE out: caution, within 50 m of a wreck already there: 10
+REDPILE out: caution, no a wreck already there: 7
+REDPILE out: green, within 50 m of a wreck already there: 2
+REDPILE out: red, within 50 m of a wreck already there: 2
+REDPILE out: restart, no a wreck already there: 1
+REDPILE out: red, no a wreck already there: 1
+REDPILE out: caution, 150-400 m from a wreck already there: 1
+== 2. which wrecks the field runs into (scripts/wreckHits.ts), seeds 1-4 and 5-8
+-- hits-v8s-1.txt
+speedway (4 races)
+  WRECKS  8.5 retirements/race, 4.5 cautions/race, 4 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 16, under caution 13, merging 2, start/restart 2, near a merging car 1
+oval:3850048323:intermediate (4 races)
+  WRECKS  9.5 retirements/race, 3.0 cautions/race, 9 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 19, under caution 9, merging 8, near a merging car 2
+oval:3148308672:speedway (4 races)
+  WRECKS  17.5 retirements/race, 6.3 cautions/race, 16 multi-car wrecks (mean 2.4 cars, max 4)
+          by context: under caution 31, green 28, merging 4, near a merging car 4, start/restart 2, restart 1
+oval:774865359:superspeedway (4 races)
+  WRECKS  11.3 retirements/race, 2.8 cautions/race, 9 multi-car wrecks (mean 2.8 cars, max 4)
+          by context: under caution 23, green 15, merging 7
+WRECKHIT all                                           158 wrecks,  52 hit ( 33%), 100 cars out into them, first hit after 5 s (med), 0 s (soonest)
+WRECKHIT stopped under green                            23 wrecks,  15 hit ( 65%),  34 cars out into them, first hit after 5 s (med), 1 s (soonest)
+WRECKHIT stopped under caution                         130 wrecks,  36 hit ( 28%),  65 cars out into them, first hit after 9 s (med), 0 s (soonest)
+WRECKHIT stopped under restart                           5 wrecks,   1 hit ( 20%),   1 cars out into them, first hit after 24 s (med), 24 s (soonest)
+WRECKHIT against the outside (within 3 m)               25 wrecks,   9 hit ( 36%),  18 cars out into them, first hit after 5 s (med), 2 s (soonest)
+WRECKHIT mid-track                                      46 wrecks,  25 hit ( 54%),  49 cars out into them, first hit after 5 s (med), 0 s (soonest)
+WRECKHIT low (within 3 m of the inside edge, or on the apron)   87 wrecks,  18 hit ( 21%),  33 cars out into them, first hit after 11 s (med), 0 s (soonest)
+WRECKHIT in a corner                                    60 wrecks,  26 hit ( 43%),  51 cars out into them, first hit after 10 s (med), 0 s (soonest)
+WRECKHIT on a straight                                  98 wrecks,  26 hit ( 27%),  49 cars out into them, first hit after 5 s (med), 0 s (soonest)
+WRECKHIT room to get by 6-10 m                           6 wrecks,   5 hit ( 83%),  11 cars out into them, first hit after 8 s (med), 2 s (soonest)
+WRECKHIT room to get by 10- m                          152 wrecks,  47 hit ( 31%),  89 cars out into them, first hit after 5 s (med), 0 s (soonest)
+WRECKHIT track 2525 m                                   36 wrecks,  14 hit ( 39%),  35 cars out into them, first hit after 5 s (med), 0 s (soonest)
+WRECKHIT track 2442 m                                   20 wrecks,   6 hit ( 30%),   7 cars out into them, first hit after 22 s (med), 2 s (soonest)
+WRECKHIT track 2877 m                                   66 wrecks,  14 hit ( 21%),  18 cars out into them, first hit after 3 s (med), 0 s (soonest)
+WRECKHIT track 3341 m                                   36 wrecks,  18 hit ( 50%),  40 cars out into them, first hit after 13 s (med), 1 s (soonest)
+WRECKHIT corner, outside                                13 wrecks,   4 hit ( 31%),   8 cars out into them, first hit after 20 s (med), 2 s (soonest)
+WRECKHIT corner, mid                                    25 wrecks,  14 hit ( 56%),  29 cars out into them, first hit after 4 s (med), 0 s (soonest)
+WRECKHIT corner, low                                    22 wrecks,   8 hit ( 36%),  14 cars out into them, first hit after 12 s (med), 1 s (soonest)
+WRECKHIT straight, outside                              12 wrecks,   5 hit ( 42%),  10 cars out into them, first hit after 4 s (med), 2 s (soonest)
+WRECKHIT straight, mid                                  21 wrecks,  11 hit ( 52%),  20 cars out into them, first hit after 8 s (med), 0 s (soonest)
+WRECKHIT straight, low                                  65 wrecks,  10 hit ( 15%),  19 cars out into them, first hit after 4 s (med), 0 s (soonest)
+-- hits-v8s-5.txt
+speedway (4 races)
+  WRECKS  17.5 retirements/race, 6.5 cautions/race, 14 multi-car wrecks (mean 2.6 cars, max 4)
+          by context: under caution 37, green 28, merging 2, start/restart 2, near a merging car 1
+oval:3850048323:intermediate (4 races)
+  WRECKS  9.5 retirements/race, 3.5 cautions/race, 7 multi-car wrecks (mean 2.1 cars, max 3)
+          by context: green 19, under caution 13, merging 5, restart 1
+oval:3148308672:speedway (4 races)
+  WRECKS  16.8 retirements/race, 6.3 cautions/race, 15 multi-car wrecks (mean 2.4 cars, max 4)
+          by context: under caution 30, green 29, merging 5, restart 1, start/restart 1, near a merging car 1
+oval:774865359:superspeedway (4 races)
+  WRECKS  17.8 retirements/race, 4.0 cautions/race, 16 multi-car wrecks (mean 2.7 cars, max 5)
+          by context: under caution 43, green 16, near a merging car 5, restart 3, merging 2, start/restart 2
+WRECKHIT all                                           179 wrecks,  64 hit ( 36%), 113 cars out into them, first hit after 15 s (med), 0 s (soonest)
+WRECKHIT stopped under green                             3 wrecks,   0 hit (  0%),   0 cars out into them
+WRECKHIT stopped under caution                         173 wrecks,  63 hit ( 36%), 112 cars out into them, first hit after 15 s (med), 0 s (soonest)
+WRECKHIT stopped under restart                           3 wrecks,   1 hit ( 33%),   1 cars out into them, first hit after 0 s (med), 0 s (soonest)
+WRECKHIT against the outside (within 3 m)               39 wrecks,  12 hit ( 31%),  24 cars out into them, first hit after 54 s (med), 0 s (soonest)
+WRECKHIT mid-track                                      55 wrecks,  38 hit ( 69%),  63 cars out into them, first hit after 12 s (med), 0 s (soonest)
+WRECKHIT low (within 3 m of the inside edge, or on the apron)   85 wrecks,  14 hit ( 16%),  26 cars out into them, first hit after 16 s (med), 0 s (soonest)
+WRECKHIT in a corner                                    85 wrecks,  43 hit ( 51%),  82 cars out into them, first hit after 22 s (med), 0 s (soonest)
+WRECKHIT on a straight                                  94 wrecks,  21 hit ( 22%),  31 cars out into them, first hit after 4 s (med), 0 s (soonest)
+WRECKHIT room to get by 6-10 m                           1 wrecks,   1 hit (100%),   1 cars out into them, first hit after 117 s (med), 117 s (soonest)
+WRECKHIT room to get by 10- m                          178 wrecks,  63 hit ( 35%), 112 cars out into them, first hit after 15 s (med), 0 s (soonest)
+WRECKHIT track 2525 m                                   56 wrecks,  17 hit ( 30%),  30 cars out into them, first hit after 24 s (med), 0 s (soonest)
+WRECKHIT track 2442 m                                   19 wrecks,   5 hit ( 26%),   5 cars out into them, first hit after 60 s (med), 28 s (soonest)
+WRECKHIT track 2877 m                                   53 wrecks,  14 hit ( 26%),  21 cars out into them, first hit after 9 s (med), 0 s (soonest)
+WRECKHIT track 3341 m                                   51 wrecks,  28 hit ( 55%),  57 cars out into them, first hit after 15 s (med), 0 s (soonest)
+WRECKHIT corner, outside                                24 wrecks,   8 hit ( 33%),  18 cars out into them, first hit after 60 s (med), 0 s (soonest)
+WRECKHIT corner, mid                                    36 wrecks,  27 hit ( 75%),  47 cars out into them, first hit after 13 s (med), 0 s (soonest)
+WRECKHIT corner, low                                    25 wrecks,   8 hit ( 32%),  17 cars out into them, first hit after 41 s (med), 1 s (soonest)
+WRECKHIT straight, outside                              15 wrecks,   4 hit ( 27%),   6 cars out into them, first hit after 54 s (med), 1 s (soonest)
+WRECKHIT straight, mid                                  19 wrecks,  11 hit ( 58%),  16 cars out into them, first hit after 5 s (med), 0 s (soonest)
+WRECKHIT straight, low                                  60 wrecks,   6 hit ( 10%),   9 cars out into them, first hit after 3 s (med), 0 s (soonest)
+-- hits-v8sp-1.txt
+speedway (4 races)
+  WRECKS  0.8 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 3
+oval:3850048323:intermediate (4 races)
+  WRECKS  2.3 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 4, near a merging car 3, restart 1, merging 1
+oval:3148308672:speedway (4 races)
+  WRECKS  0.5 retirements/race, 0.5 cautions/race, 0 multi-car wrecks (mean – cars, max 1)
+          by context: green 2
+oval:774865359:superspeedway (4 races)
+  WRECKS  5.5 retirements/race, 2.0 cautions/race, 5 multi-car wrecks (mean 2.4 cars, max 4)
+          by context: under caution 13, green 8, near a merging car 1
+WRECKHIT all                                            22 wrecks,   7 hit ( 32%),  15 cars out into them, first hit after 4 s (med), 1 s (soonest)
+WRECKHIT stopped under caution                          22 wrecks,   7 hit ( 32%),  15 cars out into them, first hit after 4 s (med), 1 s (soonest)
+WRECKHIT against the outside (within 3 m)                8 wrecks,   1 hit ( 13%),   4 cars out into them, first hit after 18 s (med), 18 s (soonest)
+WRECKHIT mid-track                                       6 wrecks,   4 hit ( 67%),   6 cars out into them, first hit after 4 s (med), 1 s (soonest)
+WRECKHIT low (within 3 m of the inside edge, or on the apron)    8 wrecks,   2 hit ( 25%),   5 cars out into them, first hit after 41 s (med), 1 s (soonest)
+WRECKHIT in a corner                                     6 wrecks,   3 hit ( 50%),  10 cars out into them, first hit after 18 s (med), 2 s (soonest)
+WRECKHIT on a straight                                  16 wrecks,   4 hit ( 25%),   5 cars out into them, first hit after 4 s (med), 1 s (soonest)
+WRECKHIT room to get by 10- m                           22 wrecks,   7 hit ( 32%),  15 cars out into them, first hit after 4 s (med), 1 s (soonest)
+WRECKHIT track 2525 m                                    2 wrecks,   0 hit (  0%),   0 cars out into them
+WRECKHIT track 2442 m                                    1 wrecks,   0 hit (  0%),   0 cars out into them
+WRECKHIT track 2877 m                                    3 wrecks,   1 hit ( 33%),   2 cars out into them, first hit after 1 s (med), 1 s (soonest)
+WRECKHIT track 3341 m                                   16 wrecks,   6 hit ( 38%),  13 cars out into them, first hit after 11 s (med), 1 s (soonest)
+WRECKHIT corner, outside                                 4 wrecks,   1 hit ( 25%),   4 cars out into them, first hit after 18 s (med), 18 s (soonest)
+WRECKHIT corner, mid                                     1 wrecks,   1 hit (100%),   2 cars out into them, first hit after 2 s (med), 2 s (soonest)
+WRECKHIT corner, low                                     1 wrecks,   1 hit (100%),   4 cars out into them, first hit after 41 s (med), 41 s (soonest)
+WRECKHIT straight, outside                               4 wrecks,   0 hit (  0%),   0 cars out into them
+WRECKHIT straight, mid                                   5 wrecks,   3 hit ( 60%),   4 cars out into them, first hit after 4 s (med), 1 s (soonest)
+WRECKHIT straight, low                                   7 wrecks,   1 hit ( 14%),   1 cars out into them, first hit after 1 s (med), 1 s (soonest)
+-- hits-v8sp-5.txt
+speedway (4 races)
+  WRECKS  1.5 retirements/race, 0.8 cautions/race, 3 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 3, near a merging car 1, merging 1, under caution 1
+oval:3850048323:intermediate (4 races)
+  WRECKS  4.0 retirements/race, 1.0 cautions/race, 3 multi-car wrecks (mean 2.3 cars, max 3)
+          by context: near a merging car 5, green 4, under caution 4, merging 3
+oval:3148308672:speedway (4 races)
+  WRECKS  0.0 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 0)
+          by context: 
+oval:774865359:superspeedway (4 races)
+  WRECKS  5.5 retirements/race, 2.3 cautions/race, 4 multi-car wrecks (mean 2.8 cars, max 4)
+          by context: green 11, under caution 11
+WRECKHIT all                                            28 wrecks,   9 hit ( 32%),  18 cars out into them, first hit after 1 s (med), 0 s (soonest)
+WRECKHIT stopped under green                             1 wrecks,   0 hit (  0%),   0 cars out into them
+WRECKHIT stopped under caution                          27 wrecks,   9 hit ( 33%),  18 cars out into them, first hit after 1 s (med), 0 s (soonest)
+WRECKHIT against the outside (within 3 m)               10 wrecks,   3 hit ( 30%),   7 cars out into them, first hit after 22 s (med), 1 s (soonest)
+WRECKHIT mid-track                                       9 wrecks,   4 hit ( 44%),   5 cars out into them, first hit after 12 s (med), 0 s (soonest)
+WRECKHIT low (within 3 m of the inside edge, or on the apron)    9 wrecks,   2 hit ( 22%),   6 cars out into them, first hit after 1 s (med), 0 s (soonest)
+WRECKHIT in a corner                                     8 wrecks,   3 hit ( 38%),   3 cars out into them, first hit after 0 s (med), 0 s (soonest)
+WRECKHIT on a straight                                  20 wrecks,   6 hit ( 30%),  15 cars out into them, first hit after 22 s (med), 0 s (soonest)
+WRECKHIT room to get by 10- m                           28 wrecks,   9 hit ( 32%),  18 cars out into them, first hit after 1 s (med), 0 s (soonest)
+WRECKHIT track 2525 m                                    3 wrecks,   0 hit (  0%),   0 cars out into them
+WRECKHIT track 2442 m                                    9 wrecks,   4 hit ( 44%),   4 cars out into them, first hit after 1 s (med), 0 s (soonest)
+WRECKHIT track 3341 m                                   16 wrecks,   5 hit ( 31%),  14 cars out into them, first hit after 22 s (med), 0 s (soonest)
+WRECKHIT corner, outside                                 5 wrecks,   1 hit ( 20%),   1 cars out into them, first hit after 1 s (med), 1 s (soonest)
+WRECKHIT corner, mid                                     3 wrecks,   2 hit ( 67%),   2 cars out into them, first hit after 0 s (med), 0 s (soonest)
+WRECKHIT straight, outside                               5 wrecks,   2 hit ( 40%),   6 cars out into them, first hit after 44 s (med), 22 s (soonest)
+WRECKHIT straight, mid                                   6 wrecks,   2 hit ( 33%),   3 cars out into them, first hit after 23 s (med), 12 s (soonest)
+WRECKHIT straight, low                                   9 wrecks,   2 hit ( 22%),   6 cars out into them, first hit after 1 s (med), 0 s (soonest)
+== 3. the mid-track red (RED_MID=3, with RED_PILE=2:150) against none, seeds 1-4 and 5-8, with the hits' timing
+-- base-v8s-1.txt
+speedway (4 races)
+  WRECKS  8.5 retirements/race, 4.5 cautions/race, 4 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 16, under caution 13, merging 2, start/restart 2, near a merging car 1
+oval:3850048323:intermediate (4 races)
+  WRECKS  9.5 retirements/race, 3.0 cautions/race, 9 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 19, under caution 9, merging 8, near a merging car 2
+oval:3148308672:speedway (4 races)
+  WRECKS  17.5 retirements/race, 6.3 cautions/race, 16 multi-car wrecks (mean 2.4 cars, max 4)
+          by context: under caution 31, green 28, merging 4, near a merging car 4, start/restart 2, restart 1
+oval:774865359:superspeedway (4 races)
+  WRECKS  11.3 retirements/race, 2.8 cautions/race, 9 multi-car wrecks (mean 2.8 cars, max 4)
+          by context: under caution 23, green 15, merging 7
+REDPILE rule 999 wrecks within 0 m: 16 races, 0.00 reds a race (0.00 race control's own rule, 0.00 pile-ups), 0.0 min stopped a race
+REDPILE out: green, no a wreck already there: 105
+REDPILE out: caution, no a wreck already there: 49
+REDPILE out: caution, within 50 m of a wreck already there: 43
+REDPILE out: green, within 50 m of a wreck already there: 15
+REDPILE out: caution, 150-400 m from a wreck already there: 5
+REDPILE out: restart, no a wreck already there: 2
+REDPILE out: restart, within 50 m of a wreck already there: 2
+REDPILE out: restart, 150-400 m from a wreck already there: 2
+REDPILE out: caution, 50-150 m from a wreck already there: 1
+REDPILE out: green, 50-150 m from a wreck already there: 1
+WRECKHIT all                                           158 wrecks,  52 hit ( 33%), 100 cars out into them (73 5 s or more after it stopped), first hit after 5 s (med), 0 s (soonest)
+WRECKHIT stopped under green                            23 wrecks,  15 hit ( 65%),  34 cars out into them (26 5 s or more after it stopped), first hit after 5 s (med), 1 s (soonest)
+WRECKHIT stopped under caution                         130 wrecks,  36 hit ( 28%),  65 cars out into them (46 5 s or more after it stopped), first hit after 9 s (med), 0 s (soonest)
+WRECKHIT stopped under restart                           5 wrecks,   1 hit ( 20%),   1 cars out into them (1 5 s or more after it stopped), first hit after 24 s (med), 24 s (soonest)
+WRECKHIT against the outside (within 3 m)               25 wrecks,   9 hit ( 36%),  18 cars out into them (13 5 s or more after it stopped), first hit after 5 s (med), 2 s (soonest)
+WRECKHIT mid-track                                      46 wrecks,  25 hit ( 54%),  49 cars out into them (36 5 s or more after it stopped), first hit after 5 s (med), 0 s (soonest)
+WRECKHIT low (within 3 m of the inside edge, or on the apron)   87 wrecks,  18 hit ( 21%),  33 cars out into them (24 5 s or more after it stopped), first hit after 11 s (med), 0 s (soonest)
+WRECKHIT in a corner                                    60 wrecks,  26 hit ( 43%),  51 cars out into them (39 5 s or more after it stopped), first hit after 10 s (med), 0 s (soonest)
+WRECKHIT on a straight                                  98 wrecks,  26 hit ( 27%),  49 cars out into them (34 5 s or more after it stopped), first hit after 5 s (med), 0 s (soonest)
+WRECKHIT room to get by 6-10 m                           6 wrecks,   5 hit ( 83%),  11 cars out into them (9 5 s or more after it stopped), first hit after 8 s (med), 2 s (soonest)
+WRECKHIT room to get by 10- m                          152 wrecks,  47 hit ( 31%),  89 cars out into them (64 5 s or more after it stopped), first hit after 5 s (med), 0 s (soonest)
+WRECKHIT track 2525 m                                   36 wrecks,  14 hit ( 39%),  35 cars out into them (28 5 s or more after it stopped), first hit after 5 s (med), 0 s (soonest)
+WRECKHIT track 2442 m                                   20 wrecks,   6 hit ( 30%),   7 cars out into them (6 5 s or more after it stopped), first hit after 22 s (med), 2 s (soonest)
+WRECKHIT track 2877 m                                   66 wrecks,  14 hit ( 21%),  18 cars out into them (6 5 s or more after it stopped), first hit after 3 s (med), 0 s (soonest)
+WRECKHIT track 3341 m                                   36 wrecks,  18 hit ( 50%),  40 cars out into them (33 5 s or more after it stopped), first hit after 13 s (med), 1 s (soonest)
+WRECKHIT corner, outside                                13 wrecks,   4 hit ( 31%),   8 cars out into them (7 5 s or more after it stopped), first hit after 20 s (med), 2 s (soonest)
+WRECKHIT corner, mid                                    25 wrecks,  14 hit ( 56%),  29 cars out into them (20 5 s or more after it stopped), first hit after 4 s (med), 0 s (soonest)
+WRECKHIT corner, low                                    22 wrecks,   8 hit ( 36%),  14 cars out into them (12 5 s or more after it stopped), first hit after 12 s (med), 1 s (soonest)
+WRECKHIT straight, outside                              12 wrecks,   5 hit ( 42%),  10 cars out into them (6 5 s or more after it stopped), first hit after 4 s (med), 2 s (soonest)
+WRECKHIT straight, mid                                  21 wrecks,  11 hit ( 52%),  20 cars out into them (16 5 s or more after it stopped), first hit after 8 s (med), 0 s (soonest)
+WRECKHIT straight, low                                  65 wrecks,  10 hit ( 15%),  19 cars out into them (12 5 s or more after it stopped), first hit after 4 s (med), 0 s (soonest)
+-- base-v8s-5.txt
+speedway (4 races)
+  WRECKS  17.5 retirements/race, 6.5 cautions/race, 14 multi-car wrecks (mean 2.6 cars, max 4)
+          by context: under caution 37, green 28, merging 2, start/restart 2, near a merging car 1
+oval:3850048323:intermediate (4 races)
+  WRECKS  9.5 retirements/race, 3.5 cautions/race, 7 multi-car wrecks (mean 2.1 cars, max 3)
+          by context: green 19, under caution 13, merging 5, restart 1
+oval:3148308672:speedway (4 races)
+  WRECKS  16.8 retirements/race, 6.3 cautions/race, 15 multi-car wrecks (mean 2.4 cars, max 4)
+          by context: under caution 30, green 29, merging 5, restart 1, start/restart 1, near a merging car 1
+oval:774865359:superspeedway (4 races)
+  WRECKS  17.8 retirements/race, 4.0 cautions/race, 16 multi-car wrecks (mean 2.7 cars, max 5)
+          by context: under caution 43, green 16, near a merging car 5, restart 3, merging 2, start/restart 2
+REDPILE rule 999 wrecks within 0 m: 16 races, 0.00 reds a race (0.00 race control's own rule, 0.00 pile-ups), 0.0 min stopped a race
+REDPILE out: green, no a wreck already there: 110
+REDPILE out: caution, within 50 m of a wreck already there: 81
+REDPILE out: caution, no a wreck already there: 45
+REDPILE out: caution, 150-400 m from a wreck already there: 7
+REDPILE out: caution, 50-150 m from a wreck already there: 6
+REDPILE out: restart, no a wreck already there: 4
+REDPILE out: green, within 50 m of a wreck already there: 1
+REDPILE out: restart, within 50 m of a wreck already there: 1
+WRECKHIT all                                           179 wrecks,  64 hit ( 36%), 113 cars out into them (89 5 s or more after it stopped), first hit after 15 s (med), 0 s (soonest)
+WRECKHIT stopped under green                             3 wrecks,   0 hit (  0%),   0 cars out into them (0 5 s or more after it stopped)
+WRECKHIT stopped under caution                         173 wrecks,  63 hit ( 36%), 112 cars out into them (89 5 s or more after it stopped), first hit after 15 s (med), 0 s (soonest)
+WRECKHIT stopped under restart                           3 wrecks,   1 hit ( 33%),   1 cars out into them (0 5 s or more after it stopped), first hit after 0 s (med), 0 s (soonest)
+WRECKHIT against the outside (within 3 m)               39 wrecks,  12 hit ( 31%),  24 cars out into them (21 5 s or more after it stopped), first hit after 54 s (med), 0 s (soonest)
+WRECKHIT mid-track                                      55 wrecks,  38 hit ( 69%),  63 cars out into them (50 5 s or more after it stopped), first hit after 12 s (med), 0 s (soonest)
+WRECKHIT low (within 3 m of the inside edge, or on the apron)   85 wrecks,  14 hit ( 16%),  26 cars out into them (18 5 s or more after it stopped), first hit after 16 s (med), 0 s (soonest)
+WRECKHIT in a corner                                    85 wrecks,  43 hit ( 51%),  82 cars out into them (73 5 s or more after it stopped), first hit after 22 s (med), 0 s (soonest)
+WRECKHIT on a straight                                  94 wrecks,  21 hit ( 22%),  31 cars out into them (16 5 s or more after it stopped), first hit after 4 s (med), 0 s (soonest)
+WRECKHIT room to get by 6-10 m                           1 wrecks,   1 hit (100%),   1 cars out into them (1 5 s or more after it stopped), first hit after 117 s (med), 117 s (soonest)
+WRECKHIT room to get by 10- m                          178 wrecks,  63 hit ( 35%), 112 cars out into them (88 5 s or more after it stopped), first hit after 15 s (med), 0 s (soonest)
+WRECKHIT track 2525 m                                   56 wrecks,  17 hit ( 30%),  30 cars out into them (21 5 s or more after it stopped), first hit after 24 s (med), 0 s (soonest)
+WRECKHIT track 2442 m                                   19 wrecks,   5 hit ( 26%),   5 cars out into them (5 5 s or more after it stopped), first hit after 60 s (med), 28 s (soonest)
+WRECKHIT track 2877 m                                   53 wrecks,  14 hit ( 26%),  21 cars out into them (13 5 s or more after it stopped), first hit after 9 s (med), 0 s (soonest)
+WRECKHIT track 3341 m                                   51 wrecks,  28 hit ( 55%),  57 cars out into them (50 5 s or more after it stopped), first hit after 15 s (med), 0 s (soonest)
+WRECKHIT corner, outside                                24 wrecks,   8 hit ( 33%),  18 cars out into them (16 5 s or more after it stopped), first hit after 60 s (med), 0 s (soonest)
+WRECKHIT corner, mid                                    36 wrecks,  27 hit ( 75%),  47 cars out into them (41 5 s or more after it stopped), first hit after 13 s (med), 0 s (soonest)
+WRECKHIT corner, low                                    25 wrecks,   8 hit ( 32%),  17 cars out into them (16 5 s or more after it stopped), first hit after 41 s (med), 1 s (soonest)
+WRECKHIT straight, outside                              15 wrecks,   4 hit ( 27%),   6 cars out into them (5 5 s or more after it stopped), first hit after 54 s (med), 1 s (soonest)
+WRECKHIT straight, mid                                  19 wrecks,  11 hit ( 58%),  16 cars out into them (9 5 s or more after it stopped), first hit after 5 s (med), 0 s (soonest)
+WRECKHIT straight, low                                  60 wrecks,   6 hit ( 10%),   9 cars out into them (2 5 s or more after it stopped), first hit after 3 s (med), 0 s (soonest)
+-- mid-v8s-1.txt
+speedway (4 races)
+  WRECKS  9.0 retirements/race, 5.3 cautions/race, 4 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 19, under caution 12, merging 2, start/restart 2, near a merging car 1
+oval:3850048323:intermediate (4 races)
+  WRECKS  9.5 retirements/race, 3.0 cautions/race, 9 multi-car wrecks (mean 2.1 cars, max 3)
+          by context: green 20, under caution 10, red 4, merging 3, near a merging car 1
+oval:3148308672:speedway (4 races)
+  WRECKS  16.5 retirements/race, 6.8 cautions/race, 15 multi-car wrecks (mean 2.5 cars, max 4)
+          by context: green 33, under caution 24, red 3, start/restart 2, near a merging car 2, restart 2
+oval:774865359:superspeedway (4 races)
+  WRECKS  11.8 retirements/race, 3.8 cautions/race, 12 multi-car wrecks (mean 2.5 cars, max 4)
+          by context: green 15, under caution 15, merging 8, red 7, start/restart 1, near a merging car 1
+REDPILE rule 2 wrecks within 150 m, or one 3 m or more from both edges: 16 races, 1.81 reds a race (0.00 race control's own rule, 1.81 pile-ups), 2.3 min stopped a race
+REDPILE out: green, no a wreck already there: 109
+REDPILE out: caution, no a wreck already there: 40
+REDPILE out: caution, within 50 m of a wreck already there: 27
+REDPILE out: green, within 50 m of a wreck already there: 25
+REDPILE out: red, within 50 m of a wreck already there: 16
+REDPILE out: caution, 50-150 m from a wreck already there: 3
+REDPILE out: red, no a wreck already there: 3
+REDPILE out: green, 150-400 m from a wreck already there: 3
+REDPILE out: caution, 150-400 m from a wreck already there: 1
+REDPILE out: restart, no a wreck already there: 1
+REDPILE out: restart, within 50 m of a wreck already there: 1
+REDPILE out: green, 50-150 m from a wreck already there: 1
+WRECKHIT all                                           163 wrecks,  54 hit ( 33%), 117 cars out into them (85 5 s or more after it stopped), first hit after 5 s (med), 0 s (soonest)
+WRECKHIT stopped under green                            33 wrecks,  23 hit ( 70%),  74 cars out into them (60 5 s or more after it stopped), first hit after 5 s (med), 1 s (soonest)
+WRECKHIT stopped under caution                         115 wrecks,  25 hit ( 22%),  36 cars out into them (19 5 s or more after it stopped), first hit after 3 s (med), 0 s (soonest)
+WRECKHIT stopped under restart                           2 wrecks,   1 hit ( 50%),   1 cars out into them (0 5 s or more after it stopped), first hit after 1 s (med), 1 s (soonest)
+WRECKHIT stopped under red                              13 wrecks,   5 hit ( 38%),   6 cars out into them (6 5 s or more after it stopped), first hit after 20 s (med), 7 s (soonest)
+WRECKHIT against the outside (within 3 m)               26 wrecks,  10 hit ( 38%),  18 cars out into them (14 5 s or more after it stopped), first hit after 20 s (med), 2 s (soonest)
+WRECKHIT mid-track                                      48 wrecks,  23 hit ( 48%),  49 cars out into them (36 5 s or more after it stopped), first hit after 5 s (med), 0 s (soonest)
+WRECKHIT low (within 3 m of the inside edge, or on the apron)   89 wrecks,  21 hit ( 24%),  50 cars out into them (35 5 s or more after it stopped), first hit after 3 s (med), 0 s (soonest)
+WRECKHIT in a corner                                    45 wrecks,  19 hit ( 42%),  27 cars out into them (22 5 s or more after it stopped), first hit after 17 s (med), 0 s (soonest)
+WRECKHIT on a straight                                 118 wrecks,  35 hit ( 30%),  90 cars out into them (63 5 s or more after it stopped), first hit after 3 s (med), 0 s (soonest)
+WRECKHIT room to get by 6-10 m                          13 wrecks,   8 hit ( 62%),  24 cars out into them (18 5 s or more after it stopped), first hit after 5 s (med), 1 s (soonest)
+WRECKHIT room to get by 10- m                          150 wrecks,  46 hit ( 31%),  93 cars out into them (67 5 s or more after it stopped), first hit after 5 s (med), 0 s (soonest)
+WRECKHIT track 2525 m                                   36 wrecks,  14 hit ( 39%),  33 cars out into them (26 5 s or more after it stopped), first hit after 5 s (med), 0 s (soonest)
+WRECKHIT track 2442 m                                   21 wrecks,   5 hit ( 24%),   5 cars out into them (5 5 s or more after it stopped), first hit after 22 s (med), 19 s (soonest)
+WRECKHIT track 2877 m                                   53 wrecks,  10 hit ( 19%),  14 cars out into them (3 5 s or more after it stopped), first hit after 2 s (med), 0 s (soonest)
+WRECKHIT track 3341 m                                   53 wrecks,  25 hit ( 47%),  65 cars out into them (51 5 s or more after it stopped), first hit after 5 s (med), 0 s (soonest)
+WRECKHIT corner, outside                                15 wrecks,   7 hit ( 47%),  10 cars out into them (9 5 s or more after it stopped), first hit after 22 s (med), 2 s (soonest)
+WRECKHIT corner, mid                                    17 wrecks,   8 hit ( 47%),  12 cars out into them (10 5 s or more after it stopped), first hit after 17 s (med), 0 s (soonest)
+WRECKHIT corner, low                                    13 wrecks,   4 hit ( 31%),   5 cars out into them (3 5 s or more after it stopped), first hit after 12 s (med), 1 s (soonest)
+WRECKHIT straight, outside                              11 wrecks,   3 hit ( 27%),   8 cars out into them (5 5 s or more after it stopped), first hit after 4 s (med), 3 s (soonest)
+WRECKHIT straight, mid                                  31 wrecks,  15 hit ( 48%),  37 cars out into them (26 5 s or more after it stopped), first hit after 2 s (med), 0 s (soonest)
+WRECKHIT straight, low                                  76 wrecks,  17 hit ( 22%),  45 cars out into them (32 5 s or more after it stopped), first hit after 3 s (med), 0 s (soonest)
+-- mid-v8s-5.txt
+speedway (4 races)
+  WRECKS  13.3 retirements/race, 6.0 cautions/race, 7 multi-car wrecks (mean 2.7 cars, max 3)
+          by context: green 27, under caution 20, red 3, start/restart 2, merging 1
+oval:3850048323:intermediate (4 races)
+  WRECKS  8.0 retirements/race, 3.3 cautions/race, 5 multi-car wrecks (mean 2.2 cars, max 3)
+          by context: green 18, under caution 8, merging 3, red 2, near a merging car 1
+oval:3148308672:speedway (4 races)
+  WRECKS  17.0 retirements/race, 6.8 cautions/race, 11 multi-car wrecks (mean 2.6 cars, max 5)
+          by context: under caution 31, green 27, merging 6, red 2, restart 1, start/restart 1
+oval:774865359:superspeedway (4 races)
+  WRECKS  13.5 retirements/race, 4.3 cautions/race, 12 multi-car wrecks (mean 2.4 cars, max 3)
+          by context: under caution 21, green 17, merging 7, red 5, start/restart 2, near a merging car 2
+REDPILE rule 2 wrecks within 150 m, or one 3 m or more from both edges: 16 races, 2.50 reds a race (0.00 race control's own rule, 2.50 pile-ups), 2.9 min stopped a race
+REDPILE out: green, no a wreck already there: 117
+REDPILE out: caution, no a wreck already there: 54
+REDPILE out: caution, within 50 m of a wreck already there: 31
+REDPILE out: green, within 50 m of a wreck already there: 31
+REDPILE out: red, no a wreck already there: 7
+REDPILE out: red, 150-400 m from a wreck already there: 4
+REDPILE out: caution, 150-400 m from a wreck already there: 4
+REDPILE out: green, 150-400 m from a wreck already there: 3
+REDPILE out: caution, 50-150 m from a wreck already there: 1
+REDPILE out: restart, no a wreck already there: 1
+REDPILE out: red, 50-150 m from a wreck already there: 1
+REDPILE out: red, within 50 m of a wreck already there: 1
+WRECKHIT all                                           172 wrecks,  41 hit ( 24%),  87 cars out into them (60 5 s or more after it stopped), first hit after 5 s (med), 0 s (soonest)
+WRECKHIT stopped under green                            39 wrecks,  25 hit ( 64%),  67 cars out into them (53 5 s or more after it stopped), first hit after 9 s (med), 0 s (soonest)
+WRECKHIT stopped under caution                         123 wrecks,  15 hit ( 12%),  19 cars out into them (6 5 s or more after it stopped), first hit after 3 s (med), 0 s (soonest)
+WRECKHIT stopped under red                              10 wrecks,   1 hit ( 10%),   1 cars out into them (1 5 s or more after it stopped), first hit after 25 s (med), 25 s (soonest)
+WRECKHIT against the outside (within 3 m)               23 wrecks,   2 hit (  9%),   2 cars out into them (1 5 s or more after it stopped), first hit after 25 s (med), 1 s (soonest)
+WRECKHIT mid-track                                      60 wrecks,  24 hit ( 40%),  57 cars out into them (42 5 s or more after it stopped), first hit after 8 s (med), 0 s (soonest)
+WRECKHIT low (within 3 m of the inside edge, or on the apron)   89 wrecks,  15 hit ( 17%),  28 cars out into them (17 5 s or more after it stopped), first hit after 5 s (med), 0 s (soonest)
+WRECKHIT in a corner                                    66 wrecks,  12 hit ( 18%),  29 cars out into them (23 5 s or more after it stopped), first hit after 9 s (med), 0 s (soonest)
+WRECKHIT on a straight                                 106 wrecks,  29 hit ( 27%),  58 cars out into them (37 5 s or more after it stopped), first hit after 4 s (med), 0 s (soonest)
+WRECKHIT room to get by 6-10 m                           2 wrecks,   2 hit (100%),   4 cars out into them (1 5 s or more after it stopped), first hit after 3 s (med), 1 s (soonest)
+WRECKHIT room to get by 10- m                          170 wrecks,  39 hit ( 23%),  83 cars out into them (59 5 s or more after it stopped), first hit after 6 s (med), 0 s (soonest)
+WRECKHIT track 2525 m                                   36 wrecks,   4 hit ( 11%),   5 cars out into them (1 5 s or more after it stopped), first hit after 4 s (med), 0 s (soonest)
+WRECKHIT track 2442 m                                   17 wrecks,   1 hit (  6%),   1 cars out into them (1 5 s or more after it stopped), first hit after 25 s (med), 25 s (soonest)
+WRECKHIT track 2877 m                                   67 wrecks,  21 hit ( 31%),  60 cars out into them (42 5 s or more after it stopped), first hit after 4 s (med), 0 s (soonest)
+WRECKHIT track 3341 m                                   52 wrecks,  15 hit ( 29%),  21 cars out into them (16 5 s or more after it stopped), first hit after 8 s (med), 2 s (soonest)
+WRECKHIT corner, outside                                16 wrecks,   0 hit (  0%),   0 cars out into them (0 5 s or more after it stopped)
+WRECKHIT corner, mid                                    33 wrecks,  10 hit ( 30%),  27 cars out into them (21 5 s or more after it stopped), first hit after 8 s (med), 0 s (soonest)
+WRECKHIT corner, low                                    17 wrecks,   2 hit ( 12%),   2 cars out into them (2 5 s or more after it stopped), first hit after 41 s (med), 39 s (soonest)
+WRECKHIT straight, outside                               7 wrecks,   2 hit ( 29%),   2 cars out into them (1 5 s or more after it stopped), first hit after 25 s (med), 1 s (soonest)
+WRECKHIT straight, mid                                  27 wrecks,  14 hit ( 52%),  30 cars out into them (21 5 s or more after it stopped), first hit after 12 s (med), 0 s (soonest)
+WRECKHIT straight, low                                  72 wrecks,  13 hit ( 18%),  26 cars out into them (15 5 s or more after it stopped), first hit after 4 s (med), 0 s (soonest)
+-- base-v8sp-1.txt
+speedway (4 races)
+  WRECKS  0.8 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 3
+oval:3850048323:intermediate (4 races)
+  WRECKS  2.3 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 4, near a merging car 3, restart 1, merging 1
+oval:3148308672:speedway (4 races)
+  WRECKS  0.5 retirements/race, 0.5 cautions/race, 0 multi-car wrecks (mean – cars, max 1)
+          by context: green 2
+oval:774865359:superspeedway (4 races)
+  WRECKS  5.5 retirements/race, 2.0 cautions/race, 5 multi-car wrecks (mean 2.4 cars, max 4)
+          by context: under caution 13, green 8, near a merging car 1
+REDPILE rule 999 wrecks within 0 m: 16 races, 0.00 reds a race (0.00 race control's own rule, 0.00 pile-ups), 0.0 min stopped a race
+REDPILE out: green, no a wreck already there: 23
+REDPILE out: caution, within 50 m of a wreck already there: 11
+REDPILE out: caution, no a wreck already there: 4
+REDPILE out: restart, no a wreck already there: 1
+REDPILE out: green, within 50 m of a wreck already there: 1
+REDPILE out: caution, 150-400 m from a wreck already there: 1
+WRECKHIT all                                            22 wrecks,   7 hit ( 32%),  15 cars out into them (9 5 s or more after it stopped), first hit after 4 s (med), 1 s (soonest)
+WRECKHIT stopped under caution                          22 wrecks,   7 hit ( 32%),  15 cars out into them (9 5 s or more after it stopped), first hit after 4 s (med), 1 s (soonest)
+WRECKHIT against the outside (within 3 m)                8 wrecks,   1 hit ( 13%),   4 cars out into them (4 5 s or more after it stopped), first hit after 18 s (med), 18 s (soonest)
+WRECKHIT mid-track                                       6 wrecks,   4 hit ( 67%),   6 cars out into them (1 5 s or more after it stopped), first hit after 4 s (med), 1 s (soonest)
+WRECKHIT low (within 3 m of the inside edge, or on the apron)    8 wrecks,   2 hit ( 25%),   5 cars out into them (4 5 s or more after it stopped), first hit after 41 s (med), 1 s (soonest)
+WRECKHIT in a corner                                     6 wrecks,   3 hit ( 50%),  10 cars out into them (8 5 s or more after it stopped), first hit after 18 s (med), 2 s (soonest)
+WRECKHIT on a straight                                  16 wrecks,   4 hit ( 25%),   5 cars out into them (1 5 s or more after it stopped), first hit after 4 s (med), 1 s (soonest)
+WRECKHIT room to get by 10- m                           22 wrecks,   7 hit ( 32%),  15 cars out into them (9 5 s or more after it stopped), first hit after 4 s (med), 1 s (soonest)
+WRECKHIT track 2525 m                                    2 wrecks,   0 hit (  0%),   0 cars out into them (0 5 s or more after it stopped)
+WRECKHIT track 2442 m                                    1 wrecks,   0 hit (  0%),   0 cars out into them (0 5 s or more after it stopped)
+WRECKHIT track 2877 m                                    3 wrecks,   1 hit ( 33%),   2 cars out into them (0 5 s or more after it stopped), first hit after 1 s (med), 1 s (soonest)
+WRECKHIT track 3341 m                                   16 wrecks,   6 hit ( 38%),  13 cars out into them (9 5 s or more after it stopped), first hit after 11 s (med), 1 s (soonest)
+WRECKHIT corner, outside                                 4 wrecks,   1 hit ( 25%),   4 cars out into them (4 5 s or more after it stopped), first hit after 18 s (med), 18 s (soonest)
+WRECKHIT corner, mid                                     1 wrecks,   1 hit (100%),   2 cars out into them (0 5 s or more after it stopped), first hit after 2 s (med), 2 s (soonest)
+WRECKHIT corner, low                                     1 wrecks,   1 hit (100%),   4 cars out into them (4 5 s or more after it stopped), first hit after 41 s (med), 41 s (soonest)
+WRECKHIT straight, outside                               4 wrecks,   0 hit (  0%),   0 cars out into them (0 5 s or more after it stopped)
+WRECKHIT straight, mid                                   5 wrecks,   3 hit ( 60%),   4 cars out into them (1 5 s or more after it stopped), first hit after 4 s (med), 1 s (soonest)
+WRECKHIT straight, low                                   7 wrecks,   1 hit ( 14%),   1 cars out into them (0 5 s or more after it stopped), first hit after 1 s (med), 1 s (soonest)
+-- base-v8sp-5.txt
+speedway (4 races)
+  WRECKS  1.5 retirements/race, 0.8 cautions/race, 3 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 3, near a merging car 1, merging 1, under caution 1
+oval:3850048323:intermediate (4 races)
+  WRECKS  4.0 retirements/race, 1.0 cautions/race, 3 multi-car wrecks (mean 2.3 cars, max 3)
+          by context: near a merging car 5, green 4, under caution 4, merging 3
+oval:3148308672:speedway (4 races)
+  WRECKS  0.0 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 0)
+          by context: 
+oval:774865359:superspeedway (4 races)
+  WRECKS  5.5 retirements/race, 2.3 cautions/race, 4 multi-car wrecks (mean 2.8 cars, max 4)
+          by context: green 11, under caution 11
+REDPILE rule 999 wrecks within 0 m: 16 races, 0.00 reds a race (0.00 race control's own rule, 0.00 pile-ups), 0.0 min stopped a race
+REDPILE out: green, no a wreck already there: 24
+REDPILE out: caution, within 50 m of a wreck already there: 15
+REDPILE out: caution, no a wreck already there: 6
+WRECKHIT all                                            28 wrecks,   9 hit ( 32%),  18 cars out into them (12 5 s or more after it stopped), first hit after 1 s (med), 0 s (soonest)
+WRECKHIT stopped under green                             1 wrecks,   0 hit (  0%),   0 cars out into them (0 5 s or more after it stopped)
+WRECKHIT stopped under caution                          27 wrecks,   9 hit ( 33%),  18 cars out into them (12 5 s or more after it stopped), first hit after 1 s (med), 0 s (soonest)
+WRECKHIT against the outside (within 3 m)               10 wrecks,   3 hit ( 30%),   7 cars out into them (6 5 s or more after it stopped), first hit after 22 s (med), 1 s (soonest)
+WRECKHIT mid-track                                       9 wrecks,   4 hit ( 44%),   5 cars out into them (3 5 s or more after it stopped), first hit after 12 s (med), 0 s (soonest)
+WRECKHIT low (within 3 m of the inside edge, or on the apron)    9 wrecks,   2 hit ( 22%),   6 cars out into them (3 5 s or more after it stopped), first hit after 1 s (med), 0 s (soonest)
+WRECKHIT in a corner                                     8 wrecks,   3 hit ( 38%),   3 cars out into them (0 5 s or more after it stopped), first hit after 0 s (med), 0 s (soonest)
+WRECKHIT on a straight                                  20 wrecks,   6 hit ( 30%),  15 cars out into them (12 5 s or more after it stopped), first hit after 22 s (med), 0 s (soonest)
+WRECKHIT room to get by 10- m                           28 wrecks,   9 hit ( 32%),  18 cars out into them (12 5 s or more after it stopped), first hit after 1 s (med), 0 s (soonest)
+WRECKHIT track 2525 m                                    3 wrecks,   0 hit (  0%),   0 cars out into them (0 5 s or more after it stopped)
+WRECKHIT track 2442 m                                    9 wrecks,   4 hit ( 44%),   4 cars out into them (1 5 s or more after it stopped), first hit after 1 s (med), 0 s (soonest)
+WRECKHIT track 3341 m                                   16 wrecks,   5 hit ( 31%),  14 cars out into them (11 5 s or more after it stopped), first hit after 22 s (med), 0 s (soonest)
+WRECKHIT corner, outside                                 5 wrecks,   1 hit ( 20%),   1 cars out into them (0 5 s or more after it stopped), first hit after 1 s (med), 1 s (soonest)
+WRECKHIT corner, mid                                     3 wrecks,   2 hit ( 67%),   2 cars out into them (0 5 s or more after it stopped), first hit after 0 s (med), 0 s (soonest)
+WRECKHIT straight, outside                               5 wrecks,   2 hit ( 40%),   6 cars out into them (6 5 s or more after it stopped), first hit after 44 s (med), 22 s (soonest)
+WRECKHIT straight, mid                                   6 wrecks,   2 hit ( 33%),   3 cars out into them (3 5 s or more after it stopped), first hit after 23 s (med), 12 s (soonest)
+WRECKHIT straight, low                                   9 wrecks,   2 hit ( 22%),   6 cars out into them (3 5 s or more after it stopped), first hit after 1 s (med), 0 s (soonest)
+-- mid-v8sp-1.txt
+speedway (4 races)
+  WRECKS  0.8 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 3
+oval:3850048323:intermediate (4 races)
+  WRECKS  2.3 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 4, near a merging car 3, restart 1, merging 1
+oval:3148308672:speedway (4 races)
+  WRECKS  0.5 retirements/race, 0.5 cautions/race, 0 multi-car wrecks (mean – cars, max 1)
+          by context: green 2
+oval:774865359:superspeedway (4 races)
+  WRECKS  3.8 retirements/race, 1.8 cautions/race, 2 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: green 7, under caution 6, near a merging car 1, merging 1
+REDPILE rule 2 wrecks within 150 m, or one 3 m or more from both edges: 16 races, 0.25 reds a race (0.00 race control's own rule, 0.25 pile-ups), 0.2 min stopped a race
+REDPILE out: green, no a wreck already there: 28
+REDPILE out: green, within 50 m of a wreck already there: 8
+REDPILE out: caution, no a wreck already there: 5
+REDPILE out: caution, within 50 m of a wreck already there: 4
+REDPILE out: green, 150-400 m from a wreck already there: 2
+REDPILE out: restart, no a wreck already there: 1
+REDPILE out: green, 50-150 m from a wreck already there: 1
+WRECKHIT all                                            30 wrecks,   9 hit ( 30%),  15 cars out into them (6 5 s or more after it stopped), first hit after 3 s (med), 0 s (soonest)
+WRECKHIT stopped under green                            14 wrecks,   6 hit ( 43%),  11 cars out into them (5 5 s or more after it stopped), first hit after 3 s (med), 0 s (soonest)
+WRECKHIT stopped under caution                          16 wrecks,   3 hit ( 19%),   4 cars out into them (1 5 s or more after it stopped), first hit after 1 s (med), 1 s (soonest)
+WRECKHIT against the outside (within 3 m)                8 wrecks,   2 hit ( 25%),   2 cars out into them (2 5 s or more after it stopped), first hit after 63 s (med), 18 s (soonest)
+WRECKHIT mid-track                                      13 wrecks,   5 hit ( 38%),  11 cars out into them (4 5 s or more after it stopped), first hit after 1 s (med), 0 s (soonest)
+WRECKHIT low (within 3 m of the inside edge, or on the apron)    9 wrecks,   2 hit ( 22%),   2 cars out into them (0 5 s or more after it stopped), first hit after 3 s (med), 1 s (soonest)
+WRECKHIT in a corner                                    11 wrecks,   2 hit ( 18%),   2 cars out into them (2 5 s or more after it stopped), first hit after 63 s (med), 18 s (soonest)
+WRECKHIT on a straight                                  19 wrecks,   7 hit ( 37%),  13 cars out into them (4 5 s or more after it stopped), first hit after 1 s (med), 0 s (soonest)
+WRECKHIT room to get by 6-10 m                           1 wrecks,   1 hit (100%),   1 cars out into them (0 5 s or more after it stopped), first hit after 1 s (med), 1 s (soonest)
+WRECKHIT room to get by 10- m                           29 wrecks,   8 hit ( 28%),  14 cars out into them (6 5 s or more after it stopped), first hit after 3 s (med), 0 s (soonest)
+WRECKHIT track 2525 m                                    2 wrecks,   0 hit (  0%),   0 cars out into them (0 5 s or more after it stopped)
+WRECKHIT track 2442 m                                    1 wrecks,   0 hit (  0%),   0 cars out into them (0 5 s or more after it stopped)
+WRECKHIT track 2877 m                                    3 wrecks,   1 hit ( 33%),   2 cars out into them (0 5 s or more after it stopped), first hit after 1 s (med), 1 s (soonest)
+WRECKHIT track 3341 m                                   24 wrecks,   8 hit ( 33%),  13 cars out into them (6 5 s or more after it stopped), first hit after 3 s (med), 0 s (soonest)
+WRECKHIT corner, outside                                 6 wrecks,   2 hit ( 33%),   2 cars out into them (2 5 s or more after it stopped), first hit after 63 s (med), 18 s (soonest)
+WRECKHIT corner, mid                                     3 wrecks,   0 hit (  0%),   0 cars out into them (0 5 s or more after it stopped)
+WRECKHIT corner, low                                     2 wrecks,   0 hit (  0%),   0 cars out into them (0 5 s or more after it stopped)
+WRECKHIT straight, outside                               2 wrecks,   0 hit (  0%),   0 cars out into them (0 5 s or more after it stopped)
+WRECKHIT straight, mid                                  10 wrecks,   5 hit ( 50%),  11 cars out into them (4 5 s or more after it stopped), first hit after 1 s (med), 0 s (soonest)
+WRECKHIT straight, low                                   7 wrecks,   2 hit ( 29%),   2 cars out into them (0 5 s or more after it stopped), first hit after 3 s (med), 1 s (soonest)
+-- mid-v8sp-5.txt
+speedway (4 races)
+  WRECKS  1.0 retirements/race, 0.5 cautions/race, 2 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: near a merging car 1, merging 1, green 1, under caution 1
+oval:3850048323:intermediate (4 races)
+  WRECKS  3.8 retirements/race, 1.0 cautions/race, 3 multi-car wrecks (mean 2.3 cars, max 3)
+          by context: near a merging car 4, green 4, under caution 4, merging 3
+oval:3148308672:speedway (4 races)
+  WRECKS  0.0 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 0)
+          by context: 
+oval:774865359:superspeedway (4 races)
+  WRECKS  3.8 retirements/race, 2.0 cautions/race, 3 multi-car wrecks (mean 2.7 cars, max 4)
+          by context: green 10, under caution 5
+REDPILE rule 2 wrecks within 150 m, or one 3 m or more from both edges: 16 races, 0.44 reds a race (0.00 race control's own rule, 0.44 pile-ups), 0.4 min stopped a race
+REDPILE out: green, no a wreck already there: 20
+REDPILE out: caution, within 50 m of a wreck already there: 9
+REDPILE out: caution, no a wreck already there: 5
+WRECKHIT all                                            21 wrecks,   5 hit ( 24%),   6 cars out into them (0 5 s or more after it stopped), first hit after 0 s (med), 0 s (soonest)
+WRECKHIT stopped under caution                          19 wrecks,   5 hit ( 26%),   6 cars out into them (0 5 s or more after it stopped), first hit after 0 s (med), 0 s (soonest)
+WRECKHIT stopped under red                               2 wrecks,   0 hit (  0%),   0 cars out into them (0 5 s or more after it stopped)
+WRECKHIT against the outside (within 3 m)                6 wrecks,   1 hit ( 17%),   1 cars out into them (0 5 s or more after it stopped), first hit after 1 s (med), 1 s (soonest)
+WRECKHIT mid-track                                       7 wrecks,   2 hit ( 29%),   2 cars out into them (0 5 s or more after it stopped), first hit after 0 s (med), 0 s (soonest)
+WRECKHIT low (within 3 m of the inside edge, or on the apron)    8 wrecks,   2 hit ( 25%),   3 cars out into them (0 5 s or more after it stopped), first hit after 1 s (med), 0 s (soonest)
+WRECKHIT in a corner                                     5 wrecks,   3 hit ( 60%),   3 cars out into them (0 5 s or more after it stopped), first hit after 0 s (med), 0 s (soonest)
+WRECKHIT on a straight                                  16 wrecks,   2 hit ( 13%),   3 cars out into them (0 5 s or more after it stopped), first hit after 1 s (med), 0 s (soonest)
+WRECKHIT room to get by 10- m                           21 wrecks,   5 hit ( 24%),   6 cars out into them (0 5 s or more after it stopped), first hit after 0 s (med), 0 s (soonest)
+WRECKHIT track 2525 m                                    2 wrecks,   0 hit (  0%),   0 cars out into them (0 5 s or more after it stopped)
+WRECKHIT track 2442 m                                    7 wrecks,   3 hit ( 43%),   3 cars out into them (0 5 s or more after it stopped), first hit after 0 s (med), 0 s (soonest)
+WRECKHIT track 3341 m                                   12 wrecks,   2 hit ( 17%),   3 cars out into them (0 5 s or more after it stopped), first hit after 1 s (med), 0 s (soonest)
+WRECKHIT corner, outside                                 2 wrecks,   1 hit ( 50%),   1 cars out into them (0 5 s or more after it stopped), first hit after 1 s (med), 1 s (soonest)
+WRECKHIT corner, mid                                     3 wrecks,   2 hit ( 67%),   2 cars out into them (0 5 s or more after it stopped), first hit after 0 s (med), 0 s (soonest)
+WRECKHIT straight, outside                               4 wrecks,   0 hit (  0%),   0 cars out into them (0 5 s or more after it stopped)
+WRECKHIT straight, mid                                   4 wrecks,   0 hit (  0%),   0 cars out into them (0 5 s or more after it stopped)
+WRECKHIT straight, low                                   8 wrecks,   2 hit ( 25%),   3 cars out into them (0 5 s or more after it stopped), first hit after 1 s (med), 0 s (soonest)

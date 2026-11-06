@@ -1,0 +1,42 @@
+
+=== speedway seed 1: 59 laps, 30 cars (a car a pit box), 4x pace (657 s)
+finished 30/30  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 6%, skids 0% mean darkness; 23% of surface >10% dark, 5% >25%
+  marks lap 20: groove 14%, skids 0% mean darkness; 48% of surface >10% dark, 27% >25%
+
+=== speedway seed 2: 59 laps, 30 cars (a car a pit box), 4x pace (499 s)
+finished 30/30  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 6%, skids 0% mean darkness; 23% of surface >10% dark, 5% >25%
+  marks lap 20: groove 14%, skids 0% mean darkness; 50% of surface >10% dark, 27% >25%
+
+=== summary by track
+
+speedway (2 races)
+  STEWARDS 2.0 decisions/race: avoidable-contact: time 3, avoidable-contact: warning 1
+  WRECKS  0.0 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 0)
+          by context: 
+          who / what: 
+          damage done to others (by fault): 0.80 health/race
+  PACK    31.8 passes/100 green car-laps, alongside 3%, drafting 20%, lane spread 3.58 m; lockstep same brain –, different brains 0.010
+  PASSING 30.6 clean passes/100 green car-laps; of all passes 4% with contact, 1% damaging, 37% from the draft; 1.4 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 3.39 m, 2.58 m/s, 0.130
+  SCRIPTS 19% of car-time on track driven by a script (formation 0%, pit maneuver 19%); 0.0 retirements/race while a script drove
+  TIRES   wear 0.0810/green lap -> cliff (0.3) after 9 laps; sliding >0.05 0%, >0.35 0%, >0.6 0% of car-steps
+  FUEL    burn 4.69 kg/green lap -> 13 laps per tank
+  DAMAGE  health lost on track /race: green walls 0.00 (0.00 with a car alongside), cars 1.97; caution walls 0.00, cars 0.00
+  STOPS   205.5/race (0% under caution), tires taken 96%, repairs 1%, called for fuel 4% tires 96% damage 0% caution 0% penalty 0%, tire life at stop 0.42 (min 0.08), service 13.7 s
+  PIT ROAD 53.0 s entry to track under green, – s under caution; 2.0 contacts, 0.10 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 31.85 s (455) | 0.6-0.8: 31.98 s (1060) | 0.4-0.6: 32.24 s (899) | 0.3-0.4: 32.81 s (92) | 0.2-0.3: 33.04 s (42) | 0.0-0.2: 36.01 s (38)
+PACK runs: 1300 pull-outs, 30% with a run (closing 1+ m/s); closing built in the tow over 3 s before -0.67 m/s, at the pull-out 0.10 m/s
+PACK   passed within 10 s: with a run 41%, without 12%, all 21%
+PACK held up (following, closing under 1 m/s): 17.4% of green car-time; the better lane beside: open 82%, faster 4%, no faster 9%, taken 4%, none 0%
+PACK   lane open or faster: moved over within 3 s 26% of 7218 chances
+PACK pack: 0.290 position changes a car-lap; alongside 5% of green car-time; in a tow 27% (drag cut there 15%); damaging car contacts 1.3 a 100 car-laps (3306 green car-laps)
+HIT damaging nose-to-tail contacts, a teacher following: 20
+HIT phase      n  capped on it 1 s out  gap 2 s / 1 s (m)  closing 2 s / 1 s  slowing seen 2 s out / insured  leader slowed (mean over 2 s / peak 0.5 s, m/s^2)  over its cap 1 s out (m/s)  pedal 1 s out
+HIT straight    4       0%     5.12 /       -     7.18 /   10.92     0.00 /    3.58     0.68 /   11.60   -30.39     0.50
+HIT entry       2      50%    19.87 /   17.07    11.92 /   24.09     0.53 /    4.10     0.61 /   17.93   -17.33     0.30
+HIT mid        13      23%     1.54 /    2.10     4.04 /    2.67     0.08 /    3.77     3.40 /    5.71    -8.67     0.22
+HIT exit        1       0%        - /       -    10.75 /    9.43        - /       -    -3.64 /    0.00   -36.61     0.09
+HIT trace (entry): -3s gap 18.5 v 68.1 vo 69.6 cap 83.9 saw 0.0 ins 4.1 pedal 0.77 | -2s gap 19.9 v 70.1 vo 71.3 cap 86.6 saw 0.5 ins 4.1 pedal 0.80 | -1.5s gap 20.4 v 71.0 vo 70.0 cap 86.2 saw 0.9 ins 4.1 pedal 0.80 | -1s gap 17.1 v 71.8 vo 60.2 cap 74.5 saw 0.8 ins 4.1 pedal 0.46 | -0.5s gap (0) v 72.6 vo 52.2 cap 99.0* saw 0.3 ins 4.1 pedal 0.77 | -0.1s gap (0) v 66.1 vo 50.0 cap 36.5* saw 0.4 ins 4.1 pedal -0.80
+HIT trace (entry): -3s gap (-0) v 79.8 vo 75.1 cap 88.4* saw 0.0 ins 3.7 pedal 0.14 | -2s gap (-0) v 80.3 vo 55.2 cap 104.3* saw 0.6 ins 3.7 pedal 0.14 | -1.5s gap (-0) v 80.4 vo 47.4 cap 104.1* saw 0.4 ins 3.7 pedal 0.14 | -1s gap (-0) v 80.6 vo 44.1 cap 112.7* saw 0.0 ins 3.7 pedal 0.14 | -0.5s gap 11.9 v 77.8 vo 46.6 cap 49.9 saw 0.5 ins 3.7 pedal -0.79 | -0.1s gap 1.7 v 69.3 vo 48.5 cap 48.1 saw 1.1 ins 3.7 pedal -0.60

@@ -1,0 +1,312 @@
+== 1. v5p, code at 0cf224a (oval rulebook on the circuit, as the bench raced it)
+-- speedway
+WRECK caution 2798 s, a wreck on the racing surface 1789 s, blocked (<3 car widths) 371 s
+WRECK wreck (retired)      cautionNet    hits  131  health  34.25  out 36  speed med 11.2
+WRECK slower car (5+ m/s)  cautionNet    hits   39  health   4.51  out 3  speed med 30.3
+WRECK other car            cautionNet    hits  212  health   3.05  out 5  speed med 28.8
+WRECK wall/wall            cautionNet    hits 9293  health   1.31  out 1  speed med 46.7
+WRECK slower car (5+ m/s)  pit           hits   10  health   0.61  out 0  speed med 11.9
+WRECK other car            pit           hits   13  health   0.35  out 0  speed med 0.3
+WRECK official/truck       cautionNet    hits    4  health   0.21  out 0  speed med 24.9
+WRECK wall/wall            pit           hits  116  health   0.20  out 1  speed med 20.0
+WRECK wreck (retired)      pit           hits    1  health   0.05  out 0  speed med 8.0
+finished 3/30  cautions 4 (17 laps)  retirements 27  biggest wreck 4 cars
+finished 3/30  cautions 2 (16 laps)  retirements 27  biggest wreck 8 cars
+  WRECKS  27.0 retirements/race, 3.0 cautions/race, 12 multi-car wrecks (mean 3.5 cars, max 8)
+          contact retirements: 40 at fault, 8 hit by another
+-- short
+WRECK caution 2360 s, a wreck on the racing surface 352 s, blocked (<3 car widths) 49 s
+WRECK slower car (5+ m/s)  cautionNet    hits  204  health  14.01  out 0  speed med 24.6
+WRECK other car            cautionNet    hits 1017  health   9.09  out 3  speed med 18.1
+WRECK wreck (retired)      cautionNet    hits   34  health   4.79  out 4  speed med 11.8
+WRECK wall/wall            cautionNet    hits 14041  health   3.56  out 1  speed med 22.0
+WRECK slower car (5+ m/s)  pit           hits   22  health   1.67  out 0  speed med 16.6
+WRECK other car            pit           hits   57  health   1.03  out 2  speed med 13.6
+WRECK official/truck       cautionNet    hits   30  health   0.98  out 0  speed med 15.4
+WRECK wreck (retired)      pit           hits    7  health   0.73  out 0  speed med 12.4
+WRECK wall/wall            pit           hits 2309  health   0.15  out 0  speed med 16.0
+WRECK wreck (stopped)      cautionNet    hits    8  health   0.10  out 0  speed med 4.7
+WRECK wreck (stopped)      pit           hits    1  health   0.08  out 0  speed med 15.8
+finished 13/26  cautions 7 (25 laps)  retirements 13  biggest wreck 2 cars
+finished 13/26  cautions 6 (19 laps)  retirements 13  biggest wreck 4 cars
+  WRECKS  13.0 retirements/race, 6.5 cautions/race, 4 multi-car wrecks (mean 2.5 cars, max 4)
+          contact retirements: 5 at fault, 12 hit by another
+-- circuit_12_gp
+WRECK caution 12716 s, a wreck on the racing surface 5250 s, blocked (<3 car widths) 2600 s
+WRECK other car            cautionNet    hits 68520  health  13.14  out 1  speed med 7.4
+WRECK slower car (5+ m/s)  cautionNet    hits  328  health  12.59  out 0  speed med 12.4
+WRECK wall/wall            pit           hits 4616  health   9.76  out 11  speed med 20.6
+WRECK official/truck       cautionNet    hits 3987  health   8.60  out 2  speed med 7.3
+WRECK slower car (5+ m/s)  pit           hits  130  health   8.26  out 3  speed med 13.4
+WRECK wreck (retired)      cautionNet    hits 1612  health   5.47  out 2  speed med 2.5
+WRECK wreck (retired)      pit           hits  162  health   3.43  out 0  speed med 1.5
+WRECK other car            pit           hits 3857  health   3.35  out 3  speed med 3.7
+WRECK wreck (stopped)      cautionNet    hits 7535  health   2.17  out 0  speed med 1.3
+WRECK wreck (stopped)      pit           hits  659  health   0.95  out 0  speed med 0.8
+WRECK wall/wall            cautionNet    hits 18549  health   0.64  out 0  speed med 2.1
+WRECK official/truck       pit           hits  271  health   0.29  out 0  speed med 10.6
+finished 14/40  cautions 3 (11 laps)  retirements 26  biggest wreck 3 cars
+finished 0/40  cautions 4 (17 laps)  retirements 24  biggest wreck 4 cars
+  WRECKS  25.0 retirements/race, 3.5 cautions/race, 3 multi-car wrecks (mean 3.0 cars, max 4)
+          contact retirements: 19 at fault, 11 hit by another
+
+== 2. v5p, the place-in-line lane round the wreck only
+-- speedway
+WRECK caution 2057 s, a wreck on the racing surface 1415 s, blocked (<3 car widths) 311 s
+WRECK wreck (retired)      cautionNet    hits   98  health  24.77  out 22  speed med 15.5
+WRECK slower car (5+ m/s)  cautionNet    hits   58  health   7.90  out 2  speed med 30.4
+WRECK other car            cautionNet    hits  247  health   4.62  out 8  speed med 28.6
+WRECK wall/wall            cautionNet    hits 10244  health   1.66  out 1  speed med 38.6
+WRECK slower car (5+ m/s)  pit           hits    8  health   0.60  out 0  speed med 14.6
+WRECK wreck (retired)      pit           hits    5  health   0.60  out 1  speed med 7.0
+WRECK official/truck       cautionNet    hits    2  health   0.55  out 2  speed med 5.1
+WRECK other car            pit           hits   20  health   0.41  out 1  speed med 4.0
+WRECK official/truck       pit           hits    1  health   0.20  out 0  speed med 20.8
+WRECK wreck (stopped)      cautionNet    hits    1  health   0.15  out 0  speed med 10.6
+WRECK wall/wall            pit           hits   16  health   0.13  out 1  speed med 19.1
+finished 11/30  cautions 3 (13 laps)  retirements 19  biggest wreck 3 cars
+finished 2/30  cautions 1 (14 laps)  retirements 28  biggest wreck 5 cars
+  WRECKS  23.5 retirements/race, 2.0 cautions/race, 14 multi-car wrecks (mean 2.6 cars, max 5)
+          contact retirements: 30 at fault, 13 hit by another
+-- short
+WRECK caution 3351 s, a wreck on the racing surface 426 s, blocked (<3 car widths) 127 s
+WRECK slower car (5+ m/s)  cautionNet    hits  261  health  16.66  out 1  speed med 24.1
+WRECK other car            cautionNet    hits 1201  health  11.34  out 5  speed med 18.0
+WRECK wall/wall            cautionNet    hits 20415  health   6.50  out 2  speed med 19.9
+WRECK wreck (retired)      cautionNet    hits   33  health   4.47  out 3  speed med 9.9
+WRECK slower car (5+ m/s)  pit           hits   37  health   2.74  out 0  speed med 14.2
+WRECK official/truck       cautionNet    hits   33  health   1.66  out 0  speed med 15.1
+WRECK other car            pit           hits   86  health   1.64  out 3  speed med 11.9
+WRECK wreck (stopped)      cautionNet    hits   11  health   0.87  out 0  speed med 10.3
+WRECK wreck (retired)      pit           hits    7  health   0.80  out 0  speed med 14.8
+WRECK wall/wall            pit           hits 3305  health   0.43  out 0  speed med 13.8
+WRECK wreck (stopped)      pit           hits    1  health   0.08  out 0  speed med 15.8
+WRECK official/truck       pit           hits    1  health   0.08  out 0  speed med 16.0
+finished 9/26  cautions 9 (30 laps)  retirements 17  biggest wreck 2 cars
+finished 9/26  cautions 10 (31 laps)  retirements 17  biggest wreck 4 cars
+  WRECKS  17.0 retirements/race, 9.5 cautions/race, 5 multi-car wrecks (mean 2.4 cars, max 4)
+          contact retirements: 6 at fault, 19 hit by another
+-- circuit_12_gp
+WRECK caution 12142 s, a wreck on the racing surface 3980 s, blocked (<3 car widths) 1447 s
+WRECK slower car (5+ m/s)  cautionNet    hits  381  health  13.60  out 0  speed med 12.4
+WRECK other car            cautionNet    hits 70874  health  13.36  out 1  speed med 7.7
+WRECK wall/wall            pit           hits 6156  health  10.22  out 13  speed med 20.5
+WRECK slower car (5+ m/s)  pit           hits  127  health   7.19  out 3  speed med 13.0
+WRECK official/truck       cautionNet    hits 3147  health   5.82  out 1  speed med 7.0
+WRECK wreck (retired)      pit           hits  670  health   3.94  out 3  speed med 0.5
+WRECK wreck (retired)      cautionNet    hits 1251  health   3.79  out 1  speed med 1.9
+WRECK other car            pit           hits 3185  health   3.48  out 1  speed med 9.3
+WRECK wreck (stopped)      cautionNet    hits 4378  health   2.23  out 0  speed med 1.2
+WRECK official/truck       pit           hits  149  health   0.73  out 1  speed med 10.3
+WRECK wreck (stopped)      pit           hits  219  health   0.60  out 0  speed med 0.7
+WRECK wall/wall            cautionNet    hits 20928  health   0.43  out 0  speed med 2.9
+finished 13/40  cautions 2 (11 laps)  retirements 27  biggest wreck 3 cars
+finished 0/40  cautions 3 (16 laps)  retirements 20  biggest wreck 4 cars
+  WRECKS  23.5 retirements/race, 2.5 cautions/race, 7 multi-car wrecks (mean 2.4 cars, max 4)
+          contact retirements: 18 at fault, 9 hit by another
+
+== 3. v5p, lane, passing cap, gaps, red flag (oval rulebook on the circuit)
+-- speedway
+WRECK caution 2262 s, a wreck on the racing surface 1431 s, blocked (<3 car widths) 303 s, red flags 0 (0 s)
+WRECK wreck (retired)      cautionNet    hits   99  health  25.38  out 24  speed med 12.4
+WRECK slower car (5+ m/s)  cautionNet    hits   62  health   8.07  out 4  speed med 31.8
+WRECK other car            cautionNet    hits  367  health   4.25  out 8  speed med 32.7
+WRECK wall/wall            cautionNet    hits 26260  health   3.26  out 1  speed med 37.4
+WRECK official/truck       cautionNet    hits    6  health   0.71  out 2  speed med 25.9
+WRECK wreck (retired)      pit           hits    5  health   0.70  out 0  speed med 9.4
+WRECK slower car (5+ m/s)  pit           hits    6  health   0.60  out 0  speed med 12.9
+WRECK other car            pit           hits   17  health   0.30  out 1  speed med 7.7
+WRECK wall/wall            pit           hits   23  health   0.20  out 2  speed med 15.3
+WRECK wreck (stopped)      cautionNet    hits    2  health   0.08  out 0  speed med 8.3
+finished 15/30  cautions 4 (14 laps)  retirements 15  biggest wreck 2 cars
+finished 2/30  cautions 1 (15 laps)  retirements 28  biggest wreck 7 cars
+  WRECKS  21.5 retirements/race, 2.5 cautions/race, 11 multi-car wrecks (mean 2.7 cars, max 7)
+          contact retirements: 26 at fault, 11 hit by another
+-- short
+WRECK caution 1584 s, a wreck on the racing surface 384 s, blocked (<3 car widths) 142 s, red flags 0 (0 s)
+WRECK slower car (5+ m/s)  cautionNet    hits  138  health  10.88  out 2  speed med 24.1
+WRECK wreck (retired)      cautionNet    hits   41  health   7.16  out 8  speed med 10.3
+WRECK other car            cautionNet    hits  645  health   7.08  out 2  speed med 18.1
+WRECK wall/wall            cautionNet    hits 11609  health   2.78  out 0  speed med 19.6
+WRECK slower car (5+ m/s)  pit           hits   14  health   2.13  out 2  speed med 15.3
+WRECK wreck (retired)      pit           hits    8  health   1.82  out 2  speed med 15.4
+WRECK other car            pit           hits   23  health   0.58  out 5  speed med 4.9
+WRECK wreck (stopped)      cautionNet    hits    4  health   0.44  out 0  speed med 10.3
+WRECK wall/wall            pit           hits  490  health   0.36  out 1  speed med 17.9
+WRECK official/truck       cautionNet    hits   15  health   0.31  out 0  speed med 15.4
+WRECK official/truck       pit           hits    1  health   0.00  out 0  speed med 21.4
+finished 13/26  cautions 3 (11 laps)  retirements 13  biggest wreck 2 cars
+finished 8/26  cautions 5 (19 laps)  retirements 18  biggest wreck 4 cars
+  WRECKS  15.5 retirements/race, 4.0 cautions/race, 8 multi-car wrecks (mean 2.3 cars, max 4)
+          contact retirements: 17 at fault, 10 hit by another
+-- circuit_12_gp
+WRECK caution 13266 s, a wreck on the racing surface 5283 s, blocked (<3 car widths) 1872 s, red flags 0 (0 s)
+WRECK wall/wall            pit           hits 7193  health  10.68  out 14  speed med 10.2
+WRECK slower car (5+ m/s)  cautionNet    hits  267  health  10.45  out 1  speed med 12.4
+WRECK other car            cautionNet    hits 53488  health   9.47  out 0  speed med 7.5
+WRECK slower car (5+ m/s)  pit           hits   92  health   7.54  out 3  speed med 12.0
+WRECK wreck (retired)      pit           hits  690  health   5.37  out 4  speed med 1.8
+WRECK official/truck       cautionNet    hits 2195  health   5.17  out 4  speed med 8.7
+WRECK other car            pit           hits 2565  health   4.25  out 3  speed med 1.6
+WRECK wreck (retired)      cautionNet    hits 2341  health   3.40  out 2  speed med 1.8
+WRECK wreck (stopped)      cautionNet    hits 9270  health   1.23  out 0  speed med 0.8
+WRECK wall/wall            cautionNet    hits 12988  health   0.83  out 0  speed med 2.6
+WRECK official/truck       pit           hits  162  health   0.52  out 0  speed med 10.1
+WRECK wreck (stopped)      pit           hits  653  health   0.29  out 0  speed med 1.5
+finished 0/40  cautions 2 (12 laps)  retirements 38  biggest wreck 6 cars
+finished 0/40  cautions 3 (15 laps)  retirements 31  biggest wreck 6 cars
+  WRECKS  34.5 retirements/race, 2.5 cautions/race, 10 multi-car wrecks (mean 3.6 cars, max 6)
+          contact retirements: 37 at fault, 15 hit by another
+
+== 4. v5w (v5p, caution skill retrained with wrecks), this commit's code
+-- speedway
+WRECK caution 2218 s, a wreck on the racing surface 1872 s, blocked (<3 car widths) 591 s, red flags 0 (0 s)
+WRECK wreck (retired)      cautionNet    hits   94  health  25.94  out 25  speed med 17.9
+WRECK slower car (5+ m/s)  cautionNet    hits   30  health   8.16  out 6  speed med 28.3
+WRECK other car            cautionNet    hits  133  health   5.90  out 10  speed med 28.7
+WRECK official/truck       cautionNet    hits   11  health   2.37  out 5  speed med 10.1
+WRECK wreck (retired)      pit           hits    3  health   1.72  out 0  speed med 19.5
+WRECK wreck (stopped)      cautionNet    hits    5  health   1.56  out 2  speed med 12.3
+WRECK wall/wall            cautionNet    hits 18700  health   1.50  out 1  speed med 9.7
+WRECK slower car (5+ m/s)  pit           hits   12  health   0.62  out 0  speed med 13.4
+WRECK other car            pit           hits   38  health   0.34  out 1  speed med 3.9
+WRECK wall/wall            pit           hits  215  health   0.01  out 0  speed med 16.8
+finished 4/30  cautions 1 (17 laps)  retirements 26  biggest wreck 10 cars
+finished 2/30  cautions 1 (11 laps)  retirements 27  biggest wreck 5 cars
+  WRECKS  26.5 retirements/race, 1.0 cautions/race, 12 multi-car wrecks (mean 3.2 cars, max 10)
+          contact retirements: 33 at fault, 18 hit by another
+-- short
+WRECK caution 2580 s, a wreck on the racing surface 453 s, blocked (<3 car widths) 100 s, red flags 0 (0 s)
+WRECK wall/wall            cautionNet    hits 23190  health   7.76  out 0  speed med 30.5
+WRECK slower car (5+ m/s)  cautionNet    hits   75  health   5.58  out 2  speed med 21.8
+WRECK other car            cautionNet    hits  429  health   3.95  out 3  speed med 18.5
+WRECK wreck (retired)      pit           hits   15  health   2.32  out 2  speed med 9.2
+WRECK wreck (retired)      cautionNet    hits   25  health   1.47  out 1  speed med 6.2
+WRECK slower car (5+ m/s)  pit           hits   16  health   1.14  out 0  speed med 16.3
+WRECK official/truck       cautionNet    hits   21  health   1.04  out 3  speed med 7.4
+WRECK other car            pit           hits   51  health   0.82  out 2  speed med 10.1
+WRECK wall/wall            pit           hits 1091  health   0.10  out 1  speed med 19.7
+WRECK wreck (stopped)      cautionNet    hits    2  health   0.06  out 0  speed med 6.7
+finished 8/26  cautions 8 (32 laps)  retirements 18  biggest wreck 2 cars
+finished 14/26  cautions 5 (15 laps)  retirements 12  biggest wreck 3 cars
+  WRECKS  15.0 retirements/race, 6.5 cautions/race, 3 multi-car wrecks (mean 2.3 cars, max 3)
+          contact retirements: 6 at fault, 15 hit by another
+
+== 5. circuits to the circuit rulebook: v5p at 22eb886 (base)
+-- circuit_11_club
+WRECK caution 10824 s, a wreck on the racing surface 1462 s, blocked (<3 car widths) 776 s, red flags 0 (0 s)
+WRECK other car            cautionNet    hits 5437  health  18.67  out 2  speed med 7.1
+WRECK slower car (5+ m/s)  cautionNet    hits  161  health  17.42  out 2  speed med 15.0
+WRECK official/truck       cautionNet    hits 1867  health   7.79  out 1  speed med 20.2
+WRECK wreck (stopped)      cautionNet    hits 1075  health   4.46  out 0  speed med 1.8
+WRECK wall/wall            pit           hits 2853  health   3.99  out 1  speed med 19.3
+WRECK slower car (5+ m/s)  pit           hits   47  health   3.65  out 2  speed med 13.2
+WRECK wreck (retired)      cautionNet    hits 1372  health   3.55  out 2  speed med 1.4
+WRECK other car            pit           hits 1197  health   3.10  out 2  speed med 2.8
+WRECK wall/wall            cautionNet    hits 1528  health   2.26  out 0  speed med 13.5
+WRECK wreck (retired)      pit           hits   45  health   0.56  out 1  speed med 5.3
+WRECK official/truck       pit           hits   22  health   0.44  out 0  speed med 23.3
+finished 10/40  cautions 11 (26 laps)  retirements 29  biggest wreck 3 cars
+finished 7/40  cautions 11 (27 laps)  retirements 32  biggest wreck 3 cars
+finished 15/40  cautions 12 (28 laps)  retirements 25  biggest wreck 3 cars
+  WRECKS  28.7 retirements/race, 11.3 cautions/race, 19 multi-car wrecks (mean 2.2 cars, max 3)
+          contact retirements: 40 at fault, 36 hit by another
+-- circuit_12_gp
+WRECK caution 6242 s, a wreck on the racing surface 629 s, blocked (<3 car widths) 103 s, red flags 0 (0 s)
+WRECK wall/wall            pit           hits 6194  health  15.90  out 12  speed med 20.3
+WRECK slower car (5+ m/s)  cautionNet    hits   58  health   8.19  out 6  speed med 24.1
+WRECK slower car (5+ m/s)  pit           hits  108  health   7.52  out 2  speed med 11.2
+WRECK other car            cautionNet    hits 1585  health   6.66  out 1  speed med 8.6
+WRECK other car            pit           hits 1657  health   5.41  out 3  speed med 1.4
+WRECK wreck (retired)      pit           hits  371  health   3.93  out 6  speed med 3.1
+WRECK official/truck       cautionNet    hits   60  health   2.68  out 1  speed med 18.8
+WRECK wall/wall            cautionNet    hits 1077  health   1.14  out 1  speed med 1.7
+WRECK wreck (retired)      cautionNet    hits  345  health   1.14  out 1  speed med 1.4
+WRECK wreck (stopped)      pit           hits  195  health   0.03  out 0  speed med 0.0
+WRECK wreck (stopped)      cautionNet    hits  185  health   0.00  out 0  speed med 1.3
+WRECK official/truck       pit           hits    1  health   0.00  out 0  speed med 26.6
+finished 20/40  cautions 3 (7 laps)  retirements 20  biggest wreck 3 cars
+finished 20/40  cautions 4 (10 laps)  retirements 19  biggest wreck 2 cars
+finished 20/40  cautions 3 (8 laps)  retirements 20  biggest wreck 2 cars
+  WRECKS  19.7 retirements/race, 3.3 cautions/race, 11 multi-car wrecks (mean 2.1 cars, max 3)
+          contact retirements: 18 at fault, 14 hit by another
+
+== 6. circuits to the circuit rulebook: v5p, this commit's code
+-- circuit_11_club
+WRECK caution 11527 s, a wreck on the racing surface 1939 s, blocked (<3 car widths) 1052 s, red flags 2 (49 s)
+WRECK other car            cautionNet    hits 7069  health  22.96  out 7  speed med 4.8
+WRECK slower car (5+ m/s)  cautionNet    hits  190  health  20.26  out 2  speed med 14.7
+WRECK wreck (stopped)      cautionNet    hits 1958  health   9.20  out 2  speed med 1.8
+WRECK official/truck       cautionNet    hits 1537  health   6.11  out 2  speed med 23.7
+WRECK wall/wall            pit           hits 3304  health   4.71  out 1  speed med 18.2
+WRECK slower car (5+ m/s)  pit           hits   62  health   4.40  out 2  speed med 13.0
+WRECK wreck (retired)      cautionNet    hits 1546  health   3.52  out 2  speed med 1.3
+WRECK other car            pit           hits 1415  health   3.39  out 1  speed med 6.5
+WRECK wreck (retired)      pit           hits  137  health   2.78  out 2  speed med 4.0
+WRECK wall/wall            cautionNet    hits 5537  health   2.33  out 2  speed med 6.0
+WRECK wreck (stopped)      pit           hits    7  health   1.15  out 0  speed med 10.2
+WRECK official/truck       pit           hits   71  health   0.12  out 0  speed med 14.5
+WRECK official/truck       formation     hits    3  health   0.07  out 0  speed med 1.3
+finished 15/40  cautions 10 (25 laps)  retirements 25  biggest wreck 2 cars
+finished 7/40  cautions 13 (30 laps)  retirements 33  biggest wreck 2 cars
+finished 7/40  cautions 13 (32 laps)  retirements 33  biggest wreck 3 cars
+  WRECKS  30.3 retirements/race, 12.0 cautions/race, 17 multi-car wrecks (mean 2.1 cars, max 3)
+          contact retirements: 38 at fault, 47 hit by another
+-- circuit_12_gp
+WRECK caution 5327 s, a wreck on the racing surface 385 s, blocked (<3 car widths) 119 s, red flags 0 (0 s)
+WRECK wall/wall            pit           hits 8557  health  18.05  out 12  speed med 20.6
+WRECK slower car (5+ m/s)  pit           hits  103  health   8.20  out 2  speed med 12.4
+WRECK other car            pit           hits 1336  health   5.39  out 5  speed med 1.1
+WRECK wreck (retired)      pit           hits   97  health   4.71  out 6  speed med 2.8
+WRECK slower car (5+ m/s)  cautionNet    hits   37  health   3.68  out 1  speed med 17.7
+WRECK other car            cautionNet    hits 1056  health   2.67  out 0  speed med 5.7
+WRECK official/truck       cautionNet    hits  396  health   1.31  out 1  speed med 32.9
+WRECK wreck (retired)      cautionNet    hits   27  health   0.59  out 0  speed med 3.4
+WRECK wall/wall            cautionNet    hits  244  health   0.39  out 0  speed med 2.6
+WRECK official/truck       pit           hits    2  health   0.19  out 1  speed med 10.1
+WRECK wreck (stopped)      pit           hits   68  health   0.03  out 0  speed med 0.6
+WRECK wreck (stopped)      cautionNet    hits   19  health   0.00  out 0  speed med 1.4
+finished 23/40  cautions 3 (8 laps)  retirements 17  biggest wreck 2 cars
+finished 24/40  cautions 3 (9 laps)  retirements 16  biggest wreck 2 cars
+finished 20/40  cautions 3 (10 laps)  retirements 20  biggest wreck 2 cars
+  WRECKS  17.7 retirements/race, 3.0 cautions/race, 9 multi-car wrecks (mean 2.0 cars, max 2)
+          contact retirements: 12 at fault, 14 hit by another
+
+
+
+== 7. v5es (v5p, caution skill practised by score with wreck drills), code at 9658a92
+== speedway
+finished 7/30  cautions 1 (10 laps)  retirements 23  biggest wreck 5 cars
+finished 2/30  cautions 2 (15 laps)  retirements 28  biggest wreck 4 cars
+  WRECKS  25.5 retirements/race, 1.5 cautions/race, 15 multi-car wrecks (mean 2.7 cars, max 5)
+          contact retirements: 31 at fault, 14 hit by another
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.5 retirements/race while a script drove
+WRECK caution 2032 s, a wreck on the racing surface 1542 s, blocked (<3 car widths) 231 s, red flags 0 (0 s)
+WRECK wreck (retired)      cautionNet    hits   71  health  24.51  out 23  speed med 20.6
+WRECK slower car (5+ m/s)  cautionNet    hits   61  health   8.85  out 4  speed med 33.1
+WRECK other car            cautionNet    hits  310  health   5.57  out 11  speed med 30.4
+WRECK wreck (retired)      pit           hits    7  health   1.84  out 1  speed med 18.1
+WRECK wreck (stopped)      cautionNet    hits    3  health   1.47  out 1  speed med 22.2
+WRECK wall/wall            cautionNet    hits 15044  health   1.41  out 2  speed med 20.2
+WRECK official/truck       cautionNet    hits    7  health   0.94  out 2  speed med 18.8
+WRECK wall/wall            pit           hits 1811  health   0.49  out 1  speed med 15.2
+WRECK other car            pit           hits    6  health   0.20  out 0  speed med 2.3
+WRECK slower car (5+ m/s)  pit           hits    3  health   0.18  out 0  speed med 13.0
+== short
+finished 12/26  cautions 7 (20 laps)  retirements 13  biggest wreck 2 cars
+finished 10/26  cautions 7 (25 laps)  retirements 15  biggest wreck 3 cars
+  WRECKS  14.0 retirements/race, 7.0 cautions/race, 5 multi-car wrecks (mean 2.2 cars, max 3)
+          contact retirements: 5 at fault, 11 hit by another
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.5 retirements/race while a script drove
+WRECK caution 2457 s, a wreck on the racing surface 421 s, blocked (<3 car widths) 121 s, red flags 0 (0 s)
+WRECK slower car (5+ m/s)  cautionNet    hits  227  health  14.22  out 1  speed med 22.9
+WRECK other car            cautionNet    hits 1312  health  13.74  out 3  speed med 18.3
+WRECK wall/wall            cautionNet    hits 33593  health   6.65  out 3  speed med 15.1
+WRECK wreck (retired)      cautionNet    hits   29  health   3.86  out 1  speed med 11.8
+WRECK slower car (5+ m/s)  pit           hits   25  health   2.71  out 0  speed med 14.7
+WRECK wreck (stopped)      cautionNet    hits   17  health   1.59  out 0  speed med 10.6
+WRECK other car            pit           hits   83  health   1.08  out 2  speed med 12.9
+WRECK official/truck       cautionNet    hits   27  health   0.50  out 1  speed med 22.7
+WRECK wall/wall            pit           hits 7625  health   0.46  out 1  speed med 13.4
+WRECK official/truck       pit           hits    5  health   0.19  out 0  speed med 14.6
+WRECK wreck (retired)      pit           hits    3  health   0.17  out 0  speed med 7.6
