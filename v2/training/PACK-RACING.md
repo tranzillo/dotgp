@@ -75,6 +75,30 @@ can be. Physics and teacher changes alter every machine's training, so each land
    ground gained against the cars around, with damage and penalties as costs and a weaker anchor to the teacher. Only
    once steps 2-5 give the drivers something to find and the means to see it.
 
+### 2026-11-05: the lane choice is a judgement, made first
+
+The follow-cap work (step 4's first part) made following safe, but it lost sight of the bigger picture: held up behind
+a slower car on its line with room on the other, a driver doesn't keep to one learned line. It judges in a blink whether
+to sit in the draft or gamble on the other line, from what it can tell of that car's pace and what the other line
+would give it, as its car is now (fuel, tyres, damage). Today's teachers don't: they go when their line's speed at
+one spot beats the car ahead's speed that instant by a fixed margin (`pass`), and only check that the arc beside can
+beat it all the way past. A car slow all lap and a car slow through one corner look alike, and the decision flickers
+(some 10,000 attempts started mid-corner in 4 short-oval races, 1% passing). On ovals where the two lines lap alike
+(`?lines=2`), the other line costs nothing but the draft and the time across: the best case for passing, and they still
+don't weigh it.
+
+So the next step, ahead of the hang-back run (which becomes one outcome of the same judgement):
+1. **Measure the gamble** (`scripts/laneGamble.ts`): each time a teacher is held up with a lane open, what going
+   won against staying over the next 15 s, by how slow the car ahead really was.
+2. **A driver's estimate of the car ahead's pace**: from what it has seen of it over the last corners, remembered and
+   noisy, its own (not the true value: no oracle, no hive mind).
+3. **Its own pace on each lane, as its car is now**: time over the next stretch on its line and on the lane beside
+   (the grooves' speeds at its grip share; fuel weight and damage are in its car already), less the draft it gives up.
+4. **The choice by expected time**: stay (the car ahead's estimated pace, the draft, a run later) against go (the
+   lane's pace, getting across, being hung out with no help), its nerve setting how much it gambles on an uncertain
+   estimate. Two drivers in the same place choose differently.
+5. **Students get the inputs**: how the car ahead has been going, and each lane's pace for their car.
+
 A later option for teaching decisions: a teacher that tries each choice (hold, go low, go high) by simulating a few
 seconds ahead and labels the best. It needs a way to copy a race mid-way, which the sim doesn't have.
 
@@ -105,3 +129,9 @@ seconds ahead and labels the best. It needs a way to copy a race mid-way, which 
   9.8/10.5/9.7, damaging contacts 1.9/2.5/1.3. What it gave up is mid-corner, where followers no longer sit on the
   bumper. Short-oval passing was thin before (runs pass 7-11%): next, the hang-back run. Also seen: pass attempts
   flicker on and off (some 10,000 mid-corner starts in 4 races, 1% passing, the baseline too).
+- 2026-11-05: the lane choice as a judgement (the plan above). First, what today's teachers do
+  (experiments/2026-11-05-lane-gamble, `scripts/laneGamble.ts`): held up with a lane open, how often they go doesn't
+  depend on how slow the car ahead is (short 39-45% whatever its pace; gen. superspeedway 10%, 17% only for cars 3+
+  m/s off). Most chances are behind a car at the field's pace. Going gains more places on the big ovals (0.50 vs 0.27
+  in 15 s on the superspeedway), nothing on the short oval. Next: the driver's estimate of the car ahead's pace, each
+  lane's for its own car, and the choice by expected time.

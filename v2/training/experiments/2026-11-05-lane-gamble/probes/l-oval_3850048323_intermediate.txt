@@ -1,0 +1,46 @@
+
+=== oval:3850048323:intermediate seed 1: 61 laps, 24 cars (a car a pit box), 4x pace (156 s)
+finished 24/24  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 1% >25%
+  marks lap 20: groove 7%, skids 0% mean darkness; 24% of surface >10% dark, 13% >25%
+
+=== oval:3850048323:intermediate seed 2: 61 laps, 24 cars (a car a pit box), 4x pace (156 s)
+finished 24/24  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 1% >25%
+  marks lap 20: groove 8%, skids 0% mean darkness; 25% of surface >10% dark, 13% >25%
+
+=== oval:3850048323:intermediate seed 3: 61 laps, 24 cars (a car a pit box), 4x pace (197 s)
+finished 23/24  cautions 0 (0 laps)  retirements 1  biggest wreck 1 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 1% >25%
+  marks lap 20: groove 8%, skids 0% mean darkness; 26% of surface >10% dark, 13% >25%
+
+=== oval:3850048323:intermediate seed 4: 61 laps, 24 cars (a car a pit box), 4x pace (199 s)
+finished 24/24  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 11% of surface >10% dark, 1% >25%
+  marks lap 20: groove 8%, skids 0% mean darkness; 26% of surface >10% dark, 13% >25%
+
+=== summary by track
+
+oval:3850048323:intermediate (4 races)
+  STEWARDS 0.8 decisions/race: avoidable-contact: time 1, avoidable-contact: drive-through 1, avoidable-contact: black-flag 1
+  WRECKS  0.3 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 1)
+          by context: green 1
+          who / what: pit hit wall 1
+          damage done to others (by fault): 0.42 health/race
+  PACK    19.4 passes/100 green car-laps, alongside 1%, drafting 22%, lane spread 3.97 m; lockstep same brain –, different brains 0.004
+  PASSING 18.6 clean passes/100 green car-laps; of all passes 4% with contact, 2% damaging, 45% from the draft; 1.5 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 3.73 m, 1.23 m/s, 0.111
+  SCRIPTS 11% of car-time on track driven by a script (formation 0%, pit maneuver 11%); 0.3 retirements/race while a script drove
+          in a pit cycle: in along the wall (box lane) 1
+  TIRES   wear 0.0426/green lap -> cliff (0.3) after 16 laps; sliding >0.05 0%, >0.35 0%, >0.6 0% of car-steps
+  FUEL    burn 4.14 kg/green lap -> 14 laps per tank
+  DAMAGE  health lost on track /race: green walls 0.03 (0.00 with a car alongside), cars 0.87; caution walls 0.00, cars 0.00
+  STOPS   98.5/race (0% under caution), tires taken 94%, repairs 1%, called for fuel 97% tires 2% damage 1% caution 0% penalty 0%, tire life at stop 0.48 (min 0.39), service 13.5 s
+  PIT ROAD 52.6 s entry to track under green, – s under caution; 1.0 contacts, 0.01 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 40.14 s (1411) | 0.6-0.8: 40.48 s (2156) | 0.4-0.6: 41.05 s (1258) | 0.3-0.4: 41.92 s (36) | 0.2-0.3: 42.05 s (24) | 0.0-0.2: 43.14 s (9)
+LANE held up with a lane open: 8830 chances (teachers), over 15 s after; car ahead slower than the field's median pace over its last lap
+LANE slower by (m/s)   n   went | stayed: m gained on it, places gained, passed it | went: m gained, places, passed
+LANE under-0.5       5372   31% |   -2.68    0.18   12% |   -0.91    0.22   16%
+LANE 0.5-1.5         2624   29% |   -0.75    0.19   15% |    1.06    0.25   24%
+LANE 1.5-3.0          370   38% |   -1.22    0.19   18% |    0.23    0.43   28%
+LANE 3.0+             464   32% |   -5.87   -0.05   29% |  -10.19   -0.03   26%
