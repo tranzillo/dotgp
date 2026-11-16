@@ -1,0 +1,50 @@
+
+=== oval:3850048323:intermediate seed 1: 61 laps, 24 cars (a car a pit box), 4x pace (204 s)
+finished 24/24  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 1% >25%
+  marks lap 20: groove 8%, skids 0% mean darkness; 24% of surface >10% dark, 13% >25%
+
+=== oval:3850048323:intermediate seed 2: 61 laps, 24 cars (a car a pit box), 4x pace (232 s)
+finished 24/24  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 1% >25%
+  marks lap 20: groove 8%, skids 0% mean darkness; 25% of surface >10% dark, 13% >25%
+
+=== oval:3850048323:intermediate seed 3: 61 laps, 24 cars (a car a pit box), 4x pace (263 s)
+finished 24/24  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 1% >25%
+  marks lap 20: groove 7%, skids 0% mean darkness; 24% of surface >10% dark, 13% >25%
+
+=== oval:3850048323:intermediate seed 4: 61 laps, 24 cars (a car a pit box), 4x pace (264 s)
+finished 24/24  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 1% >25%
+  marks lap 20: groove 8%, skids 0% mean darkness; 25% of surface >10% dark, 13% >25%
+
+=== summary by track
+
+oval:3850048323:intermediate (4 races)
+  STEWARDS 0.3 decisions/race: avoidable-contact: drive-through 1
+  WRECKS  0.0 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 0)
+          by context: 
+          who / what: 
+          damage done to others (by fault): 0.30 health/race
+  PACK    19.2 passes/100 green car-laps, alongside 1%, drafting 24%, lane spread 3.98 m; lockstep same brain –, different brains 0.002
+  PASSING 18.1 clean passes/100 green car-laps; of all passes 6% with contact, 3% damaging, 46% from the draft; 1.2 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 3.76 m, 1.22 m/s, 0.111
+  SCRIPTS 11% of car-time on track driven by a script (formation 0%, pit maneuver 11%); 0.0 retirements/race while a script drove
+  TIRES   wear 0.0427/green lap -> cliff (0.3) after 16 laps; sliding >0.05 0%, >0.35 0%, >0.6 0% of car-steps
+  FUEL    burn 4.14 kg/green lap -> 15 laps per tank
+  DAMAGE  health lost on track /race: green walls 0.02 (0.01 with a car alongside), cars 0.53; caution walls 0.00, cars 0.00
+  STOPS   98.3/race (0% under caution), tires taken 95%, repairs 0%, called for fuel 96% tires 4% damage 0% caution 0% penalty 0%, tire life at stop 0.48 (min 0.38), service 13.5 s
+  PIT ROAD 52.5 s entry to track under green, – s under caution; 1.5 contacts, 0.01 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 40.12 s (1406) | 0.6-0.8: 40.46 s (2173) | 0.4-0.6: 41.05 s (1281) | 0.3-0.4: 41.76 s (36) | 0.2-0.3: 42.03 s (23) | 0.0-0.2: 42.94 s (11)
+PACK runs: 2023 pull-outs, 32% with a run (closing 1+ m/s); closing built in the tow over 3 s before -0.11 m/s, at the pull-out 0.40 m/s
+PACK   passed within 10 s: with a run 19%, without 5%, all 9%
+PACK held up (following, closing under 1 m/s): 16.8% of green car-time; the better lane beside: open 90%, faster 3%, no faster 4%, taken 2%, none 0%
+PACK   lane open or faster: moved over within 3 s 46% of 14757 chances
+PACK pack: 0.206 position changes a car-lap; alongside 2% of green car-time; in a tow 31% (drag cut there 15%); damaging car contacts 1.3 a 100 car-laps (5558 green car-laps)
+WHERE position changes: 1143; tries are pass attempts started (passed within 10 s); gap bands m: <3, <6, <10, <20, <30
+WHERE phase     swaps (inside)   tries  passed   following  gap bands (share of following time)
+WHERE straight    240 (  70%)     780     7%       21%       7%   30%   21%   24%   18%
+WHERE entry        80 (  19%)     133     9%       22%       6%   22%   29%   26%   17%
+WHERE mid         751 (  32%)    3365     3%       21%       7%   26%   19%   26%   22%
+WHERE exit         72 (  46%)     667     1%       23%      10%   33%   16%   23%   18%

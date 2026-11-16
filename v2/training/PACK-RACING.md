@@ -75,29 +75,28 @@ can be. Physics and teacher changes alter every machine's training, so each land
    ground gained against the cars around, with damage and penalties as costs and a weaker anchor to the teacher. Only
    once steps 2-5 give the drivers something to find and the means to see it.
 
-### 2026-11-05: the lane choice is a judgement, made first
+### 2026-11-16: back to the goal, a field aware of each other
 
-The follow-cap work (step 4's first part) made following safe, but it lost sight of the bigger picture: held up behind
-a slower car on its line with room on the other, a driver doesn't keep to one learned line. It judges in a blink whether
-to sit in the draft or gamble on the other line, from what it can tell of that car's pace and what the other line
-would give it, as its car is now (fuel, tyres, damage). Today's teachers don't: they go when their line's speed at
-one spot beats the car ahead's speed that instant by a fixed margin (`pass`), and only check that the arc beside can
-beat it all the way past. A car slow all lap and a car slow through one corner look alike, and the decision flickers
-(some 10,000 attempts started mid-corner in 4 short-oval races, 1% passing). On ovals where the two lines lap alike
-(`?lines=2`), the other line costs nothing but the draft and the time across: the best case for passing, and they still
-don't weigh it.
+Two detours, set aside: tuning the follow cap further, and a lane choice from each driver's remembered estimate of the
+car ahead's pace over the last corners. A driver judges the closing speed of the car in front, and whether the other
+lane is moving, in a fraction of a second, from what it sees now; nobody tracks a car round a lap to decide. (A slower
+line on purpose is out too: lines that lap alike are the best case for passing.) What's kept: `?follow=3` (close
+following is safe, short-oval contact under the baseline), and the probes (`laneGamble.ts`: held up with a lane open,
+teachers go as often whatever the car ahead's pace; 60-80% of those moments are behind a car at the field's pace).
 
-So the next step, ahead of the hang-back run (which becomes one outcome of the same judgement):
-1. **Measure the gamble** (`scripts/laneGamble.ts`): each time a teacher is held up with a lane open, what going
-   won against staying over the next 15 s, by how slow the car ahead really was.
-2. **A driver's estimate of the car ahead's pace**: from what it has seen of it over the last corners, remembered and
-   noisy, its own (not the true value: no oracle, no hive mind).
-3. **Its own pace on each lane, as its car is now**: time over the next stretch on its line and on the lane beside
-   (the grooves' speeds at its grip share; fuel weight and damage are in its car already), less the draft it gives up.
-4. **The choice by expected time**: stay (the car ahead's estimated pace, the draft, a run later) against go (the
-   lane's pace, getting across, being hung out with no help), its nerve setting how much it gambles on an uncertain
-   estimate. Two drivers in the same place choose differently.
-5. **Students get the inputs**: how the car ahead has been going, and each lane's pace for their car.
+Pack racing needs three things, and each is a ceiling on the next:
+1. **A reason**: a lane or line faster now than the one a car is in. With equal cars and lines that lap alike, there
+   mostly isn't one: the field runs at one pace. In real packs the difference is the air: a line outruns a single
+   car, a pushed car gains, a car that pulls out alone is hung out. That's `?draft=2&wake=1` (step 2), within noise
+   before only because teachers never raced close enough to feel it; with `?follow=3` they do.
+2. **Seeing it**: students' radio shows one car ahead in their lane, the next ahead in any lane, one behind, the cars
+   alongside and the draft, not whether the other lane is moving. Step 3's lane view (each lane's closing speed to its
+   nearest car ahead, how many cars in that line, from what's there now) is what lets them be aware of it.
+3. **Acting on it**: teachers choose the lane by that view (closing now in mine against the other, nerve setting the
+   gamble), not a fixed speed margin, and students learn it; then competitive practice (step 6).
+
+So, in order: the scorecard with the air on and close following (`?follow=3&draft=2&wake=1` against `?follow=3`),
+then the lane view, then teachers choosing by it.
 
 A later option for teaching decisions: a teacher that tries each choice (hold, go low, go high) by simulating a few
 seconds ahead and labels the best. It needs a way to copy a race mid-way, which the sim doesn't have.
@@ -135,3 +134,8 @@ seconds ahead and labels the best. It needs a way to copy a race mid-way, which 
   m/s off). Most chances are behind a car at the field's pace. Going gains more places on the big ovals (0.50 vs 0.27
   in 15 s on the superspeedway), nothing on the short oval. Next: the driver's estimate of the car ahead's pace, each
   lane's for its own car, and the choice by expected time.
+- 2026-11-16: back to the goal (the section above). The second air model with close following
+  (`?follow=3&draft=2&wake=1`): within noise again (position changes 0.145/0.300/0.208/0.235 -> 0.166/0.285/0.206/0.253).
+  Held up, the lane beside is empty 78-95% of the time: the field runs single file, and under the new air a car pulling
+  out alone is slower than the line it leaves. A second line needs a car to go with the one pulling out, and seeing
+  it: the lane view, and a teacher that goes with a car pulling out beside it. experiments/2026-11-16-air-close.
