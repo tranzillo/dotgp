@@ -139,3 +139,9 @@ seconds ahead and labels the best. It needs a way to copy a race mid-way, which 
   Held up, the lane beside is empty 78-95% of the time: the field runs single file, and under the new air a car pulling
   out alone is slower than the line it leaves. A second line needs a car to go with the one pulling out, and seeing
   it: the lane view, and a teacher that goes with a car pulling out beside it. experiments/2026-11-16-air-close.
+- 2026-11-17: the lane view (step 3), `laneView` in spotter.ts: the lanes beside (nearest car ahead and its closing,
+  the line's length, the car behind there) and the car ahead moving out of its groove, all from now. Teachers and
+  probes only for now. What it sees: held up, the lane beside is empty 89-98% of the time with almost never a car
+  behind in it; when the car ahead pulls out a lane, its follower goes with it 23-50% of the time (23% superspeedway);
+  most moves out of the groove are feints that never reach the next lane (pass attempts flickering). Next: teachers
+  that go with a car pulling out (or not, by nerve), and the flicker. experiments/2026-11-17-lane-view.

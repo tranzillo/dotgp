@@ -1,6 +1,7 @@
 import { G, PHYSICS as P } from '../sim/constants';
 import type { Car } from '../sim/car';
 import { compromise } from '../sim/damage';
+import { fastestLine, lineAt, ovalLines, twoLines } from './racingLine';
 import type { Track } from '../sim/track';
 import type { World } from '../sim/world';
 
@@ -286,6 +287,96 @@ export function mirrorView(car: Car, world: World, out: Float32Array, range = MI
     const dd = other.d - car.d;
     const k = dd >= MIRROR_LANE ? MIRROR.LOW : dd <= -MIRROR_LANE ? MIRROR.HIGH : MIRROR.LANE;
     out[k] = Math.max(out[k], 1 - gap / closing / MIRROR_TIME);
+  }
+  return out;
+}
+
+/**
+ * The lane view: what a driver sees of the lanes beside it at a glance, low (+d) and high (-d), and of its own line.
+ * Everything is from now (gaps and closing speeds, as eyes and a spotter read them), nothing remembered: whether the
+ * lane beside is rolling or stacked up, how long the line there is (the draft it carries), who is behind there to go
+ * with it, and whether the car ahead is pulling out of line. All in [-1, 1]; a proximity of 0 is nothing there.
+ * (PACK-RACING.md, step 3. Read by teachers and probes; not yet in students' inputs.)
+ */
+export const LANES = {
+  LOW_AHEAD_PROX: 0, //     nearest car ahead in the lane below: 1 = at our nose, 0 = none within AHEAD_RANGE
+  LOW_AHEAD_CLOSING: 1, //  how fast we'd catch it (+ = closing; - = that lane is pulling away)
+  LOW_LINE: 2, //           cars in that line ahead within AHEAD_RANGE (1 = LINE_MAX or more)
+  LOW_BEHIND_PROX: 3, //    nearest car behind in the lane below
+  LOW_BEHIND_CLOSING: 4, // how fast it is catching us (+ = closing)
+  HIGH_AHEAD_PROX: 5,
+  HIGH_AHEAD_CLOSING: 6,
+  HIGH_LINE: 7,
+  HIGH_BEHIND_PROX: 8,
+  HIGH_BEHIND_CLOSING: 9,
+  MY_LINE: 10, //           cars in our own line ahead within AHEAD_RANGE
+  AHEAD_ACROSS: 11, //      the car ahead in our lane moving out of its groove (m/s / ACROSS_SCALE, + = moving lower)
+} as const;
+export const LANES_SIZE = 12;
+/** Lateral offset (m) from us of a lane beside: a car's width and a bit, out to a lane over (not two). */
+const LANE_NEAR = 2.5, LANE_FAR = 7;
+/** Cars in a line that make it as long as the lane view tells apart. */
+const LINE_MAX = 5;
+const ACROSS_SCALE = 3; // m/s: a car moving across at a lane change's rate
+
+/** The lane view (see LANES) for a car, seeing `ahead` m ahead and `behind` m back (a spotter's ranges). */
+export function laneView(car: Car, world: World, out: Float32Array, ahead = AHEAD_RANGE, behind = BEHIND_RANGE): Float32Array {
+  out.fill(0);
+  if (!world.opts.collisions) return out;
+  const track = world.track, L = track.length;
+  const myAlong = alongSpeed(car, world);
+  const near = [Infinity, Infinity], nearCar: (Car | null)[] = [null, null];
+  const back = [Infinity, Infinity], backCar: (Car | null)[] = [null, null];
+  const line = [0, 0];
+  let mine = 0, myAhead: Car | null = null, myGap = Infinity;
+  for (const other of world.cars) {
+    if (other === car || other.cleared || other.retired) continue;
+    if (other.surface === 'pit' && car.surface !== 'pit') continue;
+    let ds = other.s - car.s;
+    if (ds > L / 2) ds -= L;
+    else if (ds < -L / 2) ds += L;
+    const dd = other.d - car.d, add = Math.abs(dd);
+    if (add < LANE_NEAR) {
+      if (ds > 0 && ds < ahead) {
+        mine++;
+        if (ds < myGap) { myGap = ds; myAhead = other; }
+      }
+      continue;
+    }
+    if (add > LANE_FAR) continue;
+    const k = dd > 0 ? 0 : 1;
+    if (ds > 0 && ds < ahead) {
+      line[k]++;
+      if (ds < near[k]) { near[k] = ds; nearCar[k] = other; }
+    } else if (ds <= 0 && -ds < behind && -ds < back[k]) { back[k] = -ds; backCar[k] = other; }
+  }
+  const base = [LANES.LOW_AHEAD_PROX, LANES.HIGH_AHEAD_PROX];
+  for (const k of [0, 1]) {
+    const b = base[k];
+    const a = nearCar[k], c = backCar[k];
+    if (a) {
+      out[b] = 1 - near[k] / AHEAD_RANGE;
+      out[b + 1] = clamp((myAlong - alongSpeed(a, world)) / CLOSING_SCALE, -1, 1);
+    }
+    out[b + 2] = Math.min(1, line[k] / LINE_MAX);
+    if (c) {
+      out[b + 3] = 1 - back[k] / BEHIND_RANGE;
+      out[b + 4] = clamp((alongSpeed(c, world) - myAlong) / CLOSING_SCALE, -1, 1);
+    }
+  }
+  out[LANES.MY_LINE] = Math.min(1, mine / LINE_MAX);
+  // Out of its groove, not across the road or from us: a groove sweeps across the banking and carries a car with it,
+  // and a car 20-30 m on is at another point of the sweep (both counted a pull-out every few seconds).
+  const a: Car | null = myAhead;
+  if (a) {
+    let groove = fastestLine(track);
+    if (twoLines(track)) {
+      const { low, high } = ovalLines(track);
+      groove = Math.abs(lineAt(low, a.s).d - a.d) <= Math.abs(lineAt(high, a.s).d - a.d) ? low : high;
+    }
+    const ax = -track.ty[a.trackIdx], ay = track.tx[a.trackIdx];
+    const across = a.vx * ax + a.vy * ay - lineAt(groove, a.s).slope * alongSpeed(a, world);
+    out[LANES.AHEAD_ACROSS] = clamp(across / ACROSS_SCALE, -1, 1);
   }
   return out;
 }
