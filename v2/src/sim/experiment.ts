@@ -16,12 +16,15 @@ import { PHYSICS } from './constants';
  * their nerve insures, and pull out at the last moment): trafficRacer.ts.
  * ?follow=3 (as 2, and their speed plan brakes with the car ahead for the
  * corner it comes to, from its line's speeds): trafficRacer.ts.
+ * ?commit=1 (a teacher's pass under way isn't dropped for a car ahead in the
+ * lane it's moving into: it looks along that lane, follows a car there, and
+ * the pass carries on while it's gaining): trafficRacer.ts.
  * Read from the page's address when this loads (the page imports it first);
  * a worker gets the page's in its first message (experimentName) and applies
  * them before it builds or simulates anything. Outside a browser (scripts,
  * tests) off, unless DOTGP_EXPERIMENT says otherwise.
  */
-export const EXPERIMENT = { widthScale: 1, car: 0, pitWidth: 1, spec: '', damage: 0, lines: 0, draft: 0, wake: 0, follow: 0 };
+export const EXPERIMENT = { widthScale: 1, car: 0, pitWidth: 1, spec: '', damage: 0, lines: 0, draft: 0, wake: 0, follow: 0, commit: 0 };
 
 /** Puts the switches in a query (?car=2&widths=0.75) in force. */
 export function applyExperiment(query: string): void {
@@ -46,6 +49,7 @@ export function applyExperiment(query: string): void {
   if (params.get('draft') === '2') EXPERIMENT.draft = 2;
   if (params.get('wake') === '1') EXPERIMENT.wake = 1;
   if (params.get('follow') === '2' || params.get('follow') === '3') EXPERIMENT.follow = Number(params.get('follow'));
+  if (params.get('commit') === '1') EXPERIMENT.commit = 1;
 }
 if (typeof window !== 'undefined') applyExperiment(window.location.search);
 // Scripts and the lab (node): the same switches from the environment, DOTGP_EXPERIMENT='?spec=cup' (worker threads
@@ -64,6 +68,7 @@ export function experimentName(): string {
   if (EXPERIMENT.draft) on.set('draft', String(EXPERIMENT.draft));
   if (EXPERIMENT.wake) on.set('wake', String(EXPERIMENT.wake));
   if (EXPERIMENT.follow) on.set('follow', String(EXPERIMENT.follow));
+  if (EXPERIMENT.commit) on.set('commit', String(EXPERIMENT.commit));
   return on.size ? `?${on}` : '';
 }
 

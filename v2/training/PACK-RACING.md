@@ -145,3 +145,10 @@ seconds ahead and labels the best. It needs a way to copy a race mid-way, which 
   behind in it; when the car ahead pulls out a lane, its follower goes with it 23-50% of the time (23% superspeedway);
   most moves out of the groove are feints that never reach the next lane (pass attempts flickering). Next: teachers
   that go with a car pulling out (or not, by nerve), and the flicker. experiments/2026-11-17-lane-view.
+- 2026-11-18: the flicker (experiments/2026-11-18-pass-commit, `scripts/passEnd.ts`). Most pass attempts didn't end,
+  they switched cars: going round car A, car B in the lane it was moving into got in its path and was "passed" back the
+  other way, then A again (speedway: 94% of attempts, median 0.2 s). `?commit=1` (off by default): a car in the lane
+  it's moving into is followed there, not passed back, and it looks along that lane, not just its own line; the pass
+  carries on while it's gaining. Speedway attempts 148,899 -> 47,636, median 0.2 -> 0.9 s, passes a 100 car-laps 31 ->
+  40, damage about level (bigger ovals more passing, three of four tracks less damage). Held up, the lane beside is
+  still empty 84-97%: the flicker wasn't why the field runs single file. Next: teachers that go with a car pulling out.

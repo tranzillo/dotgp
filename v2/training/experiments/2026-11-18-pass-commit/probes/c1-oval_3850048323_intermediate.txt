@@ -1,0 +1,46 @@
+
+=== oval:3850048323:intermediate seed 1: 61 laps, 24 cars (a car a pit box), 4x pace (154 s)
+finished 24/24  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 1% >25%
+  marks lap 20: groove 7%, skids 0% mean darkness; 23% of surface >10% dark, 13% >25%
+
+=== oval:3850048323:intermediate seed 2: 61 laps, 24 cars (a car a pit box), 4x pace (156 s)
+finished 24/24  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 1% >25%
+  marks lap 20: groove 8%, skids 0% mean darkness; 25% of surface >10% dark, 13% >25%
+
+=== oval:3850048323:intermediate seed 3: 61 laps, 24 cars (a car a pit box), 4x pace (894 s)
+finished 24/24  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 1% >25%
+  marks lap 20: groove 8%, skids 0% mean darkness; 25% of surface >10% dark, 13% >25%
+
+=== oval:3850048323:intermediate seed 4: 61 laps, 24 cars (a car a pit box), 4x pace (142 s)
+finished 24/24  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 1% >25%
+  marks lap 20: groove 8%, skids 0% mean darkness; 25% of surface >10% dark, 13% >25%
+
+=== summary by track
+
+oval:3850048323:intermediate (4 races)
+  STEWARDS 1.5 decisions/race: avoidable-contact: time 5, avoidable-contact: drive-through 1
+  WRECKS  0.0 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 0)
+          by context: 
+          who / what: 
+          damage done to others (by fault): 0.64 health/race
+  PACK    18.2 passes/100 green car-laps, alongside 1%, drafting 26%, lane spread 3.95 m; lockstep same brain –, different brains 0.003
+  PASSING 17.1 clean passes/100 green car-laps; of all passes 6% with contact, 3% damaging, 48% from the draft; 1.1 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 3.73 m, 1.22 m/s, 0.107
+  SCRIPTS 11% of car-time on track driven by a script (formation 0%, pit maneuver 11%); 0.0 retirements/race while a script drove
+  TIRES   wear 0.0426/green lap -> cliff (0.3) after 16 laps; sliding >0.05 0%, >0.35 0%, >0.6 0% of car-steps
+  FUEL    burn 4.12 kg/green lap -> 15 laps per tank
+  DAMAGE  health lost on track /race: green walls 0.02 (0.00 with a car alongside), cars 1.23; caution walls 0.00, cars 0.00
+  STOPS   98.5/race (0% under caution), tires taken 94%, repairs 1%, called for fuel 95% tires 4% damage 0% caution 0% penalty 0%, tire life at stop 0.48 (min 0.37), service 13.5 s
+  PIT ROAD 52.8 s entry to track under green, – s under caution; 2.0 contacts, 0.02 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 40.14 s (1414) | 0.6-0.8: 40.50 s (2155) | 0.4-0.6: 41.06 s (1261) | 0.3-0.4: 41.89 s (48) | 0.2-0.3: 41.92 s (35) | 0.0-0.2: 42.89 s (15)
+END attempts 8950: length s median 0.8 (quartiles 0.2-2.2); a lane across 24%; went again within 3 s 57% (on the same car 5%)
+END switches 3344: to a car further on 45%, the same side 100%, back to the car before 11%
+END ended: switched 37%, out of path, not gaining 20%, no side (full), not gaining 12%, gone 8%, no side (holding), not gaining 8%, no side (full), not beside 7%, out of path, not beside 3%, past, its lane slow or out of reach 1%, no side (holding), not beside 1%, out of reach, not gaining 1%, out of reach, its lane slow or out of reach 0%, out of path, its lane slow or out of reach 0%, out of reach, not beside 0%, alongside, its lane slow or out of reach 0%, too slow, its lane slow or out of reach 0%, too slow, not gaining 0%, alongside, not beside 0%, own car 0%, too slow, not beside 0%
+END under 1 s (55% of them): switched 36%, out of path, not gaining 14%, no side (full), not gaining 10%, gone 14%, no side (holding), not gaining 8%, no side (full), not beside 9%, out of path, not beside 5%, past, its lane slow or out of reach 0%, no side (holding), not beside 1%, out of reach, not gaining 1%, out of reach, its lane slow or out of reach 1%, out of path, its lane slow or out of reach 0%, out of reach, not beside 0%, alongside, its lane slow or out of reach 0%, too slow, its lane slow or out of reach 0%, too slow, not gaining 0%, alongside, not beside 0%, own car 0%, too slow, not beside 0%
+LOOK field: two wide or more 13% of green car-time; held up 18%
+LOOK held up, the better lane beside as the view shows it: empty 94%, rolling 4%, level 2%, stacked 0%; our line longer than it 98%, the same 1%, shorter 1%; a car behind there within 15 m 4%
+LOOK the car ahead moving out of its groove (1+ m/s): 5338 times, 2313 of them a lane over (2.5 m) within 2 s; of those we went with it 55% (of the rest, moved over anyway 7%)

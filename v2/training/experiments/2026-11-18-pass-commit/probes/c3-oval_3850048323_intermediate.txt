@@ -1,0 +1,59 @@
+
+=== oval:3850048323:intermediate seed 1: 61 laps, 24 cars (a car a pit box), 4x pace (232 s)
+finished 24/24  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 1% >25%
+  marks lap 20: groove 7%, skids 0% mean darkness; 24% of surface >10% dark, 12% >25%
+
+=== oval:3850048323:intermediate seed 2: 61 laps, 24 cars (a car a pit box), 4x pace (178 s)
+finished 24/24  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 1% >25%
+  marks lap 20: groove 8%, skids 0% mean darkness; 25% of surface >10% dark, 13% >25%
+
+=== oval:3850048323:intermediate seed 3: 61 laps, 24 cars (a car a pit box), 4x pace (161 s)
+finished 24/24  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 1% >25%
+  marks lap 20: groove 8%, skids 0% mean darkness; 25% of surface >10% dark, 13% >25%
+
+=== oval:3850048323:intermediate seed 4: 61 laps, 24 cars (a car a pit box), 4x pace (156 s)
+finished 24/24  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 12% of surface >10% dark, 1% >25%
+  marks lap 20: groove 8%, skids 0% mean darkness; 24% of surface >10% dark, 13% >25%
+
+=== summary by track
+
+oval:3850048323:intermediate (4 races)
+  STEWARDS 0.3 decisions/race: avoidable-contact: time 1
+  WRECKS  0.0 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 0)
+          by context: 
+          who / what: 
+          damage done to others (by fault): 0.22 health/race
+  PACK    20.4 passes/100 green car-laps, alongside 1%, drafting 25%, lane spread 3.95 m; lockstep same brain –, different brains 0.005
+  PASSING 19.3 clean passes/100 green car-laps; of all passes 6% with contact, 2% damaging, 45% from the draft; 1.2 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 3.75 m, 1.24 m/s, 0.108
+  SCRIPTS 11% of car-time on track driven by a script (formation 0%, pit maneuver 11%); 0.0 retirements/race while a script drove
+  TIRES   wear 0.0426/green lap -> cliff (0.3) after 16 laps; sliding >0.05 0%, >0.35 0%, >0.6 0% of car-steps
+  FUEL    burn 4.13 kg/green lap -> 15 laps per tank
+  DAMAGE  health lost on track /race: green walls 0.00 (0.00 with a car alongside), cars 0.44; caution walls 0.00, cars 0.00
+  STOPS   98.3/race (0% under caution), tires taken 93%, repairs 0%, called for fuel 96% tires 4% damage 0% caution 0% penalty 0%, tire life at stop 0.48 (min 0.37), service 13.4 s
+  PIT ROAD 52.5 s entry to track under green, – s under caution; 1.8 contacts, 0.01 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 40.10 s (1395) | 0.6-0.8: 40.44 s (2139) | 0.4-0.6: 41.04 s (1289) | 0.3-0.4: 42.05 s (52) | 0.2-0.3: 42.35 s (39) | 0.0-0.2: 43.01 s (18)
+END attempts 9256: length s median 0.8 (quartiles 0.2-2.0); a lane across 22%; went again within 3 s 60% (on the same car 6%)
+END switches 3622: to a car further on 44%, the same side 100%, back to the car before 11%
+END ended: switched 39%, out of path, not gaining 19%, no side (full), not gaining 12%, gone 9%, no side (holding), not gaining 7%, no side (full), not beside 6%, out of path, not beside 3%, past, its lane slow or out of reach 1%, no side (holding), not beside 1%, out of reach, not gaining 1%, out of reach, its lane slow or out of reach 0%, out of reach, not beside 0%, out of path, its lane slow or out of reach 0%, alongside, its lane slow or out of reach 0%, too slow, not gaining 0%, own car 0%, alongside, not beside 0%, too slow, not beside 0%, too slow, its lane slow or out of reach 0%
+END under 1 s (56% of them): switched 37%, out of path, not gaining 14%, no side (full), not gaining 9%, gone 16%, no side (holding), not gaining 7%, no side (full), not beside 8%, out of path, not beside 5%, past, its lane slow or out of reach 0%, no side (holding), not beside 1%, out of reach, not gaining 1%, out of reach, its lane slow or out of reach 1%, out of reach, not beside 1%, out of path, its lane slow or out of reach 0%, alongside, its lane slow or out of reach 0%, too slow, not gaining 0%, own car 0%, alongside, not beside 0%, too slow, not beside 0%, too slow, its lane slow or out of reach 0%
+LOOK field: two wide or more 13% of green car-time; held up 17%
+LOOK held up, the better lane beside as the view shows it: empty 94%, rolling 4%, level 2%, stacked 0%; our line longer than it 98%, the same 1%, shorter 1%; a car behind there within 15 m 4%
+LOOK the car ahead moving out of its groove (1+ m/s): 5049 times, 2133 of them a lane over (2.5 m) within 2 s; of those we went with it 55% (of the rest, moved over anyway 7%)
+GREEN contacts 65 (health lost, both cars, 1.81): by angle and who was moving across (count; median closing across, along m/s; health lost)
+GREEN   beside        one         27  3.04  1.07  0.46
+GREEN   beside        both        12  3.19  1.51  0.15
+GREEN   beside        neither      3  0.12  5.02  0.03
+GREEN   nose to tail  one         18  0.06  3.37  1.09
+GREEN   nose to tail  both         1  2.41  1.48  0.00
+GREEN   nose to tail  neither      4  -1.36  2.93  0.08
+GREEN worst 0.81 (nose to tail, one, across -2.5, along 19.2): faster 63 m/s health 0.99, slower 44 m/s health 0.97; faster's plan passing it side -1 (on)
+GREEN worst 0.23 (beside, one, across 3.8, along 9.6): faster 72 m/s health 0.99, slower 63 m/s health 0.98; faster's plan following another (-)
+GREEN worst 0.08 (nose to tail, one, across -2.3, along 7.2): faster 69 m/s health 0.99, slower 62 m/s health 0.99; faster's plan following it (-)
+GREEN worst 0.06 (beside, both, across 4.8, along 3.8): faster 50 m/s health 0.99, slower 46 m/s health 0.99; faster's plan passing it side -1 (carried on)
+GREEN worst 0.06 (beside, one, across 3.6, along 5.2): faster 71 m/s health 0.99, slower 66 m/s health 0.99; faster's plan following another (-)
+GREEN closing across: <-0.5 17, 0.5-1 1, 1-2 3, 2-3 19, 3- 25

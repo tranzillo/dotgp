@@ -269,6 +269,8 @@ export class TrafficRacer {
   private gainOn: Car | null = null;
   private passGain = 0;
   private passGap = 0;
+  /** Diagnostics only (scripts/passEnd.ts): what its last decision made of the pass under way. */
+  passWhy = '';
   private readonly mirror = new Float32Array(MIRROR_SIZE);
   /** What it was doing at its last decision (for looking into races). */
   last = { want: 0, offset: 0, low: 0, high: 0, follow: Infinity, squeezed: false, passing: false, behind: null as Car | null, slowing: 0, lead: 0 };
@@ -442,6 +444,7 @@ export class TrafficRacer {
     // The car a pass under way is on first: its side is the plan, whatever other cars ahead come to (judged in the
     // field's order, a passer took its side from whichever car came first, and switched sides mid-pass).
     const passOn = this.passOn;
+    this.passWhy = passOn ? 'unseen' : '';
     const gainOn = this.gainOn;
     if (gainOn) {
       let ds = gainOn.s - car.s;
@@ -456,8 +459,9 @@ export class TrafficRacer {
       let ds = other.s - car.s;
       if (ds > L / 2) ds -= L;
       else if (ds < -L / 2) ds += L;
-      if (ds > reach) continue;
+      if (ds > reach) { if (other === passOn) this.passWhy = 'out of reach'; continue; }
       if (ds <= -alongside()) {
+        if (other === passOn) this.passWhy = 'past';
         // Behind: a car coming up a lane over is as good as alongside if it will be there before this car could
         // be across into its lane ("car outside!"), so it isn't moved over on.
         const closing = other.speed - vMe;
@@ -474,7 +478,7 @@ export class TrafficRacer {
         else low = Math.max(low, other.d + width);
         if (ds > 0) yieldTo = Math.min(yieldTo, other.speed);
         // A nose ahead and crossing the road (to or from pit road): judged as ahead, below (let it across).
-        if (!(ds > 0 && other.pit.phase !== 'none' && other.surface !== 'pit')) continue;
+        if (!(ds > 0 && other.pit.phase !== 'none' && other.surface !== 'pit')) { if (other === passOn) this.passWhy = 'alongside'; continue; }
       }
       // Ahead: in the path it would take (the line, where that car is, plus its own offset)?
       const there = lineAt(line, other.s);
@@ -501,7 +505,18 @@ export class TrafficRacer {
           inWay = across(lineAt(line, other.s + Math.min(a, caught)).d + this.offset);
         }
       }
-      if (!inWay) continue;
+      // Committed (?commit=1), moving across to pass another car: the lane it's moving into is its path too, from where
+      // it is to beside that car (looking only along its own line, a passer saw a slow car in the lane it was moving
+      // into once it was there, too late: closing at 15-25 m/s, the worst hits of a speedway's races). A car there is
+      // followed, not gone for: taken as a new pass, the passer went for it and back for the car it was passing,
+      // which was in the way of that, every step.
+      let inLane = false;
+      if (!inWay && EXPERIMENT.commit === 1 && passOn && other !== passOn && this.passSide !== 0) {
+        const lane = there.d + (passOn.d + this.passSide * width - lineAt(line, passOn.s).d);
+        for (let f = 0; f <= 1 && !inLane; f += 0.25) inLane = across(myD + f * (lane - myD));
+        inWay = inLane;
+      }
+      if (!inWay) { if (other === passOn) this.passWhy = 'out of path'; continue; }
       // Faster: its own pace on its line there (its grip, its tyres) against that car's speed. Held up behind a car
       // it follows at that car's speed, what it's doing now can't say; what it could do does. (Judged on its speed
       // now, a racer that followed properly never pulled out: its passes had come from the follow bug flooring it.)
@@ -595,12 +610,20 @@ export class TrafficRacer {
       };
       // A car it went for and gave up on, it goes for again once it's catching it (the tow builds it a run).
       const spent = this.passSide === 0 && other === this.gainOn && this.passGain <= 0;
-      if (stopped || (faster > pass && !building && !spent) || holding) {
+      if (other === passOn) this.passWhy = 'too slow';
+      if (stopped || (!inLane && ((faster > pass && !building && !spent) || holding))) {
+        if (other === passOn) this.passWhy = holding ? 'no side (holding)' : 'no side (full)';
         // A way past: the side it's already going (a pass under way keeps its side), else the side with more road.
         const left = pitting || mergeTo < other.d || !besideWorks(other.d + width) ? -1 : there.hi - OFF_LINE_BUFFER - (other.d + width);
         const right = !besideWorks(mergeTo - width) ? -1 : (mergeTo - width) - (there.lo + OFF_LINE_BUFFER);
         const side = this.passSide > 0 && left > 0 ? 1 : this.passSide < 0 && right > 0 ? -1 : left > 0 || right > 0 ? (left >= right ? 1 : -1) : 0;
-        if (side !== 0 && !passing) {
+        // Committed (?commit=1): a pass under way on another car, a car ahead in the lane it's moving into is followed
+        // there, not passed back the way it came; the pass carries on while it's gaining (below). Dropped for it, a
+        // passer went back and forth between the car it went for and the car in its new lane, side for side (a
+        // speedway: 94% of attempts ended switching cars, 81% of switches the other side, median 0.2 s:
+        // training/experiments/2026-11-18-pass-commit).
+        const reverses = EXPERIMENT.commit === 1 && !stopped && passOn !== null && other !== passOn && this.passSide !== 0 && side !== this.passSide;
+        if (side !== 0 && !passing && !reverses) {
           // Beside it: where it is across the road, measured from the line where this car is now.
           want = (side > 0 ? other.d + width : mergeTo - width) - here.d;
           // Or in a groove beside it: a lane held across the road all the way past, at that lane's own speeds, if
@@ -619,6 +642,7 @@ export class TrafficRacer {
             this.passGain = faster;
             this.passGap = ds;
           }
+          if (other === passOn) this.passWhy = 'on';
           this.passSide = side;
           this.passOn = other;
           passing = true;
@@ -662,7 +686,11 @@ export class TrafficRacer {
       // lap slower and twice the short oval's damage stops: 2026-10-27.)
       const gaining = ds < alongside() || this.passGain > 0;
       const going = ds > -alongside() && ds < reach && gaining && Math.max(paceAt(passOn.s), vMe) - passOn.speed > PASS_HOLD;
+      if (!beside) this.passWhy += ', not beside';
+      else if (!gaining) this.passWhy += ', not gaining';
+      else if (!going) this.passWhy += ', its lane slow or out of reach';
       if (beside && going) {
+        this.passWhy = 'carried on';
         passing = true;
         want = this.path ? 0 : car.d - here.d;
       }
