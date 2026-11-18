@@ -6,13 +6,13 @@
 import { readFileSync } from 'node:fs';
 import { adaptWeights, neuralTeam } from '../src/ai/drivers';
 import { Car } from '../src/sim/car';
-import { FLAT_TRACK, SHORT_TRACK, SPEEDWAY, Track } from '../src/sim/track';
+import { FLAT_TRACK, ovalTrack, SHORT_TRACK, SPEEDWAY } from '../src/trackgen';
 import { World } from '../src/sim/world';
 
 const run = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const lineage = Number(process.argv[3] ?? 0);
 const specs = { speedway: SPEEDWAY, short: SHORT_TRACK, flat: FLAT_TRACK } as const;
-const track = new Track(specs[(process.argv[4] ?? 'short') as keyof typeof specs]);
+const track = ovalTrack(specs[(process.argv[4] ?? 'short') as keyof typeof specs]);
 const world = new World(track, { collisions: false, drafting: false });
 const car = new Car(0);
 car.placeOnTrack(track, track.length - 20, 0);

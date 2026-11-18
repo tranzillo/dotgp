@@ -1,0 +1,10 @@
+=== short seed 1: 143 laps, 26 cars (a car a pit box), 4x pace (262 s)
+=== short seed 2: 143 laps, 26 cars (a car a pit box), 4x pace (216 s)
+=== summary by track
+  WRECKS  1.0 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+  PASSING 9.4 clean passes/100 green car-laps; of all passes 6% with contact, 2% damaging, 55% from the draft; 1.6 damaging contacts/100 green car-laps
+PACK runs: 2874 pull-outs, 24% with a run (closing 1+ m/s); closing built in the tow over 3 s before -0.32 m/s, at the pull-out -0.10 m/s
+PACK   passed within 10 s: with a run 8%, without 5%, all 5%
+PACK held up (following, closing under 1 m/s): 31.1% of green car-time; the better lane beside: open 79%, faster 10%, no faster 5%, taken 5%, none 0%
+PACK   lane open or faster: moved over within 3 s 52% of 20339 chances
+PACK pack: 0.152 position changes a car-lap; alongside 5% of green car-time; in a tow 56% (drag cut there 15%); damaging car contacts 1.8 a 100 car-laps (6870 green car-laps)

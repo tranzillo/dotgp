@@ -11,13 +11,13 @@ import { trainSupervised, type Example } from '../src/ai/network';
 import { ApprenticeRecorder, CHIEF_LAYERS, initialChiefWeights, NeuralCrewChief } from '../src/ai/neuralChief';
 import { StrategistCrewChief } from '../src/ai/pitting';
 import { Rng } from '../src/ai/rng';
-import { FLAT_TRACK, SHORT_TRACK, SPEEDWAY, Track } from '../src/sim/track';
+import { FLAT_TRACK, ovalTrack, SHORT_TRACK, SPEEDWAY } from '../src/trackgen';
 
 const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i += 2) args.set(process.argv[i].replace(/^--/, ''), process.argv[i + 1]);
 const num = (k: string, d: number) => (args.has(k) ? Number(args.get(k)) : d);
 
-const tracks = [new Track(SPEEDWAY), new Track(SHORT_TRACK), new Track(FLAT_TRACK)];
+const tracks = [ovalTrack(SPEEDWAY), ovalTrack(SHORT_TRACK), ovalTrack(FLAT_TRACK)];
 const driverFile = JSON.parse(readFileSync(args.get('drivers') ?? 'public/drivers/default.json', 'utf8'));
 const drivers: Float32Array[] = (driverFile.drivers ?? driverFile.champions).map((d: { weights: number[] }) => adaptWeights(Float32Array.from(d.weights)));
 /** The veteran: a sensible scripted strategy, used as benchmark and as the apprentices' teacher. */

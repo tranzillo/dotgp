@@ -8,7 +8,7 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { techniqueSummary } from '../src/ai/evaluate';
 import { Evolution } from '../src/ai/evolution';
-import { FLAT_TRACK, SHORT_TRACK, SPEEDWAY, Track } from '../src/sim/track';
+import { FLAT_TRACK, ovalTrack, SHORT_TRACK, SPEEDWAY } from '../src/trackgen';
 
 const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i += 2) args.set(process.argv[i].replace(/^--/, ''), process.argv[i + 1]);
@@ -16,7 +16,7 @@ const num = (k: string, d: number) => (args.has(k) ? Number(args.get(k)) : d);
 
 const specs = { speedway: SPEEDWAY, short: SHORT_TRACK, flat: FLAT_TRACK };
 const trackNames = (args.get('tracks') ?? 'speedway,short,flat').split(',') as Array<keyof typeof specs>;
-const tracks = trackNames.map((name) => new Track(specs[name]));
+const tracks = trackNames.map((name) => ovalTrack(specs[name]));
 const gens = num('gens', 60);
 const printEvery = num('every', 10);
 const evo = new Evolution(tracks, {

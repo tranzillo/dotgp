@@ -1,0 +1,53 @@
+
+=== short seed 1: 143 laps, 26 cars (a car a pit box), 4x pace (49 s)
+finished 7/26  cautions 5 (22 laps)  retirements 18  biggest wreck 2 cars
+  t=287s  2 car(s): green @45, caution +10s @23
+  t=311s  2 car(s): caution +23s @29, caution +35s @30
+  t=382s  1 car(s): caution +94s @0
+  t=509s  1 car(s): caution +221s @2
+  t=841s  2 car(s): green @0, green @39
+  t=855s  2 car(s): caution +14s @22, caution +25s @45
+  t=871s  1 car(s): caution +30s @15
+  t=903s  1 car(s): near a merging car @28
+  t=1274s  1 car(s): caution +14s @22
+  t=2194s  1 car(s): caution +36s @36
+  marks lap 5: groove 3%, skids 0% mean darkness; 6% of surface >10% dark, 0% >25%
+  marks lap 20: groove 7%, skids 1% mean darkness; 28% of surface >10% dark, 2% >25%
+
+=== short seed 2: 143 laps, 26 cars (a car a pit box), 4x pace (57 s)
+finished 14/26  cautions 5 (18 laps)  retirements 12  biggest wreck 4 cars
+  t=557s  1 car(s): caution +46s @8
+  t=945s  4 car(s): caution +30s @1, caution +31s @35, caution +35s @36, caution +37s @20
+  t=1130s  1 car(s): restart @0
+  t=1649s  2 car(s): green @9, caution +0s @25
+  marks lap 5: groove 2%, skids 0% mean darkness; 1% of surface >10% dark, 0% >25%
+  marks lap 20: groove 8%, skids 1% mean darkness; 30% of surface >10% dark, 4% >25%
+
+=== summary by track
+
+short (2 races)
+  STEWARDS 17.5 decisions/race: avoidable-contact: time 12, jumped-restart: drive-through 11, avoidable-contact: warning 8, avoidable-contact: drive-through 3, avoidable-contact: black-flag 1
+  WRECKS  15.0 retirements/race, 5.0 cautions/race, 6 multi-car wrecks (mean 2.3 cars, max 4)
+          by context: under caution 16, green 12, near a merging car 1, restart 1
+          who / what: driver hit car (driver) 22, driver hit wall 7, driver hit car (official) 1
+          contact retirements: 14 at fault, 9 hit by another
+          damage done to others (by fault): 7.83 health/race
+  PACK    15.7 passes/100 green car-laps, alongside 5%, drafting 23%, lane spread 4.99 m; lockstep same brain –, different brains 0.019
+  PASSING 11.8 clean passes/100 green car-laps; of all passes 22% with contact, 11% damaging, 78% from the draft; 17.2 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 3.24 m, 2.34 m/s, 0.123
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+          in a pit cycle: in past the blend 3, in along the wall (box lane) 2, in along the wall (fast lane) 1
+  TIRES   wear 0.0237/green lap -> cliff (0.3) after 30 laps; sliding >0.05 2%, >0.35 1%, >0.6 0% of car-steps
+  FUEL    burn 1.76 kg/green lap -> 34 laps per tank
+  DAMAGE  health lost on track /race: green walls 22.57 (2.32 with a car alongside), cars 12.30; caution walls 1.49, cars 9.84
+  STOPS   110.0/race (28% under caution), tires taken 90%, repairs 86%, called for fuel 9% tires 8% damage 77% caution 0% penalty 5%, tire life at stop 0.68 (min 0.31), service 19.6 s
+  PIT ROAD 81.5 s entry to track under green, 87.2 s under caution; 100.0 contacts, 2.71 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 23.75 s (1186) | 0.6-0.8: 23.80 s (903) | 0.4-0.6: 23.98 s (467) | 0.3-0.4: 24.59 s (62)
+GREEN contacts 529: by angle and who was moving across (count; median closing across, along m/s)
+GREEN   beside        one        141  2.51  2.24
+GREEN   beside        both        63  4.21  0.70
+GREEN   beside        neither     13  -1.18  11.47
+GREEN   nose to tail  one        193  1.10  3.97
+GREEN   nose to tail  both        53  4.11  3.80
+GREEN   nose to tail  neither     66  -0.62  4.30
+GREEN closing across: <-0.5 147, 0.5-1 43, 1-2 88, 2-3 85, 3- 166

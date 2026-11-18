@@ -1,0 +1,54 @@
+
+=== speedway seed 1: 59 laps, 30 cars (a car a pit box), 4x pace (60337 s)
+finished 30/30  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 7%, skids 0% mean darkness; 24% of surface >10% dark, 6% >25%
+  marks lap 20: groove 14%, skids 0% mean darkness; 51% of surface >10% dark, 26% >25%
+
+=== speedway seed 2: 59 laps, 30 cars (a car a pit box), 4x pace (301 s)
+finished 30/30  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 7%, skids 0% mean darkness; 25% of surface >10% dark, 5% >25%
+  marks lap 20: groove 14%, skids 0% mean darkness; 51% of surface >10% dark, 25% >25%
+
+=== speedway seed 3: 59 laps, 30 cars (a car a pit box), 4x pace (310 s)
+finished 30/30  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 7%, skids 0% mean darkness; 24% of surface >10% dark, 5% >25%
+  marks lap 20: groove 15%, skids 0% mean darkness; 53% of surface >10% dark, 26% >25%
+
+=== speedway seed 4: 59 laps, 30 cars (a car a pit box), 4x pace (278 s)
+finished 29/30  cautions 0 (0 laps)  retirements 1  biggest wreck 1 cars
+  marks lap 5: groove 6%, skids 0% mean darkness; 25% of surface >10% dark, 5% >25%
+  marks lap 20: groove 14%, skids 0% mean darkness; 50% of surface >10% dark, 24% >25%
+
+=== summary by track
+
+speedway (4 races)
+  STEWARDS 2.3 decisions/race: avoidable-contact: time 6, avoidable-contact: warning 2, avoidable-contact: black-flag 1
+  WRECKS  0.3 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 1)
+          by context: green 1
+          who / what: pit hit car (driver) 1
+          contact retirements: 1 at fault, 0 hit by another
+          damage done to others (by fault): 0.93 health/race
+  PACK    43.3 passes/100 green car-laps, alongside 4%, drafting 18%, lane spread 3.78 m; lockstep same brain –, different brains 0.005
+  PASSING 41.7 clean passes/100 green car-laps; of all passes 4% with contact, 1% damaging, 45% from the draft; 1.6 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 4.06 m, 2.84 m/s, 0.103
+  SCRIPTS 18% of car-time on track driven by a script (formation 0%, pit maneuver 18%); 0.3 retirements/race while a script drove
+          in a pit cycle: in along the wall (box lane) 1
+  TIRES   wear 0.0804/green lap -> cliff (0.3) after 9 laps; sliding >0.05 0%, >0.35 0%, >0.6 0% of car-steps
+  FUEL    burn 4.71 kg/green lap -> 13 laps per tank
+  DAMAGE  health lost on track /race: green walls 0.00 (0.00 with a car alongside), cars 2.19; caution walls 0.00, cars 0.00
+  STOPS   203.3/race (0% under caution), tires taken 95%, repairs 1%, called for fuel 6% tires 94% damage 0% caution 0% penalty 0%, tire life at stop 0.41 (min 0.12), service 13.6 s
+  PIT ROAD 53.0 s entry to track under green, – s under caution; 3.3 contacts, 0.06 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 31.71 s (896) | 0.6-0.8: 31.90 s (2136) | 0.4-0.6: 32.27 s (1774) | 0.3-0.4: 32.82 s (183) | 0.2-0.3: 32.82 s (83) | 0.0-0.2: 35.53 s (75)
+GREEN contacts 96 (health lost, both cars, 9.03): by angle and who was moving across (count; median closing across, along m/s; health lost)
+GREEN   beside        one         47  2.38  1.94  1.61
+GREEN   beside        both         8  5.05  1.38  0.73
+GREEN   beside        neither      4  -0.32  5.00  0.11
+GREEN   nose to tail  one         19  2.24  3.56  2.28
+GREEN   nose to tail  both         8  4.81  6.14  2.57
+GREEN   nose to tail  neither     10  -5.70  8.00  1.73
+GREEN worst 1.51 (nose to tail, both, across 5.2, along 22.7): faster 70 m/s health 1.00, slower 47 m/s health 0.88; faster's plan passing another side 1 (on)
+GREEN worst 0.94 (nose to tail, one, across 3.3, along 19.4): faster 71 m/s health 1.00, slower 51 m/s health 0.99; faster's plan passing it side 1 (on)
+GREEN worst 0.70 (nose to tail, neither, across -5.7, along 19.3): faster 72 m/s health 0.99, slower 52 m/s health 1.00; faster's plan passing it side 1 (on)
+GREEN worst 0.47 (nose to tail, one, across 2.4, along 14.1): faster 70 m/s health 0.99, slower 56 m/s health 0.99; faster's plan following it (out of path, not gaining)
+GREEN worst 0.45 (beside, one, across 3.6, along 13.7): faster 77 m/s health 0.99, slower 63 m/s health 1.00; faster's plan passing another side 1 (carried on)
+GREEN closing across: <-0.5 16, 0.5-1 7, 1-2 16, 2-3 23, 3- 34

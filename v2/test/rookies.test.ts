@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { EsTrainer } from '../src/ai/es';
-import { SHORT_TRACK, Track } from '../src/sim/track';
+import { ovalTrack, SHORT_TRACK } from '../src/trackgen';
 
 describe('rookie school', () => {
   it('gives rookies the practice slots, solo on soft walls, until they are licensed', () => {
-    const es = new EsTrainer([new Track(SHORT_TRACK)], {
+    const es = new EsTrainer([ovalTrack(SHORT_TRACK)], {
       lineages: 3, traffic: true, pairs: 1, rookiePairs: 1, trialSeconds: 4, rookieSeconds: 4, seed: 3,
     });
     es.drivers[0].licensed = true; // one experienced driver, two rookies

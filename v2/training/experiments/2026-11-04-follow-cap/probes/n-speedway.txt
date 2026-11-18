@@ -1,0 +1,41 @@
+
+=== speedway seed 1: 59 laps, 30 cars (a car a pit box), 4x pace (580 s)
+finished 30/30  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 6%, skids 0% mean darkness; 23% of surface >10% dark, 5% >25%
+  marks lap 20: groove 14%, skids 0% mean darkness; 49% of surface >10% dark, 26% >25%
+
+=== speedway seed 2: 59 laps, 30 cars (a car a pit box), 4x pace (412 s)
+finished 30/30  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 6%, skids 0% mean darkness; 25% of surface >10% dark, 4% >25%
+  marks lap 20: groove 14%, skids 0% mean darkness; 48% of surface >10% dark, 26% >25%
+
+=== summary by track
+
+speedway (2 races)
+  STEWARDS 1.5 decisions/race: avoidable-contact: drive-through 2, avoidable-contact: time 1
+  WRECKS  0.0 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 0)
+          by context: 
+          who / what: 
+          damage done to others (by fault): 0.67 health/race
+  PACK    33.9 passes/100 green car-laps, alongside 3%, drafting 21%, lane spread 3.54 m; lockstep same brain –, different brains 0.011
+  PASSING 33.1 clean passes/100 green car-laps; of all passes 3% with contact, 1% damaging, 41% from the draft; 1.4 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 3.30 m, 2.53 m/s, 0.133
+  SCRIPTS 19% of car-time on track driven by a script (formation 0%, pit maneuver 19%); 0.0 retirements/race while a script drove
+  TIRES   wear 0.0814/green lap -> cliff (0.3) after 9 laps; sliding >0.05 0%, >0.35 0%, >0.6 0% of car-steps
+  FUEL    burn 4.68 kg/green lap -> 13 laps per tank
+  DAMAGE  health lost on track /race: green walls 0.00 (0.00 with a car alongside), cars 1.44; caution walls 0.00, cars 0.00
+  STOPS   207.5/race (0% under caution), tires taken 96%, repairs 1%, called for fuel 3% tires 96% damage 0% caution 0% penalty 0%, tire life at stop 0.42 (min 0.12), service 13.6 s
+  PIT ROAD 53.2 s entry to track under green, – s under caution; 3.0 contacts, 0.09 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 31.86 s (463) | 0.6-0.8: 31.96 s (1039) | 0.4-0.6: 32.28 s (913) | 0.3-0.4: 33.02 s (86) | 0.2-0.3: 32.95 s (41) | 0.0-0.2: 35.01 s (27)
+PACK runs: 1340 pull-outs, 32% with a run (closing 1+ m/s); closing built in the tow over 3 s before -0.60 m/s, at the pull-out 0.03 m/s
+PACK   passed within 10 s: with a run 43%, without 15%, all 23%
+PACK held up (following, closing under 1 m/s): 18.4% of green car-time; the better lane beside: open 83%, faster 4%, no faster 8%, taken 4%, none 0%
+PACK   lane open or faster: moved over within 3 s 25% of 7558 chances
+PACK pack: 0.304 position changes a car-lap; alongside 5% of green car-time; in a tow 28% (drag cut there 15%); damaging car contacts 1.2 a 100 car-laps (3293 green car-laps)
+HIT damaging nose-to-tail contacts, a teacher following: 15
+HIT phase      n  capped on it 1 s out  gap 2 s / 1 s (m)  closing 2 s / 1 s  slowing seen 2 s out / insured  leader slowed (mean over 2 s / peak 0.5 s, m/s^2)  over its cap 1 s out (m/s)  pedal 1 s out
+HIT straight    3      33%     4.80 /    3.54     1.93 /    8.99     0.00 /    2.01     4.75 /   12.68   -10.84     0.08
+HIT entry       1       0%    41.46 /       -    28.20 /   25.71     0.00 /    3.04    -4.56 /    0.00    -3.19     0.15
+HIT mid         9      11%     0.97 /    0.89     7.84 /    9.29     0.27 /    1.83    -0.14 /    4.45   -24.94     0.18
+HIT exit        2       0%        - /       -     3.34 /    3.49        - /       -    -2.77 /    0.00   -21.98     0.58
+HIT trace (entry): -3s gap (-0) v 80.1 vo 66.3 cap 107.3* saw 0.0 ins 3.0 pedal 0.15 | -2s gap 41.5 v 80.4 vo 52.2 cap 80.5 saw 0.0 ins 3.0 pedal 0.01 | -1.5s gap (-0) v 80.5 vo 53.2 cap 83.8* saw 0.6 ins 3.0 pedal 0.16 | -1s gap (-0) v 80.8 vo 55.1 cap 84.0* saw 0.8 ins 3.0 pedal 0.15 | -0.5s gap 4.1 v 71.0 vo 56.9 cap 58.1 saw 0.5 ins 3.0 pedal -0.78 | -0.1s gap 0.4 v 63.4 vo 58.3 cap 57.2 saw 0.6 ins 3.0 pedal -0.29

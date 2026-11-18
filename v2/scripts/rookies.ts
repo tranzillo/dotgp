@@ -5,13 +5,13 @@
  *   npx tsx scripts/rookies.ts --field 8 --rounds 300
  */
 import { EsTrainer } from '../src/ai/es';
-import { FLAT_TRACK, SHORT_TRACK, SPEEDWAY, Track } from '../src/sim/track';
+import { FLAT_TRACK, ovalTrack, SHORT_TRACK, SPEEDWAY } from '../src/trackgen';
 
 const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i += 2) args.set(process.argv[i].replace(/^--/, ''), process.argv[i + 1]);
 const field = Number(args.get('field') ?? 8);
 const rounds = Number(args.get('rounds') ?? 300);
-const tracks = [new Track(SPEEDWAY), new Track(SHORT_TRACK), new Track(FLAT_TRACK)];
+const tracks = [ovalTrack(SPEEDWAY), ovalTrack(SHORT_TRACK), ovalTrack(FLAT_TRACK)];
 const es = new EsTrainer(tracks, { lineages: field, seed: Number(args.get('seed') ?? 7), traffic: true, pairs: 8, trialSeconds: 60, learningRate: 0.01 });
 const t0 = Date.now();
 for (let r = 0; r < rounds; r++) {

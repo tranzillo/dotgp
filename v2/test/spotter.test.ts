@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { adaptWeights, DRIVER_LAYERS, LEGACY_DRIVER_LAYERS } from '../src/ai/drivers';
 import { genomeSize, Network } from '../src/ai/network';
 import { Rng } from '../src/ai/rng';
-import { RADIO, RADIO_SIZE, TowerSpotter } from '../src/ai/spotter';
+import { MIRROR, MIRROR_SIZE, MIRROR_TIME, RADIO, RADIO_SIZE, randomSpotterSkill, TowerSpotter } from '../src/ai/spotter';
 import { Car } from '../src/sim/car';
-import { SPEEDWAY, Track } from '../src/sim/track';
+import { PHYSICS as P } from '../src/sim/constants';
+import { ovalTrack, SPEEDWAY } from '../src/trackgen';
 import { World } from '../src/sim/world';
 
 describe('network widening', () => {
@@ -30,7 +31,7 @@ describe('network widening', () => {
 });
 
 describe('tower spotter', () => {
-  const track = new Track(SPEEDWAY);
+  const track = ovalTrack(SPEEDWAY);
   const setup = (others: Array<[number, number, number]>) => {
     const world = new World(track);
     const me = new Car(0);
@@ -71,6 +72,36 @@ describe('tower spotter', () => {
     expect(r[RADIO.HAZARD_PROX]).toBeCloseTo(1 - 600 / 800, 1);
     expect(r[RADIO.HAZARD_LANE]).toBeLessThan(-0.5); // up high
     expect(r[RADIO.AHEAD_PROX]).toBe(0); // too far to be "the car ahead"
+  });
+
+  it('the mirrors: how soon each car coming fast from behind arrives, below, in our lane and above', () => {
+    // We're at 60 m/s. 40 m back at 80 in our lane (arrives in 1.9 s), 60 m back at 75 low (3.9 s), 30 m back at 60
+    // high (not closing), and one 200 m back at 90 low (6.6 s: too far off to be coming fast).
+    const mirrors = (skill?: ReturnType<typeof randomSpotterSkill>) => {
+      const world = new World(track);
+      const me = new Car(0);
+      me.placeOnTrack(track, 900, 0);
+      me.vx = track.tx[me.trackIdx] * 60; me.vy = track.ty[me.trackIdx] * 60;
+      world.addCar(me, null);
+      ([[860, 0, 80], [840, 5, 75], [870, -5, 60], [700, 5, 90]] as const).forEach(([s, d, speed], k) => {
+        const c = new Car(k + 1);
+        c.placeOnTrack(track, s, d);
+        c.vx = track.tx[c.trackIdx] * speed; c.vy = track.ty[c.trackIdx] * speed;
+        world.addCar(c, null);
+      });
+      const radio = new Float32Array(RADIO_SIZE + MIRROR_SIZE);
+      new TowerSpotter(skill).call(me, world, radio);
+      return radio.subarray(RADIO_SIZE);
+    };
+    const m = mirrors();
+    const arrives = (gap: number, closing: number) => 1 - (gap - 2 * P.CAR_RADIUS) / closing / MIRROR_TIME;
+    expect(m[MIRROR.LANE]).toBeCloseTo(arrives(40, 20), 1);
+    expect(m[MIRROR.LOW]).toBeCloseTo(arrives(60, 15), 1);
+    expect(m[MIRROR.HIGH]).toBe(0);
+    // A spotter that sees less far back misses the one further off.
+    expect(mirrors({ aheadRange: 60, behindRange: 10, hazardRange: 100 })[MIRROR.LOW]).toBe(0);
+    // A bare radio has no mirrors (and the radio proper is the same either way).
+    expect(setup([])).toHaveLength(RADIO_SIZE);
   });
 
   it('wraps around the start/finish line', () => {

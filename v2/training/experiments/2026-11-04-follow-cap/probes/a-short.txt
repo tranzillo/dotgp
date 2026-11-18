@@ -1,0 +1,42 @@
+
+=== short seed 1: 143 laps, 26 cars (a car a pit box), 4x pace (250 s)
+finished 24/26  cautions 1 (5 laps)  retirements 2  biggest wreck 2 cars
+  t=1370s  2 car(s): merging @43, near a merging car @27
+  marks lap 5: groove 3%, skids 0% mean darkness; 11% of surface >10% dark, 0% >25%
+  marks lap 20: groove 7%, skids 0% mean darkness; 24% of surface >10% dark, 12% >25%
+
+=== short seed 2: 143 laps, 26 cars (a car a pit box), 4x pace (270 s)
+finished 26/26  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 3%, skids 0% mean darkness; 10% of surface >10% dark, 1% >25%
+  marks lap 20: groove 7%, skids 0% mean darkness; 25% of surface >10% dark, 12% >25%
+
+=== summary by track
+
+short (2 races)
+  STEWARDS 0.0 decisions/race: 
+  WRECKS  1.0 retirements/race, 0.5 cautions/race, 1 multi-car wrecks (mean 2.0 cars, max 2)
+          by context: merging 1, near a merging car 1
+          who / what: pit hit wall 1, driver hit wall 1
+          damage done to others (by fault): 0.27 health/race
+  PACK    8.8 passes/100 green car-laps, alongside 2%, drafting 36%, lane spread 4.02 m; lockstep same brain –, different brains 0.021
+  PASSING 8.5 clean passes/100 green car-laps; of all passes 4% with contact, 3% damaging, 48% from the draft; 1.1 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 3.49 m, 1.41 m/s, 0.074
+  SCRIPTS 8% of car-time on track driven by a script (formation 1%, pit maneuver 8%); 0.5 retirements/race while a script drove
+          in a pit cycle: out past the blend 1
+  TIRES   wear 0.0198/green lap -> cliff (0.3) after 35 laps; sliding >0.05 0%, >0.35 0%, >0.6 0% of car-steps
+  FUEL    burn 1.66 kg/green lap -> 36 laps per tank
+  DAMAGE  health lost on track /race: green walls 0.01 (0.00 with a car alongside), cars 0.48; caution walls 0.12, cars 0.42
+  STOPS   101.5/race (1% under caution), tires taken 92%, repairs 0%, called for fuel 40% tires 59% damage 0% caution 0% penalty 0%, tire life at stop 0.39 (min 0.27), service 13.0 s
+  PIT ROAD 70.6 s entry to track under green, 70.1 s under caution; 2.5 contacts, 0.41 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 23.31 s (1803) | 0.6-0.8: 23.55 s (2246) | 0.4-0.6: 23.95 s (2175) | 0.3-0.4: 24.19 s (357) | 0.2-0.3: 24.42 s (18)
+PACK runs: 2404 pull-outs, 28% with a run (closing 1+ m/s); closing built in the tow over 3 s before -0.21 m/s, at the pull-out -0.10 m/s
+PACK   passed within 10 s: with a run 11%, without 8%, all 9%
+PACK held up (following, closing under 1 m/s): 27.8% of green car-time; the better lane beside: open 77%, faster 11%, no faster 6%, taken 6%, none 0%
+PACK   lane open or faster: moved over within 3 s 53% of 17776 chances
+PACK pack: 0.130 position changes a car-lap; alongside 4% of green car-time; in a tow 49% (drag cut there 14%); damaging car contacts 1.2 a 100 car-laps (6729 green car-laps)
+HIT damaging nose-to-tail contacts, a teacher following: 20
+HIT phase      n  capped on it 1 s out  gap 2 s / 1 s (m)  closing 2 s / 1 s  slowing seen 2 s out / insured  leader slowed (mean over 2 s / peak 0.5 s, m/s^2)  over its cap 1 s out (m/s)  pedal 1 s out
+HIT straight    7      86%     2.27 /    1.56     0.47 /    0.99     1.55 /    2.09    -0.89 /    8.78    -2.56     0.29
+HIT entry       1     100%     3.13 /    2.03     0.36 /    1.59     5.71 /    5.71     5.49 /   10.91    -1.23    -0.43
+HIT mid        12      25%     3.63 /    1.98     0.32 /    1.23     6.42 /    6.42     3.01 /    6.34    -8.01    -0.10
+HIT trace (entry): -3s gap 3.3 v 52.5 vo 52.7 cap 55.4 saw 2.8 ins 2.8 pedal 0.46 | -2s gap 3.1 v 56.8 vo 56.5 cap 59.2 saw 5.7 ins 5.7 pedal 0.31 | -1.5s gap 2.9 v 58.8 vo 57.5 cap 60.4 saw 9.2 ins 9.2 pedal 0.24 | -1s gap 2.0 v 54.7 vo 53.1 cap 55.9 saw 12.7 ins 12.7 pedal -0.43 | -0.5s gap 1.0 v 49.9 vo 47.7 cap 50.4 saw 9.5 ins 9.5 pedal -0.37 | -0.1s gap 0.2 v 46.7 vo 44.5 cap 46.9 saw 6.2 ins 6.2 pedal -0.29

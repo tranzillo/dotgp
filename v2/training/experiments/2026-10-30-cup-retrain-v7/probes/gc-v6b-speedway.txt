@@ -1,0 +1,70 @@
+
+=== speedway seed 1: 59 laps, 30 cars (a car a pit box), 4x pace (57 s)
+finished 5/30  cautions 3 (20 laps)  retirements 25  biggest wreck 3 cars
+  t=268s  1 car(s): caution +125s @15
+  t=309s  2 car(s): caution +165s @26, caution +165s @33
+  t=381s  2 car(s): caution +237s @22, caution +239s @24
+  t=416s  1 car(s): caution +273s @1
+  t=507s  1 car(s): caution +363s @8
+  t=541s  3 car(s): start/restart @31, caution +1s @29, caution +2s @26
+  t=625s  1 car(s): caution +84s @51
+  t=687s  1 car(s): caution +145s @25
+  t=813s  1 car(s): caution +272s @3
+  t=836s  1 car(s): caution +295s @8
+  t=863s  2 car(s): caution +322s @32, caution +322s @14
+  t=877s  2 car(s): caution +336s @5, caution +336s @33
+  t=914s  1 car(s): caution +373s @13
+  t=977s  1 car(s): caution +435s @2
+  t=1056s  1 car(s): caution +514s @0
+  t=1168s  1 car(s): caution +627s @10
+  t=1572s  1 car(s): caution +165s @2
+  marks lap 5: groove 6%, skids 0% mean darkness; 18% of surface >10% dark, 1% >25%
+  marks lap 20: groove 7%, skids 1% mean darkness; 31% of surface >10% dark, 3% >25%
+
+=== speedway seed 2: 59 laps, 30 cars (a car a pit box), 4x pace (62 s)
+finished 3/30  cautions 5 (25 laps)  retirements 27  biggest wreck 4 cars
+  t=613s  1 car(s): caution +129s @11
+  t=904s  2 car(s): green @56, caution +5s @22
+  t=949s  2 car(s): caution +45s @43, caution +53s @6
+  t=962s  3 car(s): caution +58s @34, caution +60s @59, caution +69s @21
+  t=1011s  2 car(s): caution +107s @36, caution +108s @58
+  t=1029s  1 car(s): caution +126s @35
+  t=1105s  4 car(s): caution +201s @2, caution +201s @4, caution +202s @2, caution +203s @19
+  t=1122s  1 car(s): caution +218s @31
+  t=1135s  2 car(s): caution +231s @14, caution +238s @16
+  t=1171s  1 car(s): caution +267s @5
+  t=1196s  1 car(s): caution +292s @31
+  t=1271s  1 car(s): caution +368s @0
+  t=1312s  1 car(s): caution +409s @19
+  t=2383s  2 car(s): green @68, green @36
+  marks lap 5: groove 6%, skids 0% mean darkness; 25% of surface >10% dark, 2% >25%
+  marks lap 20: groove 11%, skids 1% mean darkness; 51% of surface >10% dark, 5% >25%
+
+=== summary by track
+
+speedway (2 races)
+  STEWARDS 13.5 decisions/race: avoidable-contact: time 7, avoidable-contact: drive-through 6, pit-speeding: stop-go 6, avoidable-contact: black-flag 3, blend-line: drive-through 3, jumped-restart: drive-through 1, avoidable-contact: warning 1
+  WRECKS  26.0 retirements/race, 4.0 cautions/race, 12 multi-car wrecks (mean 2.3 cars, max 4)
+          by context: under caution 43, green 8, start/restart 1
+          who / what: driver hit car (driver) 36, driver hit wall 11, driver hit car (official) 5
+          contact retirements: 23 at fault, 18 hit by another
+          damage done to others (by fault): 4.17 health/race
+  PACK    144.6 passes/100 green car-laps, alongside 7%, drafting 22%, lane spread 5.67 m; lockstep same brain –, different brains 0.012
+  PASSING 132.6 clean passes/100 green car-laps; of all passes 8% with contact, 3% damaging, 47% from the draft; 17.2 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 5.59 m, 2.46 m/s, 0.080
+  SCRIPTS 0% of car-time on track driven by a script (formation 0%, pit maneuver 0%); 0.0 retirements/race while a script drove
+          in a pit cycle: in entry 4, in along the wall (box lane) 1, in before entry 1
+  TIRES   wear 0.0860/green lap -> cliff (0.3) after 8 laps; sliding >0.05 0%, >0.35 0%, >0.6 0% of car-steps
+  FUEL    burn 4.86 kg/green lap -> 12 laps per tank
+  DAMAGE  health lost on track /race: green walls 4.12 (1.00 with a car alongside), cars 1.03; caution walls 1.02, cars 20.50
+  STOPS   49.0/race (62% under caution), tires taken 67%, repairs 41%, called for fuel 31% tires 39% damage 24% caution 0% penalty 6%, tire life at stop 0.54 (min 0.18), service 14.6 s
+  PIT ROAD 57.2 s entry to track under green, 59.9 s under caution; 50.0 contacts, 1.87 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 33.45 s (86) | 0.6-0.8: 32.40 s (184) | 0.4-0.6: 32.81 s (96) | 0.3-0.4: 33.00 s (9) | 0.2-0.3: 32.47 s (4) | 0.0-0.2: 36.72 s (5)
+GREEN contacts 94: by angle and who was moving across (count; median closing across, along m/s)
+GREEN   beside        one         19  2.21  1.78
+GREEN   beside        both        10  1.99  1.43
+GREEN   beside        neither      1  0.19  7.52
+GREEN   nose to tail  one         25  0.89  2.88
+GREEN   nose to tail  both         5  1.99  2.41
+GREEN   nose to tail  neither     34  -0.31  3.06
+GREEN closing across: <-0.5 40, 0.5-1 10, 1-2 23, 2-3 10, 3- 11

@@ -1,0 +1,63 @@
+
+=== short seed 1: 143 laps, 26 cars (a car a pit box), 4x pace (428 s)
+finished 24/26  cautions 2 (6 laps)  retirements 2  biggest wreck 1 cars
+  t=1399s  1 car(s): merging @43
+  t=2511s  1 car(s): merging @43
+  marks lap 5: groove 3%, skids 0% mean darkness; 9% of surface >10% dark, 1% >25%
+  marks lap 20: groove 7%, skids 0% mean darkness; 24% of surface >10% dark, 10% >25%
+
+=== summary by track
+
+short (1 races)
+  STEWARDS 2.0 decisions/race: jumped-restart: drive-through 1, avoidable-contact: warning 1
+  WRECKS  2.0 retirements/race, 2.0 cautions/race, 0 multi-car wrecks (mean – cars, max 1)
+          by context: merging 2
+          who / what: pit hit wall 2
+          damage done to others (by fault): 4.80 health/race
+  PACK    10.8 passes/100 green car-laps, alongside 7%, drafting 50%, lane spread 5.11 m; lockstep same brain –, different brains -0.003
+  PASSING 7.0 clean passes/100 green car-laps; of all passes 35% with contact, 16% damaging, 85% from the draft; 11.3 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 1.74 m, 1.43 m/s, 0.099
+  SCRIPTS 9% of car-time on track driven by a script (formation 0%, pit maneuver 9%); 2.0 retirements/race while a script drove
+          in a pit cycle: out past the blend 2
+  TIRES   wear 0.0208/green lap -> cliff (0.3) after 34 laps; sliding >0.05 0%, >0.35 0%, >0.6 0% of car-steps
+  FUEL    burn 1.68 kg/green lap -> 36 laps per tank
+  DAMAGE  health lost on track /race: green walls 10.11 (1.51 with a car alongside), cars 10.85; caution walls 0.00, cars 0.38
+  STOPS   110.0/race (3% under caution), tires taken 91%, repairs 45%, called for fuel 35% tires 51% damage 13% caution 0% penalty 1%, tire life at stop 0.41 (min 0.28), service 16.5 s
+  PIT ROAD 74.4 s entry to track under green, 81.2 s under caution; 6.0 contacts, 0.02 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 23.24 s (853) | 0.6-0.8: 23.50 s (1067) | 0.4-0.6: 23.94 s (962) | 0.3-0.4: 24.44 s (169) | 0.2-0.3: 24.35 s (10)
+RIDING speed by 20 m of the lap (1045 m), riding the wall vs off it (samples):
+RIDING   s   400  40.8 vs 42.5 m/s  (46/5461)
+RIDING   s   420  42.6 vs 44.4 m/s  (110/5075)
+RIDING   s   440  45.0 vs 46.0 m/s  (118/4934)
+RIDING   s   460  45.8 vs 47.7 m/s  (29/4882)
+RIDING   s   940  42.4 vs 44.8 m/s  (96/5081)
+RIDING   s   960  45.4 vs 46.8 m/s  (122/4836)
+RIDING   s   980  46.6 vs 48.7 m/s  (31/4716)
+RIDING scrape work 5368 (m/s)^2 under green, 3656 of it riding: 145.8 a second riding (25 car-s)
+RIDING laps: clean 399, riding 6; cars with both 0: riding lap minus clean lap, median - s, mean - s, faster riding 0 of 0
+WALL by tyres (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   40-60%            383   0.965    0.35
+WALL   60-80%            417   0.704    0.49
+WALL   over 80%          402   0.609    0.54
+WALL   under 40%          66   2.064    0.75
+WALL by car ahead in lane (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   10-25 m           267   0.654    0.44
+WALL   25-60 m           206   1.790    0.85
+WALL   none in 60 m      477   0.821    0.55
+WALL   under 10 m        318   0.343    0.16
+WALL by alongside (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   car inside        127   1.268    0.71
+WALL   car outside       119   0.008    0.01
+WALL   clear            1022   0.863    0.50
+WALL by tow (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   clean air         467   1.660    0.97
+WALL   in a tow          801   0.335    0.19
+WALL by outside wall (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   0.3-1 m            30   0.000    0.00
+WALL   1-2 m             130   0.000    0.00
+WALL   over 2 m         1103   0.045    0.06
+WALL   under 0.3 m         5  203.001  110.97
+WALL by riding the wall (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   in a corner         1  778.712  465.03
+WALL   off it           1263   0.040    0.05
+WALL   on a straight       4  60.626   23.41

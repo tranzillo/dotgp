@@ -1,0 +1,11 @@
+=== oval:774865359:superspeedway seed 1: 45 laps, 36 cars (a car a pit box), 4x pace (714 s)
+=== oval:774865359:superspeedway seed 2: 45 laps, 36 cars (a car a pit box), 4x pace (557 s)
+=== summary by track
+  WRECKS  0.0 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 0)
+  PASSING 10.4 clean passes/100 green car-laps; of all passes 2% with contact, 1% damaging, 12% from the draft; 0.4 damaging contacts/100 green car-laps
+  LAP TIME by tire life (green laps): 0.8-1.0: 44.13 s (1010) | 0.6-0.8: 44.26 s (1168) | 0.4-0.6: 44.59 s (243) | 0.3-0.4: 44.31 s (61) | 0.2-0.3: 44.28 s (19) | 0.0-0.2: 44.67 s (2)
+PACK runs: 1377 pull-outs, 3% with a run (closing 1+ m/s); closing built in the tow over 3 s before -0.04 m/s, at the pull-out -0.10 m/s
+PACK   passed within 10 s: with a run 16%, without 4%, all 4%
+PACK held up (following, closing under 1 m/s): 32.7% of green car-time; the better lane beside: open 98%, faster 0%, no faster 2%, taken 0%, none 0%
+PACK   lane open or faster: moved over within 3 s 19% of 16585 chances
+PACK pack: 0.103 position changes a car-lap; alongside 1% of green car-time; in a tow 41% (drag cut there 16%); damaging car contacts 0.4 a 100 car-laps (3140 green car-laps)

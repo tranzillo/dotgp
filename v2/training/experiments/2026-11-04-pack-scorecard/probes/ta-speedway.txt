@@ -1,0 +1,10 @@
+=== speedway seed 1: 59 laps, 30 cars (a car a pit box), 4x pace (616 s)
+=== speedway seed 2: 59 laps, 30 cars (a car a pit box), 4x pace (439 s)
+=== summary by track
+  WRECKS  0.0 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 0)
+  PASSING 26.3 clean passes/100 green car-laps; of all passes 2% with contact, 1% damaging, 22% from the draft; 1.1 damaging contacts/100 green car-laps
+PACK runs: 1475 pull-outs, 19% with a run (closing 1+ m/s); closing built in the tow over 3 s before -0.39 m/s, at the pull-out -0.19 m/s
+PACK   passed within 10 s: with a run 34%, without 9%, all 14%
+PACK held up (following, closing under 1 m/s): 16.9% of green car-time; the better lane beside: open 87%, faster 4%, no faster 8%, taken 2%, none 0%
+PACK   lane open or faster: moved over within 3 s 32% of 7466 chances
+PACK pack: 0.238 position changes a car-lap; alongside 3% of green car-time; in a tow 24% (drag cut there 14%); damaging car contacts 0.9 a 100 car-laps (3343 green car-laps)

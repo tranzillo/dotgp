@@ -1,0 +1,59 @@
+
+=== speedway seed 1: 59 laps, 30 cars (a car a pit box), 4x pace (537 s)
+finished 30/30  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 7%, skids 0% mean darkness; 26% of surface >10% dark, 5% >25%
+  marks lap 20: groove 15%, skids 0% mean darkness; 52% of surface >10% dark, 26% >25%
+
+=== speedway seed 2: 59 laps, 30 cars (a car a pit box), 4x pace (366 s)
+finished 30/30  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 7%, skids 0% mean darkness; 26% of surface >10% dark, 4% >25%
+  marks lap 20: groove 15%, skids 0% mean darkness; 52% of surface >10% dark, 26% >25%
+
+=== speedway seed 3: 59 laps, 30 cars (a car a pit box), 4x pace (316 s)
+finished 30/30  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 7%, skids 0% mean darkness; 25% of surface >10% dark, 5% >25%
+  marks lap 20: groove 14%, skids 0% mean darkness; 52% of surface >10% dark, 25% >25%
+
+=== speedway seed 4: 59 laps, 30 cars (a car a pit box), 4x pace (315 s)
+finished 30/30  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 7%, skids 0% mean darkness; 26% of surface >10% dark, 4% >25%
+  marks lap 20: groove 14%, skids 0% mean darkness; 52% of surface >10% dark, 25% >25%
+
+=== summary by track
+
+speedway (4 races)
+  STEWARDS 1.5 decisions/race: avoidable-contact: time 3, avoidable-contact: warning 2, avoidable-contact: drive-through 1
+  WRECKS  0.0 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 0)
+          by context: 
+          who / what: 
+          damage done to others (by fault): 0.61 health/race
+  PACK    39.8 passes/100 green car-laps, alongside 4%, drafting 17%, lane spread 3.78 m; lockstep same brain –, different brains 0.007
+  PASSING 38.6 clean passes/100 green car-laps; of all passes 3% with contact, 1% damaging, 43% from the draft; 1.6 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 4.08 m, 2.91 m/s, 0.105
+  SCRIPTS 18% of car-time on track driven by a script (formation 0%, pit maneuver 18%); 0.0 retirements/race while a script drove
+  TIRES   wear 0.0800/green lap -> cliff (0.3) after 9 laps; sliding >0.05 0%, >0.35 0%, >0.6 0% of car-steps
+  FUEL    burn 4.72 kg/green lap -> 13 laps per tank
+  DAMAGE  health lost on track /race: green walls 0.00 (0.00 with a car alongside), cars 1.34; caution walls 0.00, cars 0.00
+  STOPS   203.5/race (0% under caution), tires taken 95%, repairs 1%, called for fuel 5% tires 95% damage 0% caution 0% penalty 0%, tire life at stop 0.42 (min 0.10), service 13.6 s
+  PIT ROAD 52.8 s entry to track under green, – s under caution; 3.5 contacts, 0.10 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 31.89 s (901) | 0.6-0.8: 31.94 s (2145) | 0.4-0.6: 32.31 s (1785) | 0.3-0.4: 32.91 s (184) | 0.2-0.3: 33.13 s (95) | 0.0-0.2: 35.96 s (89)
+END attempts 47636: length s median 0.9 (quartiles 0.2-2.1); a lane across 21%; went again within 3 s 89% (on the same car 2%)
+END switches 29216: to a car further on 49%, the same side 100%, back to the car before 15%
+END ended: switched 61%, out of path, not gaining 24%, no side (full), not beside 3%, gone 3%, out of path, not beside 2%, no side (full), not gaining 2%, no side (holding), not gaining 1%, past, its lane slow or out of reach 1%, out of reach, its lane slow or out of reach 1%, own car 0%, out of reach, not gaining 0%, too slow, not gaining 0%, out of path, its lane slow or out of reach 0%, too slow, its lane slow or out of reach 0%, no side (holding), not beside 0%, out of reach, not beside 0%, too slow, not beside 0%, alongside, not beside 0%, past, not beside 0%, alongside, its lane slow or out of reach 0%
+END under 1 s (55% of them): switched 63%, out of path, not gaining 21%, no side (full), not beside 3%, gone 4%, out of path, not beside 4%, no side (full), not gaining 2%, no side (holding), not gaining 1%, past, its lane slow or out of reach 0%, out of reach, its lane slow or out of reach 1%, own car 0%, out of reach, not gaining 0%, too slow, not gaining 0%, out of path, its lane slow or out of reach 0%, too slow, its lane slow or out of reach 0%, no side (holding), not beside 0%, out of reach, not beside 0%, too slow, not beside 0%, alongside, not beside 0%, past, not beside 0%, alongside, its lane slow or out of reach 0%
+LOOK field: two wide or more 19% of green car-time; held up 13%
+LOOK held up, the better lane beside as the view shows it: empty 84%, rolling 9%, level 5%, stacked 1%; our line longer than it 94%, the same 4%, shorter 2%; a car behind there within 15 m 10%
+LOOK the car ahead moving out of its groove (1+ m/s): 7797 times, 3493 of them a lane over (2.5 m) within 2 s; of those we went with it 27% (of the rest, moved over anyway 11%)
+GREEN contacts 95 (health lost, both cars, 5.79): by angle and who was moving across (count; median closing across, along m/s; health lost)
+GREEN   beside        one         52  2.01  2.30  1.58
+GREEN   beside        both         7  4.20  0.23  0.29
+GREEN   beside        neither      4  -0.14  4.42  0.01
+GREEN   nose to tail  one         17  2.13  3.65  0.86
+GREEN   nose to tail  both         9  4.37  3.85  2.07
+GREEN   nose to tail  neither      6  -1.06  5.45  0.98
+GREEN worst 0.75 (nose to tail, both, across 5.1, along 16.4): faster 70 m/s health 0.97, slower 54 m/s health 0.99; faster's plan passing another side 1 (alongside)
+GREEN worst 0.72 (nose to tail, both, across 5.0, along 15.5): faster 70 m/s health 0.99, slower 55 m/s health 0.93; faster's plan passing it side 1 (on)
+GREEN worst 0.58 (nose to tail, neither, across -6.3, along 16.3): faster 72 m/s health 0.96, slower 56 m/s health 0.99; faster's plan passing it side 1 (on)
+GREEN worst 0.38 (nose to tail, both, across 3.7, along 12.9): faster 75 m/s health 1.00, slower 62 m/s health 0.99; faster's plan passing another side 1 (alongside)
+GREEN worst 0.37 (beside, one, across -0.6, along 16.8): faster 70 m/s health 0.98, slower 53 m/s health 1.00; faster's plan passing it side 1 (carried on)
+GREEN closing across: <-0.5 16, 0.5-1 7, 1-2 19, 2-3 26, 3- 27

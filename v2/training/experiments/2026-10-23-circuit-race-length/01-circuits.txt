@@ -1,0 +1,17 @@
+circuit races: 6 circuits x 3 seeds, 20 cars, ~25 km, 4x pace; A: circuit-field-limits.json, B: circuit-field-limits.json
+  retirements                     0.5 ± 0.5       0.1 ± 0.2   B-A     -0.4 ± 0.4  within noise
+    on the first lap              0.0 ± 0.0       0.0 ± 0.0   B-A      0.0 ± 0.0  within noise
+    barriers                      0.0 ± 0.0       0.0 ± 0.0   B-A      0.0 ± 0.0  within noise
+    contact                       0.4 ± 0.5       0.1 ± 0.1   B-A     -0.3 ± 0.5  within noise
+    stopped (beached)             0.1 ± 0.2       0.1 ± 0.1   B-A     -0.1 ± 0.2  within noise
+  damage done (by fault)        0.68 ± 0.38     0.16 ± 0.10   B-A   -0.52 ± 0.33  B better
+  track limits                  25.7 ± 11.7      12.7 ± 3.3   B-A   -13.0 ± 11.6  B better
+    running wide                 12.4 ± 7.8       3.5 ± 1.6   B-A     -8.9 ± 7.7  B better
+    cutting a corner             13.6 ± 4.7       9.4 ± 2.2   B-A     -4.1 ± 4.5  within noise
+  valid laps (share)            0.86 ± 0.05     0.93 ± 0.02   B-A    0.07 ± 0.06  B better
+  time penalties                  9.8 ± 7.2       1.2 ± 1.3   B-A     -8.6 ± 7.3  B better
+  safety cars                     0.2 ± 0.2       0.1 ± 0.2   B-A     -0.1 ± 0.2  within noise
+  finished                       19.6 ± 0.4      19.9 ± 0.2   B-A      0.3 ± 0.3  within noise
+  best valid lap (s/km, median)   24.48 ± 1.06    23.80 ± 0.95   B-A   -0.68 ± 0.15  B better
+  scripted: pit maneuver (share) 0.0014 ± 0.0011  0.0009 ± 0.0008   B-A -0.0005 ± 0.0009  within noise
+  scripted: formation (share) 0.0944 ± 0.0759  0.0000 ± 0.0000   B-A -0.0944 ± 0.0759  B better

@@ -1,0 +1,104 @@
+
+8 races per track, 40 cars, 4x pace; A: teacher:traffic
+
+short
+  retirements                     0.0 ± 0.0
+    at fault                      0.0 ± 0.0
+    formation pileups             0.0 ± 0.0
+  multi-car wrecks                0.0 ± 0.0
+  damage done (by fault)          4.7 ± 0.7
+  cautions                        0.0 ± 0.0
+  lap time (s, tires 60%+)     27.24 ± 0.03
+  share driven by scripts     0.062 ± 0.002
+    out while scripted            0.0 ± 0.0
+  passes /100 green car-laps      1.8 ± 0.3
+  share of time alongside     0.049 ± 0.006
+  share of time drafting      0.516 ± 0.003
+  lane spread (m)               5.34 ± 0.00
+  lockstep, same brain       -0.015 ± 0.004
+  lockstep, different brains      NaN ± NaN
+
+speedway
+  retirements                    9.4 ± 10.3
+    at fault                      6.6 ± 7.8
+    formation pileups             0.8 ± 0.9
+  multi-car wrecks                1.8 ± 2.5
+  damage done (by fault)         19.5 ± 4.1
+  cautions                        2.9 ± 0.7
+  lap time (s, tires 60%+)     40.23 ± 0.31
+  share driven by scripts     0.305 ± 0.051
+    out while scripted            1.4 ± 0.8
+  passes /100 green car-laps      8.3 ± 0.9
+  share of time alongside     0.092 ± 0.009
+  share of time drafting      0.478 ± 0.014
+  lane spread (m)               3.32 ± 0.01
+  lockstep, same brain        0.000 ± 0.006
+  lockstep, different brains      NaN ± NaN
+
+flat
+  retirements                     0.0 ± 0.0
+    at fault                      0.0 ± 0.0
+    formation pileups             0.0 ± 0.0
+  multi-car wrecks                0.0 ± 0.0
+  damage done (by fault)          3.9 ± 1.0
+  cautions                        0.0 ± 0.0
+  lap time (s, tires 60%+)     43.99 ± 0.04
+  share driven by scripts     0.080 ± 0.003
+    out while scripted            0.0 ± 0.0
+  passes /100 green car-laps      5.5 ± 0.6
+  share of time alongside     0.044 ± 0.005
+  share of time drafting      0.536 ± 0.012
+  lane spread (m)               4.51 ± 0.00
+  lockstep, same brain       -0.028 ± 0.006
+  lockstep, different brains      NaN ± NaN
+
+oval:1885224635
+  retirements                     0.6 ± 0.6
+    at fault                      0.1 ± 0.3
+    formation pileups             0.0 ± 0.0
+  multi-car wrecks                0.0 ± 0.0
+  damage done (by fault)          8.7 ± 0.9
+  cautions                        0.6 ± 0.6
+  lap time (s, tires 60%+)     27.37 ± 0.03
+  share driven by scripts     0.092 ± 0.019
+    out while scripted            0.1 ± 0.3
+  passes /100 green car-laps      2.1 ± 0.3
+  share of time alongside     0.049 ± 0.004
+  share of time drafting      0.512 ± 0.007
+  lane spread (m)               5.32 ± 0.00
+  lockstep, same brain       -0.025 ± 0.002
+  lockstep, different brains      NaN ± NaN
+
+oval:1868447016
+  retirements                     0.6 ± 0.8
+    at fault                      0.1 ± 0.3
+    formation pileups             0.0 ± 0.0
+  multi-car wrecks                0.0 ± 0.0
+  damage done (by fault)         14.0 ± 2.6
+  cautions                        0.6 ± 0.8
+  lap time (s, tires 60%+)     32.01 ± 0.09
+  share driven by scripts     0.113 ± 0.037
+    out while scripted            0.3 ± 0.4
+  passes /100 green car-laps      2.6 ± 0.7
+  share of time alongside     0.037 ± 0.009
+  share of time drafting      0.491 ± 0.022
+  lane spread (m)               5.28 ± 0.01
+  lockstep, same brain       -0.018 ± 0.001
+  lockstep, different brains      NaN ± NaN
+
+oval:1918779873
+  retirements                     0.0 ± 0.0
+    at fault                      0.0 ± 0.0
+    formation pileups             0.0 ± 0.0
+  multi-car wrecks                0.0 ± 0.0
+  damage done (by fault)          3.4 ± 0.2
+  cautions                        0.0 ± 0.0
+  lap time (s, tires 60%+)     28.48 ± 0.02
+  share driven by scripts     0.053 ± 0.001
+    out while scripted            0.0 ± 0.0
+  passes /100 green car-laps      4.0 ± 0.3
+  share of time alongside     0.059 ± 0.002
+  share of time drafting      0.602 ± 0.006
+  lane spread (m)               5.14 ± 0.00
+  lockstep, same brain       -0.052 ± 0.002
+  lockstep, different brains      NaN ± NaN

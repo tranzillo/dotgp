@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { ScriptedDriver, Team } from '../src/ai/drivers';
-import { StrategistCrewChief, type CrewChief } from '../src/ai/pitting';
+import { followLine } from '../src/ai/lineFollower';
+import { pitLanes, StrategistCrewChief, type CrewChief } from '../src/ai/pitting';
 import { TowerSpotter } from '../src/ai/spotter';
 import { Car, type PitCall } from '../src/sim/car';
 import { PIT_SERVICE } from '../src/sim/constants';
 import { placeOnGrid } from '../src/sim/grid';
 import { Race } from '../src/sim/race';
-import { FLAT_TRACK, SHORT_TRACK, SPEEDWAY, Track } from '../src/sim/track';
+import { FLAT_TRACK, ovalTrack, SHORT_TRACK, SPEEDWAY } from '../src/trackgen';
 import { World } from '../src/sim/world';
 
 class CallOnce implements CrewChief {
@@ -23,7 +24,7 @@ class CallOnce implements CrewChief {
 describe('pit stop', () => {
   for (const [name, spec] of [['speedway', SPEEDWAY], ['short', SHORT_TRACK], ['flat', FLAT_TRACK]] as const) {
     it(`completes a full cycle on the ${name}: in, stop, service, out, rejoin`, () => {
-      const track = new Track(spec);
+      const track = ovalTrack(spec);
       const world = new World(track, { collisions: false });
       const car = new Car(0);
       placeOnGrid(car, track, 0, true);
@@ -35,7 +36,7 @@ describe('pit stop', () => {
       let rejoinedOnTrack = false;
       while (world.time < 300) {
         world.step();
-        if (car.surface === 'pit' && car.pit.phase === 'in' && track.signedS(car.s) > track.pitWallStart + 30) {
+        if (car.surface === 'pit' && car.pit.phase === 'in' && track.signedS(car.s) > track.pit.wallStart + 30) {
           maxPitSpeed = Math.max(maxPitSpeed, car.speed);
         }
         if (car.pit.stops === 1 && car.pit.phase === 'none') {
@@ -58,9 +59,140 @@ describe('pit stop', () => {
   }
 });
 
+describe('reverse', () => {
+  /** A car on its in-lap, driven in by the pit maneuver to `short` metres short of its box. */
+  function nearItsBox(short: number) {
+    const track = ovalTrack(SHORT_TRACK);
+    const world = new World(track, { collisions: false });
+    const car = new Car(0);
+    placeOnGrid(car, track, 0, true);
+    world.addCar(car, new Team(new ScriptedDriver(0), new TowerSpotter(), new CallOnce({ tires: true, fuel: 30, repair: false })));
+    while (world.time < 300 && !(car.pit.phase === 'in' && car.surface === 'pit' && track.pitInR(car) > car.pit.boxS - short)) world.step();
+    return { track, world, car };
+  }
+
+  it('on pit road, held on the brakes at a standstill a car shifts into reverse and backs up, at a crawl; off the brakes, back in drive', () => {
+    const { track, world, car } = nearItsBox(25);
+    car.vx = 0; car.vy = 0;
+    world.controllers[0] = { decide: (c: Car) => { c.inputX = -1; c.inputY = 0; } };
+    const r0 = track.pitInR(car);
+    for (let k = 0; k < 0.4 * 120; k++) world.step();
+    expect(car.reversing).toBe(false);
+    expect(Math.abs(track.pitInR(car) - r0)).toBeLessThan(0.1); // the brakes only hold it, until it shifts
+    for (let k = 0; k < 4 * 120; k++) world.step();
+    expect(car.reversing).toBe(true);
+    expect(track.pitInR(car)).toBeLessThan(r0 - 3);
+    expect(car.speed).toBeLessThan(2.8); // its reverse speed (banking adds a little)
+    world.controllers[0] = { decide: (c: Car) => { c.inputX = 0.5; c.inputY = 0; } };
+    for (let k = 0; k < 3 * 120; k++) world.step();
+    expect(car.reversing).toBe(false);
+    expect(track.pitInR(car)).toBeGreaterThan(r0 - 20); // stopped rolling back, then drove on
+  });
+
+  it('on the track the brakes only ever stop a car', () => {
+    const track = ovalTrack(FLAT_TRACK);
+    const world = new World(track, { collisions: false });
+    const car = new Car(0);
+    placeOnGrid(car, track, 0, true);
+    car.vx = 0; car.vy = 0;
+    world.addCar(car, { decide: (c: Car) => { c.inputX = -1; c.inputY = 0; } });
+    const d0 = car.dist;
+    let least = d0;
+    for (let k = 0; k < 5 * 120; k++) { world.step(); least = Math.min(least, car.dist); }
+    expect(car.reversing).toBe(false);
+    expect(d0 - least).toBeLessThan(0.05); // never backwards
+  });
+
+  it('the pit maneuver stopped past its box backs up into it and makes its stop', () => {
+    for (const past of [4, 9, 14]) {
+      const { track, world, car } = nearItsBox(30);
+      const move = car.pit.boxS + past - track.pitInR(car);
+      car.placeOnTrack(track, track.wrapS(car.s + move), car.d, car.dist + move);
+      car.vx = 0; car.vy = 0;
+      let serviced = false;
+      for (let k = 0; k < 40 * 120 && car.pit.phase !== 'out'; k++) {
+        world.step();
+        if (car.pit.phase === 'service') serviced = true;
+      }
+      expect(serviced).toBe(true);
+    }
+  });
+});
+
+describe('pit limiter', () => {
+  it('a car coming in flat out is braked to the speed limit by the line, and held to it down pit road', () => {
+    const track = ovalTrack(SPEEDWAY);
+    const world = new World(track, { collisions: false });
+    const car = new Car(0);
+    const lanes = pitLanes(track);
+    car.placeOnTrack(track, track.wrapS(track.pit.wallStart - 120), lanes.fastLane + track.pitOffset(track.pit.wallStart - 120));
+    car.vx = track.tx[car.trackIdx] * 45;
+    car.vy = track.ty[car.trackIdx] * 45;
+    // A driver holding the fast lane with its foot to the floor.
+    world.addCar(car, { decide: (c: Car, w: World) => followLine(c, w, (s) => lanes.fastLane + track.pitOffset(s), () => Infinity, 1) });
+    car.pit.phase = 'in';
+    car.pit.call = { tires: true, fuel: 0, repair: false };
+    car.pit.boxS = track.pit.stalls[track.pit.stalls.length - 1];
+    let atLine = NaN, worst = 0;
+    while (world.time < 20 && track.pitInR(car) < track.pit.wallStart + 80) {
+      world.step();
+      const r = track.pitInR(car);
+      if (Number.isNaN(atLine) && r >= track.pit.wallStart) atLine = car.speed;
+      if (r >= track.pit.wallStart) worst = Math.max(worst, car.speed);
+    }
+    expect(atLine).toBeLessThanOrEqual(PIT_SERVICE.SPEED_LIMIT);
+    expect(worst).toBeLessThanOrEqual(PIT_SERVICE.SPEED_LIMIT + 0.1);
+  });
+
+  it('a car called in that stays out on the racing surface is not braked in the pack', () => {
+    const track = ovalTrack(SPEEDWAY);
+    const world = new World(track, { collisions: false });
+    const car = new Car(0);
+    const s0 = track.wrapS(track.pit.entryStart - 50);
+    car.placeOnTrack(track, s0, 0);
+    car.vx = track.tx[car.trackIdx] * 45;
+    car.vy = track.ty[car.trackIdx] * 45;
+    // Down the middle of the road past the entry, foot to the floor: it misses the entry.
+    world.addCar(car, { decide: (c: Car, w: World) => followLine(c, w, () => 0, () => Infinity, 1) });
+    car.pit.phase = 'in';
+    car.pit.call = { tires: true, fuel: 0, repair: false };
+    car.pit.boxS = track.pit.stalls[track.pit.stalls.length - 1];
+    let slowest = Infinity;
+    while (world.time < 10 && car.pit.phase === 'in') {
+      world.step();
+      slowest = Math.min(slowest, car.speed);
+    }
+    expect(slowest).toBeGreaterThan(40);
+  });
+});
+
+describe('pit box', () => {
+  it('a car stopped beside its box, short of it, is not serviced; the crew waves it in and the maneuver pulls it into the box', () => {
+    const track = ovalTrack(FLAT_TRACK);
+    const world = new World(track, { collisions: false });
+    const car = new Car(0);
+    const lanes = pitLanes(track);
+    const box = track.pit.stalls[5];
+    car.placeOnTrack(track, track.wrapS(box), lanes.boxLane - 3 + track.pitOffset(box));
+    car.vx = 0;
+    car.vy = 0;
+    // A pit-trained driver that has stopped short and stays there.
+    const parked = { decide: (c: Car) => { c.inputX = 0; c.inputY = 0; } } as unknown as ScriptedDriver;
+    world.addCar(car, new Team(parked, new TowerSpotter(), null, true));
+    car.pit.phase = 'in';
+    car.pit.call = { tires: true, fuel: 0, repair: false };
+    car.pit.boxS = box;
+    while (world.time < 1.9) world.step();
+    expect(car.pit.phase).toBe('in');
+    while (world.time < 15 && car.pit.phase === 'in') world.step();
+    expect(car.pit.phase).toBe('service');
+    expect(Math.abs(car.d - lanes.boxLane - track.pitOffset(car.s))).toBeLessThan(1.5);
+  });
+});
+
 describe('crew chief', () => {
   it('calls the car in for fuel before it runs dry, and fuels only to the finish late on', () => {
-    const track = new Track(SPEEDWAY);
+    const track = ovalTrack(SPEEDWAY);
     const world = new World(track, { collisions: false, wearScale: 6 });
     world.raceLaps = 30;
     const car = new Car(0);
@@ -80,7 +212,7 @@ describe('crew chief', () => {
 
 describe('race', () => {
   it('waves the checkered flag and classifies everyone', () => {
-    const track = new Track(SHORT_TRACK);
+    const track = ovalTrack(SHORT_TRACK);
     const world = new World(track, { collisions: false });
     const cars = [0, 1, 2].map((k) => {
       const car = new Car(k);
@@ -99,7 +231,7 @@ describe('race', () => {
   });
 
   it('classifies lead-lap finishers ahead of lapped cars that flag first', () => {
-    const track = new Track(SHORT_TRACK);
+    const track = ovalTrack(SHORT_TRACK);
     const world = new World(track, { collisions: false });
     const fast = new Car(0), slow = new Car(1), mid = new Car(2);
     for (const [k, car] of [fast, slow, mid].entries()) {
@@ -116,15 +248,15 @@ describe('race', () => {
 
 describe('pit exit merge', () => {
   it('waits on the apron while a car is alongside, then merges once clear', () => {
-    const track = new Track(SPEEDWAY);
+    const track = ovalTrack(SPEEDWAY);
     const world = new World(track, { collisions: true, drafting: false });
     // A: leaving the pits, on the apron just inside the merge zone.
     const a = new Car(0);
     world.addCar(a, new Team(new ScriptedDriver(0), new TowerSpotter(), null));
-    const startS = track.blendEnd - PIT_SERVICE.MERGE_ZONE + 5;
-    a.placeOnTrack(track, startS, track.halfWidth + track.spec.apronWidth / 2);
+    const startS = track.pit.blendEnd - PIT_SERVICE.MERGE_ZONE + 5;
+    a.placeOnTrack(track, startS, (track.halfWidth + track.apronEdgeAt(0)) / 2);
     a.pit.phase = 'out';
-    a.pit.boxS = track.pitWallStart + 25;
+    a.pit.boxS = track.pit.wallStart + 25;
     const ia = a.trackIdx;
     a.vx = track.tx[ia] * 40; a.vy = track.ty[ia] * 40;
     // B: on the racing surface, low line, right alongside and a touch quicker.
@@ -148,5 +280,28 @@ describe('pit exit merge', () => {
     expect(mergedWhileAlongside).toBe(false);
     expect(a.health).toBe(1);
     expect(b.health).toBe(1);
+  });
+
+  it('does not call for repairs lap after lap as a damaged car keeps scraping', () => {
+    const track = ovalTrack(SPEEDWAY);
+    const world = new World(track, { collisions: false });
+    world.raceLaps = 60;
+    const car = new Car(0);
+    placeOnGrid(car, track, 0, true);
+    const chief = new StrategistCrewChief({ fuelMarginLaps: 1, tireLimit: 0.3, repairBelow: 0.85, minLapsForTires: 5 });
+    let repairs = 0;
+    // Thirty laps of a car losing a little health every lap (and getting a repair whenever asked).
+    for (let lap = 0; lap < 30; lap++) {
+      car.lapTimes.push(35);
+      car.health = Math.max(0.2, car.health - 0.04);
+      const call = chief.decide(car, world);
+      if (call?.repair) {
+        repairs++;
+        car.pit.stops++;
+        car.health = 1 - (1 - car.health) * (1 - PIT_SERVICE.REPAIR_FRACTION) - 0.03; // a scrape on the way in
+      }
+    }
+    expect(repairs).toBeGreaterThan(0);
+    expect(repairs).toBeLessThanOrEqual(7); // about one per 5 laps of steady damage (the old rule called nearly every other lap)
   });
 });

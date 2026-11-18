@@ -1,0 +1,50 @@
+
+=== speedway seed 1: 59 laps, 30 cars (a car a pit box), 4x pace (712 s)
+finished 30/30  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 6%, skids 0% mean darkness; 23% of surface >10% dark, 5% >25%
+  marks lap 20: groove 14%, skids 0% mean darkness; 48% of surface >10% dark, 26% >25%
+
+=== speedway seed 2: 59 laps, 30 cars (a car a pit box), 4x pace (597 s)
+finished 30/30  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 6%, skids 0% mean darkness; 24% of surface >10% dark, 4% >25%
+  marks lap 20: groove 14%, skids 0% mean darkness; 48% of surface >10% dark, 27% >25%
+
+=== speedway seed 3: 59 laps, 30 cars (a car a pit box), 4x pace (500 s)
+finished 30/30  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 6%, skids 0% mean darkness; 24% of surface >10% dark, 5% >25%
+  marks lap 20: groove 14%, skids 0% mean darkness; 48% of surface >10% dark, 27% >25%
+
+=== speedway seed 4: 59 laps, 30 cars (a car a pit box), 4x pace (531 s)
+finished 30/30  cautions 0 (0 laps)  retirements 0  biggest wreck 0 cars
+  marks lap 5: groove 6%, skids 0% mean darkness; 22% of surface >10% dark, 5% >25%
+  marks lap 20: groove 14%, skids 0% mean darkness; 46% of surface >10% dark, 27% >25%
+
+=== summary by track
+
+speedway (4 races)
+  STEWARDS 1.3 decisions/race: avoidable-contact: warning 3, avoidable-contact: time 2
+  WRECKS  0.0 retirements/race, 0.0 cautions/race, 0 multi-car wrecks (mean – cars, max 0)
+          by context: 
+          who / what: 
+          damage done to others (by fault): 0.51 health/race
+  PACK    31.0 passes/100 green car-laps, alongside 3%, drafting 21%, lane spread 3.53 m; lockstep same brain –, different brains 0.009
+  PASSING 29.9 clean passes/100 green car-laps; of all passes 3% with contact, 1% damaging, 40% from the draft; 1.5 damaging contacts/100 green car-laps
+  TWINS   following within 2 s, at the same spot as the car ahead: same brain lane – m, speed – m/s, steer –; different brains 3.33 m, 2.58 m/s, 0.131
+  SCRIPTS 19% of car-time on track driven by a script (formation 0%, pit maneuver 19%); 0.0 retirements/race while a script drove
+  TIRES   wear 0.0811/green lap -> cliff (0.3) after 9 laps; sliding >0.05 0%, >0.35 0%, >0.6 0% of car-steps
+  FUEL    burn 4.67 kg/green lap -> 13 laps per tank
+  DAMAGE  health lost on track /race: green walls 0.00 (0.00 with a car alongside), cars 1.23; caution walls 0.00, cars 0.00
+  STOPS   205.5/race (0% under caution), tires taken 96%, repairs 0%, called for fuel 4% tires 96% damage 0% caution 0% penalty 0%, tire life at stop 0.42 (min 0.10), service 13.6 s
+  PIT ROAD 53.2 s entry to track under green, – s under caution; 4.3 contacts, 0.07 health lost /race in pit cycles
+  LAP TIME by tire life (green laps): 0.8-1.0: 31.77 s (912) | 0.6-0.8: 31.95 s (2103) | 0.4-0.6: 32.25 s (1802) | 0.3-0.4: 32.90 s (180) | 0.2-0.3: 33.06 s (84) | 0.0-0.2: 35.65 s (83)
+PACK runs: 2475 pull-outs, 32% with a run (closing 1+ m/s); closing built in the tow over 3 s before -0.64 m/s, at the pull-out 0.09 m/s
+PACK   passed within 10 s: with a run 45%, without 13%, all 23%
+PACK held up (following, closing under 1 m/s): 16.6% of green car-time; the better lane beside: open 83%, faster 5%, no faster 8%, taken 4%, none 0%
+PACK   lane open or faster: moved over within 3 s 24% of 13869 chances
+PACK pack: 0.285 position changes a car-lap; alongside 5% of green car-time; in a tow 27% (drag cut there 16%); damaging car contacts 1.3 a 100 car-laps (6597 green car-laps)
+WHERE position changes: 1879; tries are pass attempts started (passed within 10 s); gap bands m: <3, <6, <10, <20, <30
+WHERE phase     swaps (inside)   tries  passed   following  gap bands (share of following time)
+WHERE straight    537 (  75%)    2350     2%       21%      12%   36%   15%   21%   15%
+WHERE entry       100 (  52%)     227     6%       22%      13%   39%   13%   19%   16%
+WHERE mid        1107 (  44%)    5261     2%       21%      19%   32%   14%   20%   16%
+WHERE exit        135 (  41%)     992     1%       22%      16%   31%   15%   21%   16%

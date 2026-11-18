@@ -1,0 +1,18 @@
+  DAMAGE  health lost on track /race: green walls 36.34 (0.94 with a car alongside), cars 5.20; caution walls 0.45, cars 1.91
+WALL by tyres (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   40-60%             23   0.734    1.29
+WALL   60-80%             83   1.980    3.29
+WALL   over 80%          494   3.822    8.22
+WALL   under 40%           3   0.317    0.81
+WALL by car ahead in lane (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   10-25 m            33   4.180    7.86
+WALL   25-60 m            45   5.154   10.47
+WALL   none in 60 m      510   3.249    6.98
+WALL   under 10 m         15   2.907    4.86
+WALL by alongside (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   car inside         11   5.988    9.03
+WALL   car outside         9   0.108    0.47
+WALL   clear             583   3.437    7.31
+WALL by tow (car-minutes; hits per car-minute; health lost per car-hour):
+WALL   clean air         533   3.316    7.08
+WALL   in a tow           70   4.320    8.39

@@ -1,0 +1,9 @@
+{
+  "note": "Open question (PLAYBOOK): why do circuit students copy their teachers nearly whole and oval students don't? Race the human-limits circuit field and its own teachers under oval-like conditions, separating field size from race length: 20 cars / 25 km (today), 40 / 25, 20 / 150, 40 / 150. 12 distinct drivers, cycled.",
+  "steps": [
+    { "kind": "circuits", "a": "C:/Users/kappa/Documents/Projects/dotgp/v2/lab/circuit-field-limits.json", "b": "teacher:C:/Users/kappa/Documents/Projects/dotgp/v2/lab/circuit-field-limits.json", "field": 20, "km": 25 },
+    { "kind": "circuits", "a": "C:/Users/kappa/Documents/Projects/dotgp/v2/lab/circuit-field-limits.json", "b": "teacher:C:/Users/kappa/Documents/Projects/dotgp/v2/lab/circuit-field-limits.json", "field": 40, "km": 25 },
+    { "kind": "circuits", "a": "C:/Users/kappa/Documents/Projects/dotgp/v2/lab/circuit-field-limits.json", "b": "teacher:C:/Users/kappa/Documents/Projects/dotgp/v2/lab/circuit-field-limits.json", "field": 20, "km": 150 },
+    { "kind": "circuits", "a": "C:/Users/kappa/Documents/Projects/dotgp/v2/lab/circuit-field-limits.json", "b": "teacher:C:/Users/kappa/Documents/Projects/dotgp/v2/lab/circuit-field-limits.json", "field": 40, "km": 150 }
+  ]
+}
